@@ -1,0 +1,10 @@
+.DS_Store
+*.awt-tmp
+**/.awt/write.lock
+**/.awt/backups/
+**/.awt/trash/
+
+# Local AWT execution state; project conventions and GlobalDoc are versioned.
+/.awt/
+/TaskIndex.md
+/*Task/
