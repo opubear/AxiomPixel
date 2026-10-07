@@ -8,3 +8,17 @@
 /.awt/
 /TaskIndex.md
 /*Task/
+
+# >>> awt:ignore .
+# AWT temporary files
+.DS_Store
+*.awt-tmp
+# AWT execution records; keep project knowledge versioned
+/**/.awt/
+/**/AIMemory/
+/**/AIShared/
+/**/Task.md
+/**/TaskLog.md
+/**/TaskIndex.md
+/**/UserFeedback.md
+# <<< awt:ignore .

@@ -1,0 +1,13 @@
+# >>> awt:ignore .awtcontext
+# AWT temporary files
+.DS_Store
+*.awt-tmp
+# AWT execution records; keep project knowledge searchable
+/.awtcontext/**/.awt/
+/.awtcontext/**/AIMemory/
+/.awtcontext/**/AIShared/
+/.awtcontext/**/Task.md
+/.awtcontext/**/TaskLog.md
+/.awtcontext/**/TaskIndex.md
+/.awtcontext/**/UserFeedback.md
+# <<< awt:ignore .awtcontext
