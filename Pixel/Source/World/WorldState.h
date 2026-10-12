@@ -1,19 +1,11 @@
 #pragma once
 
+#include "CellType.h"
 #include <cstdint>
 #include <span>
 #include <vector>
 
 namespace pixel {
-// Gameplay identity, independent of any texture catalog. Zero denotes empty space.
-struct CellTypeId {
-    uint32_t Value = 0;
-    bool operator==(const CellTypeId &) const = default;
-};
-namespace CellTypes {
-inline constexpr CellTypeId Empty{0};
-inline constexpr CellTypeId Dirt{10};
-} // namespace CellTypes
 // A direction in the cell's spatial force field, not a particle velocity.
 // Positive Y points down; zero holds an object still. No magnitude is modeled.
 struct ForceDirection {
@@ -23,7 +15,7 @@ struct ForceDirection {
     bool IsValid() const { return X >= -1 && X <= 1 && Y >= -1 && Y <= 1; }
 };
 struct CellState {
-    CellTypeId Type;
+    CellTypeId Type = CellTypeId::Air;
     ForceDirection Force;
     bool operator==(const CellState &) const = default;
 };

@@ -271,9 +271,9 @@ void GameplayPublication() {
     });
     snapshot.reset(); // Render is now the sole owner of the published gameplay state.
     policy.Initialize();
-    world->SetCell(0, 0, {{10}});
+    world->SetCell(0, 0, {pixel::CellTypeId::Dirt});
     policy.FrameBegin();
-    world->SetCell(1, 0, {{20}});
+    world->SetCell(1, 0, {static_cast<pixel::CellTypeId>(20)});
     view.OriginPixels[0] = 8;
     post.Values[0] = 0.5f;
     policy.Draw();

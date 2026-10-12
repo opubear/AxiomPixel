@@ -242,7 +242,7 @@ void WorldWindCoupling() {
     world.ConfigureWind(16, Uniform({60, 0}));
     world.PlaceDirt(3, 3);
     world.PlaceDirt(4, 3);
-    world.SetCell(5, 3, {{20}, {0, 0}});
+    world.SetCell(5, 3, {static_cast<pixel::CellTypeId>(20), {0, 0}});
     world.Tick(0.25f);
     Check(world.GetCell(3, 3).Type == pixel::CellTypes::Dirt && world.GetCell(4, 3).Type == pixel::CellTypes::Dirt, "wind pushed dirt through an obstacle");
     world.SetCell(5, 3, {pixel::CellTypes::Empty, {0, 0}});

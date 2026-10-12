@@ -105,7 +105,7 @@ void FieldFramePublication() {
     Check(output.Cells()[100 * Grid2D::Width + 100] == 0x8080FF && output.Cells()[424 * Grid2D::Width + 100] == 0x808080, "wind region or air-cell colours are incorrect");
     world.DisableWind();
     Check(output.Cells()[100 * Grid2D::Width + 100] == 0x8080FF, "wind edit mutated a published frame");
-    BuildWorldGridFrame(world.ReadState(), {{pixel::CellTypes::Dirt.Value, 1}}, output);
+    BuildWorldGridFrame(world.ReadState(), {{static_cast<uint32_t>(pixel::CellTypeId::Dirt), 1}}, output);
     Check(output.DisplayMode == GridDisplayMode::Materials && output.Cells()[1] == 1 && output.Cells().back() == 0, "material view retained encoded debug colours");
     ValidateWorldGridFrame(output.Read(), 2, 800, 600);
     pixel::World small(4, 4);

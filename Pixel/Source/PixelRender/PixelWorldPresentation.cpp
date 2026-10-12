@@ -15,7 +15,7 @@ void BuildWorldGridFrame(pixel::WorldStateView world, const CellAppearanceTable 
     output.DisplayMode = GridDisplayMode::Materials;
     auto cells = output.Cells();
     for (size_t index = 0; index < world.Cells.size(); ++index) {
-        const auto type = world.Cells[index].Type.Value;
+        const auto type = static_cast<uint32_t>(world.Cells[index].Type);
         if (!type) {
             cells[index] = 0;
             continue;

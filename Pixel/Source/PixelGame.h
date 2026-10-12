@@ -26,7 +26,7 @@ class PixelGame final : public IGameInterface {
     void OnMouseMove(float, float) override {}
     void OnMouseMoveDelta(float, float) override {}
     void OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) override;
-    CellAppearanceTable Appearances{{pixel::CellTypes::Dirt.Value, 1}};
+    CellAppearanceTable Appearances{{static_cast<uint32_t>(pixel::CellTypeId::Dirt), 1}};
     GridView2D View;
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;

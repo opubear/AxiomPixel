@@ -89,9 +89,9 @@ void ChainsAndObstacles() {
     blocked.FillForceDirection({1, 0});
     blocked.PlaceDirt(1, 1);
     blocked.PlaceDirt(2, 1);
-    blocked.SetCell(3, 1, {{20}, {0, 0}});
+    blocked.SetCell(3, 1, {static_cast<pixel::CellTypeId>(20), {0, 0}});
     blocked.Tick(1.f / 60);
-    Check(IsDirt(blocked, 1, 1) && IsDirt(blocked, 2, 1) && blocked.GetCell(3, 1).Type.Value == 20, "force overwrote an immovable obstacle");
+    Check(IsDirt(blocked, 1, 1) && IsDirt(blocked, 2, 1) && blocked.GetCell(3, 1).Type == static_cast<pixel::CellTypeId>(20), "force overwrote an immovable obstacle");
 
     pixel::World bent(4, 4);
     bent.SetForceDirection(1, 1, {1, 0});
@@ -157,8 +157,8 @@ void FieldValidationAndConservation() {
     for (uint32_t y = 0; y < 11; ++y)
         for (uint32_t x = 0; x < 13; ++x) {
             const uint32_t kind = random() % 5;
-            world.SetCell(x, y, {{kind == 0 ? 20u : kind < 3 ? 10u
-                                                             : 0u},
+            world.SetCell(x, y, {static_cast<pixel::CellTypeId>(kind == 0 ? 20u : kind < 3 ? 10u
+                                                             : 0u),
                                  Directions[random() % Directions.size()]});
         }
     const auto count = DirtCount(world);
@@ -171,8 +171,8 @@ void FieldValidationAndConservation() {
         Check(DirtCount(world) == count, "mixed field simulation lost or created material");
         for (size_t i = 0; i < initial.size(); ++i) {
             Check(world.ReadState().Cells[i].Force == initial[i].Force, "mixed field changed a spatial force");
-            if (initial[i].Type.Value == 20)
-                Check(world.ReadState().Cells[i].Type.Value == 20, "mixed field overwrote an obstacle");
+            if (initial[i].Type == static_cast<pixel::CellTypeId>(20))
+                Check(world.ReadState().Cells[i].Type == static_cast<pixel::CellTypeId>(20), "mixed field overwrote an obstacle");
         }
     }
 }

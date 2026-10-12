@@ -32,6 +32,20 @@ auto force = world.GetCell(x, y).Force;
 
 `SetCell` / `Fill` 替换完整格子状态（包含方向），保留正在运行的风。`GenerateTerrain` 生成地形、初始化向下场并清除风及模拟计时；游戏启动和 R 重置随后启用顶部 424 行风场。旧的 `RandomizeForceDirections(endRow, seed)` 仍可生成固定离散场，但不再用于默认游戏。基础方向随 WorldState 一起发布，风速属于 Environment；普通视图映射物体类型，F1 调试视图映射合成场的方向。
 
+## 地图块静态信息
+
+`CellTypeId` 是强类型枚举，目前定义 `Air = 0` 和 `Dirt = 10`；`CellTypes::Empty` 是空气的兼容名称。每格的材料只保存此枚举，不保存质量、信息指针或类实例。原有 `Force` 仍属于空间状态。
+
+`World/CellType.h` 中的 `CellDefinition<Type>` 模板特化各自拥有一份 `inline static constexpr CellInfo`，唯一属性为 `Mass`。目前采用游戏相对质量：空气为 0、泥土为 1，尚不参与运动或风场计算，也不代表真实空气密度。
+
+```cpp
+const auto &dirt = pixel::CellDefinition<pixel::CellTypeId::Dirt>::Info;
+const auto &info = pixel::GetCellInfo(world.GetCell(x, y).Type);
+float mass = info.Mass;
+```
+
+运行时查询返回对应模板特化的静态实例引用；未知枚举值抛出 `std::invalid_argument`。世界存储仍可承载显式转换的未注册 ID（用于现有障碍/渲染测试），但它们没有材料信息。新增正式材料时需增加枚举、模板特化及查询分支；外观映射由表现层单独维护。
+
 ## 简化风场
 
 `WindField` 是纯 CPU 的二维不可压缩 NS 近似，采用 [Stable Fluids](https://www.dgp.toronto.edu/public_user/stam/reality/Research/pdf/ns.pdf) 的分步求解思路：半拉格朗日平流、隐式黏性扩散和压力投影。本实现使用交错 MAC 网格，使离散散度和压力梯度匹配。

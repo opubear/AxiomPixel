@@ -4,6 +4,7 @@
 #include <array>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 
 namespace {
 void Check(bool value, const char *reason) {
@@ -19,6 +20,27 @@ void Reject(F &&action) {
     }
     throw std::runtime_error("expected world input rejection");
 }
+void CellInformation() {
+    using namespace pixel;
+    static_assert(std::is_enum_v<CellTypeId>);
+    static_assert(std::is_same_v<decltype(CellState::Type), CellTypeId>);
+    static_assert(sizeof(CellTypeId) == sizeof(uint32_t));
+    static_assert(GetCellInfo(CellTypeId::Air).Mass == 0.f);
+    static_assert(GetCellInfo(CellTypeId::Dirt).Mass == 1.f);
+    World world(2, 2);
+    const auto &air = GetCellInfo(world.GetCell(0, 0).Type);
+    Check(&air == &CellDefinition<CellTypeId::Air>::Info, "air lookup copied static information");
+    world.PlaceDirt(0, 0);
+    WorldState snapshot(2, 2);
+    world.PublishState(snapshot);
+    const auto &dirt = GetCellInfo(snapshot.Read().Cells[0].Type);
+    Check(&dirt == &CellDefinition<CellTypeId::Dirt>::Info, "dirt lookup copied static information");
+    Check(&dirt == &GetCellInfo(world.GetCell(0, 0).Type), "world and snapshot do not share information");
+    world.RemoveDirt(0, 0);
+    Check(&GetCellInfo(world.GetCell(0, 0).Type) == &air, "removed dirt did not resolve to air");
+    Check(dirt.Mass == 1.f, "world edit mutated shared information");
+    Reject<std::invalid_argument>([] { GetCellInfo(static_cast<CellTypeId>(99)); });
+}
 void WorldOperations() {
     Reject<std::invalid_argument>([] { pixel::World world(0, 4); });
     Reject<std::invalid_argument>([] { pixel::World world(4, 0); });
@@ -26,43 +48,43 @@ void WorldOperations() {
     pixel::World world(3, 2);
     Check(world.ReadState().Cells.size() == 6, "incorrect world extent");
     for (auto cell : world.ReadState().Cells)
-        Check(cell.Type.Value == 0, "world not initially empty");
-    world.SetCell(2, 1, {{10}});
-    Check(world.GetCell(2, 1).Type.Value == 10 && world.ReadState().Cells[5].Type.Value == 10, "world indexing incorrect");
-    Reject<std::out_of_range>([&] { world.SetCell(3, 0, {{20}}); });
+        Check(cell.Type == pixel::CellTypeId::Air, "world not initially empty");
+    world.SetCell(2, 1, {pixel::CellTypeId::Dirt});
+    Check(world.GetCell(2, 1).Type == pixel::CellTypeId::Dirt && world.ReadState().Cells[5].Type == pixel::CellTypeId::Dirt, "world indexing incorrect");
+    Reject<std::out_of_range>([&] { world.SetCell(3, 0, {static_cast<pixel::CellTypeId>(20)}); });
     Reject<std::out_of_range>([&] { world.GetCell(0, 2); });
     Reject<std::out_of_range>([&] { world.GetCell(UINT32_MAX, 0); });
-    world.Fill({{20}});
+    world.Fill({static_cast<pixel::CellTypeId>(20)});
     world.Tick(0.016f);
     for (auto cell : world.ReadState().Cells)
-        Check(cell.Type.Value == 20, "fill or empty character/environment tick changed world");
+        Check(cell.Type == static_cast<pixel::CellTypeId>(20), "fill or empty character/environment tick changed world");
     world.Fill({});
-    Check(world.GetCell(2, 1).Type.Value == 0, "world clearing failed");
+    Check(world.GetCell(2, 1).Type == pixel::CellTypeId::Air, "world clearing failed");
 }
 void WorldPublication() {
     pixel::World world(3, 2);
     pixel::WorldState snapshot(3, 2);
     const std::array storage{world.ReadState().Cells.data(), snapshot.Read().Cells.data()};
-    world.SetCell(0, 0, {{10}});
+    world.SetCell(0, 0, {pixel::CellTypeId::Dirt});
     for (size_t frame = 0; frame < 8; ++frame) {
         world.PublishState(snapshot);
         Check(world.ReadState().Cells.data() == storage[(frame + 1) % 2], "world allocated instead of recycling storage");
         Check(snapshot.Read().Cells.data() == storage[frame % 2], "snapshot did not receive the working storage");
-        Check(world.GetCell(0, 0).Type.Value == 10 && snapshot.Read().Cells[0].Type.Value == 10, "persistent edit lost across frames");
+        Check(world.GetCell(0, 0).Type == pixel::CellTypeId::Dirt && snapshot.Read().Cells[0].Type == pixel::CellTypeId::Dirt, "persistent edit lost across frames");
         const auto before = snapshot.Read().Cells[5];
-        world.SetCell(2, 1, {{uint32_t(20 + frame)}});
+        world.SetCell(2, 1, {static_cast<pixel::CellTypeId>(uint32_t(20 + frame))});
         Check(snapshot.Read().Cells[5] == before, "working edit changed the published snapshot");
         if (frame > 0)
-            Check(before.Type.Value == 19 + frame, "second edit did not persist until publication");
+            Check(before.Type == static_cast<pixel::CellTypeId>(19 + frame), "second edit did not persist until publication");
     }
     world.SetCell(0, 0, {});
     world.PublishState(snapshot);
     world.PublishState(snapshot); // An unchanged frame must not resurrect old values.
-    Check(snapshot.Read().Cells[0].Type.Value == 0 && snapshot.Read().Cells[5].Type.Value == 27, "clear or unchanged frame reverted data");
+    Check(snapshot.Read().Cells[0].Type == pixel::CellTypeId::Air && snapshot.Read().Cells[5].Type == static_cast<pixel::CellTypeId>(27), "clear or unchanged frame reverted data");
     pixel::WorldState wrongShape(2, 3);
     const auto before = world.ReadState().Cells.data();
     Reject<std::invalid_argument>([&] { world.PublishState(wrongShape); });
-    Check(world.ReadState().Cells.data() == before && world.GetCell(2, 1).Type.Value == 27, "rejected publication modified world");
+    Check(world.ReadState().Cells.data() == before && world.GetCell(2, 1).Type == static_cast<pixel::CellTypeId>(27), "rejected publication modified world");
 }
 void PresentationMapping() {
     pixel::World world(Grid2D::Width, Grid2D::Height);
@@ -70,16 +92,16 @@ void PresentationMapping() {
     WorldGridFrame output;
     const auto *renderStorage = output.Cells().data();
     CellAppearanceTable appearances{{10, 2}, {20, 2}};
-    world.SetCell(0, 0, {{10}});
-    world.SetCell(Grid2D::Width - 1, Grid2D::Height - 1, {{20}});
+    world.SetCell(0, 0, {pixel::CellTypeId::Dirt});
+    world.SetCell(Grid2D::Width - 1, Grid2D::Height - 1, {static_cast<pixel::CellTypeId>(20)});
     world.PublishState(snapshot);
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(output.Read().Cells.front() == 2 && output.Read().Cells.back() == 2 && output.Read().Cells[1] == 0, "nonidentity or shared appearance mapping failed");
     appearances[10] = 3;
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(output.Read().Cells.front() == 3 && output.Cells().data() == renderStorage, "mapping change did not reuse render storage");
-    Check(world.GetCell(0, 0).Type.Value == 10 && snapshot.Read().Cells[0].Type.Value == 10, "presentation changed gameplay identity");
-    world.SetCell(0, 0, {{99}});
+    Check(world.GetCell(0, 0).Type == pixel::CellTypeId::Dirt && snapshot.Read().Cells[0].Type == pixel::CellTypeId::Dirt, "presentation changed gameplay identity");
+    world.SetCell(0, 0, {static_cast<pixel::CellTypeId>(99)});
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(output.Read().Cells[0] == 3, "unpublished gameplay leaked into conversion");
     world.PublishState(snapshot);
@@ -124,7 +146,7 @@ void TerrainAndGravity() {
     world.PlaceDirt(0, 0);
     world.PlaceDirt(0, 1);
     world.PlaceDirt(2, 5);
-    world.SetCell(1, 3, {{20}});
+    world.SetCell(1, 3, {static_cast<pixel::CellTypeId>(20)});
     Check(!world.RemoveDirt(1, 3) && !world.PlaceDirt(1, 3), "dirt editing overwrote another material");
     pixel::WorldState snapshot(3, 6);
     world.PublishState(snapshot);
@@ -180,6 +202,7 @@ void MousePicking() {
 }
 } // namespace
 void RunPixelWorldTests() {
+    CellInformation();
     WorldOperations();
     WorldPublication();
     PresentationMapping();

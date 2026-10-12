@@ -188,7 +188,7 @@ void Lifecycle(int iteration) {
     for (uint32_t y = 0; y < Grid2D::Height; ++y)
         for (uint32_t x = 0; x < Grid2D::Width; ++x) {
             expectedCells[size_t(y) * Grid2D::Width + x] = 1 + (x / 4 + y / 4) % 3;
-            input->GetWorld().SetCell(x, y, {{10 * expectedCells[size_t(y) * Grid2D::Width + x]}});
+            input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * expectedCells[size_t(y) * Grid2D::Width + x])});
         }
     WorldGridFrameView expected{expectedCells, input->View, input->Post};
     RenderSetup setup;
@@ -224,7 +224,7 @@ void Lifecycle(int iteration) {
             for (uint32_t x = 0; x < Grid2D::Width; ++x) {
                 const auto layer = uint32_t((y + x + i) % 4);
                 expectedCells[size_t(y) * Grid2D::Width + x] = layer;
-                input->GetWorld().SetCell(x, y, {{10 * layer}});
+                input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * layer)});
             }
         input->View.OriginPixels = {i == 2 ? -8 : 0, origins[i]};
         input->View.CellSizePixels = i == 7 ? std::array<uint32_t, 2>{32, 32} : std::array<uint32_t, 2>{16, 16};
@@ -248,7 +248,7 @@ void Lifecycle(int iteration) {
     }
     // A change after FrameBegin cannot affect this frame's uploaded snapshot.
     input->View.OriginPixels = {0, 0};
-    input->GetWorld().Fill({{10}});
+    input->GetWorld().Fill({pixel::CellTypeId::Dirt});
     std::fill(expectedCells.begin(), expectedCells.end(), 1);
     expected.View = input->View;
     expected.Post = input->Post;
@@ -260,7 +260,7 @@ void Lifecycle(int iteration) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     Require(delayed.Ready, "no frame for snapshot isolation test");
-    input->GetWorld().SetCell(0, 0, {{20}});
+    input->GetWorld().SetCell(0, 0, {static_cast<pixel::CellTypeId>(20)});
     engine.GetInput()->Dispatch();
     engine.Tick(0, delayed.Token);
     engine.FrameEnd(delayed.Token);
@@ -309,7 +309,7 @@ void Lifecycle(int iteration) {
     } else {
         std::cout << "Minimize check skipped: window manager did not report iconification\n";
     }
-    input->GetWorld().Fill({{20}});
+    input->GetWorld().Fill({static_cast<pixel::CellTypeId>(20)});
     std::fill(expectedCells.begin(), expectedCells.end(), 2);
     expected.View = input->View;
     expected.Post = input->Post;

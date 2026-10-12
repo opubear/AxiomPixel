@@ -181,7 +181,7 @@ void EditsAndCouplingScope() {
     withoutDirt.Step(Step);
     world.Tick(Step);
     Check(Samples(world.GetWind(), 64, 64) == Samples(withoutDirt, 64, 64), "DirtDrag=0 did not disable feedback");
-    world.Fill({{20}}); // Non-dirt material is outside this coupling contract.
+    world.Fill({static_cast<pixel::CellTypeId>(20)}); // Non-dirt material is outside this coupling contract.
     world.ConfigureWind(64, Uniform({20, 0}));
     withoutDirt = world.GetWind();
     withoutDirt.Step(Step);
