@@ -33,12 +33,21 @@ enum class GridDisplayMode : uint32_t {
     Materials = 0,
     ForceField = 1,
 };
+// Render-owned character snapshot. Bounds use continuous framebuffer pixels.
+struct CharacterDraw {
+    std::array<float, 4> Bounds{}; // left, top, width, height
+    std::array<float, 4> HeadColor{}; // linear RGBA
+    std::array<float, 4> BodyColor{};
+    std::array<float, 4> Parameters{0.25f, 0, 0, 0}; // head height fraction
+};
+static_assert(sizeof(CharacterDraw) == 64);
 struct WorldGridFrameView {
     // Material layer IDs, or packed linear RGB8 (R in bits 0..7) in ForceField mode.
     std::span<const uint32_t> Cells;
     GridView2D View;
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
+    std::optional<CharacterDraw> Character;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
@@ -48,10 +57,11 @@ class WorldGridFrame {
     WorldGridFrame(const WorldGridFrame &) = delete;
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character}; }
     GridView2D View;
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
+    std::optional<CharacterDraw> Character;
 
   private:
     std::vector<uint32_t> CellStorage;

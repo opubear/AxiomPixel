@@ -12,6 +12,7 @@ constexpr std::array WorldBindings{
     DescriptorRequirement{0, 4, ShaderDescriptorType::SAMPLED_IMAGE, 1},
     DescriptorRequirement{0, 5, ShaderDescriptorType::SAMPLER, 1},
 };
+constexpr std::array CharacterBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
 constexpr std::array PostBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
     DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLER, 1},
@@ -47,7 +48,7 @@ void PixelRender::Initialize() {
     if (!RHI.IsPresentationSRGB())
         throw std::runtime_error("2D rendering requires an sRGB presentation target");
     const uint32_t slots = RHI.GetFrameSlotCount();
-    if (!slots || slots > UINT32_MAX / 6)
+    if (!slots || slots > UINT32_MAX / 8)
         throw std::runtime_error("invalid RHI frame slot count");
     constexpr std::array<float, 8> vertices{-1, -1, 1, -1, 1, 1, -1, 1};
     constexpr std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
@@ -57,7 +58,7 @@ void PixelRender::Initialize() {
     Materials = RHI.CreateTexture({Catalog.Width, Catalog.Height, Catalog.Layers, RHITextureFormat::RGBA8SRGB, true, false});
     MaterialUpload = RHI.CreateUploadBuffer(Catalog.Pixels.size());
     MaterialUpload->Write(Catalog.Pixels);
-    Pool = RHI.CreateImageDescriptorPool(2 * slots, 6 * slots, 2 * slots);
+    Pool = RHI.CreateImageDescriptorPool(4 * slots, 8 * slots, 3 * slots);
     Frames.resize(slots);
     for (auto &frame : Frames) {
         frame.Upload = RHI.CreateUploadBuffer(Grid2D::UploadBytes);
@@ -89,18 +90,30 @@ void PixelRender::CreateColorTargets() {
     if (!Extent.Width || !Extent.Height)
         throw std::runtime_error("2D color target requires a drawable extent");
     // Called only at initialization or after GPU idle. Free sets before images/pipeline.
-    for (auto &frame : Frames)
+    for (auto &frame : Frames) {
         frame.PostSet.reset();
+        frame.CharacterSet.reset();
+        frame.CharacterPostSet.reset();
+        frame.HasCharacter = false;
+    }
     PostPipeline.reset();
-    for (auto &frame : Frames)
+    for (auto &frame : Frames) {
         frame.Color = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
+        frame.CharacterColor = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
+    }
     const auto &vertex = GetShaderInfo("Pixel2DFullscreen.vs");
     if (!WorldPipeline)
         WorldPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DWorldGrid.fs"), WorldBindings, Frames.front().Color.get(), sizeof(WorldConstants)});
+    if (!CharacterPipeline)
+        CharacterPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DCharacter.fs"), CharacterBindings, Frames.front().CharacterColor.get(), sizeof(CharacterDraw)});
     PostPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo(PostShader), PostBindings, nullptr, sizeof(PostProcessParameters)});
     for (auto &frame : Frames) {
         const std::array bindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, nullptr, Sampler.get()}};
         frame.PostSet = RHI.CreateImageDescriptorSet(*Pool, *PostPipeline, bindings);
+        const std::array characterBindings{RHIImageBinding{0, frame.Color.get()}};
+        frame.CharacterSet = RHI.CreateImageDescriptorSet(*Pool, *CharacterPipeline, characterBindings);
+        const std::array compositeBindings{RHIImageBinding{0, frame.CharacterColor.get()}, RHIImageBinding{1, nullptr, Sampler.get()}};
+        frame.CharacterPostSet = RHI.CreateImageDescriptorSet(*Pool, *PostPipeline, compositeBindings);
     }
 }
 void PixelRender::OnPresentationChanged() {
@@ -133,11 +146,22 @@ void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, c
     commands.EndPass();
     commands.TransitionTexture(*frame.Color, RHITextureState::FragmentSampledRead);
 }
+void PixelRender::RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character) {
+    commands.TransitionTexture(*frame.CharacterColor, RHITextureState::ColorAttachment);
+    commands.BeginColorPass(*frame.CharacterColor);
+    SetFullViewport(commands);
+    commands.BindPipeline(*CharacterPipeline);
+    commands.BindDescriptorSet(*CharacterPipeline, *frame.CharacterSet, 0);
+    commands.PushConstants(*CharacterPipeline, RHIShaderStage::Fragment, 0, sizeof(character), &character);
+    commands.DrawIndexed(6);
+    commands.EndPass();
+    commands.TransitionTexture(*frame.CharacterColor, RHITextureState::FragmentSampledRead);
+}
 void PixelRender::RecordPost(RHICommandList &commands, FrameResources &frame, const PostProcessParameters &parameters) {
     commands.BeginPresentPass();
     SetFullViewport(commands);
     commands.BindPipeline(*PostPipeline);
-    commands.BindDescriptorSet(*PostPipeline, *frame.PostSet, 0);
+    commands.BindDescriptorSet(*PostPipeline, frame.HasCharacter ? *frame.CharacterPostSet : *frame.PostSet, 0);
     commands.PushConstants(*PostPipeline, RHIShaderStage::Fragment, 0, sizeof(parameters), &parameters);
     commands.DrawIndexed(6);
     if (Overlay)
@@ -152,6 +176,7 @@ void PixelRender::Draw() {
     auto &frame = Frames.at(token.Slot);
     const auto input = Published->Read();
     frame.Upload->Write(std::as_bytes(input.Cells));
+    frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
         if (!MaterialsUploaded) {
             commands.TransitionTexture(*Materials, RHITextureState::TransferDestination);
@@ -159,12 +184,18 @@ void PixelRender::Draw() {
             commands.TransitionTexture(*Materials, RHITextureState::FragmentSampledRead);
         }
         RecordWorld(commands, frame, input.View, input.DisplayMode);
+        if (frame.HasCharacter)
+            RecordCharacter(commands, frame, *input.Character);
         RecordPost(commands, frame, input.Post);
     });
     MaterialsUploaded = true;
     ++FrameCount;
 }
-const RHITexture &PixelRender::SceneColor(uint32_t slot) const { return *Frames.at(slot).Color; }
+const RHITexture &PixelRender::SceneColor(uint32_t slot) const {
+    const auto &frame = Frames.at(slot);
+    return frame.HasCharacter ? *frame.CharacterColor : *frame.Color;
+}
+const RHITexture &PixelRender::WorldColor(uint32_t slot) const { return *Frames.at(slot).Color; }
 WorldGridFrameView PixelRender::PublishedFrame() const {
     if (!Published)
         throw std::logic_error("2D policy has no published storage");
@@ -180,6 +211,7 @@ void PixelRender::Clear() {
     Pool.reset();
     PostPipeline.reset();
     WorldPipeline.reset();
+    CharacterPipeline.reset();
     MaterialUpload.reset();
     Materials.reset();
     Sampler.reset();

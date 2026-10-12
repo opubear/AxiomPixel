@@ -1,6 +1,7 @@
 #include "World/World.h"
 #include "PixelRender/PixelWorldPresentation.h"
 #include <cmath>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
@@ -69,10 +70,20 @@ int main() {
         pixel::Character sprite;
         sprite.X = 511; sprite.Y = 508;
         WorldGridFrame frame;
-        BuildCharacterFrame(sprite, frame);
-        Require(frame.Cells()[508 * 1024 + 511] == 2 && frame.Cells()[511 * 1024 + 512] == 3, "head and body texture layers");
+        pixel::Camera2D camera;
+        camera.SetPosition({512.125, 510.0625});
+        sprite.X += 0.03125f;
+        BuildCharacterFrame(sprite, camera, {1600, 1200}, frame);
+        Require(frame.Character && frame.Character->Bounds == std::array<float, 4>{782.5f, 567.f, 32, 64},
+                "character must retain fractional position and exact camera offset");
+        Require(std::all_of(frame.Cells().begin(), frame.Cells().end(), [](uint32_t cell) { return cell == 0; }),
+                "character must not be stamped into world cells");
         sprite.X = 100;
-        Require(frame.Cells()[508 * 1024 + 511] == 2, "published sprite must be independent of live state");
+        camera.Translate({10, 10});
+        Require(frame.Character->Bounds[0] == 782.5f, "published sprite must be independent of live character and camera");
+        frame.DisplayMode = GridDisplayMode::ForceField;
+        BuildCharacterFrame(sprite, camera, {1600, 1200}, frame);
+        Require(!frame.Character, "field view must clear character snapshot");
         std::cout << "Character collision, movement and snapshot tests passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

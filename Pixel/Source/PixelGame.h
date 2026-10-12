@@ -19,7 +19,7 @@ class PixelGame final : public IGameInterface {
     const pixel::World &GetWorld() const { return World; }
     void Initialize() override;
     void GameBegin() override {}
-    void FrameBegin() override {}
+    void FrameBegin() override;
     void Tick(float duration) override;
     void ClearInputState() override;
     void FrameEnd() override {}
@@ -30,18 +30,23 @@ class PixelGame final : public IGameInterface {
     void OnMouseMoveDelta(float, float) override {}
     void OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) override;
     CellAppearanceTable Appearances{{static_cast<uint32_t>(pixel::CellTypeId::Dirt), 1}};
-    GridView2D View;
+    GridView2D GetView() const;
+    // Explicitly restore an editor/test view by converting its origin to camera position.
+    void SetView(const GridView2D &view);
+    const pixel::Camera2D &GetCamera() const { return Camera; }
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
 
   private:
     pixel::World World;
     std::array<bool, 4> Move{};
-    float MovementRemainder = 0;
+    pixel::Camera2D Camera;
+    GridView2D ViewSettings;
+    std::array<int, 2> FramebufferSize{};
     bool ShowDebug = true;
     ControlMode Mode = ControlMode::Standard;
     bool JumpRequested = false;
-    void FollowPlayer();
+    void FollowPlayer(float duration);
     pixel::WindStrategyKind WindKind = pixel::WindStrategyKind::Coarse;
     bool PauseSimulation = false;
     bool StepSimulation = false;

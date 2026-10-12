@@ -115,7 +115,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check(sets == 6 && images == 18 && samplers == 6, "descriptor pool is not sized from actual slots");
+        Check(sets == 12 && images == 24 && samplers == 9, "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -233,6 +233,39 @@ void FrameRecording() {
     PixelRender unsupported(rhi, Catalog(), [](WorldGridFrame &) {});
     Reject([&] { unsupported.Initialize(); });
 }
+void CharacterComposition() {
+    MockRHI rhi;
+    CharacterDraw character{{12.25f, -2.5f, 32, 64}, {1, 0.5f, 0.25f, 1}, {0, 1, 0.5f, 1}};
+    bool show = true;
+    PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &output) {
+        output.Character = show ? std::optional{character} : std::nullopt;
+    });
+    policy.Initialize();
+    policy.FrameBegin();
+    character.Bounds[0] = 100;
+    policy.Draw();
+    const auto &events = rhi.Commands.Events;
+    const std::vector<std::string> suffix{"world", "draw", "end", "world", "draw", "end", "post", "draw", "end"};
+    Check(std::equal(suffix.begin(), suffix.end(), events.end() - suffix.size()), "character pass must follow world and precede post");
+    CharacterDraw uploaded;
+    Check(rhi.Commands.Constants.size() == 3 && rhi.Commands.Constants[1].size() == sizeof(uploaded), "character constants layout");
+    std::memcpy(&uploaded, rhi.Commands.Constants[1].data(), sizeof(uploaded));
+    Check(uploaded.Bounds[0] == 12.25f, "Draw used live character or rounded its position");
+    Check(&policy.SceneColor(0) != &policy.WorldColor(0), "character composite must have separate target");
+    rhi.Extent = {82, 52};
+    policy.OnPresentationChanged();
+    policy.FrameBegin();
+    policy.Draw();
+    Check(policy.SceneColor(0).Desc.Width == 82, "character target not resized");
+    show = false;
+    policy.FrameBegin();
+    policy.Draw();
+    Check(rhi.Commands.Constants.size() == 2 && &policy.SceneColor(0) == &policy.WorldColor(0), "absent character must skip composition");
+    character.Bounds[0] = NAN;
+    show = true;
+    Reject([&] { policy.FrameBegin(); });
+    policy.Clear();
+}
 void FailedFrames() {
     for (int failure = 0; failure < 3; ++failure) {
         MockRHI rhi;
@@ -333,6 +366,7 @@ int main() {
         RunPixelFieldViewTests();
         RunPixelDirtWindTests();
         FrameRecording();
+        CharacterComposition();
         FailedFrames();
         GameplayPublication();
         DebugFrameIsolation();

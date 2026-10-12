@@ -18,6 +18,7 @@ target_compile_features(PixelWorld PUBLIC cxx_std_20)
 # The renderer uses CPU-only RHI contracts. The application supplies the real
 # backend; the CPU tests supply a mock and the shader lookup implementation.
 add_library(PixelRender STATIC
+    Source/Camera/Camera2D.cpp
     Source/PixelRender/PixelRender.cpp
     Source/PixelRender/WorldGridFrame.cpp
     Source/PixelRender/PixelWorldPresentation.cpp)
@@ -72,4 +73,10 @@ if(BUILD_TESTING)
     add_executable(PixelCharacterTests Tests/PixelCharacterTests.cpp)
     target_link_libraries(PixelCharacterTests PRIVATE PixelRender)
     add_test(NAME Pixel.Character COMMAND PixelCharacterTests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(PixelCameraTests Tests/PixelCameraTests.cpp)
+    target_link_libraries(PixelCameraTests PRIVATE PixelRender)
+    add_test(NAME Pixel.Camera COMMAND PixelCameraTests)
 endif()

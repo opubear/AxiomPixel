@@ -26,6 +26,7 @@ class PixelRender final : public RenderPolicyInterface {
     uint64_t SubmittedFrames() const { return FrameCount; }
     uint64_t UploadedWorldBytes() const { return FrameCount * Grid2D::UploadBytes; }
     const RHITexture &SceneColor(uint32_t slot) const;
+    const RHITexture &WorldColor(uint32_t slot) const;
     // Borrowed until the next FrameBegin or Clear, including after Draw.
     WorldGridFrameView PublishedFrame() const;
 
@@ -33,9 +34,10 @@ class PixelRender final : public RenderPolicyInterface {
     struct FrameResources {
         std::array<std::unique_ptr<RHITexture>, Grid2D::PageCount> Data;
         std::unique_ptr<RHIUploadBuffer> Upload;
-        std::unique_ptr<RHITexture> Color;
+        std::unique_ptr<RHITexture> Color, CharacterColor;
+        bool HasCharacter = false;
         std::unique_ptr<RHIDescriptorSet> WorldSet;
-        std::unique_ptr<RHIDescriptorSet> PostSet;
+        std::unique_ptr<RHIDescriptorSet> PostSet, CharacterSet, CharacterPostSet;
     };
     DynamicRHI &RHI;
     GridTextureCatalog Catalog;
@@ -48,7 +50,7 @@ class PixelRender final : public RenderPolicyInterface {
     std::unique_ptr<RHISampler> Sampler;
     std::unique_ptr<RHITexture> Materials;
     std::unique_ptr<RHIUploadBuffer> MaterialUpload;
-    std::unique_ptr<RHIPipeline> WorldPipeline, PostPipeline;
+    std::unique_ptr<RHIPipeline> WorldPipeline, CharacterPipeline, PostPipeline;
     std::unique_ptr<RHIDescriptorPool> Pool;
     std::vector<FrameResources> Frames;
     RHIPresentationExtent Extent{};
@@ -56,6 +58,7 @@ class PixelRender final : public RenderPolicyInterface {
     uint64_t FrameCount = 0;
     void CreateColorTargets();
     void RecordWorld(RHICommandList &commands, FrameResources &frame, const GridView2D &view, GridDisplayMode mode);
+    void RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character);
     void RecordPost(RHICommandList &commands, FrameResources &frame, const PostProcessParameters &parameters);
     void SetFullViewport(RHICommandList &commands);
 };

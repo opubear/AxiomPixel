@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 
 namespace {
 // Gameplay heights rise from the bottom; grid row indices rise from the top.
@@ -21,7 +22,7 @@ static_assert(TerrainHeight < DefaultWindStartHeight && DefaultWindStartHeight <
 PixelGame::PixelGame() : World(Grid2D::Width, Grid2D::Height) {
     ResetWorld();
     // Linear RGB: the presentation target encodes this as sky blue.
-    View.Background = {0.25f, 0.55f, 0.85f, 1};
+    ViewSettings.Background = {0.25f, 0.55f, 0.85f, 1};
 }
 void PixelGame::ResetWorld() {
     World.GenerateTerrain(Grid2D::Height - TerrainHeight);
@@ -50,21 +51,20 @@ std::function<void(WorldGridFrame &)> PixelGame::CreateFramePublisher() {
     auto snapshot = std::make_shared<pixel::WorldState>(state.Width, state.Height);
     return [this, snapshot = std::move(snapshot)](WorldGridFrame &frame) {
         World.PublishState(*snapshot);
-        frame.View = View;
+        frame.View = GetView();
         frame.Post = Post;
         if (DisplayMode == GridDisplayMode::ForceField)
             BuildForceFieldFrame(World, frame);
         else
             BuildWorldGridFrame(snapshot->Read(), Appearances, frame);
         if (World.GetPlayer())
-            BuildCharacterFrame(*World.GetPlayer(), frame);
+            BuildCharacterFrame(*World.GetPlayer(), Camera, FramebufferSize, frame);
     };
 }
 GridTextureCatalog PixelGame::MakeTextures() {
-    // Transparent air, brown dirt, warm head and turquoise body (RGBA8/sRGB).
-    GridTextureCatalog textures{1, 1, 4, {}};
-    for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255},
-                             std::array{255, 212, 140, 255}, std::array{40, 210, 180, 255}})
+    // Terrain textures only; the character is a separate continuous-colour draw.
+    GridTextureCatalog textures{1, 1, 2, {}};
+    for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255}})
         for (int channel : color)
             textures.Pixels.push_back(std::byte(channel));
     return textures;
@@ -145,19 +145,36 @@ void PixelGame::DrawDebugUI() {
         if (ImGui::Checkbox("Free debug camera (F3)", &debugCamera))
             SetControlMode(debugCamera ? ControlMode::DebugCamera : ControlMode::Standard);
         ImGui::TextUnformatted(debugCamera ? "DEBUG: WASD camera; +/- zoom; PageDown region" : "STANDARD: A/D move; Space jump; camera follows");
+        float followRate = float(Camera.GetFollowRate());
+        if (ImGui::SliderFloat("Camera follow rate", &followRate, 0.5f, 20.f, "%.1f /s", ImGuiSliderFlags_AlwaysClamp))
+            Camera.SetFollowRate(followRate);
         ImGui::TextDisabled("F2: show/hide debug panel; T: tint");
     }
     ImGui::End();
 }
+void PixelGame::FrameBegin() {
+    GAxiom->Engine->GetPlatform()->GetFramebufferSize(FramebufferSize[0], FramebufferSize[1]);
+}
+GridView2D PixelGame::GetView() const {
+    return MakeCameraView(Camera, FramebufferSize, ViewSettings);
+}
+void PixelGame::SetView(const GridView2D &view) {
+    for (auto size : view.CellSizePixels)
+        if (size < 1 || size > 64)
+            throw std::invalid_argument("cell size must be in [1, 64]");
+    Camera.SetPosition({(double(view.OriginPixels[0]) + FramebufferSize[0] / 2.0) / view.CellSizePixels[0],
+                        (double(view.OriginPixels[1]) + FramebufferSize[1] / 2.0) / view.CellSizePixels[1]});
+    ViewSettings = view;
+}
 void PixelGame::ResetView() {
-    int width = 0, height = 0;
-    GAxiom->Engine->GetPlatform()->GetFramebufferSize(width, height);
-    View.CellSizePixels = {16, 16};
-    View.OriginPixels = {int(Grid2D::Width / 2 * 16) - width / 2, int((Grid2D::Height - TerrainHeight) * 16) - height / 2};
+    FrameBegin();
+    ViewSettings.CellSizePixels = {16, 16};
+    Camera.SetPosition({Grid2D::Width / 2.0, double(Grid2D::Height - TerrainHeight)});
+    if (World.GetPlayer()) {
+        const auto &player = *World.GetPlayer();
+        Camera.SetPosition({player.X + pixel::Character::Width / 2, player.Y + pixel::Character::Height / 2});
+    }
     Post = {};
-    MovementRemainder = 0;
-    if (Mode == ControlMode::Standard)
-        FollowPlayer();
 }
 void PixelGame::ClearInputState() {
     Move.fill(false);
@@ -167,7 +184,12 @@ void PixelGame::ClearInputState() {
 void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int, const MousePointerState &pointer) {
     if (action != ButtonAction::ACTION_PRESS || (button != MouseButton::MOUSE_BUTTON_LEFT && button != MouseButton::MOUSE_BUTTON_RIGHT))
         return;
-    const auto cell = PickGridCell(View, pointer.Position, pointer.WindowSize, pointer.FramebufferSize);
+    if (pointer.FramebufferSize[0] <= 0 || pointer.FramebufferSize[1] <= 0)
+        return;
+    // A queued click may predate a resize. Its projection and cursor scaling
+    // must use the same framebuffer dimensions captured with the event.
+    const auto eventView = MakeCameraView(Camera, pointer.FramebufferSize, ViewSettings);
+    const auto cell = PickGridCell(eventView, pointer.Position, pointer.WindowSize, pointer.FramebufferSize);
     if (!cell)
         return;
     if (button == MouseButton::MOUSE_BUTTON_LEFT)
@@ -184,18 +206,13 @@ void PixelGame::Tick(float duration) {
         World.Tick(StepSimulation ? 1.f / 60 : duration);
     JumpRequested = false;
     StepSimulation = false;
+    const float cameraDuration = std::min(duration, 0.25f);
     if (Mode == ControlMode::Standard) {
-        FollowPlayer();
-        return;
-    }
-    MovementRemainder += std::min(duration, 0.25f) * 240;
-    const int delta = int(MovementRemainder);
-    MovementRemainder -= float(delta);
-    View.OriginPixels[0] += (int(Move[3]) - int(Move[1])) * delta;
-    View.OriginPixels[1] += (int(Move[2]) - int(Move[0])) * delta;
-    for (size_t axis = 0; axis < 2; ++axis) {
-        const auto maximum = (axis == 0 ? Grid2D::Width : Grid2D::Height) * View.CellSizePixels[axis];
-        View.OriginPixels[axis] = std::clamp(View.OriginPixels[axis], -512, int(maximum));
+        FollowPlayer(cameraDuration);
+    } else {
+        // Keep the existing 240 framebuffer pixels/second debug pan speed.
+        Camera.Translate({(int(Move[3]) - int(Move[1])) * cameraDuration * 240 / ViewSettings.CellSizePixels[0],
+                          (int(Move[2]) - int(Move[0])) * cameraDuration * 240 / ViewSettings.CellSizePixels[1]});
     }
 }
 void PixelGame::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
@@ -222,35 +239,29 @@ void PixelGame::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
         ResetWorld();
         ResetView();
     }
-    if (key == Key::KEY_PAGE_DOWN && Mode == ControlMode::DebugCamera)
-        View.OriginPixels[1] = ((std::max(0, View.OriginPixels[1]) / int(View.CellSizePixels[1]) / int(Grid2D::PageHeight) + 1) % int(Grid2D::PageCount)) * int(Grid2D::PageHeight * View.CellSizePixels[1]);
+    if (key == Key::KEY_PAGE_DOWN && Mode == ControlMode::DebugCamera) {
+        auto view = GetView();
+        view.OriginPixels[1] = ((std::max(0, view.OriginPixels[1]) / int(view.CellSizePixels[1]) / int(Grid2D::PageHeight) + 1)
+                               % int(Grid2D::PageCount)) * int(Grid2D::PageHeight * view.CellSizePixels[1]);
+        SetView(view);
+    }
     if (key == Key::KEY_EQUAL || key == Key::KEY_MINUS) {
-        const uint32_t old = View.CellSizePixels[0];
+        const uint32_t old = ViewSettings.CellSizePixels[0];
         const uint32_t next = key == Key::KEY_EQUAL ? std::min(64u, old * 2) : std::max(1u, old / 2);
-        std::array<int, 2> extent{};
-        GAxiom->Engine->GetPlatform()->GetFramebufferSize(extent[0], extent[1]);
-        for (size_t axis = 0; axis < 2; ++axis) {
-            View.OriginPixels[axis] = int((int64_t(View.OriginPixels[axis]) + extent[axis] / 2) * next / old) - extent[axis] / 2;
-            View.CellSizePixels[axis] = next;
-        }
+        ViewSettings.CellSizePixels = {next, next};
     }
 }
 
-void PixelGame::FollowPlayer() {
+void PixelGame::FollowPlayer(float duration) {
     if (!World.GetPlayer())
         return;
-    int width = 0, height = 0;
-    GAxiom->Engine->GetPlatform()->GetFramebufferSize(width, height);
     const auto &player = *World.GetPlayer();
-    View.OriginPixels = {int((player.X + pixel::Character::Width / 2) * View.CellSizePixels[0]) - width / 2,
-                         int((player.Y + pixel::Character::Height / 2) * View.CellSizePixels[1]) - height / 2};
+    Camera.Follow({player.X + pixel::Character::Width / 2, player.Y + pixel::Character::Height / 2}, duration);
 }
 void PixelGame::SetControlMode(ControlMode mode) {
     if (mode == Mode)
         return;
     Mode = mode;
     ClearInputState();
-    MovementRemainder = 0;
-    if (Mode == ControlMode::Standard)
-        FollowPlayer();
+    // Keep camera position across mode changes; standard mode eases back in Tick.
 }

@@ -1,7 +1,7 @@
 # AxiomPixel
 
 AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
-`PixelWorld` 管理纯 CPU gameplay 状态；`PixelRender` 负责帧首发布后的映射、四图全量上传和两个 Pass；
+`PixelWorld` 管理纯 CPU gameplay 状态；`PixelRender` 负责帧首发布后的映射、四图全量上传、世界Pass、独立角色合成Pass和后处理；
 `PixelGame` 直接实现 `IGameInterface`，入口通过 `RenderSetup` 注入渲染策略。
 
 基础世界为 1024×1024 格，上 512 行蓝色空气、下 512 行棕褐色土块。
@@ -18,4 +18,8 @@ F1切换力场调试视图：所有格子的连续合成场方向单位化后，
 
 Pixel默认显示ImGui Pixel Debug面板，Environment分组运行时设置从底部计的风场起始高度（0全世界、1024关闭、默认600），F2显隐；修改高度保留物体及基础场并重建风速，R恢复默认。方向视图也可用复选框切换。UI独立于3D场景，后处理结束前在present pass中叠加；输入经ImGui捕获过滤。
 
-玩家默认标准模式：A/D移动、Space跳跃、相机跟随；F3切换自由调试相机（WASD平移、PageDown切区域），切换清空输入。角色使用纯色2×4格头身矩形，在材质帧快照中覆盖，不写地图材料；F1仍是纯力场诊断。碰撞和限制见README的角色操作说明。
+玩家默认标准模式：A/D移动、Space跳跃、相机跟随；F3切换自由调试相机（WASD平移、PageDown切区域），切换清空输入。角色使用纯色2×4格头身矩形，以连续屏幕坐标独立快照在世界Pass之后合成，不写地图材料或地图数据纹理；F1仍是纯力场诊断。碰撞和限制见README的角色操作说明。
+
+Camera2D以世界格为单位保存双精度中心；标准模式速度为目标距离乘跟随系数（默认8/s），指数积分平滑追近角色，F3返回不瞬移。视口由相机中心、缩放和framebuffer生成；尺寸变化保留世界中心。调试面板可调Camera follow rate。
+
+角色合成使用未取整Camera中心与世界位置差，解析矩形的屏幕像素覆盖以支持亚像素移动；每个frame slot独立RGBA8合成目标，F1或无角色跳过该Pass，角色合成后再后处理和UI。

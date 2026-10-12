@@ -75,7 +75,9 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
     // Dense deterministic samples include every texel phase and viewport edges.
     for (uint32_t y = 0; y < extent.Height; ++y) {
         for (uint32_t x = 0; x < extent.Width; ++x) {
-            if (x > 32 && y > 32 && x + 1 != extent.Width && y + 1 != extent.Height && (x * 13 + y * 7) % 97 != 0)
+            const bool nearCharacter = frame.Character && x + 2 >= frame.Character->Bounds[0] && x <= frame.Character->Bounds[0] + frame.Character->Bounds[2] + 2
+                                       && y + 2 >= frame.Character->Bounds[1] && y <= frame.Character->Bounds[1] + frame.Character->Bounds[3] + 2;
+            if (!nearCharacter && x > 32 && y > 32 && x + 1 != extent.Width && y + 1 != extent.Height && (x * 13 + y * 7) % 97 != 0)
                 continue;
             const int64_t qx = int64_t(frame.View.OriginPixels[0]) + x;
             const int64_t qy = int64_t(frame.View.OriginPixels[1]) + y;
@@ -93,6 +95,17 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = Linear(std::to_integer<uint8_t>(catalog.Pixels[texel + c])) * alpha + expected[c] * (1 - alpha);
                 }
+            }
+            if (frame.Character) {
+                const auto &sprite = *frame.Character;
+                const auto &bounds = sprite.Bounds;
+                const double left = bounds[0], top = bounds[1], right = left + bounds[2], bottom = top + bounds[3];
+                const double split = top + bounds[3] / 4.0;
+                const double horizontal = std::max(0.0, std::min(double(x + 1), right) - std::max(double(x), left));
+                const double head = horizontal * std::max(0.0, std::min(double(y + 1), split) - std::max(double(y), top));
+                const double body = horizontal * std::max(0.0, std::min(double(y + 1), bottom) - std::max(double(y), split));
+                for (size_t c = 0; c < 3; ++c)
+                    expected[c] = float(expected[c] * (1 - head - body) + sprite.HeadColor[c] * head + sprite.BodyColor[c] * body);
             }
             for (size_t c = 0; c < 4; ++c) {
                 const int want = int(std::lround(expected[c] * 255));
@@ -192,7 +205,7 @@ void Lifecycle(int iteration) {
             expectedCells[size_t(y) * Grid2D::Width + x] = 1 + (x / 4 + y / 4) % 3;
             input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * expectedCells[size_t(y) * Grid2D::Width + x])});
         }
-    WorldGridFrameView expected{expectedCells, input->View, input->Post};
+    WorldGridFrameView expected{expectedCells, input->GetView(), input->Post};
     RenderSetup setup;
     setup.Enable3DScene = false;
     setup.EnableUI = false;
@@ -209,7 +222,7 @@ void Lifecycle(int iteration) {
     auto &engine = *app.Engine;
     engine.EngineInit();
     engine.Begin();
-    expected.View = input->View;
+    expected.View = input->GetView();
     Require(publications == 0, "world published before first Ready frame");
     auto first = Draw(engine);
     Require(publications == 1 && policy->PublishedFrame().Cells[0] == 1, "first frame did not publish initialized world");
@@ -218,7 +231,11 @@ void Lifecycle(int iteration) {
     engine.GetRHI()->WaitIdle();
     VerifyColor(expected, policy->SceneColor(first.Slot));
     Require(!engine.GetScene() && !engine.GetImgui(), "2D initialized 3D scene or UI");
-    input->View.Background = {.1f, .2f, .3f, 1};
+    {
+        auto view = input->GetView();
+        view.Background = {.1f, .2f, .3f, 1};
+        input->SetView(view);
+    }
     const int32_t pagePixels = Grid2D::PageHeight * 16;
     const std::array<int32_t, 9> origins{0, 8, -8, pagePixels - 8, 2 * pagePixels - 8, 3 * pagePixels - 8, 4 * pagePixels - 8, 0, 0};
     for (size_t i = 0; i < origins.size(); ++i) {
@@ -228,9 +245,17 @@ void Lifecycle(int iteration) {
                 expectedCells[size_t(y) * Grid2D::Width + x] = layer;
                 input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * layer)});
             }
-        input->View.OriginPixels = {i == 2 ? -8 : 0, origins[i]};
-        input->View.CellSizePixels = i == 7 ? std::array<uint32_t, 2>{32, 32} : std::array<uint32_t, 2>{16, 16};
-        expected.View = input->View;
+        {
+            auto view = input->GetView();
+            view.OriginPixels = {i == 2 ? -8 : 0, origins[i]};
+            input->SetView(view);
+        }
+        {
+            auto view = input->GetView();
+            view.CellSizePixels = i == 7 ? std::array<uint32_t, 2>{32, 32} : std::array<uint32_t, 2>{16, 16};
+            input->SetView(view);
+        }
+        expected.View = input->GetView();
         expected.Post = input->Post;
         const auto beforePublish = publications;
         auto token = Draw(engine);
@@ -249,10 +274,14 @@ void Lifecycle(int iteration) {
         }
     }
     // A change after FrameBegin cannot affect this frame's uploaded snapshot.
-    input->View.OriginPixels = {0, 0};
+    {
+        auto view = input->GetView();
+        view.OriginPixels = {0, 0};
+        input->SetView(view);
+    }
     input->GetWorld().Fill({pixel::CellTypeId::Dirt});
     std::fill(expectedCells.begin(), expectedCells.end(), 1);
-    expected.View = input->View;
+    expected.View = input->GetView();
     expected.Post = input->Post;
     RHIFrameBeginResult delayed;
     for (int attempt = 0; attempt < 100 && !delayed.Ready; ++attempt) {
@@ -262,6 +291,11 @@ void Lifecycle(int iteration) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     Require(delayed.Ready, "no frame for snapshot isolation test");
+    auto movedView = input->GetView();
+    movedView.OriginPixels[0] += 32;
+    input->SetView(movedView);
+    Require(policy->PublishedFrame().View.OriginPixels == expected.View.OriginPixels,
+            "same-frame camera movement leaked into published view");
     input->GetWorld().SetCell(0, 0, {static_cast<pixel::CellTypeId>(20)});
     engine.GetInput()->Dispatch();
     engine.Tick(0, delayed.Token);
@@ -269,6 +303,7 @@ void Lifecycle(int iteration) {
     Require(policy->PublishedFrame().Cells[0] == 1, "same-frame gameplay edit leaked into Render");
     engine.GetRHI()->WaitIdle();
     VerifyColor(expected, policy->SceneColor(delayed.Token.Slot));
+    input->SetView(expected.View);
     expectedCells[0] = 2; // The edit after publication becomes visible only now.
     const auto next = Draw(engine);
     Require(policy->PublishedFrame().Cells[0] == 2 && policy->PublishedFrame().Cells[1] == 1, "next frame lost new or persistent gameplay state");
@@ -277,6 +312,7 @@ void Lifecycle(int iteration) {
     const auto frames = policy->SubmittedFrames();
     Require(policy->UploadedWorldBytes() == frames * Grid2D::UploadBytes, "upload accounting incorrect");
     const auto generation = engine.GetRHI()->GetSwapchainGeneration();
+    const auto cameraBeforeResize = input->GetCamera().GetPosition();
     glfwSetWindowSize(engine.GetPlatform()->GetWindows(), 640, 480);
     RHIFrameToken token{};
     for (int attempt = 0; attempt < 100; ++attempt) {
@@ -286,10 +322,12 @@ void Lifecycle(int iteration) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     Require(engine.GetRHI()->GetSwapchainGeneration() > generation, "resize did not recreate the swapchain");
+    Require(input->GetCamera().GetPosition() == cameraBeforeResize, "resize changed camera world centre");
     int width = 0, height = 0;
     engine.GetPlatform()->GetFramebufferSize(width, height);
     Require(policy->SceneColor(token.Slot).Desc.Width == uint32_t(width) && policy->SceneColor(token.Slot).Desc.Height == uint32_t(height), "resize color extent stale");
     engine.GetRHI()->WaitIdle();
+    expected.View = input->GetView();
     VerifyColor(expected, policy->SceneColor(token.Slot));
 
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
@@ -313,7 +351,7 @@ void Lifecycle(int iteration) {
     }
     input->GetWorld().Fill({static_cast<pixel::CellTypeId>(20)});
     std::fill(expectedCells.begin(), expectedCells.end(), 2);
-    expected.View = input->View;
+    expected.View = input->GetView();
     expected.Post = input->Post;
     glfwRestoreWindow(engine.GetPlatform()->GetWindows());
     token = Draw(engine);
@@ -348,14 +386,20 @@ void VerifyDefaultWorldField(const pixel::World &world) {
     Require(world.GetWind().Sample(512.5f, 423.5f).X > 0, "wind does not reach height 600");
     Require(stableAirCells == size_t(600 - 512) * state.Width, "default world does not have 88 stable sky rows");
 }
-void AddExpectedCharacter(const pixel::World &world, std::vector<uint32_t> &cells) {
-    if (!world.GetPlayer())
-        return;
-    const auto &player = *world.GetPlayer();
-    const int x = int(std::floor(player.X)), y = int(std::floor(player.Y));
-    for (int row = 0; row < 4; ++row)
-        for (int column = 0; column < 2; ++column)
-            cells[size_t(y + row) * Grid2D::Width + x + column] = row == 0 ? 2 : 3;
+std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
+    if (!game.GetWorld().GetPlayer() || game.DisplayMode != GridDisplayMode::Materials)
+        return std::nullopt;
+    const auto &player = *game.GetWorld().GetPlayer();
+    int width, height;
+    GAxiom->Engine->GetPlatform()->GetFramebufferSize(width, height);
+    const auto centre = game.GetCamera().GetPosition();
+    const auto scale = game.GetView().CellSizePixels;
+    CharacterDraw expected;
+    expected.Bounds = {float((player.X - centre[0]) * scale[0] + width / 2.0),
+                       float((player.Y - centre[1]) * scale[1] + height / 2.0), float(2 * scale[0]), float(4 * scale[1])};
+    expected.HeadColor = {Linear(255), Linear(212), Linear(140), 1};
+    expected.BodyColor = {Linear(40), Linear(210), Linear(180), 1};
+    return expected;
 }
 void BasicWorldGameplay() {
     Axiom app;
@@ -386,36 +430,91 @@ void BasicWorldGameplay() {
         const auto token = Draw(engine);
         engine.GetRHI()->WaitIdle();
         const auto cells = policy->PublishedFrame().Cells;
-        auto expectedWithPlayer = expectedCells;
-        AddExpectedCharacter(world, expectedWithPlayer);
-        const auto mismatch = std::mismatch(cells.begin(), cells.end(), expectedWithPlayer.begin());
+        const auto mismatch = std::mismatch(cells.begin(), cells.end(), expectedCells.begin());
         if (mismatch.first != cells.end())
             throw std::runtime_error("gameplay publication differs at frame=" + std::to_string(gameplayFrame)
                                      + " cell=" + std::to_string(mismatch.first - cells.begin())
                                      + " expected=" + std::to_string(*mismatch.second) + " actual=" + std::to_string(*mismatch.first));
-        VerifyColor({expectedWithPlayer, input->View, input->Post}, policy->SceneColor(token.Slot), PixelGame::MakeTextures());
+        VerifyColor({expectedCells, input->GetView(), input->Post}, policy->WorldColor(token.Slot), PixelGame::MakeTextures());
+        VerifyColor({expectedCells, input->GetView(), input->Post, GridDisplayMode::Materials, ExpectedCharacter(*input)},
+                    policy->SceneColor(token.Slot), PixelGame::MakeTextures());
     };
     verify(); // GPU readback includes the two solid-colour character rectangles.
+    // Reproduce a queued click sampled before a resize: FrameBegin has already
+    // refreshed the current viewport, but this event retains its own dimensions.
+    int currentWidth, currentHeight;
+    engine.GetPlatform()->GetFramebufferSize(currentWidth, currentHeight);
+    for (int delta : {-320, 320}) {
+        MousePointerState pointer;
+        pointer.FramebufferSize = {currentWidth + delta, currentHeight + delta};
+        pointer.WindowSize = {pointer.FramebufferSize[0] / 2, pointer.FramebufferSize[1] / 2};
+        const auto centre = input->GetCamera().GetPosition();
+        const auto scale = input->GetView().CellSizePixels;
+        const std::array<double, 2> target{512.5, 507.5};
+        for (size_t axis = 0; axis < 2; ++axis) {
+            const double oldOrigin = std::round(centre[axis] * scale[axis] - pointer.FramebufferSize[axis] / 2.0);
+            pointer.Position[axis] = (target[axis] * scale[axis] - oldOrigin) * pointer.WindowSize[axis] / pointer.FramebufferSize[axis];
+        }
+        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+        Require(world.GetCell(512, 507).Type == pixel::CellTypes::Dirt,
+                "queued click used current viewport instead of event viewport after resize");
+        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, pointer);
+        Require(world.GetCell(512, 507).Type == pixel::CellTypes::Empty, "queued removal after resize missed original cell");
+        pointer.FramebufferSize = {-1, 0};
+        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+    }
+    verify(); // No accidental edits at the displaced coordinates.
+
+    const auto initialCamera = input->GetCamera().GetPosition();
+    for (int quarterPixel = 1; quarterPixel <= 4; ++quarterPixel) {
+        world.SpawnPlayer(511 + quarterPixel / 64.f, 508 + quarterPixel / 64.f);
+        verify(); // Each quarter-pixel shift must produce the expected edge coverage.
+        const auto sprite = policy->PublishedFrame().Character;
+        Require(sprite && std::abs(sprite->Bounds[0] - ExpectedCharacter(*input)->Bounds[0]) < 1e-6,
+                "subpixel position was quantized during publication");
+        Require(input->GetCamera().GetPosition() == initialCamera, "render-only fixture changed camera");
+    }
+    const auto unscaledView = input->GetView();
+    for (uint32_t scale : {1u, 8u, 32u}) {
+        auto clipped = unscaledView;
+        clipped.CellSizePixels = {scale, scale};
+        clipped.OriginPixels = {int32_t(511 * scale + 1), int32_t(508 * scale + 1)};
+        input->SetView(clipped);
+        world.SpawnPlayer(511.0625f, 508.0625f);
+        verify(); // Fractional rectangle clipped by the viewport, including minimum zoom.
+    }
+    input->SetView(unscaledView);
+    world.SpawnPlayer(511, 508);
+
     Require(input->GetControlMode() == PixelGame::ControlMode::Standard, "default mode must control the character");
     const auto playerX = world.GetPlayer()->X;
-    const auto camera = input->View.OriginPixels;
+    const auto camera = input->GetView().OriginPixels;
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X > playerX && input->View.OriginPixels[0] > camera[0], "standard mode must move and follow player");
+    Require(world.GetPlayer()->X > playerX && input->GetView().OriginPixels[0] > camera[0], "standard mode must move and follow player");
+    const double targetX = world.GetPlayer()->X + pixel::Character::Width / 2;
+    Require(input->GetCamera().GetPosition()[0] < targetX, "camera must approach player gradually instead of snapping");
+    Require(std::abs(input->GetCamera().GetPosition()[0] - (playerX + 1 + (targetX - playerX - 1) * (1 - std::exp(-1.0)))) < 1e-6,
+            "camera must follow distance-proportional speed");
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
     const auto debugX = world.GetPlayer()->X;
-    const auto debugCamera = input->View.OriginPixels;
+    const auto debugCamera = input->GetView().OriginPixels;
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
     engine.GetInput()->Dispatch();
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X == debugX && input->View.OriginPixels == debugCamera, "switch must clear held input");
+    Require(world.GetPlayer()->X == debugX && input->GetView().OriginPixels == debugCamera, "switch must clear held input");
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X == debugX && input->View.OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
+    Require(world.GetPlayer()->X == debugX && input->GetView().OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_REPEAT, Mod{});
     Require(input->GetControlMode() == PixelGame::ControlMode::DebugCamera, "F3 repeat toggled mode");
+    const auto beforeReturn = input->GetCamera().GetPosition();
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Require(input->GetCamera().GetPosition() == beforeReturn, "return to standard must not snap camera");
     input->Tick(0.125f);
+    Require(std::abs(input->GetCamera().GetPosition()[0] -
+                     (beforeReturn[0] + (world.GetPlayer()->X + 1 - beforeReturn[0]) * (1 - std::exp(-1.0)))) < 1e-6,
+            "return from debug must smoothly approach player from current camera position");
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
     engine.GetInput()->Dispatch();
     input->Tick(0.125f);
@@ -429,30 +528,30 @@ void BasicWorldGameplay() {
             engine.GetInput()->Dispatch();
             input->ClearInputState();
             const auto clearedX = world.GetPlayer()->X;
-            const auto clearedCamera = input->View.OriginPixels;
+            const auto clearedCamera = input->GetView().OriginPixels;
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_REPEAT, 0);
             engine.GetInput()->Dispatch();
             input->Tick(0.125f);
-            Require(world.GetPlayer()->X == clearedX && input->View.OriginPixels == clearedCamera,
+            Require(world.GetPlayer()->X == clearedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == clearedCamera),
                     "repeat reactivated movement after input clear");
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_RELEASE, 0);
             engine.GetInput()->Dispatch();
         }
         const auto beforePressX = world.GetPlayer()->X;
-        const auto beforePressCamera = input->View.OriginPixels;
+        const auto beforePressCamera = input->GetView().OriginPixels;
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_PRESS, 0);
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
         engine.GetInput()->Dispatch();
         input->Tick(0.125f);
         Require(mode == PixelGame::ControlMode::Standard ? world.GetPlayer()->X > beforePressX
-                                                         : input->View.OriginPixels[0] > beforePressCamera[0],
+                                                         : input->GetView().OriginPixels[0] > beforePressCamera[0],
                 "fresh press followed by repeat must preserve movement");
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_RELEASE, 0);
         engine.GetInput()->Dispatch();
         const auto releasedX = world.GetPlayer()->X;
-        const auto releasedCamera = input->View.OriginPixels;
+        const auto releasedCamera = input->GetView().OriginPixels;
         input->Tick(0.125f);
-        Require(world.GetPlayer()->X == releasedX && input->View.OriginPixels == releasedCamera,
+        Require(world.GetPlayer()->X == releasedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == releasedCamera),
                 "release must stop movement");
     }
     input->SetControlMode(PixelGame::ControlMode::Standard);
@@ -467,8 +566,12 @@ void BasicWorldGameplay() {
         input->Tick(1.f / 60);
     verify();
     // Observe a block in the actual default wind and verify the GPU publication.
-    const auto originalView = input->View;
-    input->View.OriginPixels = {500 * 16, 190 * 16};
+    const auto originalView = input->GetView();
+    {
+        auto view = input->GetView();
+        view.OriginPixels = {500 * 16, 190 * 16};
+        input->SetView(view);
+    }
     const auto oldWind = world.GetWind().Sample(512.5f, 200.5f);
     world.PlaceDirt(512, 200);
     input->Tick(1.f / 60);
@@ -480,14 +583,18 @@ void BasicWorldGameplay() {
     verify();
     world.RemoveDirt(513, windRow);
     expectedCells[windRow * Grid2D::Width + 513] = 0;
-    input->View = originalView;
+    {
+        auto view = input->GetView();
+        view = originalView;
+        input->SetView(view);
+    }
     auto *platform = engine.GetPlatform();
     auto moveCursorToCell = [&](uint32_t x, uint32_t y) {
         int ww = 0, wh = 0, fw = 0, fh = 0;
         glfwGetWindowSize(platform->GetWindows(), &ww, &wh);
         platform->GetFramebufferSize(fw, fh);
-        const double px = (x + .5) * input->View.CellSizePixels[0] - input->View.OriginPixels[0];
-        const double py = (y + .5) * input->View.CellSizePixels[1] - input->View.OriginPixels[1];
+        const double px = (x + .5) * input->GetView().CellSizePixels[0] - input->GetView().OriginPixels[0];
+        const double py = (y + .5) * input->GetView().CellSizePixels[1] - input->GetView().OriginPixels[1];
         Require(px >= 0 && py >= 0 && px < fw && py < fh, "test clicked a non-visible cell");
         glfwSetCursorPos(platform->GetWindows(), px * ww / fw, py * wh / fh);
     };
@@ -533,9 +640,19 @@ void BasicWorldGameplay() {
     expectedCells[511 * Grid2D::Width + 512] = 0;
     verify();
     // Zoom and pan, then verify the event-to-cell mapping on the actual HiDPI window.
+    const auto cameraBeforeZoom = input->GetCamera().GetPosition();
     input->OnKeyEvent(Key::KEY_EQUAL, 0, ButtonAction::ACTION_PRESS, Mod{});
-    input->View.OriginPixels[0] += 16;
-    input->View.OriginPixels[1] -= 16;
+    Require(input->GetCamera().GetPosition() == cameraBeforeZoom, "zoom changed camera world centre");
+    {
+        auto view = input->GetView();
+        view.OriginPixels[0] += 16;
+        input->SetView(view);
+    }
+    {
+        auto view = input->GetView();
+        view.OriginPixels[1] -= 16;
+        input->SetView(view);
+    }
     clickCell(514, 510, GLFW_MOUSE_BUTTON_LEFT);
     expectedCells[510 * Grid2D::Width + 514] = 1;
     verify();
@@ -650,10 +767,14 @@ void ForceFieldDebugGameplay() {
                     throw std::runtime_error("debug publication differs at frame=" + std::to_string(debugFrame)
                                              + " cell=" + std::to_string(i) + " expected=" + std::to_string(wanted) + " actual=" + std::to_string(actual));
             }
-        VerifyColor({expected, input->View, {}, GridDisplayMode::ForceField}, policy->SceneColor(token.Slot));
+        VerifyColor({expected, input->GetView(), {}, GridDisplayMode::ForceField}, policy->SceneColor(token.Slot));
     };
     for (int page = 0; page < int(Grid2D::PageCount); ++page) {
-        input->View.OriginPixels = {-8, (page * int(Grid2D::PageHeight) - 2) * 16};
+        {
+            auto view = input->GetView();
+            view.OriginPixels = {-8, (page * int(Grid2D::PageHeight) - 2) * 16};
+            input->SetView(view);
+        }
         verifyField(); // Includes page seams, outside-world pixels, air and dirt.
     }
     press(Key::KEY_MINUS);
@@ -667,14 +788,21 @@ void ForceFieldDebugGameplay() {
             "leaving debug view did not restore material mode and tint");
     for (size_t i = 0; i < expected.size(); ++i)
         expected[i] = initial[i].Type == pixel::CellTypes::Dirt ? 1 : 0;
-    AddExpectedCharacter(world, expected);
-    VerifyColor({expected, input->View, input->Post}, policy->SceneColor(materialToken.Slot), PixelGame::MakeTextures());
+    VerifyColor({expected, input->GetView(), input->Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->SceneColor(materialToken.Slot), PixelGame::MakeTextures());
 
     press(Key::KEY_F1);
     press(Key::KEY_R);
     Require(input->DisplayMode == GridDisplayMode::ForceField, "world reset unexpectedly disabled debug view");
-    input->View.CellSizePixels = {1, 1};
-    input->View.OriginPixels = {0, 0};
+    {
+        auto view = input->GetView();
+        view.CellSizePixels = {1, 1};
+        input->SetView(view);
+    }
+    {
+        auto view = input->GetView();
+        view.OriginPixels = {0, 0};
+        input->SetView(view);
+    }
     expected = ExpectedFieldColors(world);
     // The independent double-precision oracle can differ by one RGB8 level
     // from the production float colour at rounding thresholds. Fixtures above
@@ -711,8 +839,16 @@ void ForceFieldDebugGameplay() {
     Require(largestFeedback > 1, "actual dirt did not change the wind relative to an empty-sky control");
     expected = ExpectedFieldColors(world);
     Require(expected != ExpectedFieldColors(clearSky), "dirt feedback is absent from the F1 colour view");
-    input->View.OriginPixels = {448 * 8, 144 * 8};
-    input->View.CellSizePixels = {8, 8};
+    {
+        auto view = input->GetView();
+        view.OriginPixels = {448 * 8, 144 * 8};
+        input->SetView(view);
+    }
+    {
+        auto view = input->GetView();
+        view.CellSizePixels = {8, 8};
+        input->SetView(view);
+    }
     verifyField(1);
     press(Key::KEY_R);
     clearSky.GenerateTerrain(512);
@@ -732,7 +868,11 @@ void ForceFieldDebugGameplay() {
                                              double(coupled.X) * reference.X + double(coupled.Y) * reference.Y));
     Require(angle > 0.1, "narrow dirt stack did not visibly deflect the default combined field");
     expected = ExpectedFieldColors(world);
-    input->View.OriginPixels = {448 * 8, 312 * 8};
+    {
+        auto view = input->GetView();
+        view.OriginPixels = {448 * 8, 312 * 8};
+        input->SetView(view);
+    }
     verifyField(1);
     press(Key::KEY_R);
     clearSky.GenerateTerrain(512);

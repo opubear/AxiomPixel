@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PixelRender/WorldGridFrame.h"
+#include "Camera/Camera2D.h"
 #include "World/WindField.h"
 #include "World/WorldState.h"
 #include "World/Character.h"
@@ -20,5 +21,10 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity);
 // World/Wind references survive into Draw, and empty cells also display the field.
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output);
 
-// Stamp a pixel-aligned, two-colour rectangle into the render snapshot only.
-void BuildCharacterFrame(const pixel::Character &character, WorldGridFrame &output);
+// Publish continuous geometry independently from material cells, using the exact camera centre.
+void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2D &camera,
+                         std::array<int, 2> framebufferSize, WorldGridFrame &output);
+
+// Camera position is authoritative; pixel rounding happens only at presentation.
+GridView2D MakeCameraView(const pixel::Camera2D &camera, std::array<int, 2> framebufferSize,
+                          GridView2D settings);

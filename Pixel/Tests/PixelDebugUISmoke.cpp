@@ -122,7 +122,7 @@ void RunPixelDebugUISmoke() {
     Require(world.GetWind().GetEndRow() == 424, "UI changed the default 600 height before interaction");
     const auto state = world.ReadState();
     const std::vector<pixel::CellState> original(state.Cells.begin(), state.Cells.end());
-    const auto originalOrigin = pixel->View.OriginPixels;
+    const auto originalOrigin = pixel->GetView().OriginPixels;
 
     Click(engine, SliderPoint(0.25f));
     Require(world.GetWind().GetEndRow() > 512 && world.GetWind().GetEndRow() < 900,
@@ -144,7 +144,7 @@ void RunPixelDebugUISmoke() {
     Require(world.GetWind().GetEndRow() == 424, "wind did not recover after disabling");
     Require(std::equal(original.begin(), original.end(), world.ReadState().Cells.begin()),
             "editing UI placed/removed dirt or altered the base force field");
-    Require(pixel->View.OriginPixels == originalOrigin, "typing in UI moved the gameplay view");
+    Require(pixel->GetView().OriginPixels == originalOrigin, "typing in UI moved the gameplay view");
 
     // Exercise the production combo with real input on a one-row wind domain;
     // this avoids running the expensive reference while still checking switching.
@@ -164,12 +164,16 @@ void RunPixelDebugUISmoke() {
 
     // Unfocus by clicking outside the panel; world interaction must still work.
     auto *platform = engine.GetPlatform();
-    pixel->View.OriginPixels = {0, 0};
+    {
+        auto view = pixel->GetView();
+        view.OriginPixels = {0, 0};
+        pixel->SetView(view);
+    }
     const ImVec2 outside{600, 400};
     int ww, wh, fw, fh;
     glfwGetWindowSize(platform->GetWindows(), &ww, &wh);
     platform->GetFramebufferSize(fw, fh);
-    const auto picked = PickGridCell(pixel->View, {outside.x, outside.y}, {ww, wh}, {fw, fh});
+    const auto picked = PickGridCell(pixel->GetView(), {outside.x, outside.y}, {ww, wh}, {fw, fh});
     Require(picked.has_value(), "outside UI fixture missed world");
     Click(engine, outside);
     Require(world.GetCell((*picked)[0], (*picked)[1]).Type == pixel::CellTypes::Dirt,
@@ -192,7 +196,12 @@ void RunPixelDebugUISmoke() {
             "R did not restore default wind and terrain");
     const auto oldGeneration = engine.GetRHI()->GetSwapchainGeneration();
     glfwSetWindowSize(platform->GetWindows(), 720, 540);
-    Draw(engine, 8);
+    // Window resize notifications are asynchronous; wait for the condition, not
+    // an arbitrary number of fast frames that may all precede the notification.
+    for (int attempt = 0; attempt < 100 && engine.GetRHI()->GetSwapchainGeneration() == oldGeneration; ++attempt) {
+        Draw(engine);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     Require(engine.GetRHI()->GetSwapchainGeneration() > oldGeneration, "debug UI resize did not recreate the swapchain");
     EnterHeight(engine, "512");
     Require(world.GetWind().GetEndRow() == 512, "UI stopped working after resize");

@@ -2,6 +2,7 @@
 #include "World/World.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -12,6 +13,7 @@ void ValidatePresentationWorld(pixel::WorldStateView world) {
 } // namespace
 void BuildWorldGridFrame(pixel::WorldStateView world, const CellAppearanceTable &appearances, WorldGridFrame &output) {
     ValidatePresentationWorld(world);
+    output.Character.reset();
     output.DisplayMode = GridDisplayMode::Materials;
     auto cells = output.Cells();
     for (size_t index = 0; index < world.Cells.size(); ++index) {
@@ -38,6 +40,7 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity) {
 
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
     ValidatePresentationWorld(world.ReadState());
+    output.Character.reset();
     auto cells = output.Cells();
     for (uint32_t y = 0; y < Grid2D::Height; ++y)
         for (uint32_t x = 0; x < Grid2D::Width; ++x) {
@@ -52,14 +55,38 @@ void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
     output.Post = {};
 }
 
-void BuildCharacterFrame(const pixel::Character &character, WorldGridFrame &output) {
+void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2D &camera,
+                         std::array<int, 2> framebufferSize, WorldGridFrame &output) {
+    output.Character.reset();
     if (output.DisplayMode != GridDisplayMode::Materials)
         return;
-    const int left = int(std::floor(character.X)), top = int(std::floor(character.Y));
-    for (int y = 0; y < int(pixel::Character::Height); ++y)
-        for (int x = 0; x < int(pixel::Character::Width); ++x) {
-            const int column = left + x, row = top + y;
-            if (column >= 0 && column < int(Grid2D::Width) && row >= 0 && row < int(Grid2D::Height))
-                output.Cells()[size_t(row) * Grid2D::Width + column] = y == 0 ? 2 : 3;
+    auto linearColor = [](std::array<int, 3> rgb) {
+        std::array<float, 4> color{0, 0, 0, 1};
+        for (size_t channel = 0; channel < 3; ++channel) {
+            const float value = rgb[channel] / 255.f;
+            color[channel] = value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
         }
+        return color;
+    };
+    CharacterDraw draw;
+    draw.Bounds = {
+        float((double(character.X) - camera.GetPosition()[0]) * output.View.CellSizePixels[0] + framebufferSize[0] / 2.0),
+        float((double(character.Y) - camera.GetPosition()[1]) * output.View.CellSizePixels[1] + framebufferSize[1] / 2.0),
+        pixel::Character::Width * output.View.CellSizePixels[0],
+        pixel::Character::Height * output.View.CellSizePixels[1]};
+    draw.HeadColor = linearColor({255, 212, 140});
+    draw.BodyColor = linearColor({40, 210, 180});
+    output.Character = draw;
+}
+
+GridView2D MakeCameraView(const pixel::Camera2D &camera, std::array<int, 2> framebufferSize,
+                          GridView2D settings) {
+    for (size_t axis = 0; axis < 2; ++axis) {
+        if (settings.CellSizePixels[axis] == 0 || framebufferSize[axis] < 0)
+            throw std::invalid_argument("camera projection requires nonnegative viewport and positive cell size");
+        const double origin = std::round(camera.GetPosition()[axis] * settings.CellSizePixels[axis] - framebufferSize[axis] / 2.0);
+        settings.OriginPixels[axis] = int32_t(std::clamp(origin, double(std::numeric_limits<int32_t>::min()),
+                                                       double(std::numeric_limits<int32_t>::max())));
+    }
+    return settings;
 }
