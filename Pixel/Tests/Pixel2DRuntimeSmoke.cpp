@@ -178,6 +178,8 @@ void Lifecycle(int iteration) {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
+    input->SetControlMode(PixelGame::ControlMode::DebugCamera);
+    input->GetWorld().GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
     input->Appearances = {{10, 1}, {20, 2}, {30, 3}};
     PixelRender *policy = nullptr;
     uint64_t publications = 0;
@@ -346,6 +348,15 @@ void VerifyDefaultWorldField(const pixel::World &world) {
     Require(world.GetWind().Sample(512.5f, 423.5f).X > 0, "wind does not reach height 600");
     Require(stableAirCells == size_t(600 - 512) * state.Width, "default world does not have 88 stable sky rows");
 }
+void AddExpectedCharacter(const pixel::World &world, std::vector<uint32_t> &cells) {
+    if (!world.GetPlayer())
+        return;
+    const auto &player = *world.GetPlayer();
+    const int x = int(std::floor(player.X)), y = int(std::floor(player.Y));
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 2; ++column)
+            cells[size_t(y + row) * Grid2D::Width + x + column] = row == 0 ? 2 : 3;
+}
 void BasicWorldGameplay() {
     Axiom app;
     app.Config = GameConfig::Load();
@@ -375,14 +386,82 @@ void BasicWorldGameplay() {
         const auto token = Draw(engine);
         engine.GetRHI()->WaitIdle();
         const auto cells = policy->PublishedFrame().Cells;
-        const auto mismatch = std::mismatch(cells.begin(), cells.end(), expectedCells.begin());
+        auto expectedWithPlayer = expectedCells;
+        AddExpectedCharacter(world, expectedWithPlayer);
+        const auto mismatch = std::mismatch(cells.begin(), cells.end(), expectedWithPlayer.begin());
         if (mismatch.first != cells.end())
             throw std::runtime_error("gameplay publication differs at frame=" + std::to_string(gameplayFrame)
                                      + " cell=" + std::to_string(mismatch.first - cells.begin())
                                      + " expected=" + std::to_string(*mismatch.second) + " actual=" + std::to_string(*mismatch.first));
-        VerifyColor({expectedCells, input->View, input->Post}, policy->SceneColor(token.Slot), PixelGame::MakeTextures());
+        VerifyColor({expectedWithPlayer, input->View, input->Post}, policy->SceneColor(token.Slot), PixelGame::MakeTextures());
     };
+    verify(); // GPU readback includes the two solid-colour character rectangles.
+    Require(input->GetControlMode() == PixelGame::ControlMode::Standard, "default mode must control the character");
+    const auto playerX = world.GetPlayer()->X;
+    const auto camera = input->View.OriginPixels;
+    input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(0.125f);
+    Require(world.GetPlayer()->X > playerX && input->View.OriginPixels[0] > camera[0], "standard mode must move and follow player");
+    input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
+    const auto debugX = world.GetPlayer()->X;
+    const auto debugCamera = input->View.OriginPixels;
+    engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
+    engine.GetInput()->Dispatch();
+    input->Tick(0.125f);
+    Require(world.GetPlayer()->X == debugX && input->View.OriginPixels == debugCamera, "switch must clear held input");
+    input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(0.125f);
+    Require(world.GetPlayer()->X == debugX && input->View.OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
+    input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_REPEAT, Mod{});
+    Require(input->GetControlMode() == PixelGame::ControlMode::DebugCamera, "F3 repeat toggled mode");
+    input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(0.125f);
+    engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
+    engine.GetInput()->Dispatch();
+    input->Tick(0.125f);
+    Require(world.GetPlayer()->X == debugX, "return to standard retained movement after repeat");
+    // UI capture and focus loss use this same clear hook. A held key must not
+    // become a new press when repeat events resume after the clear.
+    for (const auto mode : {PixelGame::ControlMode::Standard, PixelGame::ControlMode::DebugCamera}) {
+        input->SetControlMode(mode);
+        for (const int key : {GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D}) {
+            engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_PRESS, 0);
+            engine.GetInput()->Dispatch();
+            input->ClearInputState();
+            const auto clearedX = world.GetPlayer()->X;
+            const auto clearedCamera = input->View.OriginPixels;
+            engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_REPEAT, 0);
+            engine.GetInput()->Dispatch();
+            input->Tick(0.125f);
+            Require(world.GetPlayer()->X == clearedX && input->View.OriginPixels == clearedCamera,
+                    "repeat reactivated movement after input clear");
+            engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_RELEASE, 0);
+            engine.GetInput()->Dispatch();
+        }
+        const auto beforePressX = world.GetPlayer()->X;
+        const auto beforePressCamera = input->View.OriginPixels;
+        engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_PRESS, 0);
+        engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
+        engine.GetInput()->Dispatch();
+        input->Tick(0.125f);
+        Require(mode == PixelGame::ControlMode::Standard ? world.GetPlayer()->X > beforePressX
+                                                         : input->View.OriginPixels[0] > beforePressCamera[0],
+                "fresh press followed by repeat must preserve movement");
+        engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_RELEASE, 0);
+        engine.GetInput()->Dispatch();
+        const auto releasedX = world.GetPlayer()->X;
+        const auto releasedCamera = input->View.OriginPixels;
+        input->Tick(0.125f);
+        Require(world.GetPlayer()->X == releasedX && input->View.OriginPixels == releasedCamera,
+                "release must stop movement");
+    }
+    input->SetControlMode(PixelGame::ControlMode::Standard);
+    input->OnKeyEvent(Key::KEY_SPACE, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(1.f / 60);
+    Require(world.GetPlayer()->Y < 508, "standard Space must jump");
     verify();
+    input->SetControlMode(PixelGame::ControlMode::DebugCamera);
+    world.SpawnPlayer(530, 508); // Leave the legacy editing fixtures unobstructed.
     // Exercise the real default field: empty sky must not disturb the terrain.
     for (int i = 0; i < 5; ++i)
         input->Tick(1.f / 60);
@@ -467,6 +546,8 @@ void BasicWorldGameplay() {
     world.AddWindImpulse(512, 200, 64, {0, -120});
     input->OnKeyEvent(Key::KEY_R, 0, ButtonAction::ACTION_PRESS, Mod{});
     VerifyDefaultWorldField(world);
+    Require(world.GetPlayer() && world.GetPlayer()->X == 511 && world.GetPlayer()->Y == 508, "R must reset player");
+    world.SpawnPlayer(530, 508);
     Require(world.GetWind().Sample(512.5f, 200.5f) == initialWind, "R reset retained wind time or impulse state");
     verify();
     // A block at height 599 must cross the entire stable sky band vertically.
@@ -552,7 +633,7 @@ void ForceFieldDebugGameplay() {
     input->OnKeyEvent(Key::KEY_F1, 0, ButtonAction::ACTION_REPEAT, Mod{});
     input->OnKeyEvent(Key::KEY_F1, 0, ButtonAction::ACTION_RELEASE, Mod{});
     Require(input->DisplayMode == GridDisplayMode::Materials, "F1 repeat/release changed the display mode");
-    press(Key::KEY_SPACE);
+    press(Key::KEY_T);
     press(Key::KEY_F1);
     size_t debugFrame = 0;
     auto verifyField = [&](int tolerance = 0) {
@@ -586,6 +667,7 @@ void ForceFieldDebugGameplay() {
             "leaving debug view did not restore material mode and tint");
     for (size_t i = 0; i < expected.size(); ++i)
         expected[i] = initial[i].Type == pixel::CellTypes::Dirt ? 1 : 0;
+    AddExpectedCharacter(world, expected);
     VerifyColor({expected, input->View, input->Post}, policy->SceneColor(materialToken.Slot), PixelGame::MakeTextures());
 
     press(Key::KEY_F1);

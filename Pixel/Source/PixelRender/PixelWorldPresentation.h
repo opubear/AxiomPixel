@@ -3,6 +3,7 @@
 #include "PixelRender/WorldGridFrame.h"
 #include "World/WindField.h"
 #include "World/WorldState.h"
+#include "World/Character.h"
 #include <unordered_map>
 
 // This sample-specific presentation boundary is the only place where gameplay
@@ -18,3 +19,6 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity);
 // Called at publication only. Copies colours into render-owned storage; no
 // World/Wind references survive into Draw, and empty cells also display the field.
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output);
+
+// Stamp a pixel-aligned, two-colour rectangle into the render snapshot only.
+void BuildCharacterFrame(const pixel::Character &character, WorldGridFrame &output);

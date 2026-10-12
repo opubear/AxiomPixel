@@ -2,6 +2,7 @@
 #include "FieldResponse.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <random>
 #include <stdexcept>
 
@@ -83,10 +84,13 @@ void World::GenerateTerrain(uint32_t surfaceRow) {
     Fill({});
     std::fill(State.Cells.begin() + size_t(surfaceRow) * State.Width, State.Cells.end(), CellState{CellTypes::Dirt});
     Environment = {};
+    Player.reset();
+    PlayerHorizontal = 0;
+    PlayerJump = false;
 }
 bool World::PlaceDirt(uint32_t x, uint32_t y) {
     auto &cell = State.Cells[CellIndex(x, y)];
-    if (cell.Type != CellTypes::Empty)
+    if ((Player && Player->Occupies(int(x), int(y))) || cell.Type != CellTypes::Empty)
         return false;
     cell.Type = CellTypes::Dirt;
     return true;
@@ -104,12 +108,24 @@ void World::PublishState(WorldState &destination) {
     State.Cells.swap(destination.Cells);
     std::copy(destination.Cells.begin(), destination.Cells.end(), State.Cells.begin());
 }
-void World::Tick(float duration) {
-    TickCharacters(duration);
-    Environment.Tick(duration, *this);
+void World::SpawnPlayer(float x, float y) {
+    if (!std::isfinite(x) || !std::isfinite(y) || x < 0 || y < 0 ||
+        x + Character::Width > State.Width || y + Character::Height > State.Height)
+        throw std::invalid_argument("player bounds must fit inside the world");
+    Player = Character{};
+    Player->X = x;
+    Player->Y = y;
+    PlayerHorizontal = 0;
+    PlayerJump = false;
 }
-void World::TickCharacters(float) {
-    // Player and NPC state/behaviors belong here when characters are introduced.
-    // The initial world has no characters.
+void World::SetPlayerInput(int horizontal, bool jump) {
+    PlayerHorizontal = std::clamp(horizontal, -1, 1);
+    PlayerJump = jump;
+}
+void World::Tick(float duration) {
+    Environment.Tick(duration, *this);
+    if (Player)
+        Player->Tick(duration, ReadState(), PlayerHorizontal, PlayerJump);
+    PlayerJump = false;
 }
 } // namespace pixel

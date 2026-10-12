@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Environment.h"
+#include "Character.h"
+#include <optional>
 #include "ForceField.h"
 #include "WorldState.h"
 #include <cstddef>
@@ -47,6 +49,9 @@ class World {
     bool PlaceDirt(uint32_t x, uint32_t y);
     bool RemoveDirt(uint32_t x, uint32_t y);
     void Tick(float duration);
+    void SpawnPlayer(float x, float y);
+    const std::optional<Character> &GetPlayer() const { return Player; }
+    void SetPlayerInput(int horizontal, bool jump);
     WorldStateView ReadState() const { return State.Read(); }
 
     // Publish into a distinct, same-sized CPU state, then retain the latest
@@ -60,6 +65,8 @@ class World {
     ForceField BaseForces;
     pixel::Environment Environment;
     size_t CellIndex(uint32_t x, uint32_t y) const;
-    void TickCharacters(float duration);
+    std::optional<Character> Player;
+    int PlayerHorizontal = 0;
+    bool PlayerJump = false;
 };
 } // namespace pixel

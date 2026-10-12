@@ -1,6 +1,7 @@
 # World remains usable without any engine, renderer, window or GPU dependency.
 add_library(PixelWorld STATIC
     Source/World/World.cpp
+    Source/World/Character.cpp
     Source/World/WorldState.cpp
     Source/World/PixelWindField.cpp
     Source/World/WindSimulation.cpp
@@ -66,3 +67,9 @@ target_link_libraries(PixelWindBenchmark PRIVATE PixelWorld)
 
 add_executable(PixelWindStrategyBenchmark EXCLUDE_FROM_ALL Tests/PixelWindStrategyBenchmark.cpp)
 target_link_libraries(PixelWindStrategyBenchmark PRIVATE PixelWorld)
+
+if(BUILD_TESTING)
+    add_executable(PixelCharacterTests Tests/PixelCharacterTests.cpp)
+    target_link_libraries(PixelCharacterTests PRIVATE PixelRender)
+    add_test(NAME Pixel.Character COMMAND PixelCharacterTests)
+endif()

@@ -7,7 +7,10 @@
 
 class PixelGame final : public IGameInterface {
   public:
+    enum class ControlMode { Standard, DebugCamera };
     PixelGame();
+    void SetControlMode(ControlMode mode);
+    ControlMode GetControlMode() const { return Mode; }
     static GridTextureCatalog MakeTextures();
     RenderSetup CreateRenderSetup();
     // Transfer this callback to Render; its snapshot belongs to the consumer.
@@ -36,6 +39,9 @@ class PixelGame final : public IGameInterface {
     std::array<bool, 4> Move{};
     float MovementRemainder = 0;
     bool ShowDebug = true;
+    ControlMode Mode = ControlMode::Standard;
+    bool JumpRequested = false;
+    void FollowPlayer();
     pixel::WindStrategyKind WindKind = pixel::WindStrategyKind::Coarse;
     bool PauseSimulation = false;
     bool StepSimulation = false;

@@ -25,6 +25,8 @@ PixelGame::PixelGame() : World(Grid2D::Width, Grid2D::Height) {
 }
 void PixelGame::ResetWorld() {
     World.GenerateTerrain(Grid2D::Height - TerrainHeight);
+    World.SpawnPlayer(Grid2D::Width / 2 - pixel::Character::Width / 2, Grid2D::Height - TerrainHeight - pixel::Character::Height);
+    ClearInputState();
     WindKind = pixel::WindStrategyKind::Coarse;
     PauseSimulation = StepSimulation = false;
     DebugWindSettings = {};
@@ -54,18 +56,25 @@ std::function<void(WorldGridFrame &)> PixelGame::CreateFramePublisher() {
             BuildForceFieldFrame(World, frame);
         else
             BuildWorldGridFrame(snapshot->Read(), Appearances, frame);
+        if (World.GetPlayer())
+            BuildCharacterFrame(*World.GetPlayer(), frame);
     };
 }
 GridTextureCatalog PixelGame::MakeTextures() {
-    // Empty layer followed by a solid brown dirt layer, both RGBA8/sRGB.
-    return {1, 1, 2, {std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}, std::byte{151}, std::byte{104}, std::byte{65}, std::byte{255}}};
+    // Transparent air, brown dirt, warm head and turquoise body (RGBA8/sRGB).
+    GridTextureCatalog textures{1, 1, 4, {}};
+    for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255},
+                             std::array{255, 212, 140, 255}, std::array{40, 210, 180, 255}})
+        for (int channel : color)
+            textures.Pixels.push_back(std::byte(channel));
+    return textures;
 }
 void PixelGame::Initialize() {
     GAxiom->Engine->GetPlatform()->SetCursorInputMode(true);
     ResetView();
     if (auto *ui = GAxiom->Engine->GetImgui())
         ui->SetFrameContent([this] { DrawDebugUI(); });
-    spdlog::info("Pixel: left click place dirt; right click remove dirt; WASD pan; +/- zoom; F1 toggle force-field view; F2 toggle Debug UI; Space toggle tint; PageDown next region; R reset world; Escape quit");
+    spdlog::info("Pixel: left click place dirt; right click remove dirt; A/D move; Space jump; F3 debug camera (WASD pan); +/- zoom; F1 toggle force-field view; F2 toggle Debug UI; T toggle tint; PageDown next region; R reset world; Escape quit");
 }
 void PixelGame::SetWindStartHeight(int height) {
     const auto worldHeight = World.ReadState().Height;
@@ -132,7 +141,11 @@ void PixelGame::DrawDebugUI() {
             if (ImGui::Checkbox("Field direction view (F1)", &fieldView))
                 DisplayMode = fieldView ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
         }
-        ImGui::TextDisabled("F2: show/hide debug panel");
+        bool debugCamera = Mode == ControlMode::DebugCamera;
+        if (ImGui::Checkbox("Free debug camera (F3)", &debugCamera))
+            SetControlMode(debugCamera ? ControlMode::DebugCamera : ControlMode::Standard);
+        ImGui::TextUnformatted(debugCamera ? "DEBUG: WASD camera; +/- zoom; PageDown region" : "STANDARD: A/D move; Space jump; camera follows");
+        ImGui::TextDisabled("F2: show/hide debug panel; T: tint");
     }
     ImGui::End();
 }
@@ -143,9 +156,13 @@ void PixelGame::ResetView() {
     View.OriginPixels = {int(Grid2D::Width / 2 * 16) - width / 2, int((Grid2D::Height - TerrainHeight) * 16) - height / 2};
     Post = {};
     MovementRemainder = 0;
+    if (Mode == ControlMode::Standard)
+        FollowPlayer();
 }
 void PixelGame::ClearInputState() {
     Move.fill(false);
+    JumpRequested = false;
+    World.SetPlayerInput(0, false);
 }
 void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int, const MousePointerState &pointer) {
     if (action != ButtonAction::ACTION_PRESS || (button != MouseButton::MOUSE_BUTTON_LEFT && button != MouseButton::MOUSE_BUTTON_RIGHT))
@@ -161,9 +178,16 @@ void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int,
 void PixelGame::Tick(float duration) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
+    World.SetPlayerInput(Mode == ControlMode::Standard ? int(Move[3]) - int(Move[1]) : 0,
+                         Mode == ControlMode::Standard && JumpRequested);
     if (!PauseSimulation || StepSimulation)
         World.Tick(StepSimulation ? 1.f / 60 : duration);
+    JumpRequested = false;
     StepSimulation = false;
+    if (Mode == ControlMode::Standard) {
+        FollowPlayer();
+        return;
+    }
     MovementRemainder += std::min(duration, 0.25f) * 240;
     const int delta = int(MovementRemainder);
     MovementRemainder -= float(delta);
@@ -176,24 +200,29 @@ void PixelGame::Tick(float duration) {
 }
 void PixelGame::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     const std::array keys{Key::KEY_W, Key::KEY_A, Key::KEY_S, Key::KEY_D};
+    // Repeats must not reactivate a held key after mode/UI input was cleared.
     for (size_t i = 0; i < keys.size(); ++i)
-        if (key == keys[i])
-            Move[i] = action != ButtonAction::ACTION_RELEASE;
+        if (key == keys[i] && (action == ButtonAction::ACTION_PRESS || action == ButtonAction::ACTION_RELEASE))
+            Move[i] = action == ButtonAction::ACTION_PRESS;
     if (action != ButtonAction::ACTION_PRESS)
         return;
     if (key == Key::KEY_ESCAPE)
         GAxiom->Engine->GetPlatform()->CloseWindow();
-    if (key == Key::KEY_SPACE)
+    if (key == Key::KEY_SPACE && Mode == ControlMode::Standard)
+        JumpRequested = true;
+    if (key == Key::KEY_T || (key == Key::KEY_SPACE && Mode == ControlMode::DebugCamera))
         Post.Values[1] = Post.Values[1] == 1 ? 0.35f : 1;
     if (key == Key::KEY_F1)
         DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
+    if (key == Key::KEY_F3)
+        SetControlMode(Mode == ControlMode::Standard ? ControlMode::DebugCamera : ControlMode::Standard);
     if (key == Key::KEY_F2)
         ShowDebug = !ShowDebug;
     if (key == Key::KEY_R) {
         ResetWorld();
         ResetView();
     }
-    if (key == Key::KEY_PAGE_DOWN)
+    if (key == Key::KEY_PAGE_DOWN && Mode == ControlMode::DebugCamera)
         View.OriginPixels[1] = ((std::max(0, View.OriginPixels[1]) / int(View.CellSizePixels[1]) / int(Grid2D::PageHeight) + 1) % int(Grid2D::PageCount)) * int(Grid2D::PageHeight * View.CellSizePixels[1]);
     if (key == Key::KEY_EQUAL || key == Key::KEY_MINUS) {
         const uint32_t old = View.CellSizePixels[0];
@@ -205,4 +234,23 @@ void PixelGame::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
             View.CellSizePixels[axis] = next;
         }
     }
+}
+
+void PixelGame::FollowPlayer() {
+    if (!World.GetPlayer())
+        return;
+    int width = 0, height = 0;
+    GAxiom->Engine->GetPlatform()->GetFramebufferSize(width, height);
+    const auto &player = *World.GetPlayer();
+    View.OriginPixels = {int((player.X + pixel::Character::Width / 2) * View.CellSizePixels[0]) - width / 2,
+                         int((player.Y + pixel::Character::Height / 2) * View.CellSizePixels[1]) - height / 2};
+}
+void PixelGame::SetControlMode(ControlMode mode) {
+    if (mode == Mode)
+        return;
+    Mode = mode;
+    ClearInputState();
+    MovementRemainder = 0;
+    if (Mode == ControlMode::Standard)
+        FollowPlayer();
 }

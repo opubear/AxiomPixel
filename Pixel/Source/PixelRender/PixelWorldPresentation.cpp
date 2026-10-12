@@ -51,3 +51,15 @@ void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
     // Debug colours must not inherit gameplay tint; switching back restores it.
     output.Post = {};
 }
+
+void BuildCharacterFrame(const pixel::Character &character, WorldGridFrame &output) {
+    if (output.DisplayMode != GridDisplayMode::Materials)
+        return;
+    const int left = int(std::floor(character.X)), top = int(std::floor(character.Y));
+    for (int y = 0; y < int(pixel::Character::Height); ++y)
+        for (int x = 0; x < int(pixel::Character::Width); ++x) {
+            const int column = left + x, row = top + y;
+            if (column >= 0 && column < int(Grid2D::Width) && row >= 0 && row < int(Grid2D::Height))
+                output.Cells()[size_t(row) * Grid2D::Width + column] = y == 0 ? 2 : 3;
+        }
+}

@@ -11,3 +11,5 @@
 | 风场策略首版 | `WindStrategiesV1.md` | 六策略切换、四类候选首版、力场独立与数值/成本验证和独立审查 | 已实现，限制见正文 |
 | 风场多尺度模拟方案评估 | `WindSimulationAlternatives.md` | 四类候选方案、推荐混合结构、现有求解器成本基线与原型验证计划 | 四类 CPU 首版已实现，GPU 与后续目标未实现 |
 | 逐像素力场与风场基准（2026-10-12） | `PixelWindBaseline.md` | 连续基础力场、1:1 MAC硬边界基准、误差/成本实验、代码审查与使用边界 | 已实现，验证记录见正文 |
+
+角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`PixelGame.*` 和 `PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests`，GPU模式/外观回归位于 `PixelRuntimeSmoke`。

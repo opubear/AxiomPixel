@@ -107,6 +107,7 @@ void RunPixelDebugUISmoke() {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *pixel = game.get();
+    pixel->SetControlMode(PixelGame::ControlMode::DebugCamera);
     auto setup = game->CreateRenderSetup(); // Same composition as the real executable.
     app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
     auto &engine = *app.Engine;
