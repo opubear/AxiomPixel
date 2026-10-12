@@ -1,6 +1,7 @@
 #pragma once
 
-#include "WindField.h"
+#include "ForceField.h"
+#include "WindSimulation.h"
 #include "WorldState.h"
 #include <cstddef>
 #include <vector>
@@ -13,10 +14,9 @@ class World;
 class Environment {
   public:
     void Tick(float duration, World &world);
-    // Continuous field before the movement dead zone: base direction * 60 + wind.
-    WindVelocity SampleFieldVelocity(ForceDirection base, float x, float y) const;
-    WindField &GetWind() { return Wind; }
-    const WindField &GetWind() const { return Wind; }
+    ForceVector SampleForce(ForceVector base, uint32_t x, uint32_t y) const;
+    WindSimulation &GetWindSimulation() { return Wind; }
+    const WindSimulation &GetWindSimulation() const { return Wind; }
 
   private:
     struct CellMove {
@@ -24,7 +24,7 @@ class Environment {
         size_t Destination;
     };
     double TimeRemainder = 0;
-    WindField Wind;
+    WindSimulation Wind;
     // Reused between steps; contain indices only, never borrowed cell storage.
     std::vector<uint8_t> Processed;
     std::vector<CellMove> MovementChain;

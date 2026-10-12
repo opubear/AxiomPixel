@@ -25,6 +25,8 @@ PixelGame::PixelGame() : World(Grid2D::Width, Grid2D::Height) {
 }
 void PixelGame::ResetWorld() {
     World.GenerateTerrain(Grid2D::Height - TerrainHeight);
+    WindKind = pixel::WindStrategyKind::Coarse;
+    PauseSimulation = StepSimulation = false;
     DebugWindSettings = {};
     World.ConfigureWind(Grid2D::Height - DefaultWindStartHeight, DebugWindSettings);
 }
@@ -72,8 +74,12 @@ void PixelGame::SetWindStartHeight(int height) {
         DebugWindSettings = World.GetWind().GetSettings();
     if (endRow == 0)
         World.DisableWind();
-    else if (endRow != World.GetWind().GetEndRow())
-        World.ConfigureWind(endRow, DebugWindSettings);
+    else if (endRow != World.GetWindEndRow() || WindKind != World.GetWindStrategyKind()) {
+        pixel::WindStrategySettings settings;
+        settings.Kind = WindKind;
+        settings.Coarse = DebugWindSettings;
+        World.ConfigureWindStrategy(endRow, settings);
+    }
 }
 void PixelGame::DrawDebugUI() {
     if (!ShowDebug)
@@ -83,7 +89,7 @@ void PixelGame::DrawDebugUI() {
     if (ImGui::Begin("Pixel Debug", &ShowDebug, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
             const int worldHeight = int(World.ReadState().Height);
-            int height = worldHeight - int(World.GetWind().GetEndRow());
+            int height = worldHeight - int(World.GetWindEndRow());
             ImGui::TextUnformatted("Wind blows above the selected height.");
             ImGui::TextUnformatted("Height is measured from the world bottom.");
             ImGui::SetNextItemWidth(190);
@@ -91,11 +97,37 @@ void PixelGame::DrawDebugUI() {
                 SetWindStartHeight(height);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Drag to adjust, or %s+click to enter a height.", ImGui::GetIO().ConfigMacOSXBehaviors ? "Cmd" : "Ctrl");
-            ImGui::Text("Wind coverage: %u / %d rows", World.GetWind().GetEndRow(), worldHeight);
+            ImGui::Text("Wind coverage: %u / %d rows", World.GetWindEndRow(), worldHeight);
             ImGui::Text("0 = whole world; %d = wind off", worldHeight);
             ImGui::TextDisabled("Changing height restarts the wind simulation.");
             if (ImGui::Button("Default height (600)"))
                 SetWindStartHeight(DefaultWindStartHeight);
+            int selected = int(WindKind);
+            if (ImGui::Combo("Wind strategy", &selected, "Coarse NS\0Pixel reference (1:1)\0Procedural + obstacles\0Coarse NS + local model\0Adaptive NS (CPU prototype)\0LBM D2Q9 (CPU prototype)\0")) {
+                WindKind = pixel::WindStrategyKind(selected);
+                PauseSimulation = WindKind == pixel::WindStrategyKind::Reference || WindKind == pixel::WindStrategyKind::Adaptive || WindKind == pixel::WindStrategyKind::Lbm;
+                StepSimulation = false;
+                SetWindStartHeight(height);
+            }
+            ImGui::Checkbox("Pause simulation", &PauseSimulation);
+            if (PauseSimulation && ImGui::Button("Step 1/60 second"))
+                StepSimulation = true;
+            if (World.UsesPixelWind()) {
+                const auto &report = World.GetPixelWind().GetReport();
+                ImGui::Text("Divergence RMS: %.3g (%s)", report.RmsDivergence, report.Converged ? "converged" : "NOT converged");
+                ImGui::TextDisabled("CPU reference: use single steps for large worlds.");
+            }
+            if (const auto *adaptive = World.GetAdaptiveWind()) {
+                const auto &report = adaptive->GetReport();
+                ImGui::Text("Leaves: %zu; face divergence RMS: %.3g (%s)", adaptive->GetLeafCount(), report.RmsDivergence, report.Converged ? "converged" : "NOT converged");
+                ImGui::TextDisabled("First-order CPU prototype; use single steps.");
+            }
+            if (const auto *lbm = World.GetLbmWind()) {
+                const auto &report = lbm->GetReport();
+                ImGui::Text("Density: %.3g..%.3g; stabilizations: %llu", report.MinDensity, report.MaxDensity, static_cast<unsigned long long>(report.Stabilizations));
+                ImGui::Text("Effective viscosity: %.3g", report.EffectiveViscosity);
+                ImGui::TextDisabled("Weakly compressible CPU prototype; use single steps.");
+            }
             bool fieldView = DisplayMode == GridDisplayMode::ForceField;
             if (ImGui::Checkbox("Field direction view (F1)", &fieldView))
                 DisplayMode = fieldView ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
@@ -129,7 +161,9 @@ void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int,
 void PixelGame::Tick(float duration) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
-    World.Tick(duration);
+    if (!PauseSimulation || StepSimulation)
+        World.Tick(StepSimulation ? 1.f / 60 : duration);
+    StepSimulation = false;
     MovementRemainder += std::min(duration, 0.25f) * 240;
     const int delta = int(MovementRemainder);
     MovementRemainder -= float(delta);

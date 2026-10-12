@@ -1,17 +1,12 @@
 #pragma once
 
+#include "WindTypes.h"
 #include "WorldState.h"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
 namespace pixel {
-struct WindVelocity {
-    float X = 0;
-    float Y = 0;
-    bool operator==(const WindVelocity &) const = default;
-};
-
 struct WindSettings {
     uint32_t Columns = 32;
     uint32_t Rows = 16;
@@ -21,13 +16,6 @@ struct WindSettings {
     float Relaxation = 0.05f; // Per-second relaxation towards Ambient.
     uint32_t Seed = 20261004;
     float DirtDrag = 60; // Per-second drag at full projected blockage; zero disables feedback.
-};
-
-// Actual velocity of a moved dirt cell, recorded at its final position. Supply
-// one entry per moved cell; occupied cells without an entry are stationary.
-struct DirtMotion {
-    uint32_t X, Y;
-    WindVelocity Velocity;
 };
 
 // A coarse, periodic MAC grid over [0, width) x [0, endRow). Dirt feedback uses

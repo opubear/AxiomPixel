@@ -1,4 +1,5 @@
 #include "World.h"
+#include "FieldResponse.h"
 #include <algorithm>
 #include <array>
 #include <random>
@@ -11,6 +12,9 @@ void ValidateForceDirection(ForceDirection direction) {
         throw std::invalid_argument("force direction must select a neighbouring cell or zero");
 }
 } // namespace
+World::World(uint32_t width, uint32_t height) : State(width, height), BaseForces(width, height) {
+    BaseForces.Fill(FieldResponse::FromDirection({0, 1}));
+}
 size_t World::CellIndex(uint32_t x, uint32_t y) const {
     if (x >= State.Width || y >= State.Height)
         throw std::out_of_range("cell coordinates are outside the world");
@@ -20,10 +24,12 @@ CellState World::GetCell(uint32_t x, uint32_t y) const { return State.Cells[Cell
 void World::SetCell(uint32_t x, uint32_t y, CellState cell) {
     ValidateForceDirection(cell.Force);
     State.Cells[CellIndex(x, y)] = cell;
+    BaseForces.Set(x, y, FieldResponse::FromDirection(cell.Force));
 }
 void World::Fill(CellState cell) {
     ValidateForceDirection(cell.Force);
     std::fill(State.Cells.begin(), State.Cells.end(), cell);
+    BaseForces.Fill(FieldResponse::FromDirection(cell.Force));
 }
 void World::SetForceDirection(uint32_t x, uint32_t y, ForceDirection direction) {
     auto cell = GetCell(x, y);
@@ -34,6 +40,7 @@ void World::FillForceDirection(ForceDirection direction) {
     ValidateForceDirection(direction);
     for (auto &cell : State.Cells)
         cell.Force = direction;
+    BaseForces.Fill(FieldResponse::FromDirection(direction));
 }
 void World::RandomizeForceDirections(uint32_t endRow, uint32_t seed) {
     if (endRow > State.Height)
@@ -41,16 +48,34 @@ void World::RandomizeForceDirections(uint32_t endRow, uint32_t seed) {
     constexpr std::array<ForceDirection, 8> directions{{{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
     std::mt19937 random(seed);
     std::uniform_int_distribution<size_t> choose(0, directions.size() - 1);
-    for (size_t index = 0; index < size_t(endRow) * State.Width; ++index)
-        State.Cells[index].Force = directions[choose(random)];
+    for (size_t index = 0; index < size_t(endRow) * State.Width; ++index) {
+        const auto direction = directions[choose(random)];
+        State.Cells[index].Force = direction;
+        BaseForces.Set(uint32_t(index % State.Width), uint32_t(index / State.Width), FieldResponse::FromDirection(direction));
+    }
 }
 void World::ConfigureWind(uint32_t endRow, const WindSettings &settings) {
     if (!endRow || endRow > State.Height)
         throw std::out_of_range("wind boundary is outside the world");
-    Environment.GetWind().Reset(State.Width, endRow, settings);
+    Environment.GetWindSimulation().ConfigureCoarse(State.Width, endRow, settings);
+}
+void World::ConfigurePixelWind(uint32_t endRow, const PixelWindSettings &settings) {
+    if (!endRow || endRow > State.Height)
+        throw std::out_of_range("wind boundary is outside the world");
+    Environment.GetWindSimulation().ConfigureReference(ReadState(), endRow, settings);
+}
+void World::ConfigureWindStrategy(uint32_t endRow, const WindStrategySettings &settings) {
+    Environment.GetWindSimulation().Configure(ReadState(), endRow, settings);
+}
+ForceVector World::GetForce(uint32_t x, uint32_t y) const {
+    return Environment.SampleForce(BaseForces.Get(x, y), x, y);
 }
 WindVelocity World::GetFieldVelocity(uint32_t x, uint32_t y) const {
-    return Environment.SampleFieldVelocity(GetCell(x, y).Force, float(x) + 0.5f, float(y) + 0.5f);
+    return FieldResponse::MovementVelocity(GetForce(x, y));
+}
+void World::MoveMaterial(size_t source, size_t destination) {
+    State.Cells[destination].Type = State.Cells[source].Type;
+    State.Cells[source].Type = CellTypes::Empty;
 }
 void World::GenerateTerrain(uint32_t surfaceRow) {
     if (surfaceRow > State.Height)

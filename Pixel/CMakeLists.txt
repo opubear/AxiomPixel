@@ -2,6 +2,13 @@
 add_library(PixelWorld STATIC
     Source/World/World.cpp
     Source/World/WorldState.cpp
+    Source/World/PixelWindField.cpp
+    Source/World/WindSimulation.cpp
+    Source/World/WindStrategy.cpp
+    Source/World/LocalWindGeometry.cpp
+    Source/World/ProceduralWindField.cpp
+    Source/World/AdaptiveWindField.cpp
+    Source/World/LbmWindField.cpp
     Source/World/WindField.cpp
     Source/World/Environment.cpp)
 target_include_directories(PixelWorld PUBLIC Source)
@@ -43,3 +50,19 @@ if(BUILD_TESTING)
     target_link_libraries(PixelTests PRIVATE PixelRender)
     add_test(NAME Pixel.Cpu COMMAND PixelTests)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(PixelBaselineTests Tests/PixelBaselineTests.cpp)
+    target_link_libraries(PixelBaselineTests PRIVATE PixelWorld)
+    add_test(NAME Pixel.Baseline COMMAND PixelBaselineTests)
+    add_executable(PixelWindStrategyTests Tests/PixelWindStrategyTests.cpp)
+    target_link_libraries(PixelWindStrategyTests PRIVATE PixelWorld)
+    add_test(NAME Pixel.WindStrategies COMMAND PixelWindStrategyTests)
+endif()
+
+# Explicit/offline reference measurements, not part of the fast CTest suite.
+add_executable(PixelWindBenchmark EXCLUDE_FROM_ALL Tests/PixelWindBenchmark.cpp)
+target_link_libraries(PixelWindBenchmark PRIVATE PixelWorld)
+
+add_executable(PixelWindStrategyBenchmark EXCLUDE_FROM_ALL Tests/PixelWindStrategyBenchmark.cpp)
+target_link_libraries(PixelWindStrategyBenchmark PRIVATE PixelWorld)

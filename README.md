@@ -15,7 +15,7 @@
 
 世界为 1024×1024 格。游戏高度从底部向上计算，存储和渲染行号 `y` 从顶部向下计算，二者对应 `height = 1023 - y`。
 底部 512 格为棕褐色土地；其上是蓝色天空。底部 600 格统一使用向下重力场，因此高度 `[512, 600)` 是 88 格稳定天空区；高度 `[600, 1024)` 叠加动态风场。
-换成存储行号：`y < 424` 有风，`y >= 424` 仅受原有方向场影响，土地从 `y = 512` 开始。左键点击空格放置一个土块，右键点击移除一个土块。每格的 `CellState::Force` 保存该位置的基础受力方向，Environment 将它与风速合成后移动土块。
+换成存储行号：`y < 424` 有风，`y >= 424` 仅受原有方向场影响，土地从 `y = 512` 开始。左键点击空格放置一个土块，右键点击移除一个土块。每格的 `CellState::Force` 保留兼容方向接口；连续基础受力由独立 `ForceField` 保存，Environment 叠加风贡献后移动土块（见逐像素基准章节）。
 Environment 使用固定 1/60 秒步长，单帧最多补算 0.25 秒；人物/NPC 仍为空入口。
 保留四张数据纹理（每张 1024×256）、每 Ready 帧全量上传、格子绘制和后处理两个 Pass。
 
@@ -66,7 +66,7 @@ world.AddWindImpulse(512, 200, 64, {0, -120}); // 半径64格的向上脉冲
 world.DisableWind();
 ```
 
-`World` 默认关闭风，`PixelGame` 显式启用。`ConfigureWind` 重建风速，种子相同可复现；R 会恢复默认参数与初始风速。模拟使用现有 60Hz 固定步长，先推进风，再移动方块，最后统一施加泥土反馈并进行压力投影。风速单位是世界格/秒；移动时计算 `60 * Force + wind`，每分量大于 30 取 +1、小于 -30 取 -1，其余取 0。因此弱风不会移动静止物体，更强风也不会让方块单步跨越多格。
+`World` 默认关闭风，`PixelGame` 显式启用。`ConfigureWind` 重建风速，种子相同可复现；R 会恢复默认参数与初始风速。模拟使用现有 60Hz 固定步长，先推进风，再移动方块，最后统一施加泥土反馈并进行压力投影。风速单位是世界格/秒；移动时计算 `a_base / 60 + wind`（旧方向接口下等价于 `60 * Force + wind`），每分量大于 30 取 +1、小于 -30 取 -1，其余取 0。因此弱风不会移动静止物体，更强风也不会让方块单步跨越多格。
 
 泥土反馈按横向和纵向分别计算投影遮挡：横向气流统计被泥土占据的行高并集，纵向气流统计列宽并集，不再用泥土面积占比作为两个方向共同的阻力。这样，伸入风区的高而薄土堆也能阻挡横向气流。实际泥土移动速度仍按占据面积平均到 MAC 面；未移动的泥土目标速度为零。所有移动链完成后才反馈，避免前面的方块改变后面方块在同一步采样到的风。
 
@@ -80,7 +80,7 @@ world.DisableWind();
 - 压力每次投影迭代 80 次，扩散迭代 20 次，属于游戏近似；高分辨率或极端长宽比下不保证很小的散度误差。
 - 网格各维支持 2～128；背景风/脉冲每分量及扰动幅度上限为 1000，黏性范围 0～1,000,000，衰减率范围 0～100，泥土阻力范围 0～1000。反复脉冲限制实际收到非零增量的网格分量为 ±1000，零脉冲及范围外分量保持原值；压力投影在下一模拟步执行。非法参数拒绝且保留旧场。
 
-观察默认风：按 PageDown 切换到顶部区域，或按 W 向上平移到 `y < 424` 后放置土块。F1 可以观察泥土周围合成场方向的变化；它只显示方向，纯减速而方向不变时颜色不会改变。默认视角仍对准地面，那里保持重力下落；当前没有风向箭头叠加。
+观察默认风：先按 F3 切换自由调试相机，再按 PageDown 切换到顶部区域，或按 W 向上平移到 `y < 424` 后放置土块。F1 可以观察泥土周围合成场方向的变化；它只显示方向，纯减速而方向不变时颜色不会改变。默认视角仍对准地面，那里保持重力下落；当前没有风向箭头叠加。
 
 ## 力场调试视图
 
@@ -88,9 +88,9 @@ world.DisableWind();
 
 调整高度会按已有风参数重新初始化风速，保留泥土、基础力场、视角及显示模式；拖动过程中每次高度变化都会重新初始化。关闭再开启仍保留风参数。R 恢复默认世界和600高度。操作面板时鼠标和键盘由 ImGui 接收，不会穿透到世界编辑或视角移动；在面板外仍可正常操作游戏。UI 叠加在后处理之后，不受世界调色影响。
 
-按 **F1** 在材质视图与力场方向视图之间切换（部分 Mac 键盘需按 Fn+F1）。调试模式会给整个世界着色，包括空格和土块所在格；模拟和鼠标编辑照常进行，WASD 平移、`+/-` 缩放、PageDown 切区域仍可用。R 重建世界和视角，保留当前显示模式。默认地面附近是向下重力，颜色相同；向上移到 `y < 424` 可观察动态风造成的方向变化。
+按 **F1** 在材质视图与力场方向视图之间切换（部分 Mac 键盘需按 Fn+F1）。调试模式会给整个世界着色，包括空格和土块所在格；模拟和鼠标编辑照常进行；F3 自由调试相机模式中 WASD 平移、`+/-` 缩放、PageDown 切区域仍可用。R 重建世界和视角，保留当前显示模式。默认地面附近是向下重力，颜色相同；向上移到 `y < 424` 可观察动态风造成的方向变化。
 
-显示的是 Environment 用于移动的连续合成场 `v = 60 * CellState::Force + wind`，在格子中心采样、应用移动死区之前取值。先计算单位方向 `d = v / |v|`，再转换为线性 RGB：
+显示的是 Environment 用于移动的连续合成场 `v = GetForce / 60`（仅使用旧方向接口时等价于 `60 * CellState::Force + wind`），在格子中心采样、应用移动死区之前取值。先计算单位方向 `d = v / |v|`，再转换为线性 RGB：
 
 ```text
 R = 0.5 * (d.x + 1)
@@ -157,3 +157,81 @@ cmake --build build-engine --target Axiom -j4
 
 迁移来源、模块边界和本轮验证见 [迁移记录](.awtcontext/GlobalDoc/PixelMigration.md)。
 AWT 工具位置由本次环境提供，在当前布局可用 `../AIWorkTask/awt task list --project .awtcontext`。
+
+## 逐像素基础力场与风场 reference
+
+`ForceField` 是与世界等宽等高的连续向量网格，独立于风求解器。`World::GetBaseForceField()` 保存持久基础加速度（像素/秒²，单位质量，正 Y 向下），可叠加重力、爆炸等来源；`GetForce(x,y)` 返回基础场与当前风贡献的合成值。风存储空气速度（像素/秒），由 Environment 调用 `FieldResponse` 的适配规则 `a_wind = 60 * u_air` 转换，关闭或重建风不会修改基础场。
+
+```cpp
+world.FillBaseForce({0, 3600});       // 兼容旧下落速度的基础重力
+world.AddBaseForce(300, 200, {600, 0}); // 持久外力贡献；源撤销由调用方负责
+world.SetBaseForce(301, 200, {0, 0});
+auto acceleration = world.GetForce(300, 200);
+pixel::PixelWindSettings reference;
+reference.DivergenceTolerance = 1e-6;
+world.ConfigurePixelWind(424, reference);
+auto report = world.GetPixelWind().GetReport();
+```
+
+`WindSimulation` 独占一个风场后端，统一配置、采样与材料更新前后的推进；切换先完成新场构造，失败保留原场。`WindTypes` 定义共享数据类型，两个数值求解器互不依赖。`FieldResponse` 集中维护玩法单位换算和移动死区，固体表面受风采样位于适配层。`GetWind()` / `GetPixelWind()` 只提供诊断视图，返回的引用不可跨风场重配置或关闭操作保存。
+
+旧 `SetForceDirection` / `FillForceDirection` / `SetCell` / `Fill` 将方向映射为 `3600 * direction`，以保持旧行为。直接编辑连续基础场后，`CellState::Force` 只保留最后一次旧接口写入的方向元数据；查询实际受力必须用 `GetForce`。`ReadState` / `PublishState` 仍只发布原格子状态，连续场不随材料或格子缓冲交换；F1 在帧首通过 `GetFieldVelocity = GetForce / 60` 生成独立渲染快照。旧的移动死区 ±30 和每步最多一邻格继续保留，没有新增物体速度积分或惯性。
+
+`PixelWindField` 以一像素一个压力单元、共享面速度构成 MAC 网格，支持每维 1～2048。非空材料是不可穿透固体；界面法向面速度为零，切向采用 free-slip 近似。外边界四边周期相接，与旧场保持相同拓扑；不是开放进出口或封闭世界边界。显式黏性扩散后执行半拉格朗日平流，内部步长满足每轴位移不超过0.5像素以及 `ν*dt <= 0.2`，每子步以双精度 PCG 投影到散度容差。`GetReport()` 提供 RMS/最大散度、迭代次数、子步数与 `Converged`；达到迭代上限不会伪报收敛。
+
+每个固定步开始及材料移动后同步障碍；固体内部的纯风采样为零，物体受风使用相邻暴露空气的平均速度。此版本将移动物体作为分步更新的静态几何，不实现移动壁面的排流、压力牵引或严格双向动量守恒。它适用于像素几何与静态流场对照；动态物体轨迹不应被当作物理真值。黏性上限100、松弛率上限100，风/脉冲分量上限1000；参数非法时保留原状态。
+
+ImGui Environment 面板的 **Wind strategy → Pixel reference (1:1)** 启用该基准并自动暂停，可用 **Step 1/60 second** 单步，或取消 **Pause simulation** 连续运行。切换/调整高度会重建风；R恢复原默认粗场和运行状态。逐像素 CPU 压力求解成本高，尤其狭缝，不承诺实时。
+
+```sh
+cmake --build build-cpu --target PixelBaselineTests PixelWindBenchmark -j4
+ctest --test-dir build-cpu --output-on-failure
+# 性能测量请使用 Release/RelWithDebInfo 或 -O2，而非 Debug 数字
+./build-cpu/bin/Debug/PixelWindBenchmark 64 48 4 /private/tmp/wind-samples.csv
+# 大尺度初始化（steps=0）；非空复杂场景推进可能很慢
+./build-cpu/bin/Debug/PixelWindBenchmark 1024 424 0
+```
+
+比较工具固定均匀初态，导出静态空场、整高单像素墙和单像素缝的求解成本、散度、固体面通量、旧粗场相对中心速度 RMSE，末尾可选参数导出逐像素 CSV。粗场使用有限阻力，reference 使用硬边界，误差包含模型差异，不是仅由分辨率引起的误差。`SetFaceVelocities` 支持确定的自定义 MAC 初态。测试另外验证离散 Fourier 黏性衰减、纯梯度投影和时间步细化。
+
+设计比较与实际证据见 [设计报告](Docs/PixelWindDesignReport.docx)、[实现与审查记录](.awtcontext/GlobalDoc/PixelWindBaseline.md)。数值参考：[Bridson / Müller-Fischer, Fluid Simulation](https://www.cs.ubc.ca/~rbridson/fluidsimulation/)。
+
+
+## 可切换风场策略（首版）
+
+Environment 面板的 **Wind strategy** 可在六个版本间切换。切换重建该风场的内部状态，保留材料、基础力场及其他外力；不是保存并恢复每个版本的运行进度。关闭再开启保留所选策略，R 恢复默认粗 NS。Reference、自适应 NS 和 CPU LBM 选中后自动暂停，建议单步观察。
+
+| 策略 | 实现与首版边界 |
+|---|---|
+| Coarse NS | 保留原粗 MAC 网格、方向性泥土阻力与实际运动反馈 |
+| Pixel reference (1:1) | 保留逐像素 MAC + PCG baseline，用于对照 |
+| Procedural + obstacles | 随时间连续变化的剪切阵风、脉冲及像素障碍近邻减速/偏转/尾流；没有全局压力求解 |
+| Coarse NS + local model | 粗 NS 保留传播历史与泥土反馈，局部模型只修正采样，不将同一阻力再次反馈 |
+| Adaptive NS (CPU prototype) | 混合障碍块递归细分，统一有限体积共享面通量与 PCG 压力，上风动量输运；首阶、叶内常量采样，数值扩散较强 |
+| LBM D2Q9 (CPU prototype) | 逐像素 BGK 碰撞与周期 streaming、固体 bounce-back；弱可压缩，尚无 GPU 后端 |
+
+```cpp
+pixel::WindStrategySettings settings;
+settings.Kind = pixel::WindStrategyKind::Hybrid;
+settings.Local.Radius = 6;
+world.ConfigureWindStrategy(424, settings);
+auto air = world.SampleWind(512.5f, 200.5f); // 纯空气速度，不含重力
+world.AddBaseForce(512, 200, {0, 120});      // 独立外力，切换风场不会清除
+auto total = world.GetForce(512, 200);       // 基础场 + 材料受风贡献
+```
+
+`WindStrategy` 仅管理空气模拟、几何同步和空气/材料表面采样；`WindSimulation` 事务式独占策略。`ForceField` 不引用风类型，`FieldResponse` 负责单位换算，Environment 合成受力。新增策略需实现该接口、在 `MakeWindStrategy` 注册并补充选择项，数值求解不进入 World 或引擎。旧 `ConfigureWind`、`ConfigurePixelWind` 和诊断接口继续可用；`GetWind()` 仅诊断旧粗场，跨策略纯风查询使用 `SampleWind()`。
+
+新模型均使用周期外边界；非空材料作为新模型的障碍。程序化/混合的局部作用半径为 1～32 像素，使用近似最近障碍距离，不保证无散、精确无穿透或孔洞通风。自适应方案保留像素几何，粗细面共享通量，但中心连线近似、首阶输运及重网格会引入误差；报告的散度是共享面通量散度，不是显示采样向量的散度。密集碎片可能细化到接近全像素，当前不设截断细化预算。三种硬障碍模型将移动物体按分步静态几何处理，没有移动壁面的排流与总动量守恒。
+
+LBM 默认风速为 `(30,0)`、阵风 10，使用自己的低马赫数参数，并非其他版本默认 `(90,0)`、阵风 60。固定 lattice 时间默认 1/600 秒，初始 lattice 速度上限 0.2；`tau` 下限 0.51，面板报告实际黏性。脉冲/演化中平衡分布速度受限，负分布恢复至平衡分布并累计 `Stabilizations`，发生恢复时不可视为未经修正的物理解。静态障碍可检验空气质量守恒；编辑障碍会移除或补入空气。CPU LBM 与复杂自适应场不保证实时。
+
+```sh
+cmake --build build-cpu --target PixelWindStrategyTests
+ctest --test-dir build-cpu --output-on-failure
+cmake --build build-runtime --target PixelWindStrategyBenchmark
+./build-runtime/bin/RelWithDebInfo/PixelWindStrategyBenchmark 64 4
+./build-runtime/bin/RelWithDebInfo/PixelWindStrategyBenchmark 1024 1 skip-reference
+```
+
+比较工具使用相同低速均匀初态、静态空域/整高薄墙/单像素缝，计时包括策略的几何同步与反馈，不包括材料运动、渲染和 GPU。版本编号依次为表中 0～5；不适用的诊断值为 -1。单次测量仅作成本样本，不能当作等精度或完整游戏性能比较。实现、测试和审查记录见 [风场策略首版](.awtcontext/GlobalDoc/WindStrategiesV1.md)。

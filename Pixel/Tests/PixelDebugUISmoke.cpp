@@ -62,6 +62,19 @@ void Click(GameEngine &engine, ImVec2 p, int mods = 0) {
     engine.GetPlatform()->OnButtonCallback(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, mods);
     Draw(engine, 2);
 }
+void SelectWindStrategy(GameEngine &engine, int selected) {
+    const auto &style = ImGui::GetStyle();
+    const float text = ImGui::GetFontSize();
+    const float frame = text + 2 * style.FramePadding.y;
+    auto point = SliderPoint(.4f);
+    point.y += 2 * frame + 3 * text + 5 * style.ItemSpacing.y;
+    Click(engine, point);
+    const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
+    Require(!popups.empty() && popups.back().Window, "wind strategy combo did not open");
+    const auto *popup = popups.back().Window;
+    Click(engine, {popup->Pos.x + style.WindowPadding.x + 30,
+                   popup->Pos.y + style.WindowPadding.y + selected * (text + style.ItemSpacing.y) + text * .5f});
+}
 void SendKey(GameEngine &engine, int code, bool down, int mods = 0) {
     engine.GetPlatform()->OnKeyButtonCallback(code, 0, down ? GLFW_PRESS : GLFW_RELEASE, mods);
     Draw(engine, 2);
@@ -132,6 +145,22 @@ void RunPixelDebugUISmoke() {
             "editing UI placed/removed dirt or altered the base force field");
     Require(pixel->View.OriginPixels == originalOrigin, "typing in UI moved the gameplay view");
 
+    // Exercise the production combo with real input on a one-row wind domain;
+    // this avoids running the expensive reference while still checking switching.
+    EnterHeight(engine, "1023");
+    world.SetBaseForce(2, 2, {123, 456});
+    for (const int selected : {1, 2, 3, 4, 5, 0}) {
+        SelectWindStrategy(engine, selected);
+        Require(int(world.GetWindStrategyKind()) == selected && world.GetWindEndRow() == 1,
+                "production combo selected the wrong wind strategy");
+        Require(world.GetBaseForceField().Get(2, 2) == pixel::ForceVector{123, 456},
+                "UI strategy switch changed independent force storage");
+        Require(std::equal(original.begin(), original.end(), world.ReadState().Cells.begin()),
+                "strategy combo input changed materials");
+    }
+    world.SetBaseForce(2, 2, {0, 3600});
+    EnterHeight(engine, "600");
+
     // Unfocus by clicking outside the panel; world interaction must still work.
     auto *platform = engine.GetPlatform();
     pixel->View.OriginPixels = {0, 0};
@@ -169,5 +198,5 @@ void RunPixelDebugUISmoke() {
     engine.End();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
     app.Engine.reset();
-    std::cout << "Pixel ImGui Environment passed: live height, bounds, UI capture, F1/F2/reset, resize, 2D-only lifecycle\n";
+    std::cout << "Pixel ImGui Environment passed: six strategy selections, live height, bounds, UI capture, F1/F2/reset, resize, 2D-only lifecycle\n";
 }

@@ -36,6 +36,9 @@ class PixelGame final : public IGameInterface {
     std::array<bool, 4> Move{};
     float MovementRemainder = 0;
     bool ShowDebug = true;
+    pixel::WindStrategyKind WindKind = pixel::WindStrategyKind::Coarse;
+    bool PauseSimulation = false;
+    bool StepSimulation = false;
     pixel::WindSettings DebugWindSettings;
     void DrawDebugUI();
     void SetWindStartHeight(int height);
