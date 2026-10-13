@@ -14,6 +14,9 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <filesystem>
 #include <thread>
 
 namespace {
@@ -186,11 +189,172 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
         for (size_t c = 0; c < 3; ++c)
             Require(std::abs(int(after[pixel * 4 + c]) - int(std::lround(before[pixel * 4 + c] * tint.Values[c]))) <= 1, "post-process tint or sampling incorrect");
 }
+void WindVisualizationGpu() {
+    Axiom app;
+    app.Config = GameConfig::Load();
+    auto game = std::make_unique<PixelGame>();
+    WindVisualSettings settings;
+    settings.Mode = WindVisualMode::ShortTrails;
+    float time = .125f;
+    float velocity = 90;
+    float sky = .18f;
+    bool textured = false, character = false;
+    GridDisplayMode display = GridDisplayMode::Materials;
+    GridView2D view;
+    view.CellSizePixels = {8, 8};
+    view.OriginPixels = {64 * 8, 64 * 8};
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = setup.EnableUI = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi) {
+        auto render = std::make_unique<PixelRender>(rhi, Textures(), [&](WorldGridFrame &frame) {
+            frame.View = view;
+            frame.View.Background = {sky, sky, sky, 1};
+            frame.Wind = settings;
+            frame.WindTimeSeconds = time;
+            frame.HasWind = true; // Exercise shader calm handling as well as CPU early-out.
+            frame.DisplayMode = display;
+            frame.Character = character ? std::optional{CharacterDraw{{80, 80, 32, 64}, {1, .5f, .25f, 1}, {0, 1, .5f, 1}}} : std::nullopt;
+            for (uint32_t y = 0; y < Grid2D::Height; ++y)
+                for (uint32_t x = 0; x < Grid2D::Width; ++x) {
+                    const size_t i = size_t(y) * Grid2D::Width + x;
+                    // A fixed opaque square and calm lower band validate masks.
+                    const bool solid = x >= 84 && x < 92 && y >= 84 && y < 92;
+                    frame.Cells()[i] = display == GridDisplayMode::ForceField ? 0x8080FF : (solid ? 1 : (textured ? 1 + (x / 2 + y / 2) % 2 : 0));
+                    frame.WindCells()[i] = solid ? WindSolidTexel : PackWindVelocity(y >= 116 ? 0 : velocity, 0);
+                }
+        });
+        policy = render.get();
+        return render;
+    };
+    app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
+    auto &engine = *app.Engine;
+    engine.EngineInit(); engine.Begin();
+    auto capture = [&] {
+        const auto token = Draw(engine);
+        engine.GetRHI()->WaitIdle();
+        return std::pair{ReadColor(policy->WorldColor(token.Slot)), ReadColor(policy->SceneColor(token.Slot))};
+    };
+    auto changedPixels = [](const auto &a, const auto &b) {
+        size_t changed = 0;
+        for (size_t i = 0; i < a.size(); i += 4)
+            if (std::abs(int(a[i]) - int(b[i])) + std::abs(int(a[i + 1]) - int(b[i + 1])) + std::abs(int(a[i + 2]) - int(b[i + 2])) > 3) ++changed;
+        return changed;
+    };
+    const auto extent = engine.GetRHI()->GetPresentationExtent();
+    auto save = [&](const char *name, const std::vector<uint8_t> &rgba) {
+        const char *directory = std::getenv("PIXEL_WIND_CAPTURE_DIR");
+        if (!directory) return;
+        std::filesystem::create_directories(directory);
+        std::ofstream file(std::filesystem::path(directory) / name, std::ios::binary);
+        file << "P6\n" << extent.Width << ' ' << extent.Height << "\n255\n";
+        // Readback is linear RGBA8; encode sRGB for a faithful display preview.
+        for (size_t i = 0; i < rgba.size(); i += 4)
+            for (size_t c = 0; c < 3; ++c) {
+                const float linear = rgba[i + c] / 255.f;
+                const auto srgb = uint8_t(std::lround(255 * (linear <= .0031308f ? 12.92f * linear : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f)));
+                file.put(char(srgb));
+            }
+    };
+    for (auto mode : {WindVisualMode::ShortTrails, WindVisualMode::AirRefraction}) {
+        settings.Mode = mode;
+        settings.RefractionPixels = 12;
+        for (float background : {.04f, .5f, .95f}) {
+            sky = background;
+            auto [world, scene] = capture();
+            Require(changedPixels(world, scene) > 500, "wind invisible on a flat dark/grey/bright background");
+            for (uint32_t y = 0; y < extent.Height; ++y)
+                for (uint32_t x = 0; x < extent.Width; ++x) {
+                    const bool solid = x >= 160 && x < 224 && y >= 160 && y < 224;
+                    const bool calm = y >= 424; // Includes a one-cell guard beyond the boundary.
+                    if (!solid) {
+                        const size_t i = (size_t(y) * extent.Width + x) * 4;
+                        Require(std::abs(int(scene[i]) - int(scene[i + 1])) <= 1 && std::abs(int(scene[i + 1]) - int(scene[i + 2])) <= 1,
+                                "refraction bilinear footprint pulled coloured solid into neutral air");
+                    }
+                    if (solid || calm)
+                        for (size_t c = 0; c < 4; ++c)
+                            Require(scene[(size_t(y) * extent.Width + x) * 4 + c] == world[(size_t(y) * extent.Width + x) * 4 + c], "wind alters solid or calm pixels");
+                }
+            if (background == .04f) save(mode == WindVisualMode::ShortTrails ? "trails.ppm" : "refraction.ppm", scene);
+        }
+        sky = .18f;
+        time = .125f;
+        auto first = capture().second;
+        time += 1.f / 120;
+        auto next = capture().second;
+        Require(changedPixels(first, next) > 100, "wind animation is static");
+        // A uniform +X field must transport the pattern to the right.
+        auto error = [&](int shift) {
+            uint64_t total = 0;
+            for (uint32_t y = 24; y < std::min(144u, extent.Height); ++y)
+                for (uint32_t x = 24; x < std::min(600u, extent.Width - 24); ++x) {
+                    const size_t a = (size_t(y) * extent.Width + x) * 4;
+                    const size_t b = (size_t(y) * extent.Width + x + shift) * 4;
+                    total += uint64_t(std::abs(int(first[a]) - int(next[b])));
+                }
+            return total;
+        };
+        Require(error(1) < error(-1), "wind moves against positive X velocity");
+        Require(capture().second == next, "unchanged time is not deterministic across frame slots");
+        velocity = 0;
+        auto calm = capture();
+        Require(calm.first == calm.second, "zero wind produces an effect");
+        velocity = -90;
+        first = capture().second;
+        time += 1.f / 120;
+        next = capture().second;
+        Require(error(-1) < error(1), "negative wind moves in the wrong direction");
+        settings.MotionScale = .02f;
+        for (float speed : {10.f, 90.f}) {
+            velocity = speed;
+            time = .5f;
+            first = capture().second;
+            time += .125f;
+            next = capture().second;
+            Require(error(1) < error(-1), "slow flow reverses during phase crossfade");
+        }
+        settings.MotionScale = 0;
+        first = capture().second;
+        time += .5f;
+        Require(capture().second == first, "zero motion scale animates wind");
+        settings.MotionScale = .2f;
+        velocity = 90;
+    }
+    settings.Mode = WindVisualMode::AirRefraction;
+    textured = true;
+    settings.RefractionPixels = 0;
+    auto noDisplacement = capture().second;
+    settings.RefractionPixels = 8;
+    auto refracted = capture().second;
+    Require(changedPixels(noDisplacement, refracted) > 500, "refraction never displaces scene colour");
+    textured = false;
+    character = true;
+    auto composed = capture().second;
+    for (const auto point : {std::array{90u, 88u, 255u, 128u, 64u}, std::array{90u, 120u, 0u, 255u, 128u}})
+        for (size_t c = 0; c < 3; ++c)
+            Require(std::abs(int(composed[(size_t(point[1]) * extent.Width + point[0]) * 4 + c]) - int(point[c + 2])) <= 1, "wind distorts the foreground character");
+    character = false;
+    settings.Mode = WindVisualMode::Off;
+    auto off = capture(); Require(off.first == off.second, "Off differs from original scene");
+    settings.Mode = WindVisualMode::AirRefraction;
+    settings.Opacity = 0;
+    off = capture(); Require(off.first == off.second, "zero opacity differs from original scene");
+    settings.Opacity = .3f;
+    display = GridDisplayMode::ForceField;
+    off = capture(); Require(off.first == off.second, "F1 is affected by wind appearance");
+    display = GridDisplayMode::Materials;
+    view.OriginPixels = {-100000, -100000};
+    off = capture(); Require(off.first == off.second, "wind appears outside world bounds");
+    engine.End(); app.Engine.reset();
+    std::cout << "Wind GPU visualization passed: modes, signed motion, flat backgrounds, actual refraction, calm/solid/outside masks, characters, Off/F1 and frame slots\n";
+}
 void Lifecycle(int iteration) {
     Axiom app;
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
+    input->WindVisual.Mode = WindVisualMode::Off;
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
     input->GetWorld().GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
     input->Appearances = {{10, 1}, {20, 2}, {30, 3}};
@@ -406,6 +570,7 @@ void BasicWorldGameplay() {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
+    input->WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = false;
@@ -722,6 +887,7 @@ void ForceFieldDebugGameplay() {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
+    input->WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = setup.EnableUI = false;
@@ -887,6 +1053,7 @@ void ForceFieldDebugGameplay() {
 void RunPixelDebugUISmoke();
 int main() {
     try {
+        WindVisualizationGpu();
         BasicWorldGameplay();
         ForceFieldDebugGameplay();
         RunPixelDebugUISmoke();

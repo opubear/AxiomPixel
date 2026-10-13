@@ -39,6 +39,13 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     }
     if (frame.View.Background[3] != 1 || std::any_of(frame.View.Background.begin(), frame.View.Background.end(), [](float v) { return !std::isfinite(v) || v < 0 || v > 1; }) || std::any_of(frame.Post.Values.begin(), frame.Post.Values.end(), [](float v) { return !std::isfinite(v); }))
         throw std::invalid_argument("grid background must be opaque and rendering parameters finite");
+    if (uint32_t(frame.Wind.Mode) > uint32_t(WindVisualMode::AirRefraction) ||
+        !std::isfinite(frame.Wind.Opacity) || frame.Wind.Opacity < 0 || frame.Wind.Opacity > 1 ||
+        !std::isfinite(frame.Wind.RefractionPixels) || frame.Wind.RefractionPixels < 0 || frame.Wind.RefractionPixels > 12 ||
+        !std::isfinite(frame.Wind.MotionScale) || frame.Wind.MotionScale < 0 || frame.Wind.MotionScale > 2 ||
+        !std::isfinite(frame.WindTimeSeconds) || frame.WindTimeSeconds < 0 || frame.WindTimeSeconds >= 4096 ||
+        (frame.HasWind && frame.WindCells.size() != Grid2D::CellCount))
+        throw std::invalid_argument("invalid wind visual snapshot or parameters");
     if (frame.Character) {
         const auto &character = *frame.Character;
         const auto finite = [](const auto &values) {

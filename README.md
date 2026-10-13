@@ -247,3 +247,20 @@ cmake --build build-runtime --target PixelWindStrategyBenchmark
 ```
 
 比较工具使用相同低速均匀初态、静态空域/整高薄墙/单像素缝，计时包括策略的几何同步与反馈，不包括材料运动、渲染和 GPU。版本编号依次为表中 0～5；不适用的诊断值为 -1。单次测量仅作成本样本，不能当作等精度或完整游戏性能比较。实现、测试和审查记录见 [风场策略首版](.awtcontext/GlobalDoc/WindStrategiesV1.md)。
+
+### 风场可视化：短轨迹与空气折光
+
+`Pixel Debug → Wind appearance → Visualization` 可选 `Off`、`Short trails`、`Air refraction`（默认）。
+`Visibility` 调可见度，`Refraction` 调背景折光量（framebuffer 像素），`Flow motion` 调视觉流速；均不改变风场物理。`Flow motion = 0` 冻结流纹，暂停模拟也会冻结动画。R 重置世界与动画时间，保留外观参数。
+
+默认风只覆盖高度 600 以上，玩家出生位置附近是无风区。近距离试用可在 Environment 将 `Wind start height` 改为 `512`；也可按 F3 进入自由相机，用 W 向上进入风区。F1 是独立的合成力场诊断，不叠加风效。
+
+渲染顺序为 **世界 → 风效 → 人物 → 后处理 → UI**。短轨迹使用细软尾迹；空气折光使用更宽的柔和遮罩和少量中性明暗提示，使纯色天空仍可读。人物最后合成，固体与世界之外不显示风，折光的每个双线性采样点也会排除固体。
+
+`BuildWindVisualFrame` 通过 `World::SampleWind` 读取纯空气速度（不含重力），逐格发布 1024×1024 的 `R32UInt` 纹理快照：X/Y 各 signed 16-bit，量化单位 1/32 格/秒，范围 ±1023.96875；`0x80008000` 为固体标记。每个启用帧增加 4 MiB 上传，各 frame slot 独占风纹理、上传缓冲和颜色目标。Off、零可见度、无风、F1 跳过风 Pass。Pixel 专用实现均在本仓库，引擎源代码没有改动。
+
+这是瞬时场的流动近似：双层独立种子的回溯流纹沿局部场移动，速度经过视觉缩放与上限压缩；它不记录物质的真实历史路径。首版每帧全图 CPU 采样与上传，默认粗风场的独立本机测量约 7.6 ms/次（优化构建、Apple M5，非完整帧时间）；后续可优化为可见范围或低分辨率上传。
+
+验证：CPU CTest 9/9；`PixelRuntimeSmoke` 包含两模式、正反风向、低速相位交替、零运动倍率、深/中灰/亮背景、实际折光位移、固体采样边缘、人物、Off/F1 和 frame slot 切换。可设置 `PIXEL_WIND_CAPTURE_DIR` 保存 GPU 读回预览。当前机器 Vulkan validation layer 不可用，已运行像素读回与生命周期 smoke。
+
+完整设计见 `Docs/WindVisualizationSystemDesign.docx`。

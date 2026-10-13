@@ -13,6 +13,7 @@ void RunPixelFieldTests();
 void RunPixelWindTests();
 void RunPixelFieldViewTests();
 void RunPixelDirtWindTests();
+void RunPixelWindVisualTests();
 
 namespace {
 void Check(bool value, const char *reason) {
@@ -115,7 +116,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check(sets == 12 && images == 24 && samplers == 9, "descriptor pool is not sized from actual slots");
+        Check(sets == 21 && images == 36 && samplers == 12, "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -176,6 +177,18 @@ void InputValidation() {
     frame.View.Background[3] = 0.5f;
     Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
     frame.View = {};
+    frame.Wind.Mode = WindVisualMode(99);
+    Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
+    frame.Wind = {};
+    frame.HasWind = true;
+    Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
+    frame.HasWind = false;
+    frame.WindTimeSeconds = INFINITY;
+    Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
+    frame.WindTimeSeconds = 0;
+    frame.Wind.Opacity = NAN;
+    Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
+    frame.Wind = {};
     frame.Post.Values[0] = std::numeric_limits<float>::quiet_NaN();
     Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
 }
@@ -264,6 +277,57 @@ void CharacterComposition() {
     character.Bounds[0] = NAN;
     show = true;
     Reject([&] { policy.FrameBegin(); });
+    policy.Clear();
+}
+void WindComposition() {
+    MockRHI rhi;
+    WindVisualMode mode = WindVisualMode::ShortTrails;
+    GridDisplayMode display = GridDisplayMode::Materials;
+    bool character = true;
+    uint32_t velocity = PackWindVelocity(-25, 40);
+    PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &frame) {
+        frame.DisplayMode = display;
+        frame.Wind.Mode = mode;
+        frame.WindTimeSeconds = .125f;
+        frame.HasWind = true;
+        std::fill(frame.WindCells().begin(), frame.WindCells().end(), velocity);
+        frame.Character = character ? std::optional{CharacterDraw{{0, 0, 4, 8}, {1, 1, 1, 1}, {0, 1, 0, 1}}} : std::nullopt;
+    });
+    policy.Initialize();
+    std::array<const RHITexture *, 3> windImages{};
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        rhi.Commands.Token.Slot = slot;
+        policy.FrameBegin();
+        velocity = PackWindVelocity(300, -30);
+        policy.Draw();
+        const auto &copies = rhi.Commands.Copies;
+        Check(copies.size() == (slot == 0 ? 6 : 5), "wind texture not uploaded exactly once");
+        Check(copies.back().second.size() == Grid2D::UploadBytes, "incorrect wind upload size");
+        uint32_t packed;
+        std::memcpy(&packed, copies.back().second.data(), sizeof(packed));
+        Check(packed == PackWindVelocity(-25, 40), "Draw read live wind data");
+        windImages[slot] = copies.back().first;
+        const auto &constants = rhi.Commands.Constants;
+        Check(constants.size() == 4 && constants[1].size() == 48 && constants[2].size() == 64, "wind must precede character and post passes");
+        uint32_t shaderMode;
+        std::memcpy(&shaderMode, constants[1].data() + 24, sizeof(shaderMode));
+        Check(shaderMode == 1, "wind mode constant layout mismatch");
+        velocity = PackWindVelocity(-25, 40);
+    }
+    Check(windImages[0] != windImages[1] && windImages[1] != windImages[2], "wind uploads share in-flight textures");
+    mode = WindVisualMode::AirRefraction;
+    character = false;
+    policy.FrameBegin(); policy.Draw();
+    Check(rhi.Commands.Constants.size() == 3 && &policy.SceneColor(2) != &policy.WorldColor(2), "wind-only scene not selected");
+    rhi.Extent = {65, 49}; policy.OnPresentationChanged(); policy.FrameBegin(); policy.Draw();
+    Check(policy.SceneColor(2).Desc.Width == 65, "wind target resize failed");
+    mode = WindVisualMode::Off;
+    policy.FrameBegin(); policy.Draw();
+    Check(rhi.Commands.Copies.size() == 4 && rhi.Commands.Constants.size() == 2 && &policy.SceneColor(2) == &policy.WorldColor(2), "Off retains stale wind output");
+    mode = WindVisualMode::AirRefraction;
+    display = GridDisplayMode::ForceField;
+    policy.FrameBegin(); policy.Draw();
+    Check(rhi.Commands.Copies.size() == 4 && rhi.Commands.Constants.size() == 2, "wind affects F1 diagnostic pass");
     policy.Clear();
 }
 void FailedFrames() {
@@ -365,6 +429,8 @@ int main() {
         RunPixelWindTests();
         RunPixelFieldViewTests();
         RunPixelDirtWindTests();
+        RunPixelWindVisualTests();
+        WindComposition();
         FrameRecording();
         CharacterComposition();
         FailedFrames();

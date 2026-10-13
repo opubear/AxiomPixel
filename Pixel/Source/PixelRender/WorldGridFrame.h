@@ -1,5 +1,6 @@
 #pragma once
 
+#include "WindVisualFrame.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -48,23 +49,31 @@ struct WorldGridFrameView {
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
     std::optional<CharacterDraw> Character;
+    WindVisualSettings Wind;
+    float WindTimeSeconds = 0;
+    bool HasWind = false;
+    std::span<const uint32_t> WindCells;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
 class WorldGridFrame {
   public:
-    WorldGridFrame() : CellStorage(Grid2D::CellCount) {}
+    WorldGridFrame() : CellStorage(Grid2D::CellCount), WindStorage(Grid2D::CellCount) {}
     WorldGridFrame(const WorldGridFrame &) = delete;
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character}; }
+    std::span<uint32_t> WindCells() { return WindStorage; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage}; }
     GridView2D View;
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
     std::optional<CharacterDraw> Character;
+    WindVisualSettings Wind;
+    float WindTimeSeconds = 0;
+    bool HasWind = false;
 
   private:
-    std::vector<uint32_t> CellStorage;
+    std::vector<uint32_t> CellStorage, WindStorage;
 };
 // Layer zero is reserved for empty cells. Pixels contain tightly packed RGBA8,
 // in layer-major order; all layers share the same dimensions and sRGB encoding.

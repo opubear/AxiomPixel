@@ -34,10 +34,13 @@ class PixelRender final : public RenderPolicyInterface {
     struct FrameResources {
         std::array<std::unique_ptr<RHITexture>, Grid2D::PageCount> Data;
         std::unique_ptr<RHIUploadBuffer> Upload;
-        std::unique_ptr<RHITexture> Color, CharacterColor;
+        std::unique_ptr<RHITexture> Color, WindColor, CharacterColor, WindData;
+        std::unique_ptr<RHIUploadBuffer> WindUpload;
+        bool HasWind = false;
         bool HasCharacter = false;
         std::unique_ptr<RHIDescriptorSet> WorldSet;
         std::unique_ptr<RHIDescriptorSet> PostSet, CharacterSet, CharacterPostSet;
+        std::unique_ptr<RHIDescriptorSet> WindSet, WindPostSet, WindCharacterSet;
     };
     DynamicRHI &RHI;
     GridTextureCatalog Catalog;
@@ -50,7 +53,7 @@ class PixelRender final : public RenderPolicyInterface {
     std::unique_ptr<RHISampler> Sampler;
     std::unique_ptr<RHITexture> Materials;
     std::unique_ptr<RHIUploadBuffer> MaterialUpload;
-    std::unique_ptr<RHIPipeline> WorldPipeline, CharacterPipeline, PostPipeline;
+    std::unique_ptr<RHIPipeline> WorldPipeline, WindPipeline, CharacterPipeline, PostPipeline;
     std::unique_ptr<RHIDescriptorPool> Pool;
     std::vector<FrameResources> Frames;
     RHIPresentationExtent Extent{};
@@ -58,6 +61,7 @@ class PixelRender final : public RenderPolicyInterface {
     uint64_t FrameCount = 0;
     void CreateColorTargets();
     void RecordWorld(RHICommandList &commands, FrameResources &frame, const GridView2D &view, GridDisplayMode mode);
+    void RecordWind(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input);
     void RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character);
     void RecordPost(RHICommandList &commands, FrameResources &frame, const PostProcessParameters &parameters);
     void SetFullViewport(RHICommandList &commands);

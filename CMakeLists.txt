@@ -29,6 +29,7 @@ set(AXIOM_APPLICATION_SHADER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DFullscreen.Vert.slang"
     "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DWorldGrid.Frag.slang"
     "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DPostProcess.Frag.slang"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DCharacter.Frag.slang")
+    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DCharacter.Frag.slang"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DWind.Frag.slang")
 add_subdirectory(Axiom)
 add_subdirectory(Pixel)

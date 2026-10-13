@@ -21,6 +21,7 @@ add_library(PixelRender STATIC
     Source/Camera/Camera2D.cpp
     Source/PixelRender/PixelRender.cpp
     Source/PixelRender/WorldGridFrame.cpp
+    Source/PixelRender/WindVisualFrame.cpp
     Source/PixelRender/PixelWorldPresentation.cpp)
 target_include_directories(PixelRender PUBLIC Source "${AXIOM_ENGINE_DIR}/Source")
 target_link_libraries(PixelRender PUBLIC PixelWorld)
@@ -48,7 +49,7 @@ endif()
 if(BUILD_TESTING)
     add_library(PixelHeaderCompileCheck OBJECT Tests/HeaderCompileCheck.cpp)
     target_link_libraries(PixelHeaderCompileCheck PRIVATE PixelRender)
-    add_executable(PixelTests Tests/Pixel2DTests.cpp Tests/PixelWorldTests.cpp Tests/PixelFieldTests.cpp Tests/PixelWindTests.cpp Tests/PixelFieldViewTests.cpp Tests/PixelDirtWindTests.cpp)
+    add_executable(PixelTests Tests/Pixel2DTests.cpp Tests/PixelWorldTests.cpp Tests/PixelFieldTests.cpp Tests/PixelWindTests.cpp Tests/PixelFieldViewTests.cpp Tests/PixelDirtWindTests.cpp Tests/PixelWindVisualTests.cpp)
     target_link_libraries(PixelTests PRIVATE PixelRender)
     add_test(NAME Pixel.Cpu COMMAND PixelTests)
 endif()

@@ -23,3 +23,5 @@ Pixel默认显示ImGui Pixel Debug面板，Environment分组运行时设置从�
 Camera2D以世界格为单位保存双精度中心；标准模式速度为目标距离乘跟随系数（默认8/s），指数积分平滑追近角色，F3返回不瞬移。视口由相机中心、缩放和framebuffer生成；尺寸变化保留世界中心。调试面板可调Camera follow rate。
 
 角色合成使用未取整Camera中心与世界位置差，解析矩形的屏幕像素覆盖以支持亚像素移动；每个frame slot独立RGBA8合成目标，F1或无角色跳过该Pass，角色合成后再后处理和UI。
+
+风场可视化在世界与角色之间增加独立Pass，默认空气折光，可切短轨迹或关闭。Pixel表现层发布纯风速R32UInt快照，不包含重力；GPU通过局部回溯流纹表达方向和相对强度。固体与场外屏蔽，人物后绘制。参数与试用入口见README“风场可视化”章节，设计文档见GlobalDoc/DocIndex。

@@ -30,6 +30,7 @@ void PixelGame::ResetWorld() {
     ClearInputState();
     WindKind = pixel::WindStrategyKind::Coarse;
     PauseSimulation = StepSimulation = false;
+    WindVisualTime = 0;
     DebugWindSettings = {};
     World.ConfigureWind(Grid2D::Height - DefaultWindStartHeight, DebugWindSettings);
 }
@@ -57,6 +58,7 @@ std::function<void(WorldGridFrame &)> PixelGame::CreateFramePublisher() {
             BuildForceFieldFrame(World, frame);
         else
             BuildWorldGridFrame(snapshot->Read(), Appearances, frame);
+        BuildWindVisualFrame(World, WindVisual, float(std::fmod(WindVisualTime, 2.0)), frame);
         if (World.GetPlayer())
             BuildCharacterFrame(*World.GetPlayer(), Camera, FramebufferSize, frame);
     };
@@ -141,6 +143,16 @@ void PixelGame::DrawDebugUI() {
             if (ImGui::Checkbox("Field direction view (F1)", &fieldView))
                 DisplayMode = fieldView ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
         }
+        if (ImGui::CollapsingHeader("Wind appearance", ImGuiTreeNodeFlags_DefaultOpen)) {
+            int mode = int(WindVisual.Mode);
+            if (ImGui::Combo("Visualization", &mode, "Off\0Short trails\0Air refraction\0"))
+                WindVisual.Mode = WindVisualMode(mode);
+            ImGui::SliderFloat("Visibility", &WindVisual.Opacity, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Refraction", &WindVisual.RefractionPixels, 0.f, 12.f, "%.1f px", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Flow motion", &WindVisual.MotionScale, 0.f, 2.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::TextDisabled("Appearance only; wind physics is unchanged.");
+            ImGui::TextDisabled("Default wind is above height 600. F3: explore.");
+        }
         bool debugCamera = Mode == ControlMode::DebugCamera;
         if (ImGui::Checkbox("Free debug camera (F3)", &debugCamera))
             SetControlMode(debugCamera ? ControlMode::DebugCamera : ControlMode::Standard);
@@ -202,8 +214,12 @@ void PixelGame::Tick(float duration) {
         return;
     World.SetPlayerInput(Mode == ControlMode::Standard ? int(Move[3]) - int(Move[1]) : 0,
                          Mode == ControlMode::Standard && JumpRequested);
-    if (!PauseSimulation || StepSimulation)
-        World.Tick(StepSimulation ? 1.f / 60 : duration);
+    if (!PauseSimulation || StepSimulation) {
+        const float step = StepSimulation ? 1.f / 60 : std::min(duration, .25f);
+        World.Tick(step);
+        // Both shader phases have a two-second period, so this wrap is continuous.
+        WindVisualTime = std::fmod(WindVisualTime + step, 4096.0);
+    }
     JumpRequested = false;
     StepSimulation = false;
     const float cameraDuration = std::min(duration, 0.25f);

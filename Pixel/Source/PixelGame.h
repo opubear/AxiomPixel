@@ -35,6 +35,7 @@ class PixelGame final : public IGameInterface {
     void SetView(const GridView2D &view);
     const pixel::Camera2D &GetCamera() const { return Camera; }
     PostProcessParameters Post;
+    WindVisualSettings WindVisual;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
 
   private:
@@ -50,6 +51,7 @@ class PixelGame final : public IGameInterface {
     pixel::WindStrategyKind WindKind = pixel::WindStrategyKind::Coarse;
     bool PauseSimulation = false;
     bool StepSimulation = false;
+    double WindVisualTime = 0;
     pixel::WindSettings DebugWindSettings;
     void DrawDebugUI();
     void SetWindStartHeight(int height);

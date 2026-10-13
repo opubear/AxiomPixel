@@ -14,6 +14,7 @@ void ValidatePresentationWorld(pixel::WorldStateView world) {
 void BuildWorldGridFrame(pixel::WorldStateView world, const CellAppearanceTable &appearances, WorldGridFrame &output) {
     ValidatePresentationWorld(world);
     output.Character.reset();
+    output.HasWind = false;
     output.DisplayMode = GridDisplayMode::Materials;
     auto cells = output.Cells();
     for (size_t index = 0; index < world.Cells.size(); ++index) {
@@ -41,6 +42,7 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity) {
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
     ValidatePresentationWorld(world.ReadState());
     output.Character.reset();
+    output.HasWind = false;
     auto cells = output.Cells();
     for (uint32_t y = 0; y < Grid2D::Height; ++y)
         for (uint32_t x = 0; x < Grid2D::Width; ++x) {

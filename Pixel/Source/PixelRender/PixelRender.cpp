@@ -12,6 +12,20 @@ constexpr std::array WorldBindings{
     DescriptorRequirement{0, 4, ShaderDescriptorType::SAMPLED_IMAGE, 1},
     DescriptorRequirement{0, 5, ShaderDescriptorType::SAMPLER, 1},
 };
+constexpr std::array WindBindings{
+    DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
+    DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLED_IMAGE, 1},
+};
+struct WindConstants {
+    std::array<int32_t, 2> Origin;
+    std::array<uint32_t, 2> CellSize;
+    std::array<uint32_t, 2> Extent;
+    uint32_t Mode;
+    float Time;
+    float Opacity, RefractionPixels, MotionScale;
+    float Reserved = 0;
+};
+static_assert(sizeof(WindConstants) == 48 && offsetof(WindConstants, Opacity) == 32);
 constexpr std::array CharacterBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
 constexpr std::array PostBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
@@ -48,7 +62,7 @@ void PixelRender::Initialize() {
     if (!RHI.IsPresentationSRGB())
         throw std::runtime_error("2D rendering requires an sRGB presentation target");
     const uint32_t slots = RHI.GetFrameSlotCount();
-    if (!slots || slots > UINT32_MAX / 8)
+    if (!slots || slots > UINT32_MAX / 12)
         throw std::runtime_error("invalid RHI frame slot count");
     constexpr std::array<float, 8> vertices{-1, -1, 1, -1, 1, 1, -1, 1};
     constexpr std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
@@ -58,10 +72,12 @@ void PixelRender::Initialize() {
     Materials = RHI.CreateTexture({Catalog.Width, Catalog.Height, Catalog.Layers, RHITextureFormat::RGBA8SRGB, true, false});
     MaterialUpload = RHI.CreateUploadBuffer(Catalog.Pixels.size());
     MaterialUpload->Write(Catalog.Pixels);
-    Pool = RHI.CreateImageDescriptorPool(4 * slots, 8 * slots, 3 * slots);
+    Pool = RHI.CreateImageDescriptorPool(7 * slots, 12 * slots, 4 * slots);
     Frames.resize(slots);
     for (auto &frame : Frames) {
         frame.Upload = RHI.CreateUploadBuffer(Grid2D::UploadBytes);
+        frame.WindUpload = RHI.CreateUploadBuffer(Grid2D::UploadBytes);
+        frame.WindData = RHI.CreateTexture({Grid2D::Width, Grid2D::Height, 1, RHITextureFormat::R32UInt});
         for (auto &page : frame.Data)
             page = RHI.CreateTexture({Grid2D::Width, Grid2D::PageHeight, 1, RHITextureFormat::R32UInt});
     }
@@ -94,16 +110,23 @@ void PixelRender::CreateColorTargets() {
         frame.PostSet.reset();
         frame.CharacterSet.reset();
         frame.CharacterPostSet.reset();
+        frame.WindSet.reset();
+        frame.WindPostSet.reset();
+        frame.WindCharacterSet.reset();
+        frame.HasWind = false;
         frame.HasCharacter = false;
     }
     PostPipeline.reset();
     for (auto &frame : Frames) {
         frame.Color = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
+        frame.WindColor = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.CharacterColor = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
     }
     const auto &vertex = GetShaderInfo("Pixel2DFullscreen.vs");
     if (!WorldPipeline)
         WorldPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DWorldGrid.fs"), WorldBindings, Frames.front().Color.get(), sizeof(WorldConstants)});
+    if (!WindPipeline)
+        WindPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DWind.fs"), WindBindings, Frames.front().WindColor.get(), sizeof(WindConstants)});
     if (!CharacterPipeline)
         CharacterPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DCharacter.fs"), CharacterBindings, Frames.front().CharacterColor.get(), sizeof(CharacterDraw)});
     PostPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo(PostShader), PostBindings, nullptr, sizeof(PostProcessParameters)});
@@ -114,6 +137,12 @@ void PixelRender::CreateColorTargets() {
         frame.CharacterSet = RHI.CreateImageDescriptorSet(*Pool, *CharacterPipeline, characterBindings);
         const std::array compositeBindings{RHIImageBinding{0, frame.CharacterColor.get()}, RHIImageBinding{1, nullptr, Sampler.get()}};
         frame.CharacterPostSet = RHI.CreateImageDescriptorSet(*Pool, *PostPipeline, compositeBindings);
+        const std::array windBindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, frame.WindData.get()}};
+        frame.WindSet = RHI.CreateImageDescriptorSet(*Pool, *WindPipeline, windBindings);
+        const std::array windPostBindings{RHIImageBinding{0, frame.WindColor.get()}, RHIImageBinding{1, nullptr, Sampler.get()}};
+        frame.WindPostSet = RHI.CreateImageDescriptorSet(*Pool, *PostPipeline, windPostBindings);
+        const std::array windCharacterBindings{RHIImageBinding{0, frame.WindColor.get()}};
+        frame.WindCharacterSet = RHI.CreateImageDescriptorSet(*Pool, *CharacterPipeline, windCharacterBindings);
     }
 }
 void PixelRender::OnPresentationChanged() {
@@ -146,12 +175,29 @@ void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, c
     commands.EndPass();
     commands.TransitionTexture(*frame.Color, RHITextureState::FragmentSampledRead);
 }
+void PixelRender::RecordWind(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input) {
+    commands.TransitionTexture(*frame.WindData, RHITextureState::TransferDestination);
+    commands.CopyBufferToTexture(*frame.WindUpload, *frame.WindData);
+    commands.TransitionTexture(*frame.WindData, RHITextureState::FragmentSampledRead);
+    commands.TransitionTexture(*frame.WindColor, RHITextureState::ColorAttachment);
+    commands.BeginColorPass(*frame.WindColor);
+    SetFullViewport(commands);
+    commands.BindPipeline(*WindPipeline);
+    commands.BindDescriptorSet(*WindPipeline, *frame.WindSet, 0);
+    const WindConstants constants{input.View.OriginPixels, input.View.CellSizePixels, {Extent.Width, Extent.Height},
+                                  uint32_t(input.Wind.Mode), input.WindTimeSeconds,
+                                  input.Wind.Opacity, input.Wind.RefractionPixels, input.Wind.MotionScale};
+    commands.PushConstants(*WindPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
+    commands.DrawIndexed(6);
+    commands.EndPass();
+    commands.TransitionTexture(*frame.WindColor, RHITextureState::FragmentSampledRead);
+}
 void PixelRender::RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character) {
     commands.TransitionTexture(*frame.CharacterColor, RHITextureState::ColorAttachment);
     commands.BeginColorPass(*frame.CharacterColor);
     SetFullViewport(commands);
     commands.BindPipeline(*CharacterPipeline);
-    commands.BindDescriptorSet(*CharacterPipeline, *frame.CharacterSet, 0);
+    commands.BindDescriptorSet(*CharacterPipeline, frame.HasWind ? *frame.WindCharacterSet : *frame.CharacterSet, 0);
     commands.PushConstants(*CharacterPipeline, RHIShaderStage::Fragment, 0, sizeof(character), &character);
     commands.DrawIndexed(6);
     commands.EndPass();
@@ -161,7 +207,7 @@ void PixelRender::RecordPost(RHICommandList &commands, FrameResources &frame, co
     commands.BeginPresentPass();
     SetFullViewport(commands);
     commands.BindPipeline(*PostPipeline);
-    commands.BindDescriptorSet(*PostPipeline, frame.HasCharacter ? *frame.CharacterPostSet : *frame.PostSet, 0);
+    commands.BindDescriptorSet(*PostPipeline, frame.HasCharacter ? *frame.CharacterPostSet : (frame.HasWind ? *frame.WindPostSet : *frame.PostSet), 0);
     commands.PushConstants(*PostPipeline, RHIShaderStage::Fragment, 0, sizeof(parameters), &parameters);
     commands.DrawIndexed(6);
     if (Overlay)
@@ -176,6 +222,9 @@ void PixelRender::Draw() {
     auto &frame = Frames.at(token.Slot);
     const auto input = Published->Read();
     frame.Upload->Write(std::as_bytes(input.Cells));
+    frame.HasWind = input.HasWind && input.Wind.Mode != WindVisualMode::Off && input.Wind.Opacity > 0 && input.DisplayMode == GridDisplayMode::Materials;
+    if (frame.HasWind)
+        frame.WindUpload->Write(std::as_bytes(input.WindCells));
     frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
         if (!MaterialsUploaded) {
@@ -184,6 +233,8 @@ void PixelRender::Draw() {
             commands.TransitionTexture(*Materials, RHITextureState::FragmentSampledRead);
         }
         RecordWorld(commands, frame, input.View, input.DisplayMode);
+        if (frame.HasWind)
+            RecordWind(commands, frame, input);
         if (frame.HasCharacter)
             RecordCharacter(commands, frame, *input.Character);
         RecordPost(commands, frame, input.Post);
@@ -193,7 +244,7 @@ void PixelRender::Draw() {
 }
 const RHITexture &PixelRender::SceneColor(uint32_t slot) const {
     const auto &frame = Frames.at(slot);
-    return frame.HasCharacter ? *frame.CharacterColor : *frame.Color;
+    return frame.HasCharacter ? *frame.CharacterColor : (frame.HasWind ? *frame.WindColor : *frame.Color);
 }
 const RHITexture &PixelRender::WorldColor(uint32_t slot) const { return *Frames.at(slot).Color; }
 WorldGridFrameView PixelRender::PublishedFrame() const {
@@ -212,6 +263,7 @@ void PixelRender::Clear() {
     PostPipeline.reset();
     WorldPipeline.reset();
     CharacterPipeline.reset();
+    WindPipeline.reset();
     MaterialUpload.reset();
     Materials.reset();
     Sampler.reset();
