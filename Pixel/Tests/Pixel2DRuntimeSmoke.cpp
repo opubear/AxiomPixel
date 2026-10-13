@@ -198,7 +198,7 @@ void WindVisualizationGpu() {
     float time = .125f;
     float velocity = 90;
     float sky = .18f;
-    bool textured = false, character = false;
+    bool textured = false, character = false, opposing = false;
     GridDisplayMode display = GridDisplayMode::Materials;
     GridView2D view;
     view.CellSizePixels = {8, 8};
@@ -221,7 +221,8 @@ void WindVisualizationGpu() {
                     // A fixed opaque square and calm lower band validate masks.
                     const bool solid = x >= 84 && x < 92 && y >= 84 && y < 92;
                     frame.Cells()[i] = display == GridDisplayMode::ForceField ? 0x8080FF : (solid ? 1 : (textured ? 1 + (x / 2 + y / 2) % 2 : 0));
-                    frame.WindCells()[i] = solid ? WindSolidTexel : PackWindVelocity(y >= 116 ? 0 : velocity, 0);
+                    const float localVelocity = opposing && x < 100 ? -velocity : velocity;
+                    frame.WindCells()[i] = solid ? WindSolidTexel : PackWindVelocity(y >= 116 ? 0 : localVelocity, 0);
                 }
         });
         policy = render.get();
@@ -346,8 +347,30 @@ void WindVisualizationGpu() {
     display = GridDisplayMode::Materials;
     view.OriginPixels = {-100000, -100000};
     off = capture(); Require(off.first == off.second, "wind appears outside world bounds");
+    // Nonzero nearest texels can cancel exactly at the backtrace endpoint:
+    // visual speed = 36/23, age = 23/24, travel = 1.5 cells to x=100.
+    opposing = true;
+    velocity = 90;
+    sky = .18f;
+    view.CellSizePixels = {1, 1};
+    view.OriginPixels = {64, 64};
+    settings.MotionScale = .02f;
+    settings.Opacity = 1;
+    time = 115.f / 120;
+    for (auto mode : {WindVisualMode::ShortTrails, WindVisualMode::AirRefraction}) {
+        settings.Mode = mode;
+        const auto [world, scene] = capture();
+        for (uint32_t y = 0; y < extent.Height; ++y)
+            for (uint32_t x : {34u, 37u})
+                for (size_t c = 0; c < 3; ++c) {
+                    const size_t i = (size_t(y) * extent.Width + x) * 4 + c;
+                    // The other phase contributes less than one RGB8 level.
+                    Require(std::abs(int(scene[i]) - int(world[i])) <= 1,
+                            "opposing wind creates a streak at a calm backtrace endpoint");
+                }
+    }
     engine.End(); app.Engine.reset();
-    std::cout << "Wind GPU visualization passed: modes, signed motion, flat backgrounds, actual refraction, calm/solid/outside masks, characters, Off/F1 and frame slots\n";
+    std::cout << "Wind GPU visualization passed: modes, signed motion, flat backgrounds, actual refraction, calm/solid/outside masks, opposing-wind endpoints, characters, Off/F1 and frame slots\n";
 }
 void Lifecycle(int iteration) {
     Axiom app;

@@ -72,7 +72,11 @@ float AdvectedMask(float2 p, float age, float strength, uint layer) {
         field = ReadWind(int2(floor(q)));
         if (field.z < .01 || length(field.xy) < .03) return 0;
     }
-    return StreakMask(q, normalize(SampleWind(q).xy), strength, layer);
+    // Opposing nonzero texels can cancel in the final interpolated sample.
+    field = SampleWind(q);
+    float speed = length(field.xy);
+    if (field.z < .01 || speed < .03) return 0;
+    return StreakMask(q, field.xy / speed, strength, layer);
 }
 float4 SceneTap(int2 pixel, float4 fallback) {
     float2 world = (float2(Wind.Origin) + float2(pixel) + .5) / float2(Wind.CellSize);
