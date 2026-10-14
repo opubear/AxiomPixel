@@ -4,6 +4,16 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 `PixelWorld` 管理纯 CPU gameplay 状态；`PixelRender` 负责帧首发布后的映射、四图全量上传、世界Pass、独立角色合成Pass和后处理；
 `PixelGame` 直接实现 `IGameInterface`，入口通过 `RenderSetup` 注入渲染策略。
 
+## 构式系统（Formula）
+
+核心组合玩法正式命名为“构式（Formula）”，替代早期“法术”称呼（用户于 2026-10-13 确认）。构式是不可变、可嵌套的行为描述，修改器与装饰器的输出仍可作为下一节点输入；运行中弹体和效果指令属于独立执行状态。
+
+`Pixel/Formula` 已实现可独立构建的 C++20 文本 DSL、不可变 `Formula` 描述、60 Hz CPU 模拟器、CLI 与行为测试。架构为“文本解析 → 不可变描述 → 独立模拟执行 → 效果指令/事件日志”；支持命名复用、管道修改、顺序组合、延迟、重复、散射与命中子构式。外层修改器只进入命中载体，不进入 payload。当前命中由宿主显式注入，尚未接入实际 World、碰撞、伤害与渲染，也没有费用或执行预算。
+
+系统设计入口为 [构式系统](GlobalDoc/FormulaSystem.md)，当前实现契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，运行方法见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
+
+## 世界与现有玩法
+
 基础世界为 1024×1024 格，上 512 行蓝色空气、下 512 行棕褐色土块。
 左键放置、右键移除单格；每格 Force 保存空间受力方向，Environment 以固定步长按方向驱动土块并处理堆叠和碰撞。
 方向支持八邻域和静止。游戏高度自底向上：底部600格为向下重力场，600高度以上叠加简化二维NS风场，故512～600高度之间有88格稳定天空。

@@ -11,6 +11,7 @@
 | `Pixel/Source/main.cpp` | 向引擎注入游戏和渲染策略 |
 | `Pixel/Shader/` | Pixel 专用 Slang shader |
 | `Pixel/Tests/` | 世界与渲染 mock 测试、真实 GPU smoke |
+| `Pixel/Formula/` | 可独立构建的构式描述语言、不可变组合、CPU 模拟器和 CLI 原型 |
 | `Axiom/` | 独立管理的引擎、RHI、AET 和引擎测试 |
 
 世界为 1024×1024 格。游戏高度从底部向上计算，存储和渲染行号 `y` 从顶部向下计算，二者对应 `height = 1023 - y`。
@@ -110,6 +111,21 @@ B = 0.5
 调试模式跳过后处理调色，切回后恢复游戏的调色设置。颜色编码保留方向，不表示力的大小；低于移动死区的非零向量仍显示方向，不代表方块一定移动。颜色量化为 RGB8，最终屏幕通过已有 sRGB 输出流程显示。
 
 World 仅通过 `GetFieldVelocity(x,y)` 提供数值，颜色转换位于 PixelWorldPresentation。帧首采样并写入渲染拥有的快照，Draw 不读取实时 World/Wind。模式和数据一起发布，复用四张 R32UInt 数据纹理；普通模式存材质 ID，调试模式存 RGB8，不增加纹理数量或绘制 Pass。调试模式有额外的全世界采样与颜色转换开销，关闭后不执行该转换。
+
+## 构式（Formula）描述语言原型
+
+核心组合玩法与代码统一使用“构式（Formula）”。系统设计与状态见 [AWT 构式系统](.awtcontext/GlobalDoc/FormulaSystem.md)，当前四层架构见 [构式语言架构](.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
+
+独立子系统 `Pixel/Formula` 支持 `let` 复用、管道修改器、散射、延迟重复与命中子构式。它使用不可变的统一 `Formula` 描述，输出可检查的弹体、风和挖掘事件；当前不接入实际世界或渲染。
+
+```sh
+cmake -S Pixel/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-formula -j4
+ctest --test-dir build-formula --output-on-failure
+./build-formula/PixelFormulaDemo Pixel/Formula/Examples/impact_burst.formula --ticks 30 --hit-at 6
+```
+
+这个入口不依赖引擎或 GPU。语法、示例、作用域和原型边界见 [构式语言说明](Pixel/Formula/README.md)。`--hit-at` 显式注入模拟命中，便于观察子构式，不表示已经实现游戏碰撞。
 
 ## 构建和运行
 

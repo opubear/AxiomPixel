@@ -3,6 +3,10 @@
 | 文档名 | 路径 | 简介 | 状态 |
 |--------|------|------|------|
 | 风场可视化双模式 | `workspace:Docs/WindVisualizationSystemDesign.docx` | 纯风速GPU纹理、短轨迹/柔和折光、人物前合成、参数与验证 | 首版实现并独立审查通过 |
+| 构式系统（Formula System） | `FormulaSystem.md` | 正式命名、核心玩法、封闭组合、载体与子构式、世界接入方案、实现状态及后续路线 | 当前系统设计入口；区分已实现与提案 |
+| 构式语言架构（Formula DSL） | `FormulaLanguageArchitecture.md` | 语言/描述/执行/效果四层、不可变结构、调度、作用域、历史提案差异及验证依据 | 当前原型架构；未接游戏世界 |
+| 构式语言原型使用说明 | `workspace:Pixel/Formula/README.md` | 语法、参数、CLI、示例和构建测试入口；代码名已统一为 Formula | 原型已实现，未接游戏世界 |
+| 早期法术编程系统设计（历史提案） | `workspace:Docs/SpellProgrammingSystemDesign.docx` | 2026-10-12 原始完整设计；当前名称为构式，现行状态与规则见上方两份工程知识 | 保留 v0.1 历史依据，不作为实现完成声明 |
 | Astra 独立全代码审查（2026-10-05） | `CodeReview-Astra-2026-10-05.md` | 干净上下文 xhigh 审查 Pixel 与本地 Axiom，P2 Cross、P3 Quaternion；覆盖清单与独立验证证据 | 两项已修复，原 Astra 复核通过 |
 | 当前 Pixel 代码审查（2026-10-04） | `CodeReview-2026-10-04.md` | 全部 Pixel 代码与引擎集成审查，3 项 P2 缺陷、复现材料及修复验证 | F1–F3 已修复 |
 | devmain 兼容性复核 | `DevmainCompatibilityReview.md` | 原始分支失败证据与通用能力移植后的重新验证 | 已修复并通过验证 |

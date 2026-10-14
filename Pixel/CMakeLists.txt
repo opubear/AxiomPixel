@@ -1,3 +1,6 @@
+# The formula language can also be configured on its own with -S Pixel/Formula.
+add_subdirectory(Formula)
+
 # World remains usable without any engine, renderer, window or GPU dependency.
 add_library(PixelWorld STATIC
     Source/World/World.cpp
