@@ -6,6 +6,10 @@
 #include <stdexcept>
 
 namespace pixel {
+performance::MemoryUsage ProceduralWindField::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, Impulses);
+}
+
 ProceduralWindField::ProceduralWindField(uint32_t width, uint32_t height, const WindSettings &settings)
     : Width(width), Height(height), Settings(settings) {
     // Reuse the established settings contract without retaining an NS backend.

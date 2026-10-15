@@ -1,7 +1,9 @@
 #pragma once
 
+#include "Performance/MemoryUsage.h"
+
 #include "WindTypes.h"
-#include "WorldState.h"
+#include "World/WorldState.h"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -22,6 +24,8 @@ struct WindSettings {
 // directional projected blockage and a matching pressure solve. No renderer dependencies.
 class WindField {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     void Reset(uint32_t width, uint32_t endRow, const WindSettings &settings = {});
     void Clear() { *this = {}; }
     bool IsEnabled() const { return !Velocity.empty(); }

@@ -8,6 +8,10 @@
 #include <stdexcept>
 
 namespace pixel {
+performance::MemoryUsage LbmWindField::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, Solid, F, Next, Velocity);
+}
+
 namespace {
 constexpr std::array<int, 9> Cx{0, 1, 0, -1, 0, 1, -1, -1, 1};
 constexpr std::array<int, 9> Cy{0, 0, 1, 0, -1, 1, 1, -1, -1};

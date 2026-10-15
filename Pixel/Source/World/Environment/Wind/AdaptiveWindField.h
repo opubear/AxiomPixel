@@ -1,4 +1,6 @@
 #pragma once
+
+#include "Performance/MemoryUsage.h"
 #include "PixelWindField.h"
 
 namespace pixel {
@@ -11,6 +13,8 @@ struct AdaptiveWindSettings {
 // transport is first-order and cell-centred, not the reference MAC discretization.
 class AdaptiveWindField {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     AdaptiveWindField(WorldStateView world, uint32_t height, const AdaptiveWindSettings &settings);
     void SetObstacles(WorldStateView world);
     void Step(float seconds);

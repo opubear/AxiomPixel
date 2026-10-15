@@ -2,6 +2,10 @@
 #include <stdexcept>
 
 namespace pixel {
+performance::MemoryUsage WorldState::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, Cells);
+}
+
 namespace {
 size_t CheckedCellCount(uint32_t width, uint32_t height) {
     const uint64_t count = uint64_t(width) * height;

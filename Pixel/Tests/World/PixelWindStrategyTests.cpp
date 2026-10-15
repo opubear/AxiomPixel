@@ -21,6 +21,30 @@ WindStrategySettings Uniform(WindStrategyKind kind) {
     s.Coarse.Relaxation = s.Reference.Relaxation = s.Adaptive.Flow.Relaxation = s.Lbm.Relaxation = 0;
     return s;
 }
+void EmptyWindComparison() {
+    World empty(32, 24), disabled(32, 24);
+    empty.PlaceDirt(5, 5);
+    disabled.PlaceDirt(5, 5);
+    for (auto kind : Kinds) {
+        empty.ConfigureWindStrategy(20, Uniform(kind));
+        empty.ConfigureWindStrategy(20, WindStrategySettings{});
+        const auto &wind = empty.GetEnvironment().GetWindSimulation();
+        Check(wind.GetKind() == WindStrategyKind::Empty && wind.GetEndRow() == 20,
+              "empty strategy lost selection or comparison region");
+        Check(!wind.NeedsMaterialMotion() && !wind.GetCoarse().IsEnabled() &&
+                  !wind.GetReference().IsEnabled() && !wind.GetAdaptive() && !wind.GetLbm(),
+              "empty wind retained solver diagnostics or material feedback");
+        empty.AddWindImpulse(5, 5, 8, {100, -100});
+        empty.Tick(1.f / 60);
+        disabled.Tick(1.f / 60);
+        for (uint32_t y = 0; y < 24; ++y)
+            for (uint32_t x = 0; x < 32; ++x) {
+                Check(empty.SampleWind(x + .5f, y + .5f) == WindVelocity{}, "empty wind retained flow");
+                Check(empty.GetForce(x, y) == disabled.GetForce(x, y), "empty wind changed base force");
+                Check(empty.GetCell(x, y) == disabled.GetCell(x, y), "empty wind differs from disabled material movement");
+            }
+    }
+}
 void SwitchingAndForces() {
     World world(32, 24);
     world.FillBaseForce({123, 456});
@@ -204,6 +228,7 @@ void LbmMassAndWalls() {
 } // namespace
 int main() {
     try {
+        EmptyWindComparison();
         SwitchingAndForces();
         DeterminismAndGeometry();
         LocalModel();

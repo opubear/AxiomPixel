@@ -1,6 +1,6 @@
 # 简化 NS 风场
 
-实现位于 `Pixel/Source/World/WindField.*`，由 Environment 持有；使用纯 CPU 标准库，不修改引擎或渲染层。完整参数和使用示例见工程根 README 的“简化风场”章节。
+实现位于 `Pixel/Source/World/Environment/Wind/WindField.*`，由 Environment 持有；使用纯 CPU 标准库，不修改引擎或渲染层。完整参数和使用示例见工程根 README 的“简化风场”章节。
 
 ## 模型与更新
 
@@ -42,7 +42,7 @@
 
 ## 验证入口
 
-`Pixel/Tests/PixelWindTests.cpp` 覆盖原求解与移动；`PixelDirtWindTests.cpp` 覆盖占据尺度、遮挡旋转对称性、1024世界窄高土堆的堆顶偏转/迎风减速、静止减速/偏转、实际位移反馈、被挡住的块、增删重置、关闭和输入校验。`Pixel/Tests/Pixel2DRuntimeSmoke.cpp` 对比泥土团和默认风下4格宽高土堆与空天空的风速/方向，并读回F1图像。各轮实际证据由AWT对应任务维护。
+`Pixel/Tests/World/PixelWindTests.cpp` 覆盖原求解与移动；`PixelDirtWindTests.cpp` 覆盖占据尺度、遮挡旋转对称性、1024世界窄高土堆的堆顶偏转/迎风减速、静止减速/偏转、实际位移反馈、被挡住的块、增删重置、关闭和输入校验。`Pixel/Tests/Runtime/Pixel2DRuntimeSmoke.cpp` 对比泥土团和默认风下4格宽高土堆与空天空的风速/方向，并读回F1图像。各轮实际证据由AWT对应任务维护。
 
 ## 运行时调试面板
 

@@ -12,14 +12,15 @@ enum class WindStrategyKind { Coarse,
                               Procedural,
                               Hybrid,
                               Adaptive,
-                              Lbm };
+                              Lbm,
+                              Empty };
 struct LocalWindSettings {
     float Radius = 6; // Pixel neighbourhood; bounds both work and influence.
     float Deflection = 0.7f;
     float WakeStrength = 0.65f;
 };
 struct WindStrategySettings {
-    WindStrategyKind Kind = WindStrategyKind::Coarse;
+    WindStrategyKind Kind = WindStrategyKind::Empty;
     WindSettings Coarse;
     PixelWindSettings Reference;
     LocalWindSettings Local;
@@ -33,6 +34,10 @@ struct WindStrategySettings {
 class WindStrategy {
   public:
     virtual ~WindStrategy() = default;
+
+    // Includes the concrete adapter and every allocation retained by its solver.
+    virtual performance::MemoryUsage GetMemoryUsage() const = 0;
+
     virtual WindStrategyKind Kind() const = 0;
     virtual uint32_t GetEndRow() const = 0;
     virtual bool NeedsMaterialMotion() const { return false; }

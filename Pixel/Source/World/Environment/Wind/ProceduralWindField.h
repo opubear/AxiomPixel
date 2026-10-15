@@ -1,4 +1,6 @@
 #pragma once
+
+#include "Performance/MemoryUsage.h"
 #include "WindField.h"
 
 namespace pixel {
@@ -6,6 +8,8 @@ namespace pixel {
 // sampled velocity grid; geometry constraints are applied by the strategy.
 class ProceduralWindField {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     ProceduralWindField(uint32_t width, uint32_t height, const WindSettings &settings);
     void Step(float seconds);
     void AddImpulse(float x, float y, float radius, WindVelocity delta);

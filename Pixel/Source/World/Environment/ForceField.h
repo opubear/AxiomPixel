@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Performance/MemoryUsage.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -18,6 +20,10 @@ struct ForceVector {
 // motion never transports it. Callers decide when to clear transient sources.
 class ForceField {
   public:
+    performance::MemoryUsage GetMemoryUsage() const {
+        return performance::MeasureObject(*this, Values);
+    }
+
     ForceField(uint32_t width, uint32_t height) : Width(width), Height(height) {
         const uint64_t count = uint64_t(width) * height;
         if (!width || !height || count > Values.max_size())

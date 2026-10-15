@@ -1,4 +1,6 @@
 #pragma once
+
+#include "Performance/MemoryUsage.h"
 #include "WindStrategy.h"
 
 namespace pixel {
@@ -7,6 +9,8 @@ namespace pixel {
 // correct flux through narrow channels. Interior pixels create no extra wakes.
 class LocalWindGeometry {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     LocalWindGeometry(uint32_t width, uint32_t height, const LocalWindSettings &settings);
     void Update(WorldStateView world);
     bool IsSolid(uint32_t x, uint32_t y) const;

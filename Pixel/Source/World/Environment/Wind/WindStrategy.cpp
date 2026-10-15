@@ -26,8 +26,34 @@ WindVelocity SampleExposedAir(uint32_t width, uint32_t height, uint32_t x, uint3
     }
     return count ? WindVelocity{sum.X / count, sum.Y / count} : WindVelocity{};
 }
+// Keep the configured region for comparison, without solver or geometry storage.
+class EmptyWindStrategy final : public WindStrategy {
+  public:
+    performance::MemoryUsage GetMemoryUsage() const override {
+        return performance::MeasureObject(*this);
+    }
+
+    explicit EmptyWindStrategy(uint32_t endRow) : EndRow(endRow) {}
+    WindStrategyKind Kind() const override { return WindStrategyKind::Empty; }
+    uint32_t GetEndRow() const override { return EndRow; }
+    void AdvanceBeforeMaterials(WorldStateView, float) override {}
+    void UpdateAfterMaterials(WorldStateView, std::span<const DirtMotion>, float) override {}
+    void AddImpulse(float, float, float, WindVelocity) override {}
+    WindVelocity Sample(float, float) const override { return {}; }
+    WindVelocity SampleForMaterial(uint32_t, uint32_t) const override { return {}; }
+
+  private:
+    uint32_t EndRow;
+};
+
 class CoarseWindStrategy final : public WindStrategy {
   public:
+    performance::MemoryUsage GetMemoryUsage() const override {
+        auto usage = performance::MeasureObject(*this);
+        usage.AddEmbedded(Wind.GetMemoryUsage());
+        return usage;
+    }
+
     CoarseWindStrategy(uint32_t width, uint32_t height, const WindSettings &settings) { Wind.Reset(width, height, settings); }
     WindStrategyKind Kind() const override { return WindStrategyKind::Coarse; }
     uint32_t GetEndRow() const override { return Wind.GetEndRow(); }
@@ -44,6 +70,12 @@ class CoarseWindStrategy final : public WindStrategy {
 };
 class ReferenceWindStrategy final : public WindStrategy {
   public:
+    performance::MemoryUsage GetMemoryUsage() const override {
+        auto usage = performance::MeasureObject(*this);
+        usage.AddEmbedded(Wind.GetMemoryUsage());
+        return usage;
+    }
+
     ReferenceWindStrategy(WorldStateView world, uint32_t height, const PixelWindSettings &settings) {
         Wind.Reset(world.Width, height, settings);
         Wind.SetObstacles(world);
@@ -70,6 +102,12 @@ class ReferenceWindStrategy final : public WindStrategy {
 template <class Solver, WindStrategyKind kind>
 class SolidWindStrategy final : public WindStrategy {
   public:
+    performance::MemoryUsage GetMemoryUsage() const override {
+        auto usage = performance::MeasureObject(*this);
+        usage.AddEmbedded(Wind.GetMemoryUsage());
+        return usage;
+    }
+
     template <class Settings>
     SolidWindStrategy(WorldStateView world, uint32_t height, const Settings &settings) : Wind(world, height, settings) {}
     WindStrategyKind Kind() const override { return kind; }
@@ -117,6 +155,13 @@ class LocalWindStrategy : public WindStrategy {
 };
 class ProceduralWindStrategy final : public LocalWindStrategy {
   public:
+    performance::MemoryUsage GetMemoryUsage() const override {
+        auto usage = performance::MeasureObject(*this);
+        usage.AddEmbedded(Geometry.GetMemoryUsage());
+        usage.AddEmbedded(Wind.GetMemoryUsage());
+        return usage;
+    }
+
     ProceduralWindStrategy(WorldStateView world, uint32_t height, const WindStrategySettings &settings)
         : LocalWindStrategy(world, height, settings.Local), Wind(world.Width, height, settings.Coarse) {}
     WindStrategyKind Kind() const override { return WindStrategyKind::Procedural; }
@@ -133,6 +178,13 @@ class ProceduralWindStrategy final : public LocalWindStrategy {
 };
 class HybridWindStrategy final : public LocalWindStrategy {
   public:
+    performance::MemoryUsage GetMemoryUsage() const override {
+        auto usage = performance::MeasureObject(*this);
+        usage.AddEmbedded(Geometry.GetMemoryUsage());
+        usage.AddEmbedded(Wind.GetMemoryUsage());
+        return usage;
+    }
+
     HybridWindStrategy(WorldStateView world, uint32_t height, const WindStrategySettings &settings)
         : LocalWindStrategy(world, height, settings.Local) { Wind.Reset(world.Width, height, settings.Coarse); }
     WindStrategyKind Kind() const override { return WindStrategyKind::Hybrid; }
@@ -158,6 +210,8 @@ std::unique_ptr<WindStrategy> MakeWindStrategy(WorldStateView world, uint32_t en
     if (!world.Width || !endRow || endRow > world.Height)
         throw std::out_of_range("wind boundary is outside the world");
     switch (settings.Kind) {
+    case WindStrategyKind::Empty:
+        return std::make_unique<EmptyWindStrategy>(endRow);
     case WindStrategyKind::Coarse:
         return std::make_unique<CoarseWindStrategy>(world.Width, endRow, settings.Coarse);
     case WindStrategyKind::Reference:

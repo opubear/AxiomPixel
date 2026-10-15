@@ -7,11 +7,13 @@ namespace pixel {
 // coupling live in strategies, while Environment alone converts air into force.
 class WindSimulation {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     void Configure(WorldStateView world, uint32_t endRow, const WindStrategySettings &settings);
     void ConfigureCoarse(uint32_t width, uint32_t endRow, const WindSettings &settings);
     void ConfigureReference(WorldStateView world, uint32_t endRow, const PixelWindSettings &settings);
     void Clear() { Backend.reset(); }
-    WindStrategyKind GetKind() const { return Backend ? Backend->Kind() : WindStrategyKind::Coarse; }
+    WindStrategyKind GetKind() const { return Backend ? Backend->Kind() : WindStrategyKind::Empty; }
     bool UsesReference() const { return Backend && Backend->Kind() == WindStrategyKind::Reference; }
     bool NeedsMaterialMotion() const { return Backend && Backend->NeedsMaterialMotion(); }
     uint32_t GetEndRow() const { return Backend ? Backend->GetEndRow() : 0; }

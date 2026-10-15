@@ -1,20 +1,25 @@
 #pragma once
 
 #include "ForceField.h"
-#include "WindSimulation.h"
-#include "WorldState.h"
+#include "Wind/WindSimulation.h"
+#include "World/WorldState.h"
 #include <cstddef>
 #include <vector>
 
 namespace pixel {
 class World;
 
-// The per-cell force field belongs to spatial positions in World. Environment
-// adds optional simulated wind and moves material without transporting the field.
+// Owns spatial base forces and wind. Material movement never transports fields.
+// World owns this CPU-only environment and supplies material state for each step.
 class Environment {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
+    Environment(uint32_t width, uint32_t height);
+    ForceField &GetBaseForceField() { return BaseForces; }
+    const ForceField &GetBaseForceField() const { return BaseForces; }
     void Tick(float duration, World &world);
-    ForceVector SampleForce(ForceVector base, uint32_t x, uint32_t y) const;
+    ForceVector SampleForce(uint32_t x, uint32_t y) const;
     WindSimulation &GetWindSimulation() { return Wind; }
     const WindSimulation &GetWindSimulation() const { return Wind; }
 
@@ -24,6 +29,7 @@ class Environment {
         size_t Destination;
     };
     double TimeRemainder = 0;
+    ForceField BaseForces;
     WindSimulation Wind;
     // Reused between steps; contain indices only, never borrowed cell storage.
     std::vector<uint8_t> Processed;

@@ -1,7 +1,9 @@
 #pragma once
 
+#include "Performance/MemoryUsage.h"
+
 #include "WindTypes.h"
-#include "WorldState.h"
+#include "World/WorldState.h"
 #include <cstddef>
 
 namespace pixel {
@@ -28,6 +30,8 @@ struct WindSolveReport {
 // Geometry is frozen during each step; moving solids update at step boundaries.
 class PixelWindField {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     void Reset(uint32_t width, uint32_t endRow, const PixelWindSettings &settings = {});
     void Clear() { *this = {}; }
     bool IsEnabled() const { return !U.empty(); }

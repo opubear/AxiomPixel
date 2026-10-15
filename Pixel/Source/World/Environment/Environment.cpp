@@ -1,6 +1,7 @@
+#include "Performance/FrameProfiler.h"
 #include "Environment.h"
 #include "FieldResponse.h"
-#include "World.h"
+#include "World/World.h"
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -19,16 +20,29 @@ std::optional<size_t> ForceDestination(WorldStateView state, size_t source, cons
     return size_t(y) * state.Width + size_t(x);
 }
 } // namespace
-ForceVector Environment::SampleForce(ForceVector base, uint32_t x, uint32_t y) const {
-    return FieldResponse::AddWind(base, Wind.SampleForMaterial(x, y));
+performance::MemoryUsage Environment::GetMemoryUsage() const {
+    auto usage = performance::MeasureObject(*this, Processed, MovementChain, DirtMovements);
+    usage.AddEmbedded(BaseForces.GetMemoryUsage());
+    usage.AddEmbedded(Wind.GetMemoryUsage());
+
+    return usage;
+}
+
+Environment::Environment(uint32_t width, uint32_t height) : BaseForces(width, height) {
+    BaseForces.Fill(FieldResponse::FromDirection({0, 1}));
+}
+ForceVector Environment::SampleForce(uint32_t x, uint32_t y) const {
+    return FieldResponse::AddWind(BaseForces.Get(x, y), Wind.SampleForMaterial(x, y));
 }
 void Environment::Tick(float duration, World &world) {
+    PIXEL_PROFILE_SCOPE(Environment);
     if (!std::isfinite(duration) || duration <= 0)
         return;
     constexpr double stepSeconds = FieldResponse::StepSeconds;
     // Bound catch-up work after a pause; normal frame rates share the same speed.
     TimeRemainder += std::min(double(duration), 0.25);
     while (TimeRemainder >= stepSeconds) {
+        performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
         Wind.AdvanceBeforeMaterials(world.ReadState(), float(stepSeconds));
         StepForceField(world);
         Wind.UpdateAfterMaterials(world.ReadState(), DirtMovements, float(stepSeconds));
@@ -36,7 +50,9 @@ void Environment::Tick(float duration, World &world) {
     }
 }
 void Environment::StepForceField(World &world) {
+    PIXEL_PROFILE_SCOPE(MaterialStep);
     const auto state = world.ReadState();
+    performance::FrameProfiler::Count(performance::Counter::MaterialCells, state.Cells.size());
     DirtMovements.clear();
     Processed.assign(state.Cells.size(), 0);
     // Stable row-major priority resolves competing destinations deterministically.

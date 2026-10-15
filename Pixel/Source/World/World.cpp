@@ -1,5 +1,6 @@
+#include "Performance/FrameProfiler.h"
 #include "World.h"
-#include "FieldResponse.h"
+#include "Environment/FieldResponse.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -13,9 +14,17 @@ void ValidateForceDirection(ForceDirection direction) {
         throw std::invalid_argument("force direction must select a neighbouring cell or zero");
 }
 } // namespace
-World::World(uint32_t width, uint32_t height) : State(width, height), BaseForces(width, height) {
-    BaseForces.Fill(FieldResponse::FromDirection({0, 1}));
+performance::MemorySnapshot World::GetMemoryUsage() const {
+    auto total = performance::MeasureObject(*this);
+    total.AddEmbedded(State.GetMemoryUsage());
+    total.AddEmbedded(Environment.GetMemoryUsage());
+
+    const auto base = Environment.GetBaseForceField().GetMemoryUsage();
+    const auto wind = Environment.GetWindSimulation().GetMemoryUsage();
+    return {total.ExcludingEmbedded(base).ExcludingEmbedded(wind), base, wind};
 }
+
+World::World(uint32_t width, uint32_t height) : State(width, height), Environment(width, height) {}
 size_t World::CellIndex(uint32_t x, uint32_t y) const {
     if (x >= State.Width || y >= State.Height)
         throw std::out_of_range("cell coordinates are outside the world");
@@ -25,12 +34,12 @@ CellState World::GetCell(uint32_t x, uint32_t y) const { return State.Cells[Cell
 void World::SetCell(uint32_t x, uint32_t y, CellState cell) {
     ValidateForceDirection(cell.Force);
     State.Cells[CellIndex(x, y)] = cell;
-    BaseForces.Set(x, y, FieldResponse::FromDirection(cell.Force));
+    Environment.GetBaseForceField().Set(x, y, FieldResponse::FromDirection(cell.Force));
 }
 void World::Fill(CellState cell) {
     ValidateForceDirection(cell.Force);
     std::fill(State.Cells.begin(), State.Cells.end(), cell);
-    BaseForces.Fill(FieldResponse::FromDirection(cell.Force));
+    Environment.GetBaseForceField().Fill(FieldResponse::FromDirection(cell.Force));
 }
 void World::SetForceDirection(uint32_t x, uint32_t y, ForceDirection direction) {
     auto cell = GetCell(x, y);
@@ -41,7 +50,7 @@ void World::FillForceDirection(ForceDirection direction) {
     ValidateForceDirection(direction);
     for (auto &cell : State.Cells)
         cell.Force = direction;
-    BaseForces.Fill(FieldResponse::FromDirection(direction));
+    Environment.GetBaseForceField().Fill(FieldResponse::FromDirection(direction));
 }
 void World::RandomizeForceDirections(uint32_t endRow, uint32_t seed) {
     if (endRow > State.Height)
@@ -52,7 +61,7 @@ void World::RandomizeForceDirections(uint32_t endRow, uint32_t seed) {
     for (size_t index = 0; index < size_t(endRow) * State.Width; ++index) {
         const auto direction = directions[choose(random)];
         State.Cells[index].Force = direction;
-        BaseForces.Set(uint32_t(index % State.Width), uint32_t(index / State.Width), FieldResponse::FromDirection(direction));
+        Environment.GetBaseForceField().Set(uint32_t(index % State.Width), uint32_t(index / State.Width), FieldResponse::FromDirection(direction));
     }
 }
 void World::ConfigureWind(uint32_t endRow, const WindSettings &settings) {
@@ -69,7 +78,7 @@ void World::ConfigureWindStrategy(uint32_t endRow, const WindStrategySettings &s
     Environment.GetWindSimulation().Configure(ReadState(), endRow, settings);
 }
 ForceVector World::GetForce(uint32_t x, uint32_t y) const {
-    return Environment.SampleForce(BaseForces.Get(x, y), x, y);
+    return Environment.SampleForce(x, y);
 }
 WindVelocity World::GetFieldVelocity(uint32_t x, uint32_t y) const {
     return FieldResponse::MovementVelocity(GetForce(x, y));
@@ -83,7 +92,7 @@ void World::GenerateTerrain(uint32_t surfaceRow) {
         throw std::out_of_range("terrain surface is outside the world");
     Fill({});
     std::fill(State.Cells.begin() + size_t(surfaceRow) * State.Width, State.Cells.end(), CellState{CellTypes::Dirt});
-    Environment = {};
+    Environment = pixel::Environment(State.Width, State.Height);
     Player.reset();
     PlayerHorizontal = 0;
     PlayerJump = false;
@@ -103,6 +112,7 @@ bool World::RemoveDirt(uint32_t x, uint32_t y) {
     return true;
 }
 void World::PublishState(WorldState &destination) {
+    PIXEL_PROFILE_SCOPE(StateCopy);
     if (&destination == &State || destination.Width != State.Width || destination.Height != State.Height)
         throw std::invalid_argument("world publication requires distinct, equal-sized states");
     State.Cells.swap(destination.Cells);
@@ -124,8 +134,10 @@ void World::SetPlayerInput(int horizontal, bool jump) {
 }
 void World::Tick(float duration) {
     Environment.Tick(duration, *this);
-    if (Player)
+    if (Player) {
+        PIXEL_PROFILE_SCOPE(Character);
         Player->Tick(duration, ReadState(), PlayerHorizontal, PlayerJump);
+    }
     PlayerJump = false;
 }
 } // namespace pixel

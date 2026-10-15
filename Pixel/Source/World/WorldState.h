@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Performance/MemoryUsage.h"
+
 #include "CellType.h"
 #include <cstdint>
 #include <span>
@@ -29,6 +31,8 @@ struct WorldStateView {
 // across PublishState, which transfers the backing allocation to another owner.
 class WorldState {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     WorldState(uint32_t width, uint32_t height);
     WorldState(const WorldState &) = delete;
     WorldState &operator=(const WorldState &) = delete;

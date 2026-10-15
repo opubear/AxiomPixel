@@ -6,6 +6,10 @@
 #include <tuple>
 
 namespace pixel {
+performance::MemoryUsage AdaptiveWindField::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, Solid, Owner, Cells, Faces);
+}
+
 AdaptiveWindField::AdaptiveWindField(WorldStateView world, uint32_t height, const AdaptiveWindSettings &settings)
     : Width(world.Width), Height(height), Settings(settings) {
     if (!settings.BlockSize || settings.BlockSize > 32)

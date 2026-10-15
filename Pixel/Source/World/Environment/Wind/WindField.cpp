@@ -7,6 +7,10 @@
 #include <utility>
 
 namespace pixel {
+performance::MemoryUsage WindField::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, Velocity, Previous, Pressure, Divergence, DirtCoverage, DirtVelocitySum, DirtBlockage, PressureMobility, LastDirtRow, OccupiedColumns);
+}
+
 namespace {
 constexpr float InputSpeedLimit = 1000;
 bool ValidVelocity(WindVelocity velocity) {

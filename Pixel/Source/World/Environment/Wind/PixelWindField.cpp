@@ -6,6 +6,10 @@
 #include <stdexcept>
 
 namespace pixel {
+performance::MemoryUsage PixelWindField::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, U, V, NextU, NextV, Solid, OpenX, OpenY, SupportX, SupportY, Pressure, Residual, Direction, Product, Preconditioned, Diagonal);
+}
+
 namespace {
 bool Bounded(float value, float limit) { return std::isfinite(value) && std::abs(value) <= limit; }
 double Dot(const std::vector<double> &a, const std::vector<double> &b) {

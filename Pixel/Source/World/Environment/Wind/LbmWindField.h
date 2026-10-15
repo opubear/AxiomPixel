@@ -1,6 +1,8 @@
 #pragma once
+
+#include "Performance/MemoryUsage.h"
 #include "WindTypes.h"
-#include "WorldState.h"
+#include "World/WorldState.h"
 #include <array>
 
 namespace pixel {
@@ -23,6 +25,8 @@ struct LbmWindReport {
 // is weakly compressible and is not an incompressible reference or GPU backend.
 class LbmWindField {
   public:
+    performance::MemoryUsage GetMemoryUsage() const;
+
     LbmWindField(WorldStateView world, uint32_t height, const LbmWindSettings &settings);
     void SetObstacles(WorldStateView world);
     void Step(float seconds);

@@ -4,6 +4,10 @@
 #include <stdexcept>
 
 namespace pixel {
+performance::MemoryUsage LocalWindGeometry::GetMemoryUsage() const {
+    return performance::MeasureObject(*this, Solid, Nearest, Queue);
+}
+
 LocalWindGeometry::LocalWindGeometry(uint32_t width, uint32_t height, const LocalWindSettings &settings)
     : Width(width), Height(height), Settings(settings) {
     if (!width || !height || width > 2048 || height > 2048 || !std::isfinite(settings.Radius) || settings.Radius < 1 || settings.Radius > 32
