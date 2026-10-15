@@ -1,3 +1,4 @@
+#include "Performance/FrameProfiler.h"
 #include "PixelWorldPresentation.h"
 #include "World/World.h"
 #include <algorithm>
@@ -12,6 +13,7 @@ void ValidatePresentationWorld(pixel::WorldStateView world) {
 }
 } // namespace
 void BuildWorldGridFrame(pixel::WorldStateView world, const CellAppearanceTable &appearances, WorldGridFrame &output) {
+    PIXEL_PROFILE_SCOPE(Materials);
     ValidatePresentationWorld(world);
     output.Character.reset();
     output.HasWind = false;
@@ -40,6 +42,7 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity) {
 }
 
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
+    PIXEL_PROFILE_SCOPE(ForceColors);
     ValidatePresentationWorld(world.ReadState());
     output.Character.reset();
     output.HasWind = false;

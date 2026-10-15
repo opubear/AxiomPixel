@@ -1,3 +1,4 @@
+#include "Performance/FrameProfiler.h"
 #include "WorldGridFrame.h"
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,7 @@ void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
         throw std::invalid_argument("texture catalog requires equal-sized, tightly packed RGBA8 layers");
 }
 void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, uint32_t width, uint32_t height) {
+    PIXEL_PROFILE_SCOPE(Validation);
     if (frame.Cells.size() != Grid2D::CellCount || !layers || !width || !height)
         throw std::invalid_argument("grid frame requires 1024x1024 cells and a drawable viewport");
     constexpr auto maximum = std::numeric_limits<int32_t>::max();

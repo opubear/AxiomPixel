@@ -1,3 +1,4 @@
+#include "Performance/FrameProfiler.h"
 #include "PixelRender.h"
 #include "HAL/Shader/ShaderLibrary.h"
 #include <cstddef>
@@ -92,6 +93,7 @@ void PixelRender::Initialize() {
     Published = std::make_unique<WorldGridFrame>();
 }
 void PixelRender::FrameBegin() {
+    PIXEL_PROFILE_SCOPE(Publication);
     FrameReady = false;
     if (!Published)
         throw std::logic_error("2D policy must be initialized before publication");
@@ -158,6 +160,7 @@ void PixelRender::SetFullViewport(RHICommandList &commands) {
     commands.BindIndexBuffer(*Indices);
 }
 void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, const GridView2D &view, GridDisplayMode mode) {
+    PIXEL_PROFILE_SCOPE(WorldCommands);
     for (uint32_t page = 0; page < Grid2D::PageCount; ++page) {
         commands.TransitionTexture(*frame.Data[page], RHITextureState::TransferDestination);
         commands.CopyBufferToTexture(*frame.Upload, *frame.Data[page], page * Grid2D::PageBytes);
@@ -176,6 +179,7 @@ void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, c
     commands.TransitionTexture(*frame.Color, RHITextureState::FragmentSampledRead);
 }
 void PixelRender::RecordWind(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input) {
+    PIXEL_PROFILE_SCOPE(WindCommands);
     commands.TransitionTexture(*frame.WindData, RHITextureState::TransferDestination);
     commands.CopyBufferToTexture(*frame.WindUpload, *frame.WindData);
     commands.TransitionTexture(*frame.WindData, RHITextureState::FragmentSampledRead);
@@ -193,6 +197,7 @@ void PixelRender::RecordWind(RHICommandList &commands, FrameResources &frame, co
     commands.TransitionTexture(*frame.WindColor, RHITextureState::FragmentSampledRead);
 }
 void PixelRender::RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character) {
+    PIXEL_PROFILE_SCOPE(CharacterCommands);
     commands.TransitionTexture(*frame.CharacterColor, RHITextureState::ColorAttachment);
     commands.BeginColorPass(*frame.CharacterColor);
     SetFullViewport(commands);
@@ -204,6 +209,7 @@ void PixelRender::RecordCharacter(RHICommandList &commands, FrameResources &fram
     commands.TransitionTexture(*frame.CharacterColor, RHITextureState::FragmentSampledRead);
 }
 void PixelRender::RecordPost(RHICommandList &commands, FrameResources &frame, const PostProcessParameters &parameters) {
+    PIXEL_PROFILE_SCOPE(PostCommands);
     commands.BeginPresentPass();
     SetFullViewport(commands);
     commands.BindPipeline(*PostPipeline);
@@ -215,16 +221,23 @@ void PixelRender::RecordPost(RHICommandList &commands, FrameResources &frame, co
     commands.EndPass();
 }
 void PixelRender::Draw() {
+    PIXEL_PROFILE_SCOPE(Render);
     if (!FrameReady)
         throw std::logic_error("2D draw requires a successfully published frame");
     FrameReady = false;
     const auto token = RHI.GetActiveFrameToken();
     auto &frame = Frames.at(token.Slot);
     const auto input = Published->Read();
-    frame.Upload->Write(std::as_bytes(input.Cells));
     frame.HasWind = input.HasWind && input.Wind.Mode != WindVisualMode::Off && input.Wind.Opacity > 0 && input.DisplayMode == GridDisplayMode::Materials;
-    if (frame.HasWind)
-        frame.WindUpload->Write(std::as_bytes(input.WindCells));
+    {
+        PIXEL_PROFILE_SCOPE(Upload);
+        frame.Upload->Write(std::as_bytes(input.Cells));
+        pixel::performance::FrameProfiler::Count(pixel::performance::Counter::WorldUploadBytes, input.Cells.size_bytes());
+        if (frame.HasWind) {
+            frame.WindUpload->Write(std::as_bytes(input.WindCells));
+            pixel::performance::FrameProfiler::Count(pixel::performance::Counter::WindUploadBytes, input.WindCells.size_bytes());
+        }
+    }
     frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
         if (!MaterialsUploaded) {

@@ -1,0 +1,11 @@
+scenario,build,world,wind_strategy,warmup,samples,component,latest_used_bytes,latest_reserved_bytes,peak_reserved_bytes
+default,RelWithDebInfo,1024x1024,Empty,5,30,memory.world,13639808,13639824,13639824
+default,RelWithDebInfo,1024x1024,Empty,5,30,memory.fields,8388664,8388664,8388664
+default,RelWithDebInfo,1024x1024,Empty,5,30,memory.base_forces,8388640,8388640,8388640
+default,RelWithDebInfo,1024x1024,Empty,5,30,memory.wind,24,24,24
+default,RelWithDebInfo,1024x1024,Empty,5,30,memory.total,22028472,22028488,22028488
+paused,RelWithDebInfo,1024x1024,Empty,5,20,memory.world,12583056,12583056,12583056
+paused,RelWithDebInfo,1024x1024,Empty,5,20,memory.fields,8388664,8388664,8388664
+paused,RelWithDebInfo,1024x1024,Empty,5,20,memory.base_forces,8388640,8388640,8388640
+paused,RelWithDebInfo,1024x1024,Empty,5,20,memory.wind,24,24,24
+paused,RelWithDebInfo,1024x1024,Empty,5,20,memory.total,20971720,20971720,20971720
