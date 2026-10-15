@@ -1,8 +1,8 @@
-#include "PixelGame.h"
+#include "Application/PixelGame.h"
 #include "PixelRender/PixelRender.h"
-#include "World/Environment.h"
+#include "World/Environment/Environment.h"
 #include "World/World.h"
-#include "World/WindField.h"
+#include "World/Environment/Wind/WindField.h"
 #include <type_traits>
 
 static_assert(std::is_base_of_v<IGameInterface, PixelGame>);

@@ -3,7 +3,8 @@
 #include "HAL/Platform/PlatformInterface.h"
 #include "HAL/RenderHardwareInterface/RHIFactory.h"
 #include "InputManager.h"
-#include "PixelGame.h"
+#include "Application/PixelGame.h"
+#include "Application/PixelRuntime.h"
 #include "Render/RenderGlobalContext.h"
 #include "SystemEnum.h"
 #include "UI/Imgui/ImguiManager.h"
@@ -100,6 +101,34 @@ void EnterHeight(GameEngine &engine, const char *value) {
     SendKey(engine, GLFW_KEY_ENTER, true);
     SendKey(engine, GLFW_KEY_ENTER, false);
 }
+
+void CheckMemoryPanel(GameEngine &engine) {
+    auto *window = ImGui::FindWindowByName("Pixel Debug");
+    window->StateStorage.SetInt(window->GetID("Environment"), 0);
+    window->StateStorage.SetInt(window->GetID("Wind appearance"), 0);
+    window->StateStorage.SetInt(window->GetID("Performance"), 1);
+    Draw(engine, 2);
+
+    // Library-created games start with collection off. Click the production
+    // checkbox after the collapsed sections and the four camera-control rows.
+    const auto &style = ImGui::GetStyle();
+    const float text = ImGui::GetFontSize();
+    const float frame = text + 2 * style.FramePadding.y;
+    Click(engine, {window->Pos.x + style.WindowPadding.x + frame / 2,
+                   window->Pos.y + window->TitleBarHeight + style.WindowPadding.y
+                       + 5 * frame + 2 * text + 7 * style.ItemSpacing.y + frame / 2});
+
+    // The table appears only after actual frame-end memory has been collected
+    // and the normal half-second display refresh has consumed it.
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        Draw(engine);
+        const auto *table = ImGui::TableFindByID(window->GetID("Performance memory"));
+        if (table && table->LastFrameActive == ImGui::GetFrameCount())
+            return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    Require(false, "production memory table did not receive frame-end samples");
+}
 } // namespace
 
 void RunPixelDebugUISmoke() {
@@ -108,7 +137,7 @@ void RunPixelDebugUISmoke() {
     auto game = std::make_unique<PixelGame>();
     auto *pixel = game.get();
     pixel->SetControlMode(PixelGame::ControlMode::DebugCamera);
-    auto setup = game->CreateRenderSetup(); // Same composition as the real executable.
+    auto setup = CreatePixelRenderSetup(*game); // Same composition as the real executable.
     app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
     auto &engine = *app.Engine;
     engine.EngineInit();
@@ -119,7 +148,9 @@ void RunPixelDebugUISmoke() {
             "debug UI did not upload GPU geometry");
     Require(engine.GetImgui()->pushConstBlock.scale.X() > 0, "Pixel present pass did not record the UI overlay");
     auto &world = pixel->GetWorld();
-    Require(world.GetWind().GetEndRow() == 424, "UI changed the default 600 height before interaction");
+    Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty && world.GetWindEndRow() == 424,
+            "default UI must preserve empty wind and height 600");
+    SelectWindStrategy(engine, int(pixel::WindStrategyKind::Coarse));
     const auto state = world.ReadState();
     const std::vector<pixel::CellState> original(state.Cells.begin(), state.Cells.end());
     const auto originalOrigin = pixel->GetView().OriginPixels;
@@ -150,7 +181,7 @@ void RunPixelDebugUISmoke() {
     // this avoids running the expensive reference while still checking switching.
     EnterHeight(engine, "1023");
     world.SetBaseForce(2, 2, {123, 456});
-    for (const int selected : {1, 2, 3, 4, 5, 0}) {
+    for (const int selected : {1, 2, 3, 4, 5, 6, 0}) {
         SelectWindStrategy(engine, selected);
         Require(int(world.GetWindStrategyKind()) == selected && world.GetWindEndRow() == 1,
                 "production combo selected the wrong wind strategy");
@@ -180,7 +211,7 @@ void RunPixelDebugUISmoke() {
             "outside UI click did not reach gameplay");
     SendKey(engine, GLFW_KEY_F1, true);
     SendKey(engine, GLFW_KEY_F1, false);
-    Require(pixel->DisplayMode == GridDisplayMode::ForceField, "UI prevented F1 after losing focus");
+    Require(pixel->GetPresentation().DisplayMode == GridDisplayMode::ForceField, "UI prevented F1 after losing focus");
     SendKey(engine, GLFW_KEY_F2, true);
     SendKey(engine, GLFW_KEY_F2, false);
     Require(!ImGui::FindWindowByName("Pixel Debug")->Active, "F2 did not hide debug UI");
@@ -191,7 +222,8 @@ void RunPixelDebugUISmoke() {
     Click(engine, outside);
     SendKey(engine, GLFW_KEY_R, true);
     SendKey(engine, GLFW_KEY_R, false);
-    Require(world.GetWind().GetEndRow() == 424 && world.GetCell(0, 511).Type == pixel::CellTypes::Empty
+    Require(world.GetWindEndRow() == 424 && world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty
+                && world.GetCell(0, 511).Type == pixel::CellTypes::Empty
                 && world.GetCell(0, 512).Type == pixel::CellTypes::Dirt,
             "R did not restore default wind and terrain");
     const auto oldGeneration = engine.GetRHI()->GetSwapchainGeneration();
@@ -204,9 +236,10 @@ void RunPixelDebugUISmoke() {
     }
     Require(engine.GetRHI()->GetSwapchainGeneration() > oldGeneration, "debug UI resize did not recreate the swapchain");
     EnterHeight(engine, "512");
-    Require(world.GetWind().GetEndRow() == 512, "UI stopped working after resize");
+    Require(world.GetWindEndRow() == 512, "UI stopped working after resize");
+    CheckMemoryPanel(engine);
     engine.End();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
     app.Engine.reset();
-    std::cout << "Pixel ImGui Environment passed: six strategy selections, live height, bounds, UI capture, F1/F2/reset, resize, 2D-only lifecycle\n";
+    std::cout << "Pixel ImGui Environment passed: six strategy selections, live height, bounds, UI capture, F1/F2/reset, resize, memory collection/table, 2D-only lifecycle\n";
 }

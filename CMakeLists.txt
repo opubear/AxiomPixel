@@ -25,11 +25,6 @@ if(NOT EXISTS "${AXIOM_ENGINE_DIR}/Source/Render/RenderSetup.h")
     message(FATAL_ERROR "Axiom/ must contain the PixelMain engine checkout; see README.md")
 endif()
 
-set(AXIOM_APPLICATION_SHADER_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DFullscreen.Vert.slang"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DWorldGrid.Frag.slang"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DPostProcess.Frag.slang"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DCharacter.Frag.slang"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Pixel/Shader/Pixel2DWind.Frag.slang")
+include(Pixel/Shader/Sources.cmake)
 add_subdirectory(Axiom)
 add_subdirectory(Pixel)

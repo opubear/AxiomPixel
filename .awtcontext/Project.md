@@ -1,8 +1,11 @@
 # AxiomPixel
 
 AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
-`PixelWorld` 管理纯 CPU gameplay 状态；`PixelRender` 负责帧首发布后的映射、四图全量上传、世界Pass、独立角色合成Pass和后处理；
-`PixelGame` 直接实现 `IGameInterface`，入口通过 `RenderSetup` 注入渲染策略。
+`PixelWorld` 管理纯 CPU 世界，Environment 统一持有基础力场与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景、暂停及单步策略。
+`PixelInput` 的 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，直接调用游戏会话、表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
+`PixelPresentation` 管理相机、外观与帧首快照转换；`PixelRender` 消费快照完成上传、世界与角色及风效合成、后处理。PixelInput链接CPU表现模块，不链接运行时或ImGui。
+`Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 注入策略和 UI 叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。
+目录、构建依赖和维护入口见工程 README 与 [模块化系统设计](../Docs/Architecture/PixelModularDesign.docx)。测试按领域归入 `Pixel/Tests` 子目录，离线测量位于 `Pixel/Benchmarks`，各模块拥有自己的 CMakeLists。
 
 ## 构式系统（Formula）
 

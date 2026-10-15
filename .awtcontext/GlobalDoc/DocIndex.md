@@ -2,6 +2,9 @@
 
 | 文档名 | 路径 | 简介 | 状态 |
 |--------|------|------|------|
+| Pixel 模块化系统设计 | `workspace:Docs/Architecture/PixelModularDesign.docx` | Application、Gameplay、Input、Camera、表现与UI的状态归属；Environment统一风/力场，模块CMake和目录边界 | 当前实现设计 |
+| 游戏性能插桩与帧率分析 | `workspace:Docs/PerformanceProfiling.md` | 可复用CPU计时、Performance面板/CSV、Debug与优化构建对照及主要热点 | 已实现并实测 |
+| 世界与力场内存统计 | `workspace:Docs/MemoryProfiling.md` | 帧末所有权计量、size/capacity、七风策略、窗口峰值与默认/暂停实测；排除RSS、临时分配及渲染资源 | 已实现并实测 |
 | 风场可视化双模式 | `workspace:Docs/WindVisualizationSystemDesign.docx` | 纯风速GPU纹理、短轨迹/柔和折光、人物前合成、参数与验证 | 首版实现并独立审查通过 |
 | 构式系统（Formula System） | `FormulaSystem.md` | 正式命名、核心玩法、封闭组合、载体与子构式、世界接入方案、实现状态及后续路线 | 当前系统设计入口；区分已实现与提案 |
 | 构式语言架构（Formula DSL） | `FormulaLanguageArchitecture.md` | 语言/描述/执行/效果四层、不可变结构、调度、作用域、历史提案差异及验证依据 | 当前原型架构；未接游戏世界 |
@@ -17,4 +20,4 @@
 | 风场多尺度模拟方案评估 | `WindSimulationAlternatives.md` | 四类候选方案、推荐混合结构、现有求解器成本基线与原型验证计划 | 四类 CPU 首版已实现，GPU 与后续目标未实现 |
 | 逐像素力场与风场基准（2026-10-12） | `PixelWindBaseline.md` | 连续基础力场、1:1 MAC硬边界基准、误差/成本实验、代码审查与使用边界 | 已实现，验证记录见正文 |
 
-角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`PixelGame.*` 和 `PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests`，GPU模式/外观回归位于 `PixelRuntimeSmoke`。
+角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

@@ -5,7 +5,7 @@
 #include "HAL/Shader/ShaderLibrary.h"
 #include "HAL/Vulkan/VulkanRasterResources.h"
 #include "InputManager.h"
-#include "PixelGame.h"
+#include "Application/PixelGame.h"
 #include "PixelRender/PixelRender.h"
 #include "SystemEnum.h"
 #include <algorithm>
@@ -377,10 +377,10 @@ void Lifecycle(int iteration) {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
-    input->WindVisual.Mode = WindVisualMode::Off;
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
     input->GetWorld().GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
-    input->Appearances = {{10, 1}, {20, 2}, {30, 3}};
+    input->GetPresentation().Appearances = {{10, 1}, {20, 2}, {30, 3}};
     PixelRender *policy = nullptr;
     uint64_t publications = 0;
     const auto *initialStorage = input->GetWorld().ReadState().Cells.data();
@@ -392,7 +392,7 @@ void Lifecycle(int iteration) {
             expectedCells[size_t(y) * Grid2D::Width + x] = 1 + (x / 4 + y / 4) % 3;
             input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * expectedCells[size_t(y) * Grid2D::Width + x])});
         }
-    WorldGridFrameView expected{expectedCells, input->GetView(), input->Post};
+    WorldGridFrameView expected{expectedCells, input->GetView(), input->GetPresentation().Post};
     RenderSetup setup;
     setup.Enable3DScene = false;
     setup.EnableUI = false;
@@ -443,7 +443,7 @@ void Lifecycle(int iteration) {
             input->SetView(view);
         }
         expected.View = input->GetView();
-        expected.Post = input->Post;
+        expected.Post = input->GetPresentation().Post;
         const auto beforePublish = publications;
         auto token = Draw(engine);
         Require(publications == beforePublish + 1, "Ready frame did not publish exactly once");
@@ -469,7 +469,7 @@ void Lifecycle(int iteration) {
     input->GetWorld().Fill({pixel::CellTypeId::Dirt});
     std::fill(expectedCells.begin(), expectedCells.end(), 1);
     expected.View = input->GetView();
-    expected.Post = input->Post;
+    expected.Post = input->GetPresentation().Post;
     RHIFrameBeginResult delayed;
     for (int attempt = 0; attempt < 100 && !delayed.Ready; ++attempt) {
         engine.GetPlatform()->PollEvents();
@@ -519,7 +519,7 @@ void Lifecycle(int iteration) {
 
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
     engine.GetInput()->Dispatch();
-    Require(input->Post.Values[1] == 0.35f, "input without ImGui failed");
+    Require(input->GetPresentation().Post.Values[1] == 0.35f, "input without ImGui failed");
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_SPACE, 0, GLFW_RELEASE, 0);
     engine.GetInput()->Dispatch();
     const auto beforeMinimize = policy->SubmittedFrames();
@@ -539,7 +539,7 @@ void Lifecycle(int iteration) {
     input->GetWorld().Fill({static_cast<pixel::CellTypeId>(20)});
     std::fill(expectedCells.begin(), expectedCells.end(), 2);
     expected.View = input->GetView();
-    expected.Post = input->Post;
+    expected.Post = input->GetPresentation().Post;
     glfwRestoreWindow(engine.GetPlatform()->GetWindows());
     token = Draw(engine);
     engine.GetRHI()->WaitIdle();
@@ -554,7 +554,7 @@ void Lifecycle(int iteration) {
 }
 void VerifyDefaultWorldField(const pixel::World &world) {
     const auto state = world.ReadState();
-    Require(world.GetWind().IsEnabled(), "default world has no dynamic wind");
+    Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty, "default world must use empty wind");
     size_t stableAirCells = 0;
     for (uint32_t y = 0; y < state.Height; ++y)
         for (uint32_t x = 0; x < state.Width; ++x) {
@@ -570,11 +570,11 @@ void VerifyDefaultWorldField(const pixel::World &world) {
                     ++stableAirCells;
             }
         }
-    Require(world.GetWind().Sample(512.5f, 423.5f).X > 0, "wind does not reach height 600");
+    Require(world.SampleWind(512.5f, 423.5f) == pixel::WindVelocity{}, "default empty wind is not calm");
     Require(stableAirCells == size_t(600 - 512) * state.Width, "default world does not have 88 stable sky rows");
 }
 std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
-    if (!game.GetWorld().GetPlayer() || game.DisplayMode != GridDisplayMode::Materials)
+    if (!game.GetWorld().GetPlayer() || game.GetPresentation().DisplayMode != GridDisplayMode::Materials)
         return std::nullopt;
     const auto &player = *game.GetWorld().GetPlayer();
     int width, height;
@@ -593,13 +593,13 @@ void BasicWorldGameplay() {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
-    input->WindVisual.Mode = WindVisualMode::Off;
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = false;
     setup.EnableUI = false;
     setup.CreatePolicy = [&](DynamicRHI &rhi) {
-        auto result = std::make_unique<PixelRender>(rhi, PixelGame::MakeTextures(), input->CreateFramePublisher());
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
         policy = result.get();
         return result;
     };
@@ -623,9 +623,9 @@ void BasicWorldGameplay() {
             throw std::runtime_error("gameplay publication differs at frame=" + std::to_string(gameplayFrame)
                                      + " cell=" + std::to_string(mismatch.first - cells.begin())
                                      + " expected=" + std::to_string(*mismatch.second) + " actual=" + std::to_string(*mismatch.first));
-        VerifyColor({expectedCells, input->GetView(), input->Post}, policy->WorldColor(token.Slot), PixelGame::MakeTextures());
-        VerifyColor({expectedCells, input->GetView(), input->Post, GridDisplayMode::Materials, ExpectedCharacter(*input)},
-                    policy->SceneColor(token.Slot), PixelGame::MakeTextures());
+        VerifyColor({expectedCells, input->GetView(), input->GetPresentation().Post}, policy->WorldColor(token.Slot), pixel::GamePresentation::MakeTextures());
+        VerifyColor({expectedCells, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)},
+                    policy->SceneColor(token.Slot), pixel::GamePresentation::MakeTextures());
     };
     verify(); // GPU readback includes the two solid-colour character rectangles.
     // Reproduce a queued click sampled before a resize: FrameBegin has already
@@ -753,7 +753,8 @@ void BasicWorldGameplay() {
     for (int i = 0; i < 5; ++i)
         input->Tick(1.f / 60);
     verify();
-    // Observe a block in the actual default wind and verify the GPU publication.
+    // Explicitly enable coarse wind for the dynamic-wind GPU fixture.
+    world.ConfigureWind(424);
     const auto originalView = input->GetView();
     {
         auto view = input->GetView();
@@ -910,12 +911,12 @@ void ForceFieldDebugGameplay() {
     app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
-    input->WindVisual.Mode = WindVisualMode::Off;
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = setup.EnableUI = false;
     setup.CreatePolicy = [&](DynamicRHI &rhi) {
-        auto result = std::make_unique<PixelRender>(rhi, PixelGame::MakeTextures(), input->CreateFramePublisher());
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
         policy = result.get();
         return result;
     };
@@ -938,7 +939,7 @@ void ForceFieldDebugGameplay() {
     auto press = [&](Key key) { input->OnKeyEvent(key, 0, ButtonAction::ACTION_PRESS, Mod{}); };
     input->OnKeyEvent(Key::KEY_F1, 0, ButtonAction::ACTION_REPEAT, Mod{});
     input->OnKeyEvent(Key::KEY_F1, 0, ButtonAction::ACTION_RELEASE, Mod{});
-    Require(input->DisplayMode == GridDisplayMode::Materials, "F1 repeat/release changed the display mode");
+    Require(input->GetPresentation().DisplayMode == GridDisplayMode::Materials, "F1 repeat/release changed the display mode");
     press(Key::KEY_T);
     press(Key::KEY_F1);
     size_t debugFrame = 0;
@@ -972,16 +973,17 @@ void ForceFieldDebugGameplay() {
     press(Key::KEY_F1);
     const auto materialToken = Draw(engine);
     engine.GetRHI()->WaitIdle();
-    Require(policy->PublishedFrame().DisplayMode == GridDisplayMode::Materials && policy->PublishedFrame().Post.Values == input->Post.Values
-                && input->Post.Values[1] == 0.35f,
+    Require(policy->PublishedFrame().DisplayMode == GridDisplayMode::Materials && policy->PublishedFrame().Post.Values == input->GetPresentation().Post.Values
+                && input->GetPresentation().Post.Values[1] == 0.35f,
             "leaving debug view did not restore material mode and tint");
     for (size_t i = 0; i < expected.size(); ++i)
         expected[i] = initial[i].Type == pixel::CellTypes::Dirt ? 1 : 0;
-    VerifyColor({expected, input->GetView(), input->Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->SceneColor(materialToken.Slot), PixelGame::MakeTextures());
+    VerifyColor({expected, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->SceneColor(materialToken.Slot), pixel::GamePresentation::MakeTextures());
 
     press(Key::KEY_F1);
     press(Key::KEY_R);
-    Require(input->DisplayMode == GridDisplayMode::ForceField, "world reset unexpectedly disabled debug view");
+    world.ConfigureWind(424);
+    Require(input->GetPresentation().DisplayMode == GridDisplayMode::ForceField, "world reset unexpectedly disabled debug view");
     {
         auto view = input->GetView();
         view.CellSizePixels = {1, 1};
@@ -1040,6 +1042,7 @@ void ForceFieldDebugGameplay() {
     }
     verifyField(1);
     press(Key::KEY_R);
+    world.ConfigureWind(424);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     // A narrow stack rising from the terrain reproduces the reported case at
@@ -1064,6 +1067,7 @@ void ForceFieldDebugGameplay() {
     }
     verifyField(1);
     press(Key::KEY_R);
+    world.ConfigureWind(424);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     expected = ExpectedFieldColors(clearSky);

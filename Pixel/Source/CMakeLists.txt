@@ -1,0 +1,10 @@
+# Dependency order: measurement -> world -> gameplay -> presentation -> runtime.
+add_subdirectory(Performance)
+add_subdirectory(World)
+add_subdirectory(Gameplay)
+add_subdirectory(PixelRender)
+add_subdirectory(Input)
+if(AXIOM_BUILD_RUNTIME)
+    add_subdirectory(Debug)
+    add_subdirectory(Application)
+endif()

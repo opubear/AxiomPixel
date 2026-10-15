@@ -44,6 +44,13 @@ void RunPixelWindVisualTests() {
     const auto velocity = UnpackWindVelocity(snapshot.WindCells[5 * Grid2D::Width + 5]);
     Check(velocity == std::array{-32.f, 16.f}, "snapshot includes gravity or changes signs");
     Check(snapshot.WindCells[32 * Grid2D::Width] == 0, "wind leaks below region");
+    world.ConfigureWindStrategy(32, pixel::WindStrategySettings{});
+    BuildWindVisualFrame(world, settings, .5f, frame);
+    Check(!frame.HasWind && frame.Read().WindCells[5 * Grid2D::Width + 5] == 0 &&
+              frame.Read().WindCells[2 * Grid2D::Width + 2] == WindSolidTexel,
+          "empty wind must publish zero velocity and preserve the normal solid mask");
+    world.ConfigureWind(32, wind);
+    BuildWindVisualFrame(world, settings, .25f, frame);
     world.DisableWind();
     Check(frame.HasWind && frame.Read().WindCells[5 * Grid2D::Width + 5] == PackWindVelocity(-32, 16), "published wind retains mutable world storage");
     BuildWindVisualFrame(world, settings, .5f, frame);

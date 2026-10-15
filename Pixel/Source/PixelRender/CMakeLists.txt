@@ -1,0 +1,10 @@
+# CPU presentation and camera policy can be exercised without a renderer or GPU.
+add_library(PixelPresentation STATIC
+    ../Camera/Camera2D.cpp ../Camera/GameCamera.cpp
+    WorldGridFrame.cpp WindVisualFrame.cpp PixelWorldPresentation.cpp GamePresentation.cpp)
+target_include_directories(PixelPresentation PUBLIC "${AXIOM_ENGINE_DIR}/Source")
+target_link_libraries(PixelPresentation PUBLIC PixelGameplay)
+
+# Runtime supplies the real RHI backend; CPU tests supply mocks and shader lookup.
+add_library(PixelRender STATIC PixelRender.cpp)
+target_link_libraries(PixelRender PUBLIC PixelPresentation)
