@@ -22,7 +22,7 @@
 
 模块与各自的 `CMakeLists.txt` 放在一起，`Pixel/CMakeLists.txt` 只组织源码、测试、基准及独立 Formula 子系统。核心构建依赖为 `PixelGameplay → PixelWorld → PixelPerformance`；输入模块 `PixelInput` 依赖 `PixelPresentation` 及其游戏会话接口，在 CPU 上调用游戏和相机功能。`PixelPresentation` 完成相机和快照转换，`PixelRender` 使用 RHI 接口消费快照。只有应用和调试 UI 等运行时模块链接 AxiomRuntime 或 ImGui。具体设计见 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)。
 
-每帧保留引擎原有顺序：游戏帧首采样与视口更新 → 渲染快照发布 → 输入和游戏推进 → Draw 消费已发布数据 → 帧尾采样。引擎负责 ImGui 捕获、失焦与排队过滤，`PixelGame` 的输入接口只转发给 `GameInput`；按键分支、鼠标选格与编辑、模式清理和功能调用全部位于 `GameInput`。退出窗口、切换面板和读取 framebuffer 尺寸通过 `GameInputHost` 注入，输入模块不依赖引擎全局对象或 ImGui。模拟推进后由 `GameInput` 按控制模式调用相机跟随或平移，面板切换模式也使用同一输入入口。暂停冻结模拟及风动画、相机仍可移动；R 恢复世界和视角并保留控制模式与显示模式。每个发布器拥有独立 CPU 快照，Draw 不访问实时 World。
+每帧保留引擎原有顺序：游戏帧首采样与视口更新 → 渲染快照发布 → 输入和游戏推进 → Draw 消费已发布数据 → 帧尾采样。引擎负责 ImGui 捕获、失焦与排队过滤，`PixelGame` 的输入接口只转发给 `GameInput`；按键分支、鼠标选格与编辑、模式清理和功能调用全部位于 `GameInput`。退出窗口、切换面板和读取 framebuffer 尺寸通过 `GameInputHost` 注入，输入模块不依赖引擎全局对象或 ImGui。模拟推进后由 `GameInput` 按控制模式调用相机跟随或平移，面板切换模式也使用同一输入入口。启动及 R 重置后默认暂停模拟；在 **Pixel Debug → Environment** 取消勾选 **Pause simulation** 即可运行，也可用 **Step 1/60 second** 单步。暂停冻结模拟及风动画、相机仍可移动；R 恢复世界和视角并保留控制模式与显示模式。每个发布器拥有独立 CPU 快照，Draw 不访问实时 World。
 
 基础力场和风场统一由 `World::GetEnvironment()` 所指对象持有；材料只随模拟搬迁，不携带空间力场。`World` 保留原有编辑和采样入口，使旧调用方继续同步方向元数据与连续基础力。环境求解器放在同一个 `PixelWorld` 目标中，避免世界与环境相互依赖时产生构建环。本次整理不改变求解算法、shader、世界尺寸或引擎实现。
 
@@ -235,7 +235,7 @@ auto report = world.GetPixelWind().GetReport();
 
 每个固定步开始及材料移动后同步障碍；固体内部的纯风采样为零，物体受风使用相邻暴露空气的平均速度。此版本将移动物体作为分步更新的静态几何，不实现移动壁面的排流、压力牵引或严格双向动量守恒。它适用于像素几何与静态流场对照；动态物体轨迹不应被当作物理真值。黏性上限100、松弛率上限100，风/脉冲分量上限1000；参数非法时保留原状态。
 
-ImGui Environment 面板的 **Wind strategy → Pixel reference (1:1)** 启用该基准并自动暂停，可用 **Step 1/60 second** 单步，或取消 **Pause simulation** 连续运行。切换/调整高度会重建风；R恢复原默认粗场和运行状态。逐像素 CPU 压力求解成本高，尤其狭缝，不承诺实时。
+ImGui Environment 面板的 **Wind strategy → Pixel reference (1:1)** 启用该基准并自动暂停，可用 **Step 1/60 second** 单步，或取消 **Pause simulation** 连续运行。切换/调整高度会重建风；R恢复默认空风场和暂停状态。逐像素 CPU 压力求解成本高，尤其狭缝，不承诺实时。
 
 ```sh
 cmake --build build-cpu --target PixelBaselineTests PixelWindBenchmark -j4
@@ -275,7 +275,7 @@ world.AddBaseForce(512, 200, {0, 120});      // 独立外力，切换风场不�
 auto total = world.GetForce(512, 200);       // 基础场 + 材料受风贡献
 ```
 
-空风场保留所选高度（默认 600，即顶部 424 行），基础重力和材料运动继续运行。可在同一高度切换 Empty 与 Coarse NS 等策略进行有风/无风对照；高度 1024 仍表示关闭活动区域。`WindStrategySettings{}` 默认为空风场；显式调用旧 `ConfigureWind` 仍创建粗 NS。
+空风场保留所选高度（默认 600，即顶部 424 行），手动启用模拟后基础重力和材料运动继续运行。可在同一高度切换 Empty 与 Coarse NS 等策略进行有风/无风对照；高度 1024 仍表示关闭活动区域。`WindStrategySettings{}` 默认为空风场；显式调用旧 `ConfigureWind` 仍创建粗 NS。
 
 `WindStrategy` 仅管理空气模拟、几何同步和空气/材料表面采样；`WindSimulation` 事务式独占策略。`ForceField` 不引用风类型，`FieldResponse` 负责单位换算，Environment 合成受力。新增策略需实现该接口、在 `MakeWindStrategy` 注册并补充选择项，数值求解不进入 World 或引擎。旧 `ConfigureWind`、`ConfigurePixelWind` 和诊断接口继续可用；`GetWind()` 仅诊断旧粗场，跨策略纯风查询使用 `SampleWind()`。
 

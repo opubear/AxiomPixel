@@ -14,6 +14,7 @@ void Require(bool value, const char *message) {
 void SessionAndPublicationContracts() {
     pixel::GameSession session;
     auto &world = session.GetWorld();
+    Require(session.IsPaused(), "session must start paused");
     Require(world.GetWindEndRow() == 424 && world.GetPlayer(), "default scene changed");
     Require(&world.GetBaseForceField() == &world.GetEnvironment().GetBaseForceField(),
             "environment must own the world base field");
@@ -25,6 +26,7 @@ void SessionAndPublicationContracts() {
     session.SelectWindStrategy(pixel::WindStrategyKind::Empty);
     Require(world.SampleWind(12.5f, 12.5f) == pixel::WindVelocity{} && world.GetWindEndRow() == 424,
             "empty comparison must clear wind and preserve height");
+    Require(session.IsPaused(), "switching wind must not resume simulation");
     world.SetBaseForce(12, 12, {123, 456});
     session.SetWindStartHeight(1024);
     session.SetWindStartHeight(600);
@@ -84,8 +86,11 @@ void SessionAndPublicationContracts() {
     Require(frame.DisplayMode == GridDisplayMode::Materials && !frame.Character,
             "material publication must not retain removed character");
 
+    session.SetPaused(false);
+    session.Tick(1.f / 60, {});
+    Require(session.GetSimulationTime() > time, "explicit resume must advance simulation");
     session.Reset();
-    Require(!session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && world.GetPlayer(),
+    Require(session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && world.GetPlayer(),
             "reset must restore scene and simulation controls");
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty, "reset must restore empty wind");
     const auto resetForce = world.GetBaseForceField().Get(12, 12);

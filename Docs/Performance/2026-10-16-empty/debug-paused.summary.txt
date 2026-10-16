@@ -1,0 +1,42 @@
+Pixel CPU frame profile: build=Debug scenario=paused frames=120 warmup=30
+Wall clock CPU scopes; inclusive rows overlap. GPU execution is not measured.
+frame = active + preceding gap (pacing/events/acquire/skip). untracked includes present/UI/input outside scopes.
+stage,mean_ms,p95_ms,max_ms,self_ms_per_frame,calls_per_frame,ms_per_call
+frame,30.7324,31.2240,31.6593,0.0000,1.0000,30.7324
+frame.active,30.6385,30.8948,31.2363,0.0000,1.0000,30.6385
+frame.gap,0.0939,0.4573,0.9426,0.0939,1.0000,0.0939
+frame.untracked,0.0374,0.0490,0.0585,0.0374,1.0000,0.0374
+publish,30.3708,30.6079,30.8748,0.0021,1.0000,30.3708
+publish.state_copy,0.2262,0.2727,0.4680,0.2262,1.0000,0.2262
+publish.materials,13.1290,13.2764,13.3461,13.1290,1.0000,13.1290
+publish.force_colors,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+publish.wind_visual,12.3503,12.4623,12.5132,12.3503,1.0000,12.3503
+publish.validate,4.6631,4.7290,4.8231,4.6631,1.0000,4.6631
+game.tick,0.0006,0.0009,0.0013,0.0006,1.0000,0.0006
+world.environment,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+wind.advance,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+world.material_step,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+wind.feedback,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+world.character,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+render.cpu,0.2013,0.2426,0.2826,0.1221,1.0000,0.2013
+render.upload_write,0.0592,0.0669,0.0897,0.0592,1.0000,0.0592
+render.world_commands,0.0148,0.0193,0.0238,0.0148,1.0000,0.0148
+render.wind_commands,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+render.character_commands,0.0019,0.0021,0.0023,0.0019,1.0000,0.0019
+render.post_ui_commands,0.0033,0.0043,0.0048,0.0033,1.0000,0.0033
+ui.build,0.0285,0.0334,0.0390,0.0285,1.0000,0.0285
+simulation_steps_per_frame=0.0000
+material_cells_scanned_per_frame=0.0000
+wind_visual_cells_scanned_per_frame=1048576.0000
+world_upload_bytes_per_frame=4194304.0000
+wind_upload_bytes_per_frame=0.0000
+simulation_input_us_per_frame=30731.0583
+framebuffer_pixels_per_frame=1920000.0000
+Memory: frame-end retained CPU storage (sizeof + vector size/capacity). Excludes allocator overhead, transient allocations, render snapshots, GPU and process RSS.
+World excludes fields; fields = base_forces + wind; total = world + fields. Peak is the maximum sampled value in retained history, not an allocation high-water mark.
+component,samples,latest_used_bytes,latest_reserved_bytes,mean_used_bytes,mean_reserved_bytes,peak_reserved_bytes
+memory.world,120,12583056,12583056,12583056.0000,12583056.0000,12583056
+memory.fields,120,8388664,8388664,8388664.0000,8388664.0000,8388664
+memory.base_forces,120,8388640,8388640,8388640.0000,8388640.0000,8388640
+memory.wind,120,24,24,24.0000,24.0000,24
+memory.total,120,20971720,20971720,20971720.0000,20971720.0000,20971720

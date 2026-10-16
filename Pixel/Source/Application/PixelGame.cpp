@@ -18,7 +18,8 @@ PixelGame::PixelGame()
           }}) {}
 void PixelGame::ConfigurePerformanceCapture() {
     const auto scenario = Performance.ConfigureFromEnvironment();
-    Session.SetPaused(scenario == "paused" || scenario == "paused-no-wind-visual");
+    if (scenario == "paused" || scenario == "paused-no-wind-visual")
+        Session.SetPaused(true);
     if (scenario == "no-wind-visual" || scenario == "paused-no-wind-visual")
         Presentation.WindVisual.Mode = WindVisualMode::Off;
     if (scenario == "field")

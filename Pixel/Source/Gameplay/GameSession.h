@@ -25,7 +25,7 @@ class GameSession {
 
   private:
     World GameWorld{WorldWidth, WorldHeight};
-    bool Paused = false;
+    bool Paused = true;
     bool StepRequested = false;
     double SimulationTime = 0;
     WindStrategyKind WindKind = WindStrategyKind::Empty;

@@ -25,6 +25,8 @@ cmake --build build-runtime --target Pixel -j4
 | `PIXEL_PROFILE_CSV` | `pixel-performance.csv` | 输出路径，父目录必须存在；汇总保存到同路径加 `.summary.txt`，已有同名文件会覆盖 |
 | `PIXEL_PROFILE_SCENARIO` | `default` | `default`、`no-wind-visual`、`paused`、`paused-no-wind-visual`、`field` |
 
+游戏现默认暂停，`default`、`no-wind-visual` 和 `field` 均保留默认暂停状态；测量运行中的模拟需在面板手动取消暂停。历史运行态数据不能与新的默认采样直接比较。
+
 对照场景只设置启动时的模拟暂停、风效开关或 F1 视图，使用同一个生产游戏主循环。`no-wind-visual` 保留风物理，`paused` 保留快照/风效。捕获时不手动改配置或操作窗口；最小化、遮挡、其他程序负载均可能影响 wall time。自动模式禁用面板中的采样开关，正常环境设置仍可操作。CSV 每行一帧，保存每阶段的 inclusive/self ms、调用次数和原始计数；汇总保存构建类型与启动场景。
 
 ## 计时口径

@@ -11,7 +11,8 @@ void GameSession::Reset() {
     GameWorld.GenerateTerrain(WorldHeight - TerrainHeight);
     GameWorld.SpawnPlayer(WorldWidth / 2 - Character::Width / 2, WorldHeight - TerrainHeight - Character::Height);
     WindKind = WindStrategyKind::Empty;
-    Paused = StepRequested = false;
+    Paused = true;
+    StepRequested = false;
     SimulationTime = 0;
     SavedWindSettings = {};
     WindStrategySettings settings;
@@ -48,7 +49,8 @@ void GameSession::SetWindStartHeight(int height) {
 }
 void GameSession::SelectWindStrategy(WindStrategyKind kind) {
     WindKind = kind;
-    Paused = kind == WindStrategyKind::Reference || kind == WindStrategyKind::Adaptive || kind == WindStrategyKind::Lbm;
+    if (kind == WindStrategyKind::Reference || kind == WindStrategyKind::Adaptive || kind == WindStrategyKind::Lbm)
+        Paused = true;
     StepRequested = false;
     SetWindStartHeight(int(GameWorld.ReadState().Height - GameWorld.GetWindEndRow()));
 }

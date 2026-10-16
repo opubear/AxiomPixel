@@ -91,12 +91,12 @@ void CommandsAndReset() {
     f.KeyEvent(Key::KEY_PAGE_DOWN);
     Require(f.Camera.GetView().OriginPixels != view.OriginPixels, "debug mode must execute region shortcut");
     f.KeyEvent(Key::KEY_D);
-    f.Session.SetPaused(true);
+    f.Session.SetPaused(false);
     f.Session.GetWorld().RemoveDirt(20, 512);
     f.Camera.GetCamera().SetFollowRate(4);
     f.Framebuffer = {1600, 1200};
     f.KeyEvent(Key::KEY_R);
-    Require(!f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && f.Session.GetWorld().GetWindEndRow() == 424 &&
+    Require(f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && f.Session.GetWorld().GetWindEndRow() == 424 &&
                 f.Session.GetWorld().GetCell(20, 512).Type == pixel::CellTypes::Dirt,
             "R must reset simulation and terrain");
     Require(f.Input.GetControlMode() == pixel::ControlMode::DebugCamera && f.Presentation.DisplayMode == GridDisplayMode::ForceField,
