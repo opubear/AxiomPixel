@@ -2,5 +2,5 @@
 #include "Render/RenderSetup.h"
 
 class PixelGame;
-// Binds Pixel's render policy and UI overlay; publishing stops before game teardown.
+// Selects the 2D policy; the application supplies UI through the engine overlay callback.
 RenderSetup CreatePixelRenderSetup(PixelGame &game);

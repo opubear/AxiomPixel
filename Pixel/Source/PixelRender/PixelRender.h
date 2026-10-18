@@ -21,8 +21,6 @@ class PixelRender final : public RenderPolicyInterface {
     void Draw() override;
     void OnPresentationChanged() override;
     void Clear() override;
-    // Optional UI recording inside the present pass, after world post-processing.
-    void SetOverlay(std::function<void(RHICommandList &)> overlay) { Overlay = std::move(overlay); }
     uint64_t SubmittedFrames() const { return FrameCount; }
     uint64_t UploadedWorldBytes() const { return FrameCount * Grid2D::UploadBytes; }
     const RHITexture &SceneColor(uint32_t slot) const;
@@ -45,7 +43,6 @@ class PixelRender final : public RenderPolicyInterface {
     DynamicRHI &RHI;
     GridTextureCatalog Catalog;
     std::function<void(WorldGridFrame &)> Input;
-    std::function<void(RHICommandList &)> Overlay;
     std::unique_ptr<WorldGridFrame> Published;
     bool FrameReady = false;
     std::string PostShader;

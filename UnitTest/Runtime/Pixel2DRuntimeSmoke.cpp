@@ -1,7 +1,6 @@
-#include "Axiom.h"
+#include "PixelSmokeApplication.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
-#include "HAL/RenderHardwareInterface/RHIFactory.h"
 #include "HAL/Shader/ShaderLibrary.h"
 #include "HAL/Vulkan/VulkanRasterResources.h"
 #include "InputManager.h"
@@ -119,18 +118,19 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
         }
     }
 }
-RHIFrameToken Draw(GameEngine &engine) {
+RHIFrameToken Draw(Axiom &app) {
+    auto &engine = *app.Engine;
     for (int attempt = 0; attempt < 100; ++attempt) {
         engine.GetPlatform()->PollEvents();
-        const auto frame = engine.FrameBegin();
-        if (!frame.Ready) {
+        if (!app.FrameBegin()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
+        const auto token = engine.GetFrameState().Token;
         engine.GetInput()->Dispatch();
-        engine.Tick(0, frame.Token);
-        engine.FrameEnd(frame.Token);
-        return frame.Token;
+        app.Tick(0);
+        app.FrameEnd();
+        return token;
     }
     throw std::runtime_error("no drawable 2D frame");
 }
@@ -190,8 +190,6 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
             Require(std::abs(int(after[pixel * 4 + c]) - int(std::lround(before[pixel * 4 + c] * tint.Values[c]))) <= 1, "post-process tint or sampling incorrect");
 }
 void WindVisualizationGpu() {
-    Axiom app;
-    app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     WindVisualSettings settings;
     settings.Mode = WindVisualMode::ShortTrails;
@@ -205,8 +203,8 @@ void WindVisualizationGpu() {
     view.OriginPixels = {64 * 8, 64 * 8};
     PixelRender *policy = nullptr;
     RenderSetup setup;
-    setup.Enable3DScene = setup.EnableUI = false;
-    setup.CreatePolicy = [&](DynamicRHI &rhi) {
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto render = std::make_unique<PixelRender>(rhi, Textures(), [&](WorldGridFrame &frame) {
             frame.View = view;
             frame.View.Background = {sky, sky, sky, 1};
@@ -228,11 +226,12 @@ void WindVisualizationGpu() {
         policy = render.get();
         return render;
     };
-    app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
     auto &engine = *app.Engine;
-    engine.EngineInit(); engine.Begin();
+    app.Initialize(); app.Begin();
     auto capture = [&] {
-        const auto token = Draw(engine);
+        const auto token = Draw(app);
         engine.GetRHI()->WaitIdle();
         return std::pair{ReadColor(policy->WorldColor(token.Slot)), ReadColor(policy->SceneColor(token.Slot))};
     };
@@ -369,12 +368,10 @@ void WindVisualizationGpu() {
                             "opposing wind creates a streak at a calm backtrace endpoint");
                 }
     }
-    engine.End(); app.Engine.reset();
+    app.Shutdown();
     std::cout << "Wind GPU visualization passed: modes, signed motion, flat backgrounds, actual refraction, calm/solid/outside masks, opposing-wind endpoints, characters, Off/F1 and frame slots\n";
 }
 void Lifecycle(int iteration) {
-    Axiom app;
-    app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
@@ -395,8 +392,7 @@ void Lifecycle(int iteration) {
     WorldGridFrameView expected{expectedCells, input->GetView(), input->GetPresentation().Post};
     RenderSetup setup;
     setup.Enable3DScene = false;
-    setup.EnableUI = false;
-    setup.CreatePolicy = [&](DynamicRHI &rhi) {
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto publish = input->CreateFramePublisher();
         auto result = std::make_unique<PixelRender>(rhi, Textures(), [&, publish = std::move(publish)](WorldGridFrame &frame) {
             ++publications;
@@ -405,19 +401,20 @@ void Lifecycle(int iteration) {
         policy = result.get();
         return result;
     };
-    app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
     auto &engine = *app.Engine;
-    engine.EngineInit();
-    engine.Begin();
+    app.Initialize();
+    app.Begin();
     expected.View = input->GetView();
     Require(publications == 0, "world published before first Ready frame");
-    auto first = Draw(engine);
+    auto first = Draw(app);
     Require(publications == 1 && policy->PublishedFrame().Cells[0] == 1, "first frame did not publish initialized world");
     const auto *recycledStorage = input->GetWorld().ReadState().Cells.data();
     Require(initialStorage != recycledStorage, "first frame did not swap gameplay storage");
     engine.GetRHI()->WaitIdle();
     VerifyColor(expected, policy->SceneColor(first.Slot));
-    Require(!engine.GetScene() && !engine.GetImgui(), "2D initialized 3D scene or UI");
+    Require(!engine.GetScene() && !app.GetDebugUI(), "2D initialized 3D scene or UI");
     {
         auto view = input->GetView();
         view.Background = {.1f, .2f, .3f, 1};
@@ -445,7 +442,7 @@ void Lifecycle(int iteration) {
         expected.View = input->GetView();
         expected.Post = input->GetPresentation().Post;
         const auto beforePublish = publications;
-        auto token = Draw(engine);
+        auto token = Draw(app);
         Require(publications == beforePublish + 1, "Ready frame did not publish exactly once");
         Require(input->GetWorld().ReadState().Cells.data() == (publications % 2 ? recycledStorage : initialStorage), "gameplay storage did not alternate");
         const auto published = policy->PublishedFrame();
@@ -473,7 +470,8 @@ void Lifecycle(int iteration) {
     RHIFrameBeginResult delayed;
     for (int attempt = 0; attempt < 100 && !delayed.Ready; ++attempt) {
         engine.GetPlatform()->PollEvents();
-        delayed = engine.FrameBegin();
+        app.FrameBegin();
+        delayed = engine.GetFrameState();
         if (!delayed.Ready)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -485,14 +483,14 @@ void Lifecycle(int iteration) {
             "same-frame camera movement leaked into published view");
     input->GetWorld().SetCell(0, 0, {static_cast<pixel::CellTypeId>(20)});
     engine.GetInput()->Dispatch();
-    engine.Tick(0, delayed.Token);
-    engine.FrameEnd(delayed.Token);
+    app.Tick(0);
+    app.FrameEnd();
     Require(policy->PublishedFrame().Cells[0] == 1, "same-frame gameplay edit leaked into Render");
     engine.GetRHI()->WaitIdle();
     VerifyColor(expected, policy->SceneColor(delayed.Token.Slot));
     input->SetView(expected.View);
     expectedCells[0] = 2; // The edit after publication becomes visible only now.
-    const auto next = Draw(engine);
+    const auto next = Draw(app);
     Require(policy->PublishedFrame().Cells[0] == 2 && policy->PublishedFrame().Cells[1] == 1, "next frame lost new or persistent gameplay state");
     engine.GetRHI()->WaitIdle();
     VerifyColor(expected, policy->SceneColor(next.Slot));
@@ -503,7 +501,7 @@ void Lifecycle(int iteration) {
     glfwSetWindowSize(engine.GetPlatform()->GetWindows(), 640, 480);
     RHIFrameToken token{};
     for (int attempt = 0; attempt < 100; ++attempt) {
-        token = Draw(engine);
+        token = Draw(app);
         if (engine.GetRHI()->GetSwapchainGeneration() > generation)
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -531,7 +529,7 @@ void Lifecycle(int iteration) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     if (engine.GetPlatform()->IsWindowMinimized()) {
-        Require(!engine.FrameBegin().Ready, "minimized frame should be skipped");
+        Require(!app.FrameBegin(), "minimized frame should be skipped");
         Require(policy->SubmittedFrames() == beforeMinimize && publications == beforeSkipPublications && input->GetWorld().ReadState().Cells.data() == beforeSkipStorage, "minimized frame published/uploaded/submitted");
     } else {
         std::cout << "Minimize check skipped: window manager did not report iconification\n";
@@ -541,15 +539,14 @@ void Lifecycle(int iteration) {
     expected.View = input->GetView();
     expected.Post = input->GetPresentation().Post;
     glfwRestoreWindow(engine.GetPlatform()->GetWindows());
-    token = Draw(engine);
+    token = Draw(app);
     engine.GetRHI()->WaitIdle();
     VerifyColor(expected, policy->SceneColor(token.Slot));
     Require(policy->PublishedFrame().Cells.front() == 2 && policy->PublishedFrame().Cells.back() == 2, "restore did not publish latest gameplay state");
     const auto beforeEnd = publications;
-    engine.End();
-    engine.End();
+    app.Shutdown();
     Require(publications == beforeEnd, "shutdown invoked gameplay publisher");
-    app.Engine.reset();
+
     std::cout << "Pixel2D GPU lifecycle " << iteration << " passed: grid pages, full textures, alpha, zoom/crop, post tint, resize/minimize, no-UI input\n";
 }
 void VerifyDefaultWorldField(const pixel::World &world) {
@@ -589,33 +586,32 @@ std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
     return expected;
 }
 void BasicWorldGameplay() {
-    Axiom app;
-    app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = false;
-    setup.EnableUI = false;
-    setup.CreatePolicy = [&](DynamicRHI &rhi) {
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
         policy = result.get();
         return result;
     };
-    app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
     auto &engine = *app.Engine;
-    engine.EngineInit();
-    engine.Begin();
+    app.Initialize();
+    app.Begin();
     auto &world = input->GetWorld();
     VerifyDefaultWorldField(world);
+    Require(input->GetSession().IsPaused(), "application must preserve the default paused session");
     const auto initialWind = world.GetWind().Sample(512.5f, 200.5f);
     std::vector<uint32_t> expectedCells(Grid2D::CellCount);
     std::fill(expectedCells.begin() + 512 * Grid2D::Width, expectedCells.end(), 1);
     size_t gameplayFrame = 0;
     auto verify = [&] {
         ++gameplayFrame;
-        const auto token = Draw(engine);
+        const auto token = Draw(app);
         engine.GetRHI()->WaitIdle();
         const auto cells = policy->PublishedFrame().Cells;
         const auto mismatch = std::mismatch(cells.begin(), cells.end(), expectedCells.begin());
@@ -675,6 +671,7 @@ void BasicWorldGameplay() {
     world.SpawnPlayer(511, 508);
 
     Require(input->GetControlMode() == PixelGame::ControlMode::Standard, "default mode must control the character");
+    input->GetSession().SetPaused(false);
     const auto playerX = world.GetPlayer()->X;
     const auto camera = input->GetView().OriginPixels;
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
@@ -851,6 +848,8 @@ void BasicWorldGameplay() {
     world.FillForceDirection({0, 0});
     world.AddWindImpulse(512, 200, 64, {0, -120});
     input->OnKeyEvent(Key::KEY_R, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Require(input->GetSession().IsPaused(), "reset must pause the session");
+    input->GetSession().SetPaused(false);
     VerifyDefaultWorldField(world);
     Require(world.GetPlayer() && world.GetPlayer()->X == 511 && world.GetPlayer()->Y == 508, "R must reset player");
     world.SpawnPlayer(530, 508);
@@ -885,8 +884,8 @@ void BasicWorldGameplay() {
     expectedCells[507 * Grid2D::Width + 513] = 0;
     verify();
     Require(world.GetCell(513, 507).Force == pixel::ForceDirection{0, 0}, "mouse removal cleared the force field");
-    engine.End();
-    app.Engine.reset();
+    app.Shutdown();
+
     std::cout << "Basic world GPU gameplay passed: terrain, clicks, falling/stacking, HiDPI zoom/pan, reset, force-field turns and dynamic upper-sky wind\n";
 }
 std::vector<uint32_t> ExpectedFieldColors(const pixel::World &world) {
@@ -907,23 +906,22 @@ std::vector<uint32_t> ExpectedFieldColors(const pixel::World &world) {
 }
 
 void ForceFieldDebugGameplay() {
-    Axiom app;
-    app.Config = GameConfig::Load();
     auto game = std::make_unique<PixelGame>();
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
     RenderSetup setup;
-    setup.Enable3DScene = setup.EnableUI = false;
-    setup.CreatePolicy = [&](DynamicRHI &rhi) {
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
         policy = result.get();
         return result;
     };
-    app.Engine = std::make_unique<GameEngine>(std::move(game), CreateRHI(), std::move(setup));
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
     auto &engine = *app.Engine;
-    engine.EngineInit();
-    engine.Begin();
+    app.Initialize();
+    app.Begin();
     auto &world = input->GetWorld();
     world.DisableWind();
     constexpr std::array<pixel::ForceDirection, 9> directions{{{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {-1, -1}, {1, 1}, {-1, 1}, {1, -1}}};
@@ -945,7 +943,7 @@ void ForceFieldDebugGameplay() {
     size_t debugFrame = 0;
     auto verifyField = [&](int tolerance = 0) {
         ++debugFrame;
-        const auto token = Draw(engine);
+        const auto token = Draw(app);
         engine.GetRHI()->WaitIdle();
         const auto frame = policy->PublishedFrame();
         Require(frame.DisplayMode == GridDisplayMode::ForceField && frame.Post.Values == PostProcessParameters{}.Values, "debug frame mode/tint is wrong");
@@ -971,7 +969,7 @@ void ForceFieldDebugGameplay() {
     verifyField();
     Require(std::equal(initial.begin(), initial.end(), world.ReadState().Cells.begin()), "debug view changed simulation state");
     press(Key::KEY_F1);
-    const auto materialToken = Draw(engine);
+    const auto materialToken = Draw(app);
     engine.GetRHI()->WaitIdle();
     Require(policy->PublishedFrame().DisplayMode == GridDisplayMode::Materials && policy->PublishedFrame().Post.Values == input->GetPresentation().Post.Values
                 && input->GetPresentation().Post.Values[1] == 0.35f,
@@ -983,6 +981,7 @@ void ForceFieldDebugGameplay() {
     press(Key::KEY_F1);
     press(Key::KEY_R);
     world.ConfigureWind(424);
+    input->GetSession().SetPaused(false);
     Require(input->GetPresentation().DisplayMode == GridDisplayMode::ForceField, "world reset unexpectedly disabled debug view");
     {
         auto view = input->GetView();
@@ -1043,6 +1042,7 @@ void ForceFieldDebugGameplay() {
     verifyField(1);
     press(Key::KEY_R);
     world.ConfigureWind(424);
+    input->GetSession().SetPaused(false);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     // A narrow stack rising from the terrain reproduces the reported case at
@@ -1068,12 +1068,13 @@ void ForceFieldDebugGameplay() {
     verifyField(1);
     press(Key::KEY_R);
     world.ConfigureWind(424);
+    input->GetSession().SetPaused(false);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     expected = ExpectedFieldColors(clearSky);
     verifyField(1);
-    engine.End();
-    app.Engine.reset();
+    app.Shutdown();
+
     std::cout << "Force-field debug GPU view passed: signed/zero directions, pages, F1/tint, reset, dynamic wind, dirt patch and narrow stack\n";
 }
 } // namespace

@@ -12,11 +12,8 @@ set_target_properties(PixelFormula PROPERTIES CXX_EXTENSIONS OFF)
 add_executable(PixelFormulaDemo Source/Main.cpp)
 target_link_libraries(PixelFormulaDemo PRIVATE PixelFormula)
 
-if(BUILD_TESTING)
-    add_executable(PixelFormulaTests Tests/FormulaTests.cpp)
-    target_link_libraries(PixelFormulaTests PRIVATE PixelFormula)
-    add_test(NAME Pixel.Formula COMMAND PixelFormulaTests)
-    add_test(NAME Pixel.Formula.Demo COMMAND PixelFormulaDemo
-        "${CMAKE_CURRENT_SOURCE_DIR}/Examples/impact_burst.formula" --ticks 30 --hit-at 6)
-    set_tests_properties(Pixel.Formula.Demo PROPERTIES PASS_REGULAR_EXPRESSION "wind radius=8")
+# Keep standalone Formula builds wired to the shared test directory.
+if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../UnitTest/Formula" "UnitTest/Formula")
+    set_target_properties(PixelFormulaTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif()

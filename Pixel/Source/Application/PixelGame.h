@@ -16,6 +16,8 @@ class PixelGame final : public IGameInterface {
     PixelGame(const PixelGame &) = delete;
     PixelGame &operator=(const PixelGame &) = delete;
     void ConfigurePerformanceCapture();
+    void ConfigureEngine(GameEngine &engine) override;
+    pixel::GameSession &GetSession() { return Session; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
     std::function<void(WorldGridFrame &)> CreateFramePublisher() {
@@ -41,7 +43,8 @@ class PixelGame final : public IGameInterface {
     }
     void OnMouseMove(float x, float y) override { Input.OnMouseMove(x, y); }
     void OnMouseMoveDelta(float x, float y) override { Input.OnMouseMoveDelta(x, y); }
-    void OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) override {
+    void OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods) override;
+    void OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) {
         Input.OnMouseButtonEvent(button, action, mods, pointer);
     }
 

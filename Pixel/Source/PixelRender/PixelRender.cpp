@@ -216,8 +216,7 @@ void PixelRender::RecordPost(RHICommandList &commands, FrameResources &frame, co
     commands.BindDescriptorSet(*PostPipeline, frame.HasCharacter ? *frame.CharacterPostSet : (frame.HasWind ? *frame.WindPostSet : *frame.PostSet), 0);
     commands.PushConstants(*PostPipeline, RHIShaderStage::Fragment, 0, sizeof(parameters), &parameters);
     commands.DrawIndexed(6);
-    if (Overlay)
-        Overlay(commands);
+    RecordOverlay(commands);
     commands.EndPass();
 }
 void PixelRender::Draw() {
@@ -267,9 +266,9 @@ WorldGridFrameView PixelRender::PublishedFrame() const {
 }
 void PixelRender::Clear() {
     FrameReady = false;
-    // Engine destroys the game first. Releasing a publisher must never call it.
+    // Application destroys the game first. Releasing a publisher must never call it.
     Input = {};
-    Overlay = {};
+    SetOverlayDrawCallback({});
     Published.reset();
     Frames.clear();
     Pool.reset();

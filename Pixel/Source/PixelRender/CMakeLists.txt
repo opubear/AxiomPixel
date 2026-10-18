@@ -2,8 +2,7 @@
 add_library(PixelPresentation STATIC
     ../Camera/Camera2D.cpp ../Camera/GameCamera.cpp
     WorldGridFrame.cpp WindVisualFrame.cpp PixelWorldPresentation.cpp GamePresentation.cpp)
-target_include_directories(PixelPresentation PUBLIC "${AXIOM_ENGINE_DIR}/Source")
-target_link_libraries(PixelPresentation PUBLIC PixelGameplay)
+target_link_libraries(PixelPresentation PUBLIC PixelGameplay Axiom::Core)
 
 # Runtime supplies the real RHI backend; CPU tests supply mocks and shader lookup.
 add_library(PixelRender STATIC PixelRender.cpp)
