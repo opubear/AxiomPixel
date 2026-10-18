@@ -24,7 +24,7 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 
 F1切换力场调试视图：所有格子的连续合成场方向单位化后，映射为RGB=(0.5+0.5*dx,0.5+0.5*dy,0.5)，零向量灰色。World仅提供数值采样，表现层在帧首生成颜色快照，复用现有数据纹理；Draw不读取实时世界，普通材质视图行为保留。
 
-`Axiom/` 是独立 Git 引擎仓库，当前使用已 rebase 到重构后 `devmain` 的 `PixelMain`，通用输入和嵌入测试修复已提交；准确提交见 `AxiomVersion.json`，接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
+`Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定到 `6baecde`，准确提交见 `AxiomVersion.json`。该提交已包含鼠标事件快照、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
 通用 RHI、Forward 渲染和 AET 留在引擎；相邻 `../Axiom` 仅供只读历史参考。
 本目录为 AWT Project 根，真实工程为其父目录。
 构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。

@@ -1,5 +1,3 @@
-# The engine repository is managed independently.
-/Axiom/
 /build*/
 imgui.ini
 .DS_Store

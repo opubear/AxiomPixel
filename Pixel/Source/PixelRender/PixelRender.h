@@ -19,7 +19,7 @@ class PixelRender final : public RenderPolicyInterface {
     void Initialize() override;
     void FrameBegin() override;
     void Draw() override;
-    void OnPresentationChanged() override;
+    void OnPresentationChanged(const RHIPresentationChanged &) override;
     void Clear() override;
     uint64_t SubmittedFrames() const { return FrameCount; }
     uint64_t UploadedWorldBytes() const { return FrameCount * Grid2D::UploadBytes; }

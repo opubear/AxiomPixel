@@ -147,7 +147,7 @@ void PixelRender::CreateColorTargets() {
         frame.WindCharacterSet = RHI.CreateImageDescriptorSet(*Pool, *CharacterPipeline, windCharacterBindings);
     }
 }
-void PixelRender::OnPresentationChanged() {
+void PixelRender::OnPresentationChanged(const RHIPresentationChanged &) {
     if (Frames.empty())
         return;
     RHI.WaitIdle();

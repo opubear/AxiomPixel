@@ -122,7 +122,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
         return std::make_unique<RHIDescriptorSet>();
     }
-    void RecordFrame(std::function<void(RHICommandList &)> record) override {
+    void RecordFrame(const std::function<void(RHICommandList &)> &record) override {
         Commands.Events.clear();
         Commands.Copies.clear();
         Commands.Constants.clear();
@@ -133,6 +133,14 @@ struct MockRHI : DynamicRHI {
         ++Submits;
     }
 };
+void ResizePresentation(MockRHI &rhi, RenderPolicyInterface &policy, RHIPresentationExtent extent) {
+    const RHIPresentationChanged change{
+        .Previous = {.Extent = rhi.Extent},
+        .Current = {.Extent = extent}};
+    rhi.Extent = extent;
+    // Exercise virtual dispatch, as Render does when forwarding the RHI event.
+    policy.OnPresentationChanged(change);
+}
 GridTextureCatalog Catalog() {
     GridTextureCatalog catalog{2, 2, 4, {}};
     catalog.Pixels.resize(64, std::byte{255});
@@ -233,9 +241,11 @@ void FrameRecording() {
     }
     Check(slotImages[0] != slotImages[1] && slotImages[1] != slotImages[2], "shared writable images between in-flight slots");
     Check(policy.UploadedWorldBytes() == 6 * Grid2D::UploadBytes && rhi.Waits == 0, "unexpected per-frame idle or missing upload");
-    rhi.Extent = {81, 51};
-    policy.OnPresentationChanged();
-    Check(rhi.Waits == 1 && policy.SceneColor(2).Desc.Width == 81, "resize did not safely rebuild colors");
+    ResizePresentation(rhi, policy, {81, 51});
+    Check(rhi.Waits == 1, "resize did not wait for GPU work before rebuilding colors");
+    for (uint32_t slot = 0; slot < rhi.GetFrameSlotCount(); ++slot)
+        Check(policy.SceneColor(slot).Desc.Width == 81 && policy.SceneColor(slot).Desc.Height == 51,
+              "resize did not rebuild colors for every frame slot");
     policy.FrameBegin();
     policy.Draw();
     Check(rhi.Commands.Copies.size() == 4, "resize reuploaded immutable materials");
@@ -265,11 +275,10 @@ void CharacterComposition() {
     std::memcpy(&uploaded, rhi.Commands.Constants[1].data(), sizeof(uploaded));
     Check(uploaded.Bounds[0] == 12.25f, "Draw used live character or rounded its position");
     Check(&policy.SceneColor(0) != &policy.WorldColor(0), "character composite must have separate target");
-    rhi.Extent = {82, 52};
-    policy.OnPresentationChanged();
+    ResizePresentation(rhi, policy, {82, 52});
     policy.FrameBegin();
     policy.Draw();
-    Check(policy.SceneColor(0).Desc.Width == 82, "character target not resized");
+    Check(policy.SceneColor(0).Desc.Width == 82 && policy.SceneColor(0).Desc.Height == 52, "character target not resized");
     show = false;
     policy.FrameBegin();
     policy.Draw();
@@ -319,8 +328,9 @@ void WindComposition() {
     character = false;
     policy.FrameBegin(); policy.Draw();
     Check(rhi.Commands.Constants.size() == 3 && &policy.SceneColor(2) != &policy.WorldColor(2), "wind-only scene not selected");
-    rhi.Extent = {65, 49}; policy.OnPresentationChanged(); policy.FrameBegin(); policy.Draw();
-    Check(policy.SceneColor(2).Desc.Width == 65, "wind target resize failed");
+    ResizePresentation(rhi, policy, {65, 49});
+    policy.FrameBegin(); policy.Draw();
+    Check(policy.SceneColor(2).Desc.Width == 65 && policy.SceneColor(2).Desc.Height == 49, "wind target resize failed");
     mode = WindVisualMode::Off;
     policy.FrameBegin(); policy.Draw();
     Check(rhi.Commands.Copies.size() == 4 && rhi.Commands.Constants.size() == 2 && &policy.SceneColor(2) == &policy.WorldColor(2), "Off retains stale wind output");

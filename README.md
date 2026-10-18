@@ -1,7 +1,7 @@
 # AxiomPixel
 
 基于 Axiom 的早期 Pixel 游戏，从引擎 `2DRender` 分支的 `5c8af21` 拆出。
-`Axiom/` 是独立 Git 仓库，当前使用 **PixelMain**（`bf88a6e`），已 rebase 到重构后的 `devmain`（`0671a0e`），并包含通用鼠标事件快照、嵌入测试与数学/交换链修复；AET 样例与通用引擎代码留在该仓库。准确版本见 [AxiomVersion.json](AxiomVersion.json)。
+`Axiom/` 通过 Git 子模块引入 [Axiom 引擎](https://github.com/opubear/Axiom)，当前锁定 **PixelMain** 的 `6baecde`，已包含鼠标事件快照、嵌入测试路径及数学/交换链修复；AET 样例与通用引擎代码留在该仓库。准确版本见 [AxiomVersion.json](AxiomVersion.json)，父仓库的 gitlink 是实际检出依据。当前接口适配与验证范围见下文。
 
 | 路径 | 职责 |
 |---|---|
@@ -18,7 +18,7 @@
 | `UnitTest/Benchmarks/` | 显式运行的离线风场基准及 Material 性能调查工具，不加入默认构建或 CTest |
 | `Docs/Architecture/` | 当前模块划分、状态所有权和依赖说明 |
 | `Pixel/Formula/` | 可独立构建的构式描述语言、不可变组合、CPU 模拟器和 CLI 原型 |
-| `Axiom/` | 独立管理的引擎、RHI、AET 和引擎测试 |
+| `Axiom/` | Git 子模块：引擎、RHI、AET 和引擎测试 |
 
 测试代码统一放在根目录 `UnitTest/`，包含 CPU 回归、头文件编译检查、GPU smoke、构式测试及离线基准；独立引擎的测试仍由 `Axiom/UnitTest/` 管理。`BUILD_TESTING` 控制回归测试，`PIXEL_BUILD_SMOKE` 控制 GPU smoke，基准目标需显式构建。
 
@@ -143,13 +143,13 @@ ctest --test-dir build-formula --output-on-failure
 
 ## 构建和运行
 
-需要 CMake 3.23+、C++20 工具链，以及 [AxiomVersion.json](AxiomVersion.json) 指定的 PixelMain 引擎工作副本。新引擎通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入游戏；窗口尺寸与标题由 `Pixel/Config/GameConfig.json` 的 `Window` 配置提供。
+需要 CMake 3.23+、C++20 工具链，以及 [AxiomVersion.json](AxiomVersion.json) 对应的 Axiom 引擎子模块。新引擎通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入游戏；窗口尺寸与标题由 `Pixel/Config/GameConfig.json` 的 `Window` 配置提供。
 
-引擎仓库由本项目 `.gitignore` 排除，需单独保存和交付。使用锁定提交即可构建，无需额外应用补丁；该提交目前保存在本地 PixelMain，尚未推送远端。
+父仓库通过 `.gitmodules` 保存引擎地址和 `PixelMain` 分支，通过 gitlink 锁定具体提交；普通 `git submodule update` 使用该提交，不自动升级到分支最新版本。首次克隆可使用 `git clone --recurse-submodules git@github.com:opubear/AxiomPixel.git`，已有工作区在根目录执行 `git submodule update --init --recursive`。SSH 地址需要可用的 GitHub SSH 访问权限。
 
-引擎中的通用输入修复让排队鼠标事件保留发生时的坐标、窗口及 framebuffer 尺寸，避免同批点击、窗口缩放和 DPI 变化后选格偏移；配置测试也已指定嵌入构建时的工作目录。这些修复不引入 Pixel 类型或游戏渲染逻辑。新旧接口映射及验证见 [devmain 适配记录](.awtcontext/GlobalDoc/DevmainAdaptation-2026-10-16.md)。
+**当前接口适配（2026-10-19）：** 当前锁定 `PixelMain/6baecdea9a3eccaa0842c579c11fb4afe864adbe`，已包含 `Input/MousePointerState.h` 及相关事件快照接口。Pixel 通过 `OnPresentationChanged(const RHIPresentationChanged &)` 重写引擎回调，窗口变化后重建颜色目标与后处理资源；测试 RHI 的 `RecordFrame` 参数已同步为 const 引用。回归通过基类接口分派呈现变化，检查各帧槽及角色/风合成目标的新尺寸。完整 Debug 构建通过，CTest 47/47 通过；CPU-only 构建通过，CTest 42/42 通过。旧版接入与验证见 [devmain 适配记录](.awtcontext/GlobalDoc/DevmainAdaptation-2026-10-16.md)。
 
-引擎子模块初始化后，可直接执行根目录的脚本，配置 Debug 构建、以 4 个并行任务编译 Pixel 并启动游戏（任一步失败即停止）：
+初始化子模块后，可执行根目录的脚本，配置 Debug 构建、以 4 个并行任务编译 Pixel 并启动游戏（任一步失败即停止）：
 
 ```bash
 ./build-and-run.sh
@@ -164,7 +164,7 @@ ctest --test-dir build-formula --output-on-failure
 `run.sh` 直接运行 `build/bin/Debug/Pixel`，若程序不存在则提示先编译。两个脚本均可通过绝对路径从其他目录调用。首次初始化和手动构建命令如下：
 
 ```bash
-git -C Axiom submodule update --init --recursive
+git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --target Pixel Axiom -j4
 cmake --build build --target run-pixel
@@ -215,6 +215,14 @@ cmake --build build-engine --target Axiom -j4
 
 迁移来源、模块边界和本轮验证见 [迁移记录](.awtcontext/GlobalDoc/PixelMigration.md)。
 AWT 工具位置由本次环境提供，在当前布局可用 `../AIWorkTask/awt task list --project .awtcontext`。
+
+Linux 的 `PixelRuntimeSmoke` 使用 `glfwSetCursorPos` 模拟鼠标点击；当前 GLFW Wayland 后端不支持程序设置光标位置，因此自动化输入检查需要可用的 X11/XWayland 显示服务（`DISPLAY`）。在 Wayland 桌面上可用下列命令选择 X11 后端运行测试；这不改变游戏默认的平台选择：
+
+```bash
+(cd Pixel && XDG_SESSION_TYPE=x11 ../build/tests/PixelRuntimeSmoke)
+```
+
+2026-10-19 在 RTX 3070 Laptop GPU / X11 上验证：Pixel 的风场、基础玩法、力场视图及 ImGui 窗口缩放检查通过，但完整 `PixelRuntimeSmoke` 在后续生命周期检查中报 `no drawable 2D frame`，尚未全部通过。`AxiomLifecycleSmoke --skip-minimize` 的两轮生命周期检查通过；该结果不覆盖最小化/恢复。
 
 ## 逐像素基础力场与风场 reference
 
