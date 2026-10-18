@@ -1,0 +1,37 @@
+World material investigation verification — 2026-10-16
+
+Scope: research report and standalone probes; no production algorithm changes.
+Compiler: Apple clang 21.0.0 (clang-2100.3.34.2), arm64-apple-darwin27.0.0.
+Configurations: Debug (-g) and RelWithDebInfo (-O2 -g -DNDEBUG), C++20, no LTO.
+Measurement: each world 1024x1024; 3 independent worlds per scene; 8 warmup + 40 recorded steps per world; World::Tick(1.f/60); serial measurements without this task's compilation running.
+Scenarios: default, no_backend, empty, sparse, falling_slab, horizontal, zero_force, terrain_plus_one.
+Variants: original baseline, direct base-force sampling (no-wind only), cached destination (fixed-force only).
+
+PASS: 48 unique configuration/variant/scene groups x 120 samples = 5760 samples.
+PASS: each sample recorded exactly one MaterialStep call.
+PASS: all six configuration/variant combinations agree on final material/Force metadata hash for 24 scene/round pairs.
+PASS: Debug and RelWithDebInfo first-step operation counts agree in all 9 counter scenes (includes bottom_hole).
+PASS: source/baseline.cpp byte-identical to production Environment.cpp; all saved Pixel source SHA-256 values still match.
+PASS: baseline semantic probes in both configurations: 1023-cell wake after bottom removal; row-major competition across 32-cell boundary; continuous base-force edit with unchanged legacy direction metadata.
+PASS: existing PixelFieldTests.cpp via field_contracts in both configurations.
+PASS: existing PixelBaselineTests.cpp via baseline_contracts in both configurations.
+PASS: existing PixelWindStrategyTests.cpp via wind_contracts in both configurations.
+PASS: run_probe.py syntax, saved evidence dimensions, whitespace and git diff --check.
+
+Commands:
+python3 Docs/Performance/2026-10-16-material/run_probe.py build --config Debug
+python3 Docs/Performance/2026-10-16-material/run_probe.py build --config RelWithDebInfo
+python3 Docs/Performance/2026-10-16-material/run_probe.py run --config CONFIG --variant VARIANT
+python3 Docs/Performance/2026-10-16-material/run_probe.py run --config CONFIG --variant VARIANT --scene terrain_plus_one
+python3 Docs/Performance/2026-10-16-material/run_probe.py contracts --config Debug
+python3 Docs/Performance/2026-10-16-material/run_probe.py contracts --config RelWithDebInfo
+python3 Docs/Performance/2026-10-16-material/run_probe.py summarize
+CONFIG expands to each of Debug and RelWithDebInfo; VARIANT expands to baseline, direct, cached, counters. The terrain_plus_one scenario was added after the first seven timing scenes and measured separately. A fresh run of the saved runner includes all eight timing scenes.
+
+Boundaries:
+Counts are measured in a separate instrumented executable and are not timing results.
+Cached destinations are built once before warmup; construction cost is recorded separately. Invalidation, dynamic wind, and production integration are absent.
+Timing excludes cache preparation, world hashing and CSV output. No game presentation, frame pacing, GPU execution or user interactions are included.
+Hash checks concern end states, not complete per-step equivalence for a proposed production optimization.
+Existing contract tests link only the original material algorithm; they do not certify the restricted variants for arbitrary inputs.
+No full application/GPU regression suite was run; no production files were modified by this investigation.
