@@ -136,7 +136,7 @@ for (const auto &entry : sim.Trace()) {
 | `Source/Parser.cpp` | 词法、语法、绑定和构造参数检查 |
 | `Include/Formula/Simulator.h`、`Source/Simulator.cpp` | 运行状态、确定性时间队列、事件和指令 |
 | `Source/Main.cpp` | 文件和命令行 I/O、演示事件注入 |
-| `Tests/FormulaTests.cpp` | 组合行为、作用域、时间与错误诊断的回归测试 |
+| `UnitTest/Formula/FormulaTests.cpp`（仓库根目录） | 组合行为、作用域、时间与错误诊断的回归测试 |
 
 CTest 的 `Pixel.Formula` 覆盖：共享描述不变性、管道顺序、规范打印再解析、混合效果闭包、序列结合律与单位元、零份数、散射角、延迟重复、时间分段一致性、命中载荷隔离与嵌套、重复命中、寿命边界、独立激活、源位置诊断和数值边界。`Pixel.Formula.Demo` 从磁盘加载示例并检查命中后实际产生风指令。
 

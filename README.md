@@ -1,11 +1,11 @@
 # AxiomPixel
 
 基于 Axiom 的早期 Pixel 游戏，从引擎 `2DRender` 分支的 `5c8af21` 拆出。
-`Axiom/` 是独立 Git 仓库，当前项目使用已移植通用渲染能力并合并远端修复的 **PixelMain** 分支；AET 样例与通用引擎代码留在该仓库。旧 PixelMain 分支已由当前合并状态替换。
+`Axiom/` 是独立 Git 仓库，当前使用 **PixelMain**（`bf88a6e`），已 rebase 到重构后的 `devmain`（`0671a0e`），并包含通用鼠标事件快照、嵌入测试与数学/交换链修复；AET 样例与通用引擎代码留在该仓库。准确版本见 [AxiomVersion.json](AxiomVersion.json)。
 
 | 路径 | 职责 |
 |---|---|
-| `Pixel/Source/Application/` | `PixelGame` 装配模块、编排生命周期并转接引擎输入接口；`PixelRuntime` 注入渲染和 UI；`main` 启动应用 |
+| `Pixel/Source/Application/` | `PixelGame` 装配模块、编排生命周期并转接引擎输入接口；`PixelRuntime` 创建渲染策略；`PixelApplication` 创建游戏，通用引擎入口启动应用 |
 | `Pixel/Source/Gameplay/` | `GameSession` 持有世界，管理默认场景、暂停、单步、模拟时间及风配置 |
 | `Pixel/Source/Input/` | `GameInput` 接收键鼠事件并直接调用游戏功能，负责模式切换、输入清理、鼠标编辑、相机控制和重置 |
 | `Pixel/Source/Camera/` | `Camera2D` 保存世界中心；`GameCamera` 管理跟随、平移、缩放、视口和事件坐标选格 |
@@ -14,13 +14,15 @@
 | `Pixel/Source/Debug/` | `PixelDebugUI` 通过各模块接口编辑状态，仅自己持有面板显隐 |
 | `Pixel/Source/Performance/` | CPU 采样器与运行时采集、报告和面板，分别构建 |
 | `Pixel/Shader/` | Pixel 专用 Slang shader |
-| `Pixel/Tests/` | 按 World、Gameplay、Rendering、Performance、Runtime 分类的回归测试 |
-| `Pixel/Benchmarks/` | 显式运行的离线风场基准，不加入默认构建或 CTest |
+| `UnitTest/` | 按 World、Gameplay、Rendering、Performance、Runtime、Formula 分类的回归测试 |
+| `UnitTest/Benchmarks/` | 显式运行的离线风场基准及 Material 性能调查工具，不加入默认构建或 CTest |
 | `Docs/Architecture/` | 当前模块划分、状态所有权和依赖说明 |
 | `Pixel/Formula/` | 可独立构建的构式描述语言、不可变组合、CPU 模拟器和 CLI 原型 |
 | `Axiom/` | 独立管理的引擎、RHI、AET 和引擎测试 |
 
-模块与各自的 `CMakeLists.txt` 放在一起，`Pixel/CMakeLists.txt` 只组织源码、测试、基准及独立 Formula 子系统。核心构建依赖为 `PixelGameplay → PixelWorld → PixelPerformance`；输入模块 `PixelInput` 依赖 `PixelPresentation` 及其游戏会话接口，在 CPU 上调用游戏和相机功能。`PixelPresentation` 完成相机和快照转换，`PixelRender` 使用 RHI 接口消费快照。只有应用和调试 UI 等运行时模块链接 AxiomRuntime 或 ImGui。具体设计见 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)。
+测试代码统一放在根目录 `UnitTest/`，包含 CPU 回归、头文件编译检查、GPU smoke、构式测试及离线基准；独立引擎的测试仍由 `Axiom/UnitTest/` 管理。`BUILD_TESTING` 控制回归测试，`PIXEL_BUILD_SMOKE` 控制 GPU smoke，基准目标需显式构建。
+
+模块与各自的 `CMakeLists.txt` 放在一起，`Pixel/CMakeLists.txt` 组织生产源码及独立 Formula 子系统，根构建入口通过 `UnitTest/CMakeLists.txt` 组织测试和基准。核心构建依赖为 `PixelGameplay → PixelWorld → PixelPerformance`；输入模块 `PixelInput` 依赖 `PixelPresentation` 及其游戏会话接口，在 CPU 上调用游戏和相机功能。`PixelPresentation` 完成相机和快照转换，`PixelRender` 使用 RHI 接口消费快照。应用链接 `AxiomApplication`，由它拥有游戏和 DebugUI；只有运行时模块使用 ImGui。具体设计见 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)。
 
 每帧保留引擎原有顺序：游戏帧首采样与视口更新 → 渲染快照发布 → 输入和游戏推进 → Draw 消费已发布数据 → 帧尾采样。引擎负责 ImGui 捕获、失焦与排队过滤，`PixelGame` 的输入接口只转发给 `GameInput`；按键分支、鼠标选格与编辑、模式清理和功能调用全部位于 `GameInput`。退出窗口、切换面板和读取 framebuffer 尺寸通过 `GameInputHost` 注入，输入模块不依赖引擎全局对象或 ImGui。模拟推进后由 `GameInput` 按控制模式调用相机跟随或平移，面板切换模式也使用同一输入入口。启动及 R 重置后默认暂停模拟；在 **Pixel Debug → Environment** 取消勾选 **Pause simulation** 即可运行，也可用 **Step 1/60 second** 单步。暂停冻结模拟及风动画、相机仍可移动；R 恢复世界和视角并保留控制模式与显示模式。每个发布器拥有独立 CPU 快照，Draw 不访问实时 World。
 
@@ -141,9 +143,11 @@ ctest --test-dir build-formula --output-on-failure
 
 ## 构建和运行
 
-需要 CMake 3.23+、C++20 工具链，以及 `Axiom/` 已包含通用渲染能力的 PixelMain 引擎工作副本。
-引擎版本见 [AxiomVersion.json](AxiomVersion.json)，该版本包含 ImGui 面板所需的 UI 与 3D 上下文解耦支持。
-引擎仓库由本项目 `.gitignore` 排除，需单独保存和交付；未经拆分的 `2DRender` 仍包含游戏目标，不应直接替代当前引擎版本。原始 devmain `de013e1` 缺少所需接口，本地 `c7fbb59` 已补齐并重新通过 CPU/GPU 验证。
+需要 CMake 3.23+、C++20 工具链，以及 [AxiomVersion.json](AxiomVersion.json) 指定的 PixelMain 引擎工作副本。新引擎通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入游戏；窗口尺寸与标题由 `Pixel/Config/GameConfig.json` 的 `Window` 配置提供。
+
+引擎仓库由本项目 `.gitignore` 排除，需单独保存和交付。使用锁定提交即可构建，无需额外应用补丁；该提交目前保存在本地 PixelMain，尚未推送远端。
+
+引擎中的通用输入修复让排队鼠标事件保留发生时的坐标、窗口及 framebuffer 尺寸，避免同批点击、窗口缩放和 DPI 变化后选格偏移；配置测试也已指定嵌入构建时的工作目录。这些修复不引入 Pixel 类型或游戏渲染逻辑。新旧接口映射及验证见 [devmain 适配记录](.awtcontext/GlobalDoc/DevmainAdaptation-2026-10-16.md)。
 
 引擎子模块初始化后，可直接执行根目录的脚本，配置 Debug 构建、以 4 个并行任务编译 Pixel 并启动游戏（任一步失败即停止）：
 
@@ -168,7 +172,7 @@ cmake --build build --target run-pixel
 
 默认使用引擎内置 Slang 编译器。若已有兼容的编译器，可在配置时指定
 `-DAXIOM_SLANGC_EXECUTABLE=/absolute/path/to/slangc`。
-`AXIOM_USE_PRECOMPILED_SHADERS=ON` 需要显式提供包含引擎六个和 Pixel 四个产物的目录；引擎原有的六个预编译文件不足以运行 Pixel。
+`AXIOM_USE_PRECOMPILED_SHADERS=ON` 需要显式提供包含引擎/UI 六个和 Pixel 五个产物的目录；引擎原有的六个预编译文件不足以运行 Pixel。
 
 `run-pixel` 使用 `Pixel/` 作为工作目录，以加载自己的 `Config/GameConfig.json`。
 直接运行可用 `(cd Pixel && ../build/bin/Debug/Pixel)`；运行 AET 则用

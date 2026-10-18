@@ -4,8 +4,8 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 `PixelWorld` 管理纯 CPU 世界，Environment 统一持有基础力场与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景、暂停及单步策略。
 `PixelInput` 的 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，直接调用游戏会话、表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
 `PixelPresentation` 管理相机、外观与帧首快照转换；`PixelRender` 消费快照完成上传、世界与角色及风效合成、后处理。PixelInput链接CPU表现模块，不链接运行时或ImGui。
-`Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 注入策略和 UI 叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。
-目录、构建依赖和维护入口见工程 README 与 [模块化系统设计](../Docs/Architecture/PixelModularDesign.docx)。测试按领域归入 `Pixel/Tests` 子目录，离线测量位于 `Pixel/Benchmarks`，各模块拥有自己的 CMakeLists。
+`Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 创建策略，`PixelApplication` 创建游戏，应用所有的 DebugUI 通过引擎 overlay 回调叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。
+目录、构建依赖和维护入口见工程 README 与 [模块化系统设计](../Docs/Architecture/PixelModularDesign.docx)。测试按领域归入 `UnitTest` 子目录，离线测量位于 `UnitTest/Benchmarks`，各模块拥有自己的 CMakeLists。
 
 ## 构式系统（Formula）
 
@@ -24,7 +24,7 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 
 F1切换力场调试视图：所有格子的连续合成场方向单位化后，映射为RGB=(0.5+0.5*dx,0.5+0.5*dy,0.5)，零向量灰色。World仅提供数值采样，表现层在帧首生成颜色快照，复用现有数据纹理；Draw不读取实时世界，普通材质视图行为保留。
 
-`Axiom/` 是独立 Git 引擎仓库，当前项目引用已移植通用渲染能力并合并远端修复的 `PixelMain` 分支；旧分支引用已替换为当前合并状态。
+`Axiom/` 是独立 Git 引擎仓库，当前使用已 rebase 到重构后 `devmain` 的 `PixelMain`，通用输入和嵌入测试修复已提交；准确提交见 `AxiomVersion.json`，接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
 通用 RHI、Forward 渲染和 AET 留在引擎；相邻 `../Axiom` 仅供只读历史参考。
 本目录为 AWT Project 根，真实工程为其父目录。
 构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。
