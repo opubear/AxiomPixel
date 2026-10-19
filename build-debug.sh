@@ -9,4 +9,4 @@ cmake -S "$project_dir" -B "$build_dir" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DAXIOM_BUILD_RUNTIME=ON
 cmake --build "$build_dir" --config Debug --target Pixel --parallel 4
-exec cmake --build "$build_dir" --config Debug --target run-pixel
+printf 'Debug 构建完成。启动游戏：%s/run-debug.sh\n' "$project_dir"

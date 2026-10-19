@@ -13,6 +13,7 @@ void Check(bool value, const char *message) {
 }
 pixel::WindSettings Uniform(pixel::WindVelocity velocity = {}) {
     pixel::WindSettings settings;
+    settings.Boundary = pixel::WindBoundaryMode::Periodic;
     settings.Columns = settings.Rows = 16;
     settings.Ambient = velocity;
     settings.GustSpeed = settings.Viscosity = settings.Relaxation = 0;
@@ -78,6 +79,7 @@ void NarrowStackInProductionWorld() {
     for (uint32_t y = 344; y < 512; ++y)
         pile.PlaceDirt(512, y);
     pixel::WindSettings settings;
+    settings.Boundary = pixel::WindBoundaryMode::Periodic;
     settings.Ambient = {20, 0};
     settings.GustSpeed = settings.Viscosity = settings.Relaxation = 0;
     pile.ConfigureWind(424, settings);
@@ -126,7 +128,7 @@ void ActualMovementFeedback() {
         world->ConfigureWind(32, Uniform());
     falling.PlaceDirt(16, 10);
     blocked.PlaceDirt(16, 31);
-    pixel::WorldState snapshot(32, 32);
+    pixel::WorldSnapshot snapshot(32, 32);
     falling.PublishState(snapshot);
     falling.Tick(Step);
     blocked.Tick(Step);
@@ -134,7 +136,7 @@ void ActualMovementFeedback() {
     Check(falling.GetCell(16, 11).Type == pixel::CellTypes::Dirt, "feedback broke gravity movement");
     Check(falling.GetWind().Sample(16.5f, 11.5f).Y > 0.1f, "falling dirt did not push still air down");
     Check(Samples(blocked.GetWind(), 32, 32) == Samples(empty.GetWind(), 32, 32), "blocked dirt used intended rather than actual velocity");
-    Check(snapshot.Read().Cells[10 * 32 + 16].Type == pixel::CellTypes::Dirt, "feedback changed the published snapshot");
+    Check(snapshot.Read().AtLocal(16, 10).Type == pixel::CellTypes::Dirt, "feedback changed the published snapshot");
 
     pixel::World pushed(32, 32), free(32, 32);
     for (auto *world : {&pushed, &free})
@@ -210,7 +212,8 @@ void FeedbackValidation() {
         reject([&] { wind.Reset(8, 8, settings); });
     }
     auto malformed = world.ReadState();
-    malformed.Cells = malformed.Cells.first(1);
+    malformed.Map = nullptr;
+    malformed.Snapshot = nullptr;
     reject([&] { wind.CoupleDirt(malformed, {}, Step); });
     for (auto moved : {pixel::DirtMotion{8, 0, {0, 0}}, pixel::DirtMotion{0, 0, {60, 0}}, pixel::DirtMotion{3, 3, {1001, 0}}})
         reject([&] { wind.CoupleDirt(world.ReadState(), std::span(&moved, 1), Step); });

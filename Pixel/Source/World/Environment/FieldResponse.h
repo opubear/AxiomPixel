@@ -2,7 +2,7 @@
 
 #include "ForceField.h"
 #include "Wind/WindTypes.h"
-#include "World/WorldState.h"
+#include "World/CellState.h"
 
 namespace pixel::FieldResponse {
 // Legacy gameplay contract: one neighbouring-cell move per fixed step, without

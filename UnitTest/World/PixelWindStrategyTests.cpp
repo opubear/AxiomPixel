@@ -16,6 +16,7 @@ void Check(bool value, const char *reason) {
 WindStrategySettings Uniform(WindStrategyKind kind) {
     WindStrategySettings s;
     s.Kind = kind;
+    s.Coarse.Boundary = s.Reference.Boundary = s.Adaptive.Flow.Boundary = s.Lbm.Boundary = WindBoundaryMode::Periodic;
     s.Coarse.Ambient = s.Reference.Ambient = s.Adaptive.Flow.Ambient = s.Lbm.Ambient = {8, 0};
     s.Coarse.GustSpeed = s.Reference.GustSpeed = s.Adaptive.Flow.GustSpeed = s.Lbm.GustSpeed = 0;
     s.Coarse.Relaxation = s.Reference.Relaxation = s.Adaptive.Flow.Relaxation = s.Lbm.Relaxation = 0;
@@ -176,6 +177,7 @@ void AdaptiveShearTransport() {
     World world(32, 32);
     AdaptiveWindSettings settings;
     settings.BlockSize = 4;
+    settings.Flow.Boundary = WindBoundaryMode::Periodic;
     settings.Flow.GustSpeed = settings.Flow.Viscosity = settings.Flow.Relaxation = 0;
     settings.Flow.Ambient = {0, 8};
     AdaptiveWindField wind(world.ReadState(), 32, settings);

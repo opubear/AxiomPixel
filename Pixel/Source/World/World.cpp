@@ -1,6 +1,6 @@
-#include "Performance/FrameProfiler.h"
 #include "World.h"
 #include "Environment/FieldResponse.h"
+#include "Performance/FrameProfiler.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -8,133 +8,311 @@
 #include <stdexcept>
 
 namespace pixel {
-namespace {
-void ValidateForceDirection(ForceDirection direction) {
-    if (!direction.IsValid())
-        throw std::invalid_argument("force direction must select a neighbouring cell or zero");
+World::World(uint32_t width, uint32_t height) : Map(width, height), Environment(Map) {}
+World::World() : Environment(Map) {}
+
+CellQuery World::QueryCell(int64_t x, int64_t y) const {
+    const auto cell = Map.TryGet({x, y});
+    if (cell)
+        return {ChunkResidency::Resident, cell};
+    return {Streamer ? Streamer->GetState(ChunkOf({x, y})) : ChunkResidency::Missing, {}};
 }
-} // namespace
+
 performance::MemorySnapshot World::GetMemoryUsage() const {
     auto total = performance::MeasureObject(*this);
-    total.AddEmbedded(State.GetMemoryUsage());
+    total.AddEmbedded(Map.GetMemoryUsage());
     total.AddEmbedded(Environment.GetMemoryUsage());
-
-    const auto base = Environment.GetBaseForceField().GetMemoryUsage();
+    if (Streamer)
+        total.AddOwned(Streamer->GetMemoryUsage());
+    total.UsedHeapBytes += PublicationBytes;
+    total.ReservedHeapBytes += PublicationBytes;
+    const auto base = Map.GetForceMemoryUsage();
     const auto wind = Environment.GetWindSimulation().GetMemoryUsage();
     return {total.ExcludingEmbedded(base).ExcludingEmbedded(wind), base, wind};
 }
 
-World::World(uint32_t width, uint32_t height) : State(width, height), Environment(width, height) {}
-size_t World::CellIndex(uint32_t x, uint32_t y) const {
-    if (x >= State.Width || y >= State.Height)
-        throw std::out_of_range("cell coordinates are outside the world");
-    return size_t(y) * State.Width + x;
+void World::RequireFinite() const {
+    if (!Map.IsFinite())
+        throw std::logic_error("unbounded world edits require an explicit region");
 }
-CellState World::GetCell(uint32_t x, uint32_t y) const { return State.Cells[CellIndex(x, y)]; }
-void World::SetCell(uint32_t x, uint32_t y, CellState cell) {
-    ValidateForceDirection(cell.Force);
-    State.Cells[CellIndex(x, y)] = cell;
-    Environment.GetBaseForceField().Set(x, y, FieldResponse::FromDirection(cell.Force));
-}
+
 void World::Fill(CellState cell) {
-    ValidateForceDirection(cell.Force);
-    std::fill(State.Cells.begin(), State.Cells.end(), cell);
-    Environment.GetBaseForceField().Fill(FieldResponse::FromDirection(cell.Force));
+    RequireFinite();
+    Map.Fill(Map.Bounds(), cell);
 }
-void World::SetForceDirection(uint32_t x, uint32_t y, ForceDirection direction) {
+
+void World::SetForceDirection(int64_t x, int64_t y, ForceDirection direction) {
     auto cell = GetCell(x, y);
     cell.Force = direction;
     SetCell(x, y, cell);
 }
+
 void World::FillForceDirection(ForceDirection direction) {
-    ValidateForceDirection(direction);
-    for (auto &cell : State.Cells)
-        cell.Force = direction;
-    Environment.GetBaseForceField().Fill(FieldResponse::FromDirection(direction));
+    RequireFinite();
+    Map.FillDirection(Map.Bounds(), direction);
 }
+
+void World::AddBaseForce(int64_t x, int64_t y, ForceVector force) {
+    const auto old = Map.GetForce({x, y});
+    SetBaseForce(x, y, {old.X + force.X, old.Y + force.Y});
+}
+
+void World::FillBaseForce(ForceVector force) {
+    RequireFinite();
+    Map.FillForce(Map.Bounds(), force);
+}
+
 void World::RandomizeForceDirections(uint32_t endRow, uint32_t seed) {
-    if (endRow > State.Height)
+    RequireFinite();
+    const auto bounds = Map.Bounds();
+    if (endRow > bounds.Height)
         throw std::out_of_range("random field boundary is outside the world");
     constexpr std::array<ForceDirection, 8> directions{{{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
     std::mt19937 random(seed);
     std::uniform_int_distribution<size_t> choose(0, directions.size() - 1);
-    for (size_t index = 0; index < size_t(endRow) * State.Width; ++index) {
-        const auto direction = directions[choose(random)];
-        State.Cells[index].Force = direction;
-        Environment.GetBaseForceField().Set(uint32_t(index % State.Width), uint32_t(index / State.Width), FieldResponse::FromDirection(direction));
+    for (uint32_t y = 0; y < endRow; ++y) {
+        for (uint32_t x = 0; x < bounds.Width; ++x) {
+            auto &chunk = *Map.FindChunk(ChunkOf({x, y}));
+            const auto direction = directions[choose(random)];
+            const auto index = size_t(y % storage::ChunkEdge) * storage::ChunkEdge + x % storage::ChunkEdge;
+            chunk.Data().Directions[index] = {int8_t(direction.X), int8_t(direction.Y)};
+            chunk.Data().BaseForces[index] = FieldResponse::FromDirection(direction);
+        }
     }
+    Map.Invalidate({0, 0, bounds.Width, endRow});
 }
-void World::ConfigureWind(uint32_t endRow, const WindSettings &settings) {
-    if (!endRow || endRow > State.Height)
-        throw std::out_of_range("wind boundary is outside the world");
-    Environment.GetWindSimulation().ConfigureCoarse(State.Width, endRow, settings);
+
+void World::ConfigureWind(uint32_t endRow, const pixel::WindSettings &settings) {
+    WindStrategySettings strategy;
+    strategy.Kind = WindStrategyKind::Coarse;
+    strategy.Coarse = settings;
+    ConfigureWindStrategy(endRow, strategy);
 }
+
 void World::ConfigurePixelWind(uint32_t endRow, const PixelWindSettings &settings) {
-    if (!endRow || endRow > State.Height)
-        throw std::out_of_range("wind boundary is outside the world");
-    Environment.GetWindSimulation().ConfigureReference(ReadState(), endRow, settings);
+    WindStrategySettings strategy;
+    strategy.Kind = WindStrategyKind::Reference;
+    strategy.Reference = settings;
+    ConfigureWindStrategy(endRow, strategy);
 }
+
 void World::ConfigureWindStrategy(uint32_t endRow, const WindStrategySettings &settings) {
-    Environment.GetWindSimulation().Configure(ReadState(), endRow, settings);
+    const auto view = ReadState();
+    if (endRow > view.Height)
+        throw std::out_of_range("wind boundary is outside the simulation window");
+    ConfigureWindDomain(view.Origin.Y + endRow, settings, endRow != 0);
 }
-ForceVector World::GetForce(uint32_t x, uint32_t y) const {
-    return Environment.SampleForce(x, y);
+
+void World::ConfigureWindDomain(int64_t boundaryY, const WindStrategySettings &settings, bool enabled) {
+    auto view = ReadState();
+    view.Height = !enabled || boundaryY <= view.Origin.Y ? 0 : boundaryY >= view.Origin.Y + view.Height ? view.Height
+                                                                                                        : uint32_t(boundaryY - view.Origin.Y);
+    Environment.GetWindSimulation().Configure(view, view.Height, settings);
+    Environment.GetWindSimulation().SetSimulationTime(Environment.GetSimulationTime());
+    WindSettings = settings;
+    WindBoundaryY = boundaryY;
+    WindEnabled = enabled;
+    Map.Wake(GetSimulationBounds());
 }
-WindVelocity World::GetFieldVelocity(uint32_t x, uint32_t y) const {
+
+void World::SetWindBoundary(int64_t y) {
+    ConfigureWindDomain(y, WindSettings);
+}
+
+void World::DisableWind() {
+    WindEnabled = false;
+    Environment.GetWindSimulation().Clear();
+    Map.Wake(GetSimulationBounds());
+}
+
+WorldRect World::GetWindBounds() const {
+    auto bounds = GetSimulationBounds();
+    bounds.Height = !WindEnabled || WindBoundaryY <= bounds.Y ? 0 : WindBoundaryY >= bounds.Y + bounds.Height ? bounds.Height
+                                                                                                              : uint32_t(WindBoundaryY - bounds.Y);
+    return bounds;
+}
+
+WindVelocity World::GetFieldVelocity(int64_t x, int64_t y) const {
     return FieldResponse::MovementVelocity(GetForce(x, y));
 }
-void World::MoveMaterial(size_t source, size_t destination) {
-    State.Cells[destination].Type = State.Cells[source].Type;
-    State.Cells[source].Type = CellTypes::Empty;
-}
+
 void World::GenerateTerrain(uint32_t surfaceRow) {
-    if (surfaceRow > State.Height)
-        throw std::out_of_range("terrain surface is outside the world");
-    Fill({});
-    std::fill(State.Cells.begin() + size_t(surfaceRow) * State.Width, State.Cells.end(), CellState{CellTypes::Dirt});
-    Environment = pixel::Environment(State.Width, State.Height);
+    RequireFinite();
+    Map.GenerateTerrain(surfaceRow);
+    Environment = pixel::Environment(Map);
+    ScratchReservation = 0;
+    WindEnabled = false;
     Player.reset();
     PlayerHorizontal = 0;
     PlayerJump = false;
 }
-bool World::PlaceDirt(uint32_t x, uint32_t y) {
-    auto &cell = State.Cells[CellIndex(x, y)];
-    if ((Player && Player->Occupies(int(x), int(y))) || cell.Type != CellTypes::Empty)
-        return false;
-    cell.Type = CellTypes::Dirt;
-    return true;
+
+bool World::PlaceDirt(int64_t x, int64_t y) {
+    return TryPlaceDirt(x, y) == CellEditResult::Applied;
 }
-bool World::RemoveDirt(uint32_t x, uint32_t y) {
-    auto &cell = State.Cells[CellIndex(x, y)];
-    if (cell.Type != CellTypes::Dirt)
-        return false;
-    cell.Type = CellTypes::Empty;
-    return true;
+
+CellEditResult World::TryPlaceDirt(int64_t x, int64_t y) {
+    const auto cell = TryGetCell(x, y);
+    if (!cell)
+        return CellEditResult::NotReady;
+    if ((Player && Player->Occupies(x, y)) || cell->Type != CellTypes::Empty)
+        return CellEditResult::Blocked;
+    Map.SetMaterial({x, y}, CellTypes::Dirt);
+    return CellEditResult::Applied;
 }
-void World::PublishState(WorldState &destination) {
+
+bool World::RemoveDirt(int64_t x, int64_t y) {
+    return TryRemoveDirt(x, y) == CellEditResult::Applied;
+}
+
+CellEditResult World::TryRemoveDirt(int64_t x, int64_t y) {
+    const auto cell = TryGetCell(x, y);
+    if (!cell)
+        return CellEditResult::NotReady;
+    if (cell->Type != CellTypes::Dirt)
+        return CellEditResult::Blocked;
+    Map.SetMaterial({x, y}, CellTypes::Empty);
+    return CellEditResult::Applied;
+}
+
+void World::PublishState(WorldSnapshot &destination) const {
+    const auto view = destination.Read();
+    const auto bounds = GetSimulationBounds();
+    if ((view.Width || view.Height) && (view.Width != bounds.Width || view.Height != bounds.Height))
+        throw std::invalid_argument("publication destination dimensions do not match");
+    PublishSnapshot(bounds, destination);
+}
+
+void World::PublishSnapshot(WorldRect bounds, WorldSnapshot &destination) const {
     PIXEL_PROFILE_SCOPE(StateCopy);
-    if (&destination == &State || destination.Width != State.Width || destination.Height != State.Height)
-        throw std::invalid_argument("world publication requires distinct, equal-sized states");
-    State.Cells.swap(destination.Cells);
-    std::copy(destination.Cells.begin(), destination.Cells.end(), State.Cells.begin());
+    destination.Update(Map, bounds);
 }
-void World::SpawnPlayer(float x, float y) {
-    if (!std::isfinite(x) || !std::isfinite(y) || x < 0 || y < 0 ||
-        x + Character::Width > State.Width || y + Character::Height > State.Height)
-        throw std::invalid_argument("player bounds must fit inside the world");
+
+void World::RestorePlayer(WorldPosition position) {
+    position.Normalize();
     Player = Character{};
-    Player->X = x;
-    Player->Y = y;
+    Player->OriginChunk = position.Chunk;
+    Player->X = position.Local[0];
+    Player->Y = position.Local[1];
     PlayerHorizontal = 0;
     PlayerJump = false;
+    UpdateStreaming();
 }
+
+void World::SpawnPlayer(double x, double y) {
+    if (!std::isfinite(x) || !std::isfinite(y) || (Map.IsFinite() && (x < 0 || y < 0 || x + Character::Width > Map.Bounds().Width || y + Character::Height > Map.Bounds().Height)))
+        throw std::invalid_argument("player bounds must fit inside the world");
+    RestorePlayer(WorldPosition::FromAbsolute(x, y));
+}
+
 void World::SetPlayerInput(int horizontal, bool jump) {
     PlayerHorizontal = std::clamp(horizontal, -1, 1);
     PlayerJump = jump;
 }
-void World::Tick(float duration) {
-    Environment.Tick(duration, *this);
+
+void World::EnableStreaming(WorldStreamSettings settings) {
+    if (Streamer)
+        Save();
+    Streamer.reset();
+    Map.ResetInfinite();
+    Environment = pixel::Environment(Map);
+    ScratchReservation = 0;
+    SimulationBounds = {0, 0, settings.WindowEdge, settings.WindowEdge};
+    VisibleBounds = {};
+    Player.reset();
+    WindEnabled = false;
+    Streamer = std::make_unique<WorldStreamer>(Map, std::move(settings));
+    Streamer->LoadNow(SimulationBounds);
+}
+
+void World::RequestVisibleRegion(WorldRect bounds) {
+    VisibleBounds = bounds;
+    UpdateStreaming();
+}
+
+void World::UpdateStreaming() {
+    if (!Streamer)
+        return;
     if (Player) {
+        const auto cell = Player->GetWorldPosition().Cell();
+        const auto quarter = SimulationBounds.Width / 4;
+        WorldRect centre{SimulationBounds.X + quarter, SimulationBounds.Y + quarter,
+                         SimulationBounds.Width / 2, SimulationBounds.Height / 2};
+        if (!centre.Contains(cell)) {
+            SimulationBounds.X = FloorDivide(cell.X - SimulationBounds.Width / 2, storage::RegionEdge) * storage::RegionEdge;
+            SimulationBounds.Y = FloorDivide(cell.Y - SimulationBounds.Height / 2, storage::RegionEdge) * storage::RegionEdge;
+            Map.Wake(SimulationBounds);
+        }
+    }
+    Streamer->Update(SimulationBounds, VisibleBounds);
+    if (WindEnabled) {
+        const auto view = GetWindView();
+        Environment.GetWindSimulation().MoveDomain(view, view.Height);
+    }
+}
+
+void World::Save() {
+    if (Streamer)
+        Streamer->Save();
+}
+
+void World::WaitForStreaming() {
+    if (Streamer)
+        Streamer->Wait();
+}
+
+void World::SetPublicationBytes(uint64_t bytes) {
+    SetPublicationBytes(nullptr, bytes);
+}
+
+bool World::ReservePublicationBytes(const void *owner, uint64_t bytes) {
+    const auto found = PublicationOwners.find(owner);
+    const auto previous = found == PublicationOwners.end() ? 0 : found->second;
+    const uint64_t total = PublicationBytes - previous + bytes;
+    const auto scratch = std::max(ScratchReservation, Environment.GetMemoryUsage().ReservedHeapBytes - Environment.GetWindSimulation().GetMemoryUsage().ReservedHeapBytes);
+    if (Streamer && !Streamer->ReserveExternalBytes(total + scratch, GetSimulationBounds()))
+        return false;
+    PublicationOwners[owner] = bytes;
+    PublicationBytes = total;
+    return true;
+}
+
+void World::SetPublicationBytes(const void *owner, uint64_t bytes) {
+    if (!ReservePublicationBytes(owner, bytes)) {
+        if (Streamer)
+            Streamer->Wait();
+        if (!ReservePublicationBytes(owner, bytes))
+            throw std::runtime_error("world budget cannot fit publication storage");
+    }
+}
+
+void World::ReleasePublication(const void *owner) {
+    const auto found = PublicationOwners.find(owner);
+    if (found == PublicationOwners.end())
+        return;
+    PublicationBytes -= found->second;
+    PublicationOwners.erase(found);
+    if (Streamer) {
+        const auto scratch = Environment.GetMemoryUsage().ReservedHeapBytes - Environment.GetWindSimulation().GetMemoryUsage().ReservedHeapBytes;
+        Streamer->SetExternalBytes(PublicationBytes + scratch);
+    }
+}
+
+void World::ReserveSimulationBytes(uint64_t bytes) {
+    // During a material step the read state is pinned. Completed loads are
+    // accepted only at the next frame/fixed-step boundary, never mid-proposal.
+    if (Streamer && !Streamer->ReserveExternalBytes(PublicationBytes + bytes, GetSimulationBounds(), false)) {
+        Streamer->WaitForSaves();
+        if (!Streamer->ReserveExternalBytes(PublicationBytes + bytes, GetSimulationBounds(), false))
+            throw WorldBudgetUnavailable{};
+    }
+    ScratchReservation = bytes;
+}
+
+void World::Tick(float duration) {
+    UpdateStreaming();
+    Environment.Tick(duration, *this);
+    if (Player && !Environment.IsWaitingForBudget()) {
         PIXEL_PROFILE_SCOPE(Character);
         Player->Tick(duration, ReadState(), PlayerHorizontal, PlayerJump);
     }

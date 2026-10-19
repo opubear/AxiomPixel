@@ -89,7 +89,8 @@ void CommandsAndReset() {
     Require(f.Camera.GetView().OriginPixels == view.OriginPixels, "standard mode must ignore region shortcut");
     f.KeyEvent(Key::KEY_F3);
     f.KeyEvent(Key::KEY_PAGE_DOWN);
-    Require(f.Camera.GetView().OriginPixels != view.OriginPixels, "debug mode must execute region shortcut");
+    Require(f.Camera.GetView().WorldOriginCells[1] == view.WorldOriginCells[1] + pixel::storage::ChunkEdge,
+            "debug mode must advance one world chunk while preserving local projection");
     f.KeyEvent(Key::KEY_D);
     f.Session.SetPaused(false);
     f.Session.GetWorld().RemoveDirt(20, 512);

@@ -22,7 +22,7 @@ class PixelRender final : public RenderPolicyInterface {
     void OnPresentationChanged(const RHIPresentationChanged &) override;
     void Clear() override;
     uint64_t SubmittedFrames() const { return FrameCount; }
-    uint64_t UploadedWorldBytes() const { return FrameCount * Grid2D::UploadBytes; }
+    uint64_t UploadedWorldBytes() const { return WorldUploadBytes; }
     const RHITexture &SceneColor(uint32_t slot) const;
     const RHITexture &WorldColor(uint32_t slot) const;
     // Borrowed until the next FrameBegin or Clear, including after Draw.
@@ -30,7 +30,7 @@ class PixelRender final : public RenderPolicyInterface {
 
   private:
     struct FrameResources {
-        std::array<std::unique_ptr<RHITexture>, Grid2D::PageCount> Data;
+        std::unique_ptr<RHITexture> Data;
         std::unique_ptr<RHIUploadBuffer> Upload;
         std::unique_ptr<RHITexture> Color, WindColor, CharacterColor, WindData;
         std::unique_ptr<RHIUploadBuffer> WindUpload;
@@ -39,6 +39,10 @@ class PixelRender final : public RenderPolicyInterface {
         std::unique_ptr<RHIDescriptorSet> WorldSet;
         std::unique_ptr<RHIDescriptorSet> PostSet, CharacterSet, CharacterPostSet;
         std::unique_ptr<RHIDescriptorSet> WindSet, WindPostSet, WindCharacterSet;
+        std::array<int64_t, 2> CellOrigin{};
+        GridDisplayMode DisplayMode = GridDisplayMode::Materials;
+        std::vector<uint64_t> RegionVersions, WindRegionVersions;
+        std::vector<RHITextureCopyRegion> DirtyRegions, WindDirtyRegions;
     };
     DynamicRHI &RHI;
     GridTextureCatalog Catalog;
@@ -56,8 +60,11 @@ class PixelRender final : public RenderPolicyInterface {
     RHIPresentationExtent Extent{};
     bool MaterialsUploaded = false;
     uint64_t FrameCount = 0;
+    uint64_t WorldUploadBytes = 0;
     void CreateColorTargets();
-    void RecordWorld(RHICommandList &commands, FrameResources &frame, const GridView2D &view, GridDisplayMode mode);
+    void CreateGridResources(FrameResources &frame, uint32_t width, uint32_t height);
+    void PrepareGridUpload(FrameResources &frame, const WorldGridFrameView &input);
+    void RecordWorld(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input);
     void RecordWind(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input);
     void RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character);
     void RecordPost(RHICommandList &commands, FrameResources &frame, const PostProcessParameters &parameters);

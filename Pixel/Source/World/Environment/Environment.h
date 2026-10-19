@@ -2,40 +2,43 @@
 
 #include "ForceField.h"
 #include "Wind/WindSimulation.h"
-#include "World/WorldState.h"
-#include <cstddef>
-#include <vector>
 
 namespace pixel {
 class World;
 
-// Owns spatial base forces and wind. Material movement never transports fields.
-// World owns this CPU-only environment and supplies material state for each step.
 class Environment {
   public:
+    explicit Environment(WorldMap &map) : BaseForces(map) {}
     performance::MemoryUsage GetMemoryUsage() const;
-
-    Environment(uint32_t width, uint32_t height);
-    ForceField &GetBaseForceField() { return BaseForces; }
     const ForceField &GetBaseForceField() const { return BaseForces; }
     void Tick(float duration, World &world);
-    ForceVector SampleForce(uint32_t x, uint32_t y) const;
+    ForceVector SampleForce(CellCoord cell) const;
     WindSimulation &GetWindSimulation() { return Wind; }
     const WindSimulation &GetWindSimulation() const { return Wind; }
+    uint64_t LastVisitedCells() const { return VisitedCells; }
+    uint64_t LastActiveRegions() const { return ActiveRegions; }
+    bool IsWaitingForBudget() const { return WaitingForBudget; }
+    double GetSimulationTime() const { return SimulationSeconds; }
+    double GetTimeRemainder() const { return TimeRemainder; }
+    void RestoreClock(double seconds, double remainder, bool deferredStep = false);
 
   private:
-    struct CellMove {
-        size_t Source;
-        size_t Destination;
-    };
     double TimeRemainder = 0;
+    double SimulationSeconds = 0;
     ForceField BaseForces;
     WindSimulation Wind;
-    // Reused between steps; contain indices only, never borrowed cell storage.
-    std::vector<uint8_t> Processed;
-    std::vector<CellMove> MovementChain;
-    std::vector<DirtMotion> DirtMovements;
-    void StepForceField(World &world);
-    void ResolveMovementChain(World &world, WorldStateView state, size_t source);
+    axiom::Array<MaterialMove> Proposals;
+    axiom::Array<uint32_t> Winners, WinnerEpochs;
+    uint32_t Epoch = 0;
+    ForceDirection ProposalDirection;
+    bool SharedProposalDirection = true;
+    axiom::Array<DirtMotion> DirtMovements;
+    uint64_t VisitedCells = 0;
+    uint64_t ActiveRegions = 0;
+    bool WindAdvancedForStep = false;
+    bool WaitingForBudget = false;
+    void StepMaterials(World &world);
+    void ProposeRegion(World &world, WorldRect region);
+    void ResolveConflicts(World &world, WorldRect bounds);
 };
 } // namespace pixel

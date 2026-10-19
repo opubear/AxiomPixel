@@ -10,12 +10,14 @@ struct WindConstants {
     float RefractionPixels;
     float MotionScale;
     float Reserved;
+    uint2 GridExtent;
+    uint2 NoiseOrigin;
 };
 [[vk::push_constant]] WindConstants Wind;
 
 // Mirrors WindVisualFrame: signed fixed-point XY, solid sentinel, calm outside.
 float3 ReadWind(int2 cell) {
-    if (any(cell < 0) || any(cell >= int2(1024, 1024))) return float3(0);
+    if (any(cell < 0) || any(cell >= int2(Wind.GridExtent))) return float3(0);
     uint packed = WindField.Load(int3(cell, 0));
     if (packed == 0x80008000u) return float3(0);
     int2 bits = int2(packed & 65535u, packed >> 16);
@@ -38,11 +40,13 @@ float2 VisualVelocity(float2 velocity) {
     return scaled / (1 + length(scaled) / 12.0);
 }
 float2 SeedOffset(int2 cell, uint layer) {
+    cell = int2(uint2(cell) & 255u);
     uint hash = uint(cell.x) * 1664525u + uint(cell.y) * 1013904223u + 374761393u + layer * 2246822519u;
     hash = (hash ^ (hash >> 13)) * 1274126177u;
     return float2(hash & 65535u, hash >> 16) / 65535.0;
 }
 float StreakMask(float2 p, float2 direction, float strength, uint layer) {
+    p += float2(Wind.NoiseOrigin);
     const float spacing = 6.0;
     int2 tile = int2(floor(p / spacing));
     float mask = 0;

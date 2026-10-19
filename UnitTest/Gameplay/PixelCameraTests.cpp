@@ -52,7 +52,7 @@ int main() {
         const auto zoomed = MakeCameraView(camera, {1600, 1200}, settings);
         Require(zoomed.OriginPixels == std::array<int32_t, 2>{15584, 15720}, "zoom must retain world centre");
         const auto picked = PickGridCell(zoomed, {400, 300}, {800, 600}, {1600, 1200});
-        Require(picked && *picked == std::array<uint32_t, 2>{512, 510}, "HiDPI picking must agree with camera view");
+        Require(picked && *picked == std::array<int64_t, 2>{512, 510}, "HiDPI picking must agree with camera view");
         camera.Translate({-0.25, 0.125});
         Require(view.OriginPixels == std::array<int32_t, 2>{7392, 7560}, "published view must not track live camera");
         Require(camera.GetPosition() == pixel::Camera2D::Position{511.75, 510.125}, "camera must retain fractional movement");

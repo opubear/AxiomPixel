@@ -31,11 +31,18 @@ void Reject(F &&action) {
     Check(rejected, "expected invalid input to be rejected");
 }
 struct MockUpload : RHIUploadBuffer {
+    static inline size_t Writes = 0;
     std::vector<std::byte> Bytes;
     explicit MockUpload(size_t size) : Bytes(size) {}
     void Write(std::span<const std::byte> bytes) override {
+        ++Writes;
         Check(bytes.size() == Bytes.size(), "partial upload");
         std::copy(bytes.begin(), bytes.end(), Bytes.begin());
+    }
+    void WriteRegion(std::span<const std::byte> bytes, uint64_t offset) override {
+        ++Writes;
+        Check(offset <= Bytes.size() && bytes.size() <= Bytes.size() - offset, "partial write outside upload");
+        std::copy(bytes.begin(), bytes.end(), Bytes.begin() + offset);
     }
 };
 struct MockImage : RHITexture {
@@ -46,6 +53,7 @@ struct MockCommands : RHICommandList {
     std::vector<std::string> Events;
     std::vector<std::pair<const RHITexture *, std::vector<std::byte>>> Copies;
     std::vector<std::vector<std::byte>> Constants;
+    std::vector<RHITextureCopyRegion> Regions;
     bool InPass = false;
     const RHIFrameToken &GetFrameToken() const override { return Token; }
     void BindPipeline(const RHIPipeline &) override { Check(InPass, "pipeline outside pass"); }
@@ -70,6 +78,20 @@ struct MockCommands : RHICommandList {
         const auto count = size_t(texture.Desc.Width) * texture.Desc.Height * texture.Desc.Layers * 4;
         Check(offset + count <= bytes.size(), "copy outside upload buffer");
         Copies.emplace_back(&texture, std::vector<std::byte>(bytes.begin() + offset, bytes.begin() + offset + count));
+        Events.emplace_back("copy");
+    }
+    void CopyBufferToTextureRegion(const RHIUploadBuffer &buffer, RHITexture &texture, const RHITextureCopyRegion &region) override {
+        Check(!InPass, "region copy inside pass");
+        const auto &bytes = dynamic_cast<const MockUpload &>(buffer).Bytes;
+        Check(TextureCopyRequiredBytes(texture.Desc, region) <= bytes.size(), "region copy outside upload buffer");
+        const uint32_t stride = region.BufferRowLength ? region.BufferRowLength : region.Width;
+        std::vector<std::byte> packed;
+        for (uint32_t row = 0; row < region.Height; ++row) {
+            const size_t first = region.BufferOffset + size_t(row) * stride * 4;
+            packed.insert(packed.end(), bytes.begin() + first, bytes.begin() + first + size_t(region.Width) * 4);
+        }
+        Copies.emplace_back(&texture, std::move(packed));
+        Regions.push_back(region);
         Events.emplace_back("copy");
     }
     void BeginColorPass(RHITexture &) override {
@@ -116,7 +138,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check(sets == 21 && images == 36 && samplers == 12, "descriptor pool is not sized from actual slots");
+        Check(sets == 21 && images == 27 && samplers == 12, "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -126,6 +148,7 @@ struct MockRHI : DynamicRHI {
         Commands.Events.clear();
         Commands.Copies.clear();
         Commands.Constants.clear();
+        Commands.Regions.clear();
         record(Commands);
         Check(!Commands.InPass, "unfinished frame pass");
         if (FailRecord)
@@ -200,11 +223,21 @@ void InputValidation() {
     frame.Post.Values[0] = std::numeric_limits<float>::quiet_NaN();
     Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
 }
+
+void UnpublishedFrameCapacity() {
+    WorldGridFrame frame;
+    const size_t cells = size_t(Grid2D::RegionSize) * Grid2D::RegionSize;
+    Check(frame.GetWidth() == Grid2D::RegionSize && frame.GetHeight() == Grid2D::RegionSize && frame.Cells().size() == cells && frame.WindCells().size() == cells,
+          "unpublished frame must start with one scheduling region");
+    Check(frame.GetMemoryUsage().ReservedHeapBytes == cells * 2 * sizeof(uint32_t),
+          "unpublished frame retained a full-world texture allocation");
+}
 void FrameRecording() {
     MockRHI rhi;
     std::vector<uint32_t> cells(Grid2D::CellCount, 1);
     PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &output) {
         ++rhi.InputReads;
+        output.SetRegion({0, 0}, Grid2D::Width, Grid2D::Height);
         std::copy(cells.begin(), cells.end(), output.Cells().begin());
     });
     Reject([&] { policy.FrameBegin(); });
@@ -224,12 +257,11 @@ void FrameRecording() {
         Check(rhi.InputReads == frame + 1, "Draw read mutable gameplay");
         cells.back() = last;
         const auto &copies = rhi.Commands.Copies;
-        Check(copies.size() == (frame == 0 ? 5 : 4), "expected four world uploads every frame and one initial material upload");
-        const size_t start = copies.size() - 4;
-        for (size_t page = 0; page < 4; ++page) {
-            Check(copies[start + page].second.size() == Grid2D::PageBytes, "incorrect data page size");
-            Check(std::memcmp(copies[start + page].second.data(), reinterpret_cast<const std::byte *>(cells.data()) + page * Grid2D::PageBytes, Grid2D::PageBytes) == 0, "uploaded stale or incorrectly paged world data");
-        }
+        Check(copies.size() == (frame == 0 ? 2 : 1), "expected one dynamic world upload and one initial material upload");
+        const size_t start = copies.size() - 1;
+        Check(copies[start].second.size() == Grid2D::UploadBytes, "incorrect dynamic texture size");
+        Check(std::memcmp(copies[start].second.data(), cells.data(), Grid2D::UploadBytes) == 0,
+              "uploaded stale or incorrectly indexed world data");
         if (frame < 3)
             slotImages[frame] = copies[start].first;
         else
@@ -248,7 +280,7 @@ void FrameRecording() {
               "resize did not rebuild colors for every frame slot");
     policy.FrameBegin();
     policy.Draw();
-    Check(rhi.Commands.Copies.size() == 4, "resize reuploaded immutable materials");
+    Check(rhi.Commands.Copies.size() == 1, "resize reuploaded immutable materials");
     policy.Clear();
     policy.Clear();
     Check(rhi.InputReads == 7, "cleanup invoked a dead gameplay callback");
@@ -295,6 +327,7 @@ void WindComposition() {
     bool character = true;
     uint32_t velocity = PackWindVelocity(-25, 40);
     PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &frame) {
+        frame.SetRegion({0, 0}, Grid2D::Width, Grid2D::Height);
         frame.DisplayMode = display;
         frame.Wind.Mode = mode;
         frame.WindTimeSeconds = .125f;
@@ -310,14 +343,14 @@ void WindComposition() {
         velocity = PackWindVelocity(300, -30);
         policy.Draw();
         const auto &copies = rhi.Commands.Copies;
-        Check(copies.size() == (slot == 0 ? 6 : 5), "wind texture not uploaded exactly once");
+        Check(copies.size() == (slot == 0 ? 3 : 2), "wind texture not uploaded exactly once");
         Check(copies.back().second.size() == Grid2D::UploadBytes, "incorrect wind upload size");
         uint32_t packed;
         std::memcpy(&packed, copies.back().second.data(), sizeof(packed));
         Check(packed == PackWindVelocity(-25, 40), "Draw read live wind data");
         windImages[slot] = copies.back().first;
         const auto &constants = rhi.Commands.Constants;
-        Check(constants.size() == 4 && constants[1].size() == 48 && constants[2].size() == 64, "wind must precede character and post passes");
+        Check(constants.size() == 4 && constants[1].size() == 64 && constants[2].size() == 64, "wind must precede character and post passes");
         uint32_t shaderMode;
         std::memcpy(&shaderMode, constants[1].data() + 24, sizeof(shaderMode));
         Check(shaderMode == 1, "wind mode constant layout mismatch");
@@ -333,11 +366,11 @@ void WindComposition() {
     Check(policy.SceneColor(2).Desc.Width == 65 && policy.SceneColor(2).Desc.Height == 49, "wind target resize failed");
     mode = WindVisualMode::Off;
     policy.FrameBegin(); policy.Draw();
-    Check(rhi.Commands.Copies.size() == 4 && rhi.Commands.Constants.size() == 2 && &policy.SceneColor(2) == &policy.WorldColor(2), "Off retains stale wind output");
+    Check(rhi.Commands.Copies.size() == 1 && rhi.Commands.Constants.size() == 2 && &policy.SceneColor(2) == &policy.WorldColor(2), "Off retains stale wind output");
     mode = WindVisualMode::AirRefraction;
     display = GridDisplayMode::ForceField;
     policy.FrameBegin(); policy.Draw();
-    Check(rhi.Commands.Copies.size() == 4 && rhi.Commands.Constants.size() == 2, "wind affects F1 diagnostic pass");
+    Check(rhi.Commands.Copies.size() == 1 && rhi.Commands.Constants.size() == 2, "wind affects F1 diagnostic pass");
     policy.Clear();
 }
 void FailedFrames() {
@@ -364,8 +397,8 @@ void FailedFrames() {
 void GameplayPublication() {
     MockRHI rhi;
     auto world = std::make_unique<pixel::World>(Grid2D::Width, Grid2D::Height);
-    auto snapshot = std::make_shared<pixel::WorldState>(Grid2D::Width, Grid2D::Height);
-    const std::weak_ptr<pixel::WorldState> lifetime = snapshot;
+    auto snapshot = std::make_shared<pixel::WorldSnapshot>(Grid2D::Width, Grid2D::Height);
+    const std::weak_ptr<pixel::WorldSnapshot> lifetime = snapshot;
     CellAppearanceTable appearances{{10, 2}, {20, 1}};
     GridView2D view;
     PostProcessParameters post;
@@ -400,6 +433,7 @@ void DebugFrameIsolation() {
     auto mode = GridDisplayMode::ForceField;
     PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &output) {
         ++rhi.InputReads;
+        output.SetRegion({0, 0}, Grid2D::Width, Grid2D::Height);
         if (mode == GridDisplayMode::ForceField)
             BuildForceFieldFrame(world, output);
         else
@@ -424,6 +458,123 @@ void DebugFrameIsolation() {
     Check(shaderMode == 0, "material frame retained debug shader mode");
     policy.Clear();
 }
+
+void RegionUploadCaching() {
+    MockRHI rhi;
+    pixel::World world(130, 70);
+    pixel::WorldSnapshot snapshot;
+    CellAppearanceTable appearances{{10, 1}};
+    bool forceView = false;
+    PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &output) {
+        world.PublishState(snapshot);
+        if (forceView)
+            BuildForceFieldFrame(world, output);
+        else
+            BuildWorldGridFrame(snapshot.Read(), appearances, output);
+    });
+    policy.Initialize();
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        rhi.Commands.Token.Slot = slot;
+        policy.FrameBegin();
+        policy.Draw();
+        Check(rhi.Commands.Copies.back().first->Desc.Width == 130 && rhi.Commands.Copies.back().first->Desc.Height == 70,
+              "dynamic grid dimensions retained the old world pages");
+    }
+    const auto initialBytes = policy.UploadedWorldBytes();
+    const auto initialWrites = MockUpload::Writes;
+    policy.FrameBegin();
+    policy.Draw();
+    Check(rhi.Commands.Copies.empty() && MockUpload::Writes == initialWrites && policy.UploadedWorldBytes() == initialBytes,
+          "unchanged material regions were mapped or uploaded again");
+
+    world.PlaceDirt(65, 65);
+    policy.FrameBegin();
+    world.RemoveDirt(65, 65);
+    policy.Draw();
+    Check(rhi.Commands.Regions.size() == 1 && rhi.Commands.Regions.front().X == 64 && rhi.Commands.Regions.front().Y == 64 && rhi.Commands.Regions.front().Width == 64 && rhi.Commands.Regions.front().Height == 6,
+          "a cell edit did not upload only its clipped 64-cell region");
+    Check(policy.PublishedFrame().Cells[65 * 130 + 65] == 1,
+          "editing after publication changed the pending region upload");
+    policy.FrameBegin();
+    policy.Draw();
+    Check(policy.PublishedFrame().Cells[65 * 130 + 65] == 0, "following publication lost a removal");
+
+    world.SetForceDirection(10, 10, {0, -1});
+    policy.FrameBegin();
+    policy.Draw();
+    Check(rhi.Commands.Copies.empty(), "base force metadata caused an unchanged material texture upload");
+    world.PlaceDirt(1, 1);
+    policy.FrameBegin();
+    policy.Draw();
+    appearances[10] = 2;
+    policy.FrameBegin();
+    policy.Draw();
+    Check(rhi.Commands.Regions.size() == 1 && policy.PublishedFrame().Cells[131] == 2,
+          "appearance mapping change failed to invalidate the affected cached region");
+    forceView = true;
+    policy.FrameBegin();
+    policy.Draw();
+    Check(!rhi.Commands.Copies.empty() && policy.PublishedFrame().DisplayMode == GridDisplayMode::ForceField,
+          "F1 retained material texture data");
+    policy.FrameBegin();
+    policy.Draw();
+    Check(rhi.Commands.Copies.empty(), "unchanged force-field colours were uploaded again");
+    ResizePresentation(rhi, policy, {111, 79});
+    policy.FrameBegin();
+    policy.Draw();
+    Check(rhi.Commands.Regions.size() == 1 && rhi.Commands.Regions.front().Width == 130,
+          "resource reconstruction did not synchronize the active frame slot");
+    policy.Clear();
+}
+
+void DistantRegionProjection() {
+    WorldGridFrame output;
+    constexpr int64_t distant = int64_t{1} << 60;
+    output.SetRegion({distant - 64, -distant}, 128, 64);
+    output.View.WorldOriginCells = {distant, -distant};
+    output.View.OriginPixels = {3, -2};
+    const auto local = LocalGridPixelOrigin(output.Read());
+    Check(local == std::array<int32_t, 2>{1027, -2}, "distant region lost integer cell precision");
+    const auto picked = PickGridCell(output.View, {0, 0}, {80, 60}, {80, 60});
+    Check(picked && *picked == std::array<int64_t, 2>{distant, -distant - 1},
+          "negative or distant coordinate picking truncated the cell coordinate");
+    const auto region = VisibleWorldRegion(output.View, {80, 60});
+    Check(region.X % Grid2D::RegionSize == 0 && region.Y % Grid2D::RegionSize == 0 && region.Width >= 64 && region.Height >= 64,
+          "visible region omitted the aligned wind backtrace halo");
+    output.View.WorldOriginCells[0] = INT64_MIN;
+    Reject([&] { LocalGridPixelOrigin(output.Read()); });
+
+    pixel::Camera2D camera;
+    const pixel::CellCoord chunk{int64_t{1} << 45, -(int64_t{1} << 45)};
+    camera.SetWorldPosition({chunk, {512.125, 510.0625}});
+    const auto view = MakeCameraView(camera, {1600, 1200}, {});
+    Check(view.OriginPixels == std::array<int32_t, 2>{7394, 7561} && view.WorldOriginCells == std::array<int64_t, 2>{chunk.X * pixel::storage::ChunkEdge, chunk.Y * pixel::storage::ChunkEdge},
+          "distant camera discarded its fractional position before GPU projection");
+    pixel::Character player;
+    player.OriginChunk = chunk;
+    player.X = 511.03125;
+    player.Y = 508;
+    output.View = view;
+    BuildCharacterFrame(player, camera, {1600, 1200}, output);
+    Check(output.Character && output.Character->Bounds == std::array<float, 4>{782.5f, 567.f, 32, 64},
+          "distant character geometry lost its fractional camera-relative offset");
+}
+
+void UnalignedRegionPublication() {
+    pixel::World world(128, 128);
+    pixel::WorldSnapshot snapshot;
+    WorldGridFrame frame;
+    const pixel::WorldRect region{1, 1, 64, 64};
+    world.PublishSnapshot(region, snapshot);
+    BuildWorldGridFrame(snapshot.Read(), {{10, 1}}, frame);
+    Check(frame.Cells().back() == 0, "unaligned snapshot did not publish its initial empty edge");
+    world.PlaceDirt(64, 64);
+    world.PublishSnapshot(region, snapshot);
+    BuildWorldGridFrame(snapshot.Read(), {{10, 1}}, frame);
+    Check(frame.Cells().back() == 1, "render tile ignored a change in an overlapping quadtree leaf");
+    world.RemoveDirt(64, 64);
+    Check(frame.Cells().back() == 1, "unaligned snapshot retained mutable world storage");
+}
 } // namespace
 // This test checks policy orchestration without shader/device dependencies. Real
 // shader reflection and pixel results are checked by the opt-in Vulkan smoke.
@@ -431,14 +582,18 @@ const SPIRVInfo &GetShaderInfo(std::string_view) {
     static SPIRVInfo info;
     return info;
 }
-int main() {
+int main(int argc, char **argv) {
     try {
+        const bool renderingOnly = argc == 2 && std::string_view(argv[1]) == "--rendering-only";
         InputValidation();
-        RunPixelWorldTests();
-        RunPixelFieldTests();
-        RunPixelWindTests();
+        UnpublishedFrameCapacity();
+        if (!renderingOnly) {
+            RunPixelWorldTests();
+            RunPixelFieldTests();
+            RunPixelWindTests();
+            RunPixelDirtWindTests();
+        }
         RunPixelFieldViewTests();
-        RunPixelDirtWindTests();
         RunPixelWindVisualTests();
         WindComposition();
         FrameRecording();
@@ -446,6 +601,9 @@ int main() {
         FailedFrames();
         GameplayPublication();
         DebugFrameIsolation();
+        RegionUploadCaching();
+        DistantRegionProjection();
+        UnalignedRegionPublication();
         std::cout << "Pixel2D input and frame orchestration passed\n";
         return 0;
     } catch (const std::exception &error) {

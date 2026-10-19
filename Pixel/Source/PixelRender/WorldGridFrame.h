@@ -1,14 +1,20 @@
 #pragma once
 
+#include "Performance/MemoryUsage.h"
 #include "WindVisualFrame.h"
+#include "World/WorldStorageConfig.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <vector>
 
 namespace Grid2D {
+inline constexpr uint32_t RegionSize = pixel::storage::RegionEdge;
+inline constexpr uint32_t WindHalo = 32;
+inline constexpr uint32_t MissingCell = UINT32_MAX;
 inline constexpr uint32_t Width = 1024;
 inline constexpr uint32_t Height = 1024;
 inline constexpr uint32_t PageHeight = 256;
@@ -21,12 +27,15 @@ struct GridView2D {
     std::array<int32_t, 2> OriginPixels{0, 0};
     std::array<uint32_t, 2> CellSizePixels{16, 16};
     std::array<float, 4> Background{0, 0, 0, 1};
+    // OriginPixels is relative to this world-cell reference. GPU coordinates
+    // remain small even when the camera is far from the world origin.
+    std::array<int64_t, 2> WorldOriginCells{};
 };
 // Cursor coordinates use window units; rendering uses framebuffer pixels.
-std::optional<std::array<uint32_t, 2>> PickGridCell(const GridView2D &view,
-                                                    std::array<double, 2> cursor,
-                                                    std::array<int, 2> windowSize,
-                                                    std::array<int, 2> framebufferSize);
+std::optional<std::array<int64_t, 2>> PickGridCell(const GridView2D &view,
+                                                   std::array<double, 2> cursor,
+                                                   std::array<int, 2> windowSize,
+                                                   std::array<int, 2> framebufferSize);
 struct PostProcessParameters {
     std::array<float, 16> Values{1, 1, 1, 1};
 };
@@ -53,17 +62,55 @@ struct WorldGridFrameView {
     float WindTimeSeconds = 0;
     bool HasWind = false;
     std::span<const uint32_t> WindCells;
+    uint32_t Width = Grid2D::Width, Height = Grid2D::Height;
+    std::array<int64_t, 2> CellOrigin{};
+    std::span<const uint64_t> RegionVersions;
+    std::span<const uint64_t> WindRegionVersions;
+    bool MissingOutsideRegion = false;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
 class WorldGridFrame {
   public:
-    WorldGridFrame() : CellStorage(Grid2D::CellCount), WindStorage(Grid2D::CellCount) {}
+    // Publication reserves its final region before growing these two planes.
+    // Keep the unpublished fallback small enough for constrained world budgets.
+    WorldGridFrame() : CellStorage(size_t(Grid2D::RegionSize) * Grid2D::RegionSize),
+                       WindStorage(size_t(Grid2D::RegionSize) * Grid2D::RegionSize) {}
+    ~WorldGridFrame() {
+        if (ReleaseBudget)
+            ReleaseBudget();
+    }
     WorldGridFrame(const WorldGridFrame &) = delete;
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
     std::span<uint32_t> WindCells() { return WindStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion}; }
+    void SetRegion(std::array<int64_t, 2> origin, uint32_t width, uint32_t height);
+    uint32_t GetWidth() const { return Width; }
+    uint32_t GetHeight() const { return Height; }
+    std::array<int64_t, 2> GetCellOrigin() const { return CellOrigin; }
+    uint32_t RegionColumns() const { return (Width - 1) / Grid2D::RegionSize + 1; }
+    uint32_t RegionRows() const { return (Height - 1) / Grid2D::RegionSize + 1; }
+    // The appearance signature includes the display mode; a changed mapping
+    // invalidates every source region without changing gameplay versions.
+    bool PrepareRegionVersions(uint64_t appearanceSignature);
+    uint64_t SourceRegionVersion(size_t index) const { return SourceVersions.at(index); }
+    void SetSourceRegionVersion(size_t index, uint64_t version, bool contentsChanged = true);
+    void MarkWindRegionChanged(size_t index);
+    bool PrepareWindRegionVersions(uint64_t revision);
+    uint64_t WindSourceRegionVersion(size_t index) const { return WindSourceVersions.at(index); }
+    void SetWindSourceRegionVersion(size_t index, uint64_t revision) { WindSourceVersions.at(index) = revision; }
+    bool WindRegionIsActive(size_t index) const { return WindRegionActive.at(index) != 0; }
+    void SetWindRegionActive(size_t index, bool active) { WindRegionActive.at(index) = active; }
+    pixel::performance::MemoryUsage GetMemoryUsage() const;
+    void TrackPublication(uint64_t identity, std::function<void()> release) {
+        if (BudgetIdentity == identity)
+            return;
+        if (ReleaseBudget)
+            ReleaseBudget();
+        BudgetIdentity = identity;
+        ReleaseBudget = std::move(release);
+    }
     GridView2D View;
     PostProcessParameters Post;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
@@ -71,9 +118,18 @@ class WorldGridFrame {
     WindVisualSettings Wind;
     float WindTimeSeconds = 0;
     bool HasWind = false;
+    bool MissingOutsideRegion = false;
 
   private:
     std::vector<uint32_t> CellStorage, WindStorage;
+    uint32_t Width = Grid2D::RegionSize, Height = Grid2D::RegionSize;
+    std::array<int64_t, 2> CellOrigin{};
+    std::vector<uint64_t> SourceVersions, Versions, WindVersions, WindSourceVersions;
+    std::vector<uint8_t> WindRegionActive;
+    uint64_t AppearanceSignature = 0, NextVersion = 1;
+    uint64_t WindRevision = 0;
+    uint64_t BudgetIdentity = 0;
+    std::function<void()> ReleaseBudget;
 };
 // Layer zero is reserved for empty cells. Pixels contain tightly packed RGBA8,
 // in layer-major order; all layers share the same dimensions and sRGB encoding.
@@ -84,5 +140,6 @@ struct GridTextureCatalog {
     std::vector<std::byte> Pixels;
 };
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog);
+std::array<int32_t, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame);
 void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t textureLayers,
                             uint32_t framebufferWidth, uint32_t framebufferHeight);

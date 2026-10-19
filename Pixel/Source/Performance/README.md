@@ -65,8 +65,8 @@ void HeavyOperation() {
 
 | 行 | 计入范围 |
 |---|---|
-| World (excluding fields) | World 内联状态、世界格子数组、材料模拟的 Processed / MovementChain / DirtMovements 工作缓冲；排除以下两项 |
-| Base forces | 基础力场对象及逐格 ForceVector 数组 |
+| World (excluding fields) | World/WorldMap内联状态、块内材料/方向、四叉树、流式工作余量、Proposals/Winners/Epochs/DirtMovements及存活CPU发布缓冲；排除以下两项 |
+| Base forces | 块内持久ForceVector列与基础力场借用视图 |
 | Wind backend | WindSimulation、当前策略的具体对象，以及它持有的求解器、几何和反馈数组；覆盖 Empty、Coarse、Reference、Procedural、Hybrid、Adaptive、LBM |
 | Force fields | 同一帧的 Base forces + Wind backend |
 | Total (world + fields) | 同一帧的 World + Force fields，以上三种所有者只计一次 |
@@ -74,7 +74,7 @@ void HeavyOperation() {
 - `Last used = sizeof(对象) + Σ vector.size() × sizeof(元素)`，包含内联成员和填充字节。
 - `Last reserved = sizeof(对象) + Σ vector.capacity() × sizeof(元素)`，包含尚未使用的预留容量；`clear()` 不一定降低这个数值。
 - `Window peak` 是保留历史内的 reserved 最大帧末样本。历史过期或清空后会下降；总量峰值来自同一帧的合计，不累加各组件不同时刻的峰值。
-- 这是按所有权核算的存储量，不是进程 RSS。未计入分配器元数据/对齐开销、帧内已释放的临时数组和容器、渲染发布快照、GPU 资源、其他系统和 profiler 自身。尤其 Adaptive 的临时压力求解/重建工作区不在帧末样本中，不能把窗口峰值当作瞬时分配峰值。
+- 这是按所有权核算的存储量，不是进程RSS。地图计入块载荷对齐容量、节点估算、流式工作余量、CPU发布快照及材料scratch；材料扩容/发布峰值另由预算预留保障。GPU、其他系统、profiler自身和风求解器帧内已释放的临时数组不计，尤其Adaptive临时压力/重建工作区不在帧末样本中。世界预算排除风后端，不能把采样窗口峰值当作进程瞬时分配峰值。
 - 切换风策略、风区大小、重置或关闭风后，下一帧查询当前所有者；旧值仍参与历史窗口峰值，清空可开始新的对照。
 
 CSV 在原计时列之后追加 `memory_sampled`，并为 `memory.world`、`memory.fields`、`memory.base_forces`、`memory.wind`、`memory.total` 各追加 `_object_bytes`、`_used_heap_bytes`、`_reserved_heap_bytes`、`_used_bytes`、`_reserved_bytes`。其中 heap 字段已递归计入持有的后端对象。独立计时 benchmark 没有调用内存接口时，`memory_sampled=0` 且内存列留空，不记成零占用。汇总报告记录有效样本数、最近值、均值和窗口峰值。
@@ -94,3 +94,5 @@ performance::MemoryUsage Component::GetMemoryUsage() const {
 `MeasureObject` 的数组参数仅用于扁平、可平凡复制的元素；嵌套持有的资源必须显式递归统计，非拥有指针不重复计数。改变组件存储布局时同步维护 getter 和载荷测试。新增顶层指标时扩展 `MemoryComponent`、名称/界面行及 `MemorySnapshot::Get()`；汇总和 CSV 按枚举统一遍历。独立采样使用 `BeginFrame(); SetMemoryUsage(snapshot); EndFrame();`，同帧重复设置是替换而非累加。
 
 测试入口：`ctest --test-dir build-cpu -R 'Pixel\.(Performance|Memory)' --output-on-failure`。除原计时测试外，覆盖容器 size/capacity、所有权分区、七策略、维度变化、重置/关闭、缺失样本、同帧替换、窗口峰值过期及 CSV；`PixelRuntimeSmoke` 检查生产 ImGui 开关和内存表格。
+
+世界分块版本新增 `active_regions` 计数；材料访问格数、活动区域、区域上传字节与驻留预算的约定见 [世界表示](../../../Docs/WorldRepresentation.md)。

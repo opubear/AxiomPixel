@@ -3,8 +3,19 @@
 #include <array>
 #include <random>
 #include <stdexcept>
+#include <vector>
 
 namespace {
+std::vector<pixel::CellState> CopyCells(pixel::WorldMapView view) {
+    std::vector<pixel::CellState> cells;
+    cells.reserve(view.CellCount());
+    for (size_t i = 0; i < view.CellCount(); ++i)
+        cells.push_back(view.AtIndex(i));
+    return cells;
+}
+bool SameCells(pixel::WorldMapView left, pixel::WorldMapView right) {
+    return CopyCells(left) == CopyCells(right);
+}
 void Check(bool value, const char *reason) {
     if (!value)
         throw std::runtime_error(reason);
@@ -13,7 +24,7 @@ bool IsDirt(const pixel::World &world, uint32_t x, uint32_t y) {
     return world.GetCell(x, y).Type == pixel::CellTypes::Dirt;
 }
 size_t DirtCount(const pixel::World &world) {
-    const auto cells = world.ReadState().Cells;
+    const auto cells = CopyCells(world.ReadState());
     return std::count_if(cells.begin(), cells.end(), [](auto cell) { return cell.Type == pixel::CellTypes::Dirt; });
 }
 constexpr std::array<pixel::ForceDirection, 8> Directions{{{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
@@ -32,7 +43,7 @@ void MovementDirections() {
         const uint32_t edgeY = direction.Y < 0 ? 0 : direction.Y > 0 ? 6
                                                                      : 3;
         Check(IsDirt(world, edgeX, edgeY) && DirtCount(world) == 1, "directional movement crossed the world boundary");
-        for (const auto cell : world.ReadState().Cells)
+        for (const auto cell : CopyCells(world.ReadState()))
             Check(cell.Force == direction, "movement transported or cleared the spatial field");
     }
     pixel::World still(3, 3);
@@ -50,27 +61,30 @@ void SpatialFieldAndPublication() {
     world.SetForceDirection(1, 2, {0, 0});
     world.PlaceDirt(1, 1);
     Check(world.GetCell(1, 1).Force == pixel::ForceDirection{1, 0}, "placement erased the field");
-    pixel::WorldState snapshot(4, 4);
+    pixel::WorldSnapshot snapshot(4, 4);
     world.PublishState(snapshot);
-    const std::vector<pixel::CellState> published(snapshot.Read().Cells.begin(), snapshot.Read().Cells.end());
+    const auto published = CopyCells(snapshot.Read());
     constexpr std::array<std::array<uint32_t, 2>, 4> path{{{2, 1}, {2, 2}, {1, 2}, {1, 2}}};
     for (const auto position : path) {
         world.Tick(1.f / 60);
         Check(IsDirt(world, position[0], position[1]) && DirtCount(world) == 1, "block failed to follow a changing spatial field");
+        const auto current = CopyCells(world.ReadState());
         for (size_t i = 0; i < published.size(); ++i)
-            Check(world.ReadState().Cells[i].Force == published[i].Force, "spatial field moved with material");
+            Check(current[i].Force == published[i].Force, "spatial field moved with material");
     }
     world.SetForceDirection(1, 2, {-1, -1});
-    Check(std::equal(published.begin(), published.end(), snapshot.Read().Cells.begin()), "simulation or field edit mutated a published snapshot");
+    Check(published == CopyCells(snapshot.Read()), "simulation or field edit mutated a published snapshot");
     world.PublishState(snapshot);
-    Check(snapshot.Read().Cells[9].Force == pixel::ForceDirection{-1, -1} && snapshot.Read().Cells[9].Type == pixel::CellTypes::Dirt, "publication lost field or material changes");
+    const auto updated = CopyCells(snapshot.Read());
+    Check(updated[9].Force == pixel::ForceDirection{-1, -1} && updated[9].Type == pixel::CellTypes::Dirt,
+          "publication lost field or material changes");
     world.RemoveDirt(1, 2);
     Check(world.GetCell(1, 2).Force == pixel::ForceDirection{-1, -1}, "removal erased the field");
     world.PlaceDirt(1, 2);
     world.Tick(1.f / 60);
     Check(IsDirt(world, 0, 1), "replaced block did not use the retained field");
     world.GenerateTerrain(2);
-    for (const auto cell : world.ReadState().Cells)
+    for (const auto cell : CopyCells(world.ReadState()))
         Check(cell.Force == pixel::ForceDirection{0, 1}, "terrain reset retained an edited field");
 }
 
@@ -81,8 +95,9 @@ void ChainsAndObstacles() {
         for (int distance = 0; distance < 3; ++distance)
             world.PlaceDirt(3 - distance * direction.X, 3 - distance * direction.Y);
         world.Tick(1.f / 60);
-        for (int distance = -1; distance < 2; ++distance)
-            Check(IsDirt(world, 3 - distance * direction.X, 3 - distance * direction.Y), "directional stack did not follow its leading block");
+        Check(IsDirt(world, 3 + direction.X, 3 + direction.Y), "leading block did not enter the empty destination");
+        Check(IsDirt(world, 3 - direction.X, 3 - direction.Y) && IsDirt(world, 3 - 2 * direction.X, 3 - 2 * direction.Y),
+              "a block moved into a destination occupied at step start");
         Check(DirtCount(world) == 3, "moving a directional stack changed its block count");
     }
     pixel::World blocked(5, 3);
@@ -101,13 +116,15 @@ void ChainsAndObstacles() {
     bent.PlaceDirt(2, 1);
     bent.PlaceDirt(2, 2);
     bent.Tick(1.f / 60);
-    Check(!IsDirt(bent, 1, 1) && IsDirt(bent, 2, 1) && IsDirt(bent, 2, 2) && IsDirt(bent, 3, 2), "bent movement chain failed");
+    Check(IsDirt(bent, 1, 1) && IsDirt(bent, 2, 1) && !IsDirt(bent, 2, 2) && IsDirt(bent, 3, 2),
+          "bent chain must move only the block whose destination was empty at step start");
 
-    pixel::World longChain(1, 32768);
+    pixel::World longChain(1, pixel::storage::RegionEdge);
     longChain.Fill({pixel::CellTypes::Dirt});
-    longChain.RemoveDirt(0, 32767);
+    longChain.RemoveDirt(0, pixel::storage::RegionEdge - 1);
     longChain.Tick(1.f / 60);
-    Check(!IsDirt(longChain, 0, 0) && IsDirt(longChain, 0, 32767) && DirtCount(longChain) == 32767, "long movement chain failed");
+    Check(IsDirt(longChain, 0, 0) && !IsDirt(longChain, 0, pixel::storage::RegionEdge - 2) && IsDirt(longChain, 0, pixel::storage::RegionEdge - 1) && DirtCount(longChain) == pixel::storage::RegionEdge - 1,
+          "a long column must advance one block into the step-start empty cell");
 }
 
 void ContentionAndCycles() {
@@ -120,16 +137,17 @@ void ContentionAndCycles() {
     contest.PlaceDirt(1, 2);
     contest.PlaceDirt(3, 2);
     contest.Tick(1.f / 60);
-    Check(!IsDirt(contest, 2, 1) && IsDirt(contest, 2, 2) && IsDirt(contest, 1, 2) && IsDirt(contest, 3, 2), "destination contention did not preserve deterministic priority");
+    Check(!IsDirt(contest, 2, 1) && IsDirt(contest, 2, 2) && IsDirt(contest, 1, 2) && IsDirt(contest, 3, 2),
+          "contention must choose the row-major first source and leave losing sources in place");
     Check(DirtCount(contest) == 3, "destination contention lost a block");
     pixel::World cycle(4, 4);
     cycle.SetCell(1, 1, {pixel::CellTypes::Dirt, {1, 0}});
     cycle.SetCell(2, 1, {pixel::CellTypes::Dirt, {0, 1}});
     cycle.SetCell(2, 2, {pixel::CellTypes::Dirt, {-1, 0}});
     cycle.SetCell(1, 2, {pixel::CellTypes::Dirt, {0, -1}});
-    const std::vector<pixel::CellState> before(cycle.ReadState().Cells.begin(), cycle.ReadState().Cells.end());
+    const auto before = CopyCells(cycle.ReadState());
     cycle.Tick(0.25f);
-    Check(std::equal(before.begin(), before.end(), cycle.ReadState().Cells.begin()), "closed occupied cycle moved or lost material");
+    Check(before == CopyCells(cycle.ReadState()), "closed occupied cycle moved or lost material");
     cycle.Fill({});
     cycle.SetCell(1, 1, {pixel::CellTypes::Dirt, {1, 0}});
     cycle.SetCell(2, 1, {pixel::CellTypes::Dirt, {-1, 0}});
@@ -151,7 +169,7 @@ void FieldValidationAndConservation() {
     reject([&] { world.FillForceDirection({0, -2}); });
     reject([&] { world.SetCell(1, 1, {pixel::CellTypes::Dirt, {INT32_MAX, 0}}); });
     reject([&] { world.Fill({pixel::CellTypes::Dirt, {0, INT32_MIN}}); });
-    for (const auto cell : world.ReadState().Cells)
+    for (const auto cell : CopyCells(world.ReadState()))
         Check(cell == pixel::CellState{}, "rejected field update mutated the world");
     std::mt19937 random(20261004);
     for (uint32_t y = 0; y < 11; ++y)
@@ -162,17 +180,17 @@ void FieldValidationAndConservation() {
                                  Directions[random() % Directions.size()]});
         }
     const auto count = DirtCount(world);
-    const std::vector<pixel::CellState> initial(world.ReadState().Cells.begin(), world.ReadState().Cells.end());
-    pixel::WorldState snapshot(13, 11);
+    const auto initial = CopyCells(world.ReadState());
+    pixel::WorldSnapshot snapshot(13, 11);
     for (int step = 0; step < 120; ++step) {
         world.Tick(1.f / 60);
         if (step % 7 == 0)
             world.PublishState(snapshot);
         Check(DirtCount(world) == count, "mixed field simulation lost or created material");
         for (size_t i = 0; i < initial.size(); ++i) {
-            Check(world.ReadState().Cells[i].Force == initial[i].Force, "mixed field changed a spatial force");
+            Check(CopyCells(world.ReadState())[i].Force == initial[i].Force, "mixed field changed a spatial force");
             if (initial[i].Type == static_cast<pixel::CellTypeId>(20))
-                Check(world.ReadState().Cells[i].Type == static_cast<pixel::CellTypeId>(20), "mixed field overwrote an obstacle");
+                Check(CopyCells(world.ReadState())[i].Type == static_cast<pixel::CellTypeId>(20), "mixed field overwrote an obstacle");
         }
     }
 }
@@ -182,7 +200,7 @@ void RandomUpperField() {
     sameSeed.GenerateTerrain(512);
     world.RandomizeForceDirections(1024 - 600, 20261004);
     sameSeed.RandomizeForceDirections(1024 - 600, 20261004);
-    Check(std::equal(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), sameSeed.ReadState().Cells.begin()), "seeded field is not reproducible");
+    Check(SameCells(world.ReadState(), sameSeed.ReadState()), "seeded field is not reproducible");
     std::array<bool, 8> seen{};
     size_t stableAirCells = 0;
     for (uint32_t y = 0; y < 1024; ++y)
@@ -205,22 +223,22 @@ void RandomUpperField() {
     Check(std::all_of(seen.begin(), seen.end(), [](bool value) { return value; }), "random field does not cover all directions");
     Check(stableAirCells == 88 * 32, "512-600 height range does not contain 88 stable sky rows");
     world.RandomizeForceDirections(0, 1);
-    Check(std::equal(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), sameSeed.ReadState().Cells.begin()), "empty random region changed the field");
+    Check(SameCells(world.ReadState(), sameSeed.ReadState()), "empty random region changed the field");
     bool rejected = false;
     try {
         world.RandomizeForceDirections(1025, 1);
     } catch (const std::out_of_range &) {
         rejected = true;
     }
-    Check(rejected && std::equal(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), sameSeed.ReadState().Cells.begin()), "invalid random region changed the field");
+    Check(rejected && SameCells(world.ReadState(), sameSeed.ReadState()), "invalid random region changed the field");
     world.Tick(0.25f);
-    Check(std::equal(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), sameSeed.ReadState().Cells.begin()), "initial terrain moved under the default field");
+    Check(SameCells(world.ReadState(), sameSeed.ReadState()), "initial terrain moved under the default field");
     world.PlaceDirt(16, 424);
     for (int step = 0; step < 88; ++step)
         world.Tick(1.f / 60);
     Check(!IsDirt(world, 16, 424) && IsDirt(world, 16, 511), "block did not fall through the stable 512-600 sky band");
     world.RemoveDirt(16, 511);
-    Check(std::equal(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), sameSeed.ReadState().Cells.begin()), "stable-band movement disturbed other cells or transported the field");
+    Check(SameCells(world.ReadState(), sameSeed.ReadState()), "stable-band movement disturbed other cells or transported the field");
 }
 } // namespace
 

@@ -44,7 +44,7 @@ void Configure(World &world, const std::string &scene) {
 double BuildCache(const World &world) {
     const auto start = Clock::now();
     const auto state = world.ReadState();
-    probe::Destinations.assign(state.Cells.size(), probe::NoDestination);
+    probe::Destinations.assign(state.CellCount(), probe::NoDestination);
     for (uint32_t y = 0; y < state.Height; ++y)
         for (uint32_t x = 0; x < state.Width; ++x) {
             const auto d = pixel::FieldResponse::MovementDirection(world.GetFieldVelocity(x, y));
@@ -57,7 +57,9 @@ double BuildCache(const World &world) {
 
 uint64_t Hash(const World &world) {
     uint64_t value = 14695981039346656037ull;
-    for (const auto cell : world.ReadState().Cells) {
+    const auto view = world.ReadState();
+    for (size_t i = 0; i < view.CellCount(); ++i) {
+        const auto cell = view.AtIndex(i);
         for (auto part : {uint32_t(cell.Type), uint32_t(cell.Force.X), uint32_t(cell.Force.Y)})
             value = (value ^ part) * 1099511628211ull;
     }

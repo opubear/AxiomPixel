@@ -18,6 +18,13 @@ void Require(bool value, const char *message) {
     if (!value)
         throw std::runtime_error(message);
 }
+std::vector<pixel::CellState> CopyWorldCells(const pixel::World &world) {
+    const auto state = world.ReadState();
+    std::vector<pixel::CellState> result(state.CellCount());
+    for (size_t i = 0; i < result.size(); ++i)
+        result[i] = state.AtIndex(i);
+    return result;
+}
 void Draw(Axiom &app, int count = 1) {
     auto &engine = *app.Engine;
     for (int i = 0; i < count; ++i) {
@@ -37,17 +44,6 @@ void Draw(Axiom &app, int count = 1) {
         Require(drawn, "no drawable debug UI frame");
     }
 }
-// Locate the production slider from its window and ImGui layout metrics.
-ImVec2 SliderPoint(float fraction) {
-    const auto *window = ImGui::FindWindowByName("Pixel Debug");
-    Require(window && window->Active, "default Pixel Debug window is missing");
-    const auto &style = ImGui::GetStyle();
-    const float text = ImGui::GetFontSize();
-    const float frame = text + 2 * style.FramePadding.y;
-    return {window->Pos.x + style.WindowPadding.x + 190 * fraction,
-            window->Pos.y + window->TitleBarHeight + style.WindowPadding.y
-                + frame + style.ItemSpacing.y + 2 * (text + style.ItemSpacing.y) + frame / 2};
-}
 void MovePointer(Axiom &app, ImVec2 p) {
     auto &engine = *app.Engine;
     auto *platform = engine.GetPlatform();
@@ -63,42 +59,66 @@ void Click(Axiom &app, ImVec2 p, int mods = 0) {
     engine.GetPlatform()->OnButtonCallback(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, mods);
     Draw(app, 2);
 }
-void SelectWindStrategy(Axiom &app, int selected) {
-    const auto &style = ImGui::GetStyle();
-    const float text = ImGui::GetFontSize();
-    const float frame = text + 2 * style.FramePadding.y;
-    auto point = SliderPoint(.4f);
-    point.y += 2 * frame + 3 * text + 5 * style.ItemSpacing.y;
-    Click(app, point);
-    const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
-    Require(!popups.empty() && popups.back().Window, "wind strategy combo did not open");
-    const auto *popup = popups.back().Window;
-    Click(app, {popup->Pos.x + style.WindowPadding.x + 30,
-                   popup->Pos.y + style.WindowPadding.y + selected * (text + style.ItemSpacing.y) + text * .5f});
-}
 void SendKey(Axiom &app, int code, bool down, int mods = 0) {
     auto &engine = *app.Engine;
     engine.GetPlatform()->OnKeyButtonCallback(code, 0, down ? GLFW_PRESS : GLFW_RELEASE, mods);
     Draw(app, 2);
 }
-void EnterHeight(Axiom &app, const char *value) {
+// Tab navigation gives the actual production item's rectangle. This avoids
+// duplicating row counts as optional solver diagnostics and memory rows change.
+ImVec2 ControlPoint(Axiom &app, const char *label) {
+    auto *window = ImGui::FindWindowByName("Pixel Debug");
+    Require(window && window->Active, "default Pixel Debug window is missing");
+    const auto id = window->GetID(label);
+    auto &context = *ImGui::GetCurrentContext();
+    // The default Tab policy visits text inputs only. Enable full navigation
+    // while locating controls, then restore production settings before clicking.
+    const auto originalFlags = context.IO.ConfigFlags;
+    context.IO.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    const auto padding = ImGui::GetStyle().WindowPadding;
+    Click(app, {window->Pos.x + padding.x / 2, window->Pos.y + window->TitleBarHeight + padding.y / 2});
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        if (context.NavWindow == window && context.NavId == id && context.NavIdIsAlive) {
+            const auto rect = ImGui::WindowRectRelToAbs(window, window->NavRectRel[ImGuiNavLayer_Main]);
+            context.IO.ConfigFlags = originalFlags;
+            return {rect.Min.x + std::min(30.f, rect.GetWidth() / 2), rect.Min.y + rect.GetHeight() / 2};
+        }
+        SendKey(app, GLFW_KEY_TAB, true);
+        SendKey(app, GLFW_KEY_TAB, false);
+    }
+    context.IO.ConfigFlags = originalFlags;
+    throw std::runtime_error(std::string("keyboard navigation did not locate production control: ") + label);
+}
+void SelectWindStrategy(Axiom &app, int selected) {
+    Require(selected >= 0 && selected < 7, "invalid wind strategy fixture index");
+    Click(app, ControlPoint(app, "Wind strategy"));
+    const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
+    Require(!popups.empty() && popups.back().Window, "wind strategy combo did not open");
+    const auto *popup = popups.back().Window;
+    const auto &style = ImGui::GetStyle();
+    const float text = ImGui::GetFontSize();
+    Click(app, {popup->Pos.x + style.WindowPadding.x + 30,
+                popup->Pos.y + style.WindowPadding.y + selected * (text + style.ItemSpacing.y) + text * .5f});
+    Require(ImGui::GetCurrentContext()->OpenPopupStack.empty(), "strategy selection did not close the production combo");
+}
+void EnterBoundary(Axiom &app, const char *value) {
     auto &engine = *app.Engine;
-    // ImGui maps Command to Ctrl for shortcuts on macOS, including slider edits.
+    Click(app, ControlPoint(app, "Wind boundary Y"));
+    const auto id = ImGui::FindWindowByName("Pixel Debug")->GetID("Wind boundary Y");
+    Require(ImGui::GetActiveID() == id && ImGui::GetInputTextState(id),
+            "click did not focus the production world-Y InputScalar");
+
+    // InputScalar is a text input. Exercise real platform keyboard shortcuts
+    // and character events, rather than the removed slider temporary-input API.
     const bool mac = ImGui::GetIO().ConfigMacOSXBehaviors;
     const int modifier = mac ? GLFW_KEY_LEFT_SUPER : GLFW_KEY_LEFT_CONTROL;
     const int mask = mac ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL;
     SendKey(app, modifier, true, mask);
-    Click(app, SliderPoint(0.5f), mask);
-    SendKey(app, modifier, false);
-    Require(ImGui::TempInputIsActive(ImGui::FindWindowByName("Pixel Debug")->GetID("Wind start height")),
-            "modifier+click did not activate the actual height input");
-    // Select-all uses Command on macOS and Control on other platforms.
-    SendKey(app, modifier, true, mask);
     SendKey(app, GLFW_KEY_A, true, mask);
     SendKey(app, GLFW_KEY_A, false, mask);
     SendKey(app, modifier, false);
-    for (const char *p = value; *p; ++p)
-        engine.GetPlatform()->OnCharacterCallback(unsigned(*p));
+    for (const char *character = value; *character; ++character)
+        engine.GetPlatform()->OnCharacterCallback(unsigned(*character));
     Draw(app, 2);
     SendKey(app, GLFW_KEY_ENTER, true);
     SendKey(app, GLFW_KEY_ENTER, false);
@@ -111,14 +131,9 @@ void CheckMemoryPanel(Axiom &app) {
     window->StateStorage.SetInt(window->GetID("Performance"), 1);
     Draw(app, 2);
 
-    // Library-created games start with collection off. Click the production
-    // checkbox after the collapsed sections and the four camera-control rows.
-    const auto &style = ImGui::GetStyle();
-    const float text = ImGui::GetFontSize();
-    const float frame = text + 2 * style.FramePadding.y;
-    Click(app, {window->Pos.x + style.WindowPadding.x + frame / 2,
-                   window->Pos.y + window->TitleBarHeight + style.WindowPadding.y
-                       + 5 * frame + 2 * text + 7 * style.ItemSpacing.y + frame / 2});
+    // Use the production checkbox after whatever camera and diagnostics rows
+    // are present. A real click must enable the frame-end collector.
+    Click(app, ControlPoint(app, "Collect CPU timings and memory"));
 
     // The table appears only after actual frame-end memory has been collected
     // and the normal half-second display refresh has consumed it.
@@ -134,7 +149,7 @@ void CheckMemoryPanel(Axiom &app) {
 } // namespace
 
 void RunPixelDebugUISmoke() {
-    auto game = std::make_unique<PixelGame>();
+    auto game = std::make_unique<PixelGame>(false);
     auto *pixel = game.get();
     pixel->SetControlMode(PixelGame::ControlMode::DebugCamera);
     PixelSmokeApplication app(std::move(game), {true});
@@ -148,55 +163,55 @@ void RunPixelDebugUISmoke() {
     Require(app.GetDebugUI()->pushConstBlock.scale.X() > 0, "Pixel present pass did not record the UI overlay");
     auto &world = pixel->GetWorld();
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty && world.GetWindEndRow() == 424,
-            "default UI must preserve empty wind and height 600");
+            "default UI must preserve empty wind and world Y = 424");
     SelectWindStrategy(app, int(pixel::WindStrategyKind::Coarse));
-    const auto state = world.ReadState();
-    const std::vector<pixel::CellState> original(state.Cells.begin(), state.Cells.end());
+    const auto original = CopyWorldCells(world);
     const auto originalOrigin = pixel->GetView().OriginPixels;
 
-    Click(app, SliderPoint(0.25f));
-    Require(world.GetWind().GetEndRow() > 512 && world.GetWind().GetEndRow() < 900,
-            "slider did not lower the wind boundary into terrain");
-    EnterHeight(app, "512");
-    Require(world.GetWind().GetEndRow() == 512 && world.GetWind().Sample(12, 511.5f).X != 0
-                && world.GetWind().Sample(12, 512).X == 0,
-            "height 512 is not the bottom-origin boundary");
-    EnterHeight(app, "0");
-    Require(world.GetWind().GetEndRow() == 1024 && world.GetWind().Sample(12, 1023.5f).X != 0,
-            "height zero did not include the bottom row");
-    EnterHeight(app, "1024");
-    Require(!world.GetWind().IsEnabled(), "height 1024 did not disable wind");
-    EnterHeight(app, "-20");
-    Require(world.GetWind().GetEndRow() == 1024, "negative UI height was not clamped to zero");
-    EnterHeight(app, "2048");
-    Require(!world.GetWind().IsEnabled(), "oversized UI height was not clamped to wind-off");
-    EnterHeight(app, "600");
-    Require(world.GetWind().GetEndRow() == 424, "wind did not recover after disabling");
-    Require(std::equal(original.begin(), original.end(), world.ReadState().Cells.begin()),
+    EnterBoundary(app, "512");
+    Require(world.GetWindBoundary() == 512 && world.GetWindEndRow() == 512 && world.SampleWind(12.5, 511.5).X != 0 && world.SampleWind(12.5, 512.0).X == 0,
+            "world-Y boundary 512 did not include exactly the rows above it");
+    EnterBoundary(app, "0");
+    Require(world.GetWindBoundary() == 0 && world.GetWindEndRow() == 0,
+            "world-Y zero must leave the finite player window outside the wind");
+    EnterBoundary(app, "-2147483649");
+    Require(world.GetWindBoundary() == -2147483649LL && world.GetWindEndRow() == 0,
+            "negative world-Y input was clamped or truncated to 32 bits");
+    EnterBoundary(app, "2048");
+    Require(world.GetWindBoundary() == 2048 && world.GetWindEndRow() == 1024 && world.SampleWind(12.5, 1023.5).X != 0,
+            "boundary below the player window did not cover all its rows");
+    EnterBoundary(app, "9007199254740993");
+    Require(world.GetWindBoundary() == 9007199254740993LL && world.GetWindEndRow() == 1024,
+            "large world-Y input lost integer precision or was clamped to the window");
+    Click(app, ControlPoint(app, "Default boundary (Y = 424)"));
+    Require(world.GetWindBoundary() == 424 && world.GetWindEndRow() == 424,
+            "default boundary button did not restore world Y = 424");
+    Require(original == CopyWorldCells(world),
             "editing UI placed/removed dirt or altered the base force field");
     Require(pixel->GetView().OriginPixels == originalOrigin, "typing in UI moved the gameplay view");
 
     // Exercise the production combo with real input on a one-row wind domain;
     // this avoids running the expensive reference while still checking switching.
-    EnterHeight(app, "1023");
+    EnterBoundary(app, "1");
     world.SetBaseForce(2, 2, {123, 456});
     for (const int selected : {1, 2, 3, 4, 5, 6, 0}) {
         SelectWindStrategy(app, selected);
-        Require(int(world.GetWindStrategyKind()) == selected && world.GetWindEndRow() == 1,
+        Require(int(world.GetWindStrategyKind()) == selected && world.GetWindBoundary() == 1 && world.GetWindEndRow() == 1,
                 "production combo selected the wrong wind strategy");
         Require(world.GetBaseForceField().Get(2, 2) == pixel::ForceVector{123, 456},
                 "UI strategy switch changed independent force storage");
-        Require(std::equal(original.begin(), original.end(), world.ReadState().Cells.begin()),
+        Require(original == CopyWorldCells(world),
                 "strategy combo input changed materials");
     }
     world.SetBaseForce(2, 2, {0, 3600});
-    EnterHeight(app, "600");
+    EnterBoundary(app, "424");
 
     // Unfocus by clicking outside the panel; world interaction must still work.
     auto *platform = engine.GetPlatform();
     {
         auto view = pixel->GetView();
         view.OriginPixels = {0, 0};
+        view.WorldOriginCells = {};
         pixel->SetView(view);
     }
     const ImVec2 outside{600, 400};
@@ -217,7 +232,7 @@ void RunPixelDebugUISmoke() {
     SendKey(app, GLFW_KEY_F2, true);
     SendKey(app, GLFW_KEY_F2, false);
     Require(ImGui::FindWindowByName("Pixel Debug")->Active, "F2 did not reopen debug UI");
-    EnterHeight(app, "0");
+    EnterBoundary(app, "0");
     Click(app, outside);
     SendKey(app, GLFW_KEY_R, true);
     SendKey(app, GLFW_KEY_R, false);
@@ -234,10 +249,10 @@ void RunPixelDebugUISmoke() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     Require(engine.GetRHI()->GetSwapchainGeneration() > oldGeneration, "debug UI resize did not recreate the swapchain");
-    EnterHeight(app, "512");
+    EnterBoundary(app, "512");
     Require(world.GetWindEndRow() == 512, "UI stopped working after resize");
     CheckMemoryPanel(app);
     app.Shutdown();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
-    std::cout << "Pixel ImGui Environment passed: six strategy selections, live height, bounds, UI capture, F1/F2/reset, resize, memory collection/table, 2D-only lifecycle\n";
+    std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, resize, memory collection/table, 2D-only lifecycle\n";
 }

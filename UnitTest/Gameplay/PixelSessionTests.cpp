@@ -65,12 +65,14 @@ void SessionAndPublicationContracts() {
             "queued click must use its captured dimensions");
 
     pixel::GamePresentation presentation;
+    camera.GetCamera().SetPosition({32, 11});
     presentation.WindVisual.Mode = WindVisualMode::Off;
     auto publish = presentation.CreateFramePublisher(session, camera);
     auto otherPublish = presentation.CreateFramePublisher(session, camera);
     WorldGridFrame frame, other;
     publish(frame);
-    const auto index = size_t(11) * pixel::GameSession::WorldWidth + 32;
+    const auto origin = frame.GetCellOrigin();
+    const auto index = size_t(11 - origin[1]) * frame.GetWidth() + size_t(32 - origin[0]);
     Require(frame.Cells()[index] == 1 && frame.Character.has_value(), "publication must include materials and player");
     world.RemoveDirt(32, 11);
     otherPublish(other);

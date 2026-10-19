@@ -7,28 +7,64 @@
 #include <stdexcept>
 
 namespace {
-void ValidatePresentationWorld(pixel::WorldStateView world) {
-    if (world.Width != Grid2D::Width || world.Height != Grid2D::Height || world.Cells.size() != Grid2D::CellCount)
-        throw std::invalid_argument("2D presentation requires a 1024x1024 gameplay world");
+void ValidatePresentationWorld(pixel::WorldMapView world) {
+    if (!world.IsValid() || !world.Width || !world.Height)
+        throw std::invalid_argument("2D presentation requires a valid nonempty map region");
 }
 } // namespace
-void BuildWorldGridFrame(pixel::WorldStateView world, const CellAppearanceTable &appearances, WorldGridFrame &output) {
+uint64_t GridSourceRegionVersion(pixel::WorldMapView world, uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+    // Compatibility views can start inside a quadtree leaf. A render tile can
+    // then overlap four leaves, all of whose versions affect its contents.
+    uint64_t version = 1469598103934665603ULL;
+    for (const uint32_t oy : {0u, height - 1})
+        for (const uint32_t ox : {0u, width - 1})
+            version = (version ^ world.RegionVersion(world.Origin.X + x + ox, world.Origin.Y + y + oy)) * 1099511628211ULL;
+    return version;
+}
+void BuildWorldGridFrame(pixel::WorldMapView world, const CellAppearanceTable &appearances, WorldGridFrame &output) {
     PIXEL_PROFILE_SCOPE(Materials);
     ValidatePresentationWorld(world);
+    output.SetRegion({world.Origin.X, world.Origin.Y}, world.Width, world.Height);
     output.Character.reset();
     output.HasWind = false;
     output.DisplayMode = GridDisplayMode::Materials;
-    auto cells = output.Cells();
-    for (size_t index = 0; index < world.Cells.size(); ++index) {
-        const auto type = static_cast<uint32_t>(world.Cells[index].Type);
-        if (!type) {
-            cells[index] = 0;
-            continue;
+    // Order-independent signature: callers can edit the public appearance table.
+    uint64_t signature = 0x6d6174657269616cULL ^ world.Identity() * 0xd6e8feb86659fd93ULL;
+    for (const auto &[type, layer] : appearances)
+        signature ^= (uint64_t(type) << 32 | layer) * 0x9e3779b97f4a7c15ULL;
+    const bool invalidate = output.PrepareRegionVersions(signature);
+    const auto cells = output.Cells();
+    for (uint32_t ry = 0; ry < output.RegionRows(); ++ry) {
+        for (uint32_t rx = 0; rx < output.RegionColumns(); ++rx) {
+            const size_t region = size_t(ry) * output.RegionColumns() + rx;
+            const uint32_t beginX = rx * Grid2D::RegionSize, beginY = ry * Grid2D::RegionSize;
+            const uint64_t version = GridSourceRegionVersion(world, beginX, beginY,
+                                                             std::min(Grid2D::RegionSize, world.Width - beginX),
+                                                             std::min(Grid2D::RegionSize, world.Height - beginY));
+            if (!invalidate && output.SourceRegionVersion(region) == version)
+                continue;
+            bool changed = false;
+            for (uint32_t y = beginY; y < std::min(world.Height, beginY + Grid2D::RegionSize); ++y) {
+                for (uint32_t x = beginX; x < std::min(world.Width, beginX + Grid2D::RegionSize); ++x) {
+                    const size_t index = size_t(y) * world.Width + x;
+                    const auto cell = world.TryAtLocal(x, y);
+                    uint32_t value = Grid2D::MissingCell;
+                    if (cell) {
+                        const auto type = static_cast<uint32_t>(cell->Type);
+                        value = 0;
+                        if (type) {
+                            const auto appearance = appearances.find(type);
+                            if (appearance == appearances.end())
+                                throw std::invalid_argument("gameplay cell type has no appearance mapping");
+                            value = appearance->second;
+                        }
+                    }
+                    changed |= cells[index] != value;
+                    cells[index] = value;
+                }
+            }
+            output.SetSourceRegionVersion(region, version, changed);
         }
-        const auto appearance = appearances.find(type);
-        if (appearance == appearances.end())
-            throw std::invalid_argument("gameplay cell type has no appearance mapping");
-        cells[index] = appearance->second;
     }
 }
 
@@ -43,18 +79,42 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity) {
 
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
     PIXEL_PROFILE_SCOPE(ForceColors);
-    ValidatePresentationWorld(world.ReadState());
     output.Character.reset();
     output.HasWind = false;
     auto cells = output.Cells();
-    for (uint32_t y = 0; y < Grid2D::Height; ++y)
-        for (uint32_t x = 0; x < Grid2D::Width; ++x) {
-            const auto color = FieldDirectionColor(world.GetFieldVelocity(x, y));
-            uint32_t packed = 0;
-            for (size_t channel = 0; channel < color.size(); ++channel)
-                packed |= uint32_t(std::lround(std::clamp(color[channel], 0.f, 1.f) * 255)) << (channel * 8);
-            cells[size_t(y) * Grid2D::Width + x] = packed;
+    const auto origin = output.GetCellOrigin();
+    const auto source = world.GetMap().View({origin[0], origin[1], output.GetWidth(), output.GetHeight()});
+    const uint64_t windRevision = world.GetEnvironment().GetWindSimulation().GetRevision();
+    const bool invalidate = output.PrepareRegionVersions(0x666f726365ULL ^ windRevision * 0x9e3779b97f4a7c15ULL ^ world.GetMap().GetIdentity() * 0xd6e8feb86659fd93ULL);
+    for (uint32_t ry = 0; ry < output.RegionRows(); ++ry) {
+        for (uint32_t rx = 0; rx < output.RegionColumns(); ++rx) {
+            const size_t region = size_t(ry) * output.RegionColumns() + rx;
+            const uint32_t beginX = rx * Grid2D::RegionSize, beginY = ry * Grid2D::RegionSize;
+            const uint64_t version = GridSourceRegionVersion(source, beginX, beginY,
+                                                             std::min(Grid2D::RegionSize, output.GetWidth() - beginX),
+                                                             std::min(Grid2D::RegionSize, output.GetHeight() - beginY));
+            if (!invalidate && output.SourceRegionVersion(region) == version)
+                continue;
+            bool changed = false;
+            for (uint32_t y = beginY; y < std::min(output.GetHeight(), beginY + Grid2D::RegionSize); ++y) {
+                for (uint32_t x = beginX; x < std::min(output.GetWidth(), beginX + Grid2D::RegionSize); ++x) {
+                    const auto index = size_t(y) * output.GetWidth() + x;
+                    if (!world.TryGetCell(origin[0] + x, origin[1] + y)) {
+                        changed |= cells[index] != Grid2D::MissingCell;
+                        cells[index] = Grid2D::MissingCell;
+                        continue;
+                    }
+                    const auto color = FieldDirectionColor(world.GetFieldVelocity(origin[0] + x, origin[1] + y));
+                    uint32_t packed = 0;
+                    for (size_t channel = 0; channel < color.size(); ++channel)
+                        packed |= uint32_t(std::lround(std::clamp(color[channel], 0.f, 1.f) * 255)) << (channel * 8);
+                    changed |= cells[index] != packed;
+                    cells[index] = packed;
+                }
+            }
+            output.SetSourceRegionVersion(region, version, changed);
         }
+    }
     output.DisplayMode = GridDisplayMode::ForceField;
     // Debug colours must not inherit gameplay tint; switching back restores it.
     output.Post = {};
@@ -73,10 +133,14 @@ void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2
         }
         return color;
     };
+    const auto cameraPosition = camera.GetWorldPosition();
+    const auto reference = cameraPosition.Cell();
+    const auto player = character.GetWorldPosition().RelativeTo(reference);
+    const auto centre = cameraPosition.RelativeTo(reference);
     CharacterDraw draw;
     draw.Bounds = {
-        float((double(character.X) - camera.GetPosition()[0]) * output.View.CellSizePixels[0] + framebufferSize[0] / 2.0),
-        float((double(character.Y) - camera.GetPosition()[1]) * output.View.CellSizePixels[1] + framebufferSize[1] / 2.0),
+        float((player[0] - centre[0]) * output.View.CellSizePixels[0] + framebufferSize[0] / 2.0),
+        float((player[1] - centre[1]) * output.View.CellSizePixels[1] + framebufferSize[1] / 2.0),
         pixel::Character::Width * output.View.CellSizePixels[0],
         pixel::Character::Height * output.View.CellSizePixels[1]};
     draw.HeadColor = linearColor({255, 212, 140});
@@ -86,12 +150,36 @@ void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2
 
 GridView2D MakeCameraView(const pixel::Camera2D &camera, std::array<int, 2> framebufferSize,
                           GridView2D settings) {
+    const auto cameraPosition = camera.GetWorldPosition();
+    const pixel::CellCoord reference{cameraPosition.Chunk.X * pixel::storage::ChunkEdge,
+                                     cameraPosition.Chunk.Y * pixel::storage::ChunkEdge};
+    const auto local = cameraPosition.RelativeTo(reference);
+    settings.WorldOriginCells = {reference.X, reference.Y};
     for (size_t axis = 0; axis < 2; ++axis) {
         if (settings.CellSizePixels[axis] == 0 || framebufferSize[axis] < 0)
             throw std::invalid_argument("camera projection requires nonnegative viewport and positive cell size");
-        const double origin = std::round(camera.GetPosition()[axis] * settings.CellSizePixels[axis] - framebufferSize[axis] / 2.0);
-        settings.OriginPixels[axis] = int32_t(std::clamp(origin, double(std::numeric_limits<int32_t>::min()),
-                                                       double(std::numeric_limits<int32_t>::max())));
+        const double origin = std::round(local[axis] * settings.CellSizePixels[axis] - framebufferSize[axis] / 2.0);
+        if (origin < INT32_MIN || origin > INT32_MAX)
+            throw std::invalid_argument("camera viewport exceeds local pixel coordinates");
+        settings.OriginPixels[axis] = int32_t(origin);
     }
     return settings;
+}
+
+pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> framebufferSize) {
+    std::array<int64_t, 2> begin{};
+    std::array<uint32_t, 2> size{};
+    for (size_t axis = 0; axis < 2; ++axis) {
+        if (!view.CellSizePixels[axis] || framebufferSize[axis] <= 0)
+            throw std::invalid_argument("visible region requires a drawable viewport");
+        const double low = std::floor(double(view.OriginPixels[axis]) / view.CellSizePixels[axis]) - Grid2D::WindHalo;
+        const double high = std::ceil((double(view.OriginPixels[axis]) + framebufferSize[axis]) / view.CellSizePixels[axis]) + Grid2D::WindHalo;
+        const int64_t alignedLow = int64_t(std::floor(low / Grid2D::RegionSize)) * Grid2D::RegionSize;
+        const int64_t alignedHigh = int64_t(std::ceil(high / Grid2D::RegionSize)) * Grid2D::RegionSize;
+        if ((alignedLow < 0 && view.WorldOriginCells[axis] < INT64_MIN - alignedLow) || (alignedHigh > 0 && view.WorldOriginCells[axis] > INT64_MAX - alignedHigh) || uint64_t(alignedHigh - alignedLow) > UINT32_MAX)
+            throw std::invalid_argument("visible region exceeds world coordinates");
+        begin[axis] = view.WorldOriginCells[axis] + alignedLow;
+        size[axis] = uint32_t(alignedHigh - alignedLow);
+    }
+    return {begin[0], begin[1], size[0], size[1]};
 }

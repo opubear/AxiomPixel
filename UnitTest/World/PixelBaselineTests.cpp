@@ -12,6 +12,7 @@ void Check(bool value, const char *reason) {
 }
 pixel::PixelWindSettings Uniform(pixel::WindVelocity velocity = {8, 0}) {
     pixel::PixelWindSettings settings;
+    settings.Boundary = pixel::WindBoundaryMode::Periodic;
     settings.Ambient = velocity;
     settings.GustSpeed = 0;
     settings.Relaxation = 0;
@@ -33,7 +34,7 @@ void ForceSources() {
     Check(world.GetForce(2, 2) == pixel::ForceVector{4080, 0}, "wind acceleration did not add to base force");
     world.DisableWind();
     Check(world.GetForce(2, 2) == pixel::ForceVector{3600, 0}, "disabling wind destroyed another source");
-    pixel::WorldState published(8, 8);
+    pixel::WorldSnapshot published(8, 8);
     world.PublishState(published);
     Check(world.GetForce(2, 2) == pixel::ForceVector{3600, 0}, "publication changed force storage");
     try {

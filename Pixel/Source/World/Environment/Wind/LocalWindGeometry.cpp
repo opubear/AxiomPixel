@@ -8,9 +8,9 @@ performance::MemoryUsage LocalWindGeometry::GetMemoryUsage() const {
     return performance::MeasureObject(*this, Solid, Nearest, Queue);
 }
 
-LocalWindGeometry::LocalWindGeometry(uint32_t width, uint32_t height, const LocalWindSettings &settings)
-    : Width(width), Height(height), Settings(settings) {
-    if (!width || !height || width > 2048 || height > 2048 || !std::isfinite(settings.Radius) || settings.Radius < 1 || settings.Radius > 32
+LocalWindGeometry::LocalWindGeometry(uint32_t width, uint32_t height, const LocalWindSettings &settings, WindBoundaryMode boundary)
+    : Width(width), Height(height), Settings(settings), Boundary(boundary) {
+    if (!IsValidWindBoundary(boundary) || !width || !height || width > 2048 || height > 2048 || !std::isfinite(settings.Radius) || settings.Radius < 1 || settings.Radius > 32
         || !std::isfinite(settings.Deflection) || settings.Deflection < 0 || settings.Deflection > 1
         || !std::isfinite(settings.WakeStrength) || settings.WakeStrength < 0 || settings.WakeStrength > 1)
         throw std::invalid_argument("invalid local wind geometry settings");
@@ -19,12 +19,12 @@ LocalWindGeometry::LocalWindGeometry(uint32_t width, uint32_t height, const Loca
     Queue.reserve(Solid.size());
 }
 bool LocalWindGeometry::IsSolid(uint32_t x, uint32_t y) const { return x < Width && y < Height && Solid[size_t(y) * Width + x]; }
-void LocalWindGeometry::Update(WorldStateView world) {
-    if (world.Width != Width || world.Height < Height || world.Cells.size() != size_t(world.Width) * world.Height)
+void LocalWindGeometry::Update(WorldMapView world) {
+    if (!world.IsValid() || world.Width != Width || world.Height < Height || world.CellCount() != size_t(world.Width) * world.Height)
         throw std::invalid_argument("local wind geometry requires complete matching world");
     bool changed = false;
     for (size_t i = 0; i < Solid.size(); ++i) {
-        const bool solid = world.Cells[i].Type != CellTypes::Empty;
+        const bool solid = world.AtIndex(i).Type != CellTypes::Empty;
         changed |= Solid[i] != solid;
         Solid[i] = solid;
     }
@@ -39,21 +39,26 @@ void LocalWindGeometry::RebuildDistance() {
             Nearest[i] = int32_t(i);
             Queue.push_back(i);
         }
-    // Multi-source periodic 8-neighbour distance bands. Each pixel is visited
+    // Multi-source 8-neighbour distance bands. Each pixel is visited
     // once, giving linear work even for dense debris; distance is approximate.
     for (size_t head = 0; head < Queue.size(); ++head) {
         const auto i = Queue[head];
         const int x = int(i % Width), y = int(i / Width);
         const auto source = uint32_t(Nearest[i]);
-        const double dx = std::remainder(double(x) - source % Width, double(Width));
-        const double dy = std::remainder(double(y) - source / Width, double(Height));
+        const double dx = WindDistance(double(x) - source % Width, double(Width), Boundary);
+        const double dy = WindDistance(double(y) - source / Width, double(Height), Boundary);
         if (std::max(std::abs(dx), std::abs(dy)) >= Settings.Radius)
             continue;
         for (int oy = -1; oy <= 1; ++oy)
             for (int ox = -1; ox <= 1; ++ox) {
-                const auto nx = uint32_t((x + ox + int(Width)) % int(Width));
-                const auto ny = uint32_t((y + oy + int(Height)) % int(Height));
-                const auto j = ny * Width + nx;
+                int nx = x + ox, ny = y + oy;
+                if (Boundary == WindBoundaryMode::Periodic) {
+                    nx = (nx + int(Width)) % int(Width);
+                    ny = (ny + int(Height)) % int(Height);
+                } else if (nx < 0 || ny < 0 || nx >= int(Width) || ny >= int(Height)) {
+                    continue;
+                }
+                const auto j = size_t(ny) * Width + size_t(nx);
                 if (Nearest[j] < 0) {
                     Nearest[j] = int32_t(source);
                     Queue.push_back(j);
@@ -70,8 +75,8 @@ WindVelocity LocalWindGeometry::Constrain(float x, float y, WindVelocity incomin
     if (Nearest[i] < 0)
         return incoming;
     const auto source = uint32_t(Nearest[i]);
-    const float dx = float(std::remainder(double(x) - (source % Width + .5), double(Width)));
-    const float dy = float(std::remainder(double(y) - (source / Width + .5), double(Height)));
+    const float dx = float(WindDistance(double(x) - (source % Width + .5), double(Width), Boundary));
+    const float dy = float(WindDistance(double(y) - (source / Width + .5), double(Height), Boundary));
     const float distance = std::hypot(dx, dy);
     if (distance <= 0 || distance >= Settings.Radius)
         return incoming;

@@ -13,9 +13,8 @@ constexpr auto StageNames = std::to_array<std::string_view>({
     "game.tick", "world.environment", "wind.advance", "world.material_step", "wind.feedback", "world.character",
     "render.cpu", "render.upload_write", "render.world_commands", "render.wind_commands", "render.character_commands", "render.post_ui_commands", "ui.build"});
 static_assert(StageNames.size() == StageCount);
-constexpr auto CounterNames = std::to_array<std::string_view>({
-    "simulation_steps", "material_cells_scanned", "wind_visual_cells_scanned", "world_upload_bytes", "wind_upload_bytes",
-    "simulation_input_us", "framebuffer_pixels"});
+constexpr auto CounterNames = std::to_array<std::string_view>({"simulation_steps", "material_cells_scanned", "active_regions", "wind_visual_cells_scanned", "world_upload_bytes", "wind_upload_bytes",
+                                                               "simulation_input_us", "framebuffer_pixels"});
 static_assert(CounterNames.size() == CounterCount);
 uint64_t Nanoseconds(FrameProfiler::Clock::duration duration) {
     return uint64_t(std::max(int64_t(0), std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count()));

@@ -11,7 +11,7 @@
 class PixelGame final : public IGameInterface {
   public:
     using ControlMode = pixel::ControlMode;
-    PixelGame();
+    explicit PixelGame(bool persistent = true);
     // Input callbacks capture this composition root; its address remains stable.
     PixelGame(const PixelGame &) = delete;
     PixelGame &operator=(const PixelGame &) = delete;
@@ -36,7 +36,7 @@ class PixelGame final : public IGameInterface {
     void Tick(float duration) override;
     void ClearInputState() override { Input.ClearInputState(); }
     void FrameEnd() override;
-    void GameEnd() override {}
+    void GameEnd() override { Session.Save(); }
     void Destroy() override {}
     void OnKeyEvent(Key key, int scancode, ButtonAction action, Mod mods) override {
         Input.OnKeyEvent(key, scancode, action, mods);

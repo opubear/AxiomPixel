@@ -9,15 +9,11 @@
 #include <algorithm>
 #include <cmath>
 
-PixelGame::PixelGame()
-    : Input(Session, Camera, Presentation, {
-          [] { GAxiom->Engine->GetPlatform()->CloseWindow(); },
-          [this] { DebugUI.Toggle(); },
-          [] {
+PixelGame::PixelGame(bool persistent)
+    : Session(persistent), Input(Session, Camera, Presentation, {[] { GAxiom->Engine->GetPlatform()->CloseWindow(); }, [this] { DebugUI.Toggle(); }, [] {
               std::array<int, 2> size{};
               GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);
-              return size;
-          }}) {}
+              return size; }}) {}
 
 void PixelGame::ConfigureEngine(GameEngine &engine) {
     engine.SetRender(CreatePixelRenderSetup(*this));

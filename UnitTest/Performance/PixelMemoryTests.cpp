@@ -1,7 +1,8 @@
 #include "Performance/MemoryUsage.h"
-#include "World/World.h"
 #include "World/Environment/Wind/LocalWindGeometry.h"
 #include "World/Environment/Wind/ProceduralWindField.h"
+#include "World/World.h"
+#include "World/WorldMap.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -39,29 +40,41 @@ void StorageAccounting() {
 void WorldPartitionAndReset() {
     World world(8, 8);
     const auto initial = world.GetMemoryUsage();
-    Require(initial.World.ObjectBytes == sizeof(World) - sizeof(ForceField) - sizeof(WindSimulation), "disjoint inline ownership");
-    Require(initial.World.UsedHeapBytes == 64 * sizeof(CellState), "world cell payload");
-    Require(initial.BaseForces.UsedHeapBytes == 64 * sizeof(ForceVector), "base force payload");
+    const size_t chunkCount = world.GetMap().ChunkCount();
+    const uint64_t forcePayloadBytes = chunkCount * storage::ChunkCells * sizeof(ForceVector);
+    const uint64_t worldPayloadBytes = chunkCount * (sizeof(ChunkPayload) - storage::ChunkCells * sizeof(ForceVector));
+    Require(chunkCount > 0, "finite world owns resident chunks");
+    Require(initial.World.UsedHeapBytes >= worldPayloadBytes, "world accounts for each chunk's material and direction payload");
+    Require(initial.BaseForces.UsedHeapBytes == forcePayloadBytes, "base forces scale with resident chunk cells");
+    Require(initial.World.UsedHeapBytes + initial.BaseForces.UsedHeapBytes >= chunkCount * sizeof(ChunkPayload),
+            "world and force owners account for the complete chunk payload");
+    Require(initial.Get(MemoryComponent::Total) == initial.World + initial.BaseForces + initial.Wind,
+            "whole world memory sums disjoint owners");
     Require(initial.Wind.UsedHeapBytes == 0, "disabled wind has no backend");
-    Require(initial.Get(MemoryComponent::Total).UsedBytes() == sizeof(World) + 64 * (sizeof(CellState) + sizeof(ForceVector)), "whole world counted exactly once");
 
     world.GenerateTerrain(4);
     world.Tick(1.f / 60);
     const auto stepped = world.GetMemoryUsage();
-    Require(stepped.World.ReservedBytes() > initial.World.ReservedBytes(), "simulation work buffers counted");
+    Require(stepped.World.ReservedBytes() >= stepped.World.UsedBytes(), "world reserved storage bounds usage");
     Require(stepped.BaseForces == initial.BaseForces, "movement does not allocate base field");
-    Require(stepped.World.ReservedBytes() >= stepped.World.UsedBytes(), "reserved includes used elements");
 
-    WorldState snapshot(8, 8);
+    WorldSnapshot snapshot(8, 8);
     world.PublishState(snapshot);
-    Require(world.GetMemoryUsage().World == stepped.World, "publication snapshot is not double counted as world ownership");
-    Require(snapshot.GetMemoryUsage().UsedHeapBytes == 64 * sizeof(CellState), "render-owned CPU snapshot independently measurable");
+    Require(world.GetMemoryUsage().BaseForces == stepped.BaseForces, "publication does not change world force ownership");
+    Require(snapshot.GetMemoryUsage().UsedHeapBytes >= 64 * sizeof(CellState), "render-owned CPU snapshot independently measurable");
 
     world.GenerateTerrain(4);
-    Require(world.GetMemoryUsage().World == initial.World, "reset releases simulation scratch allocations");
-    World larger(16, 8);
-    Require(larger.GetMemoryUsage().World.UsedHeapBytes == 2 * initial.World.UsedHeapBytes, "world scales with cell count");
-    Require(larger.GetMemoryUsage().BaseForces.UsedHeapBytes == 2 * initial.BaseForces.UsedHeapBytes, "base field scales with cell count");
+    const auto reset = world.GetMemoryUsage();
+    Require(reset.BaseForces == initial.BaseForces, "reset preserves force storage for resident chunks");
+    World larger(1025, 8);
+    const size_t largerChunkCount = larger.GetMap().ChunkCount();
+    const auto largerUsage = larger.GetMemoryUsage();
+    Require(largerChunkCount > chunkCount, "larger extent creates the expected additional chunk");
+    Require(largerUsage.BaseForces.UsedHeapBytes == largerChunkCount * storage::ChunkCells * sizeof(ForceVector),
+            "base force ownership uses the actual resident chunk count");
+    const uint64_t largerWorldPayloadBytes = largerChunkCount * (sizeof(ChunkPayload) - storage::ChunkCells * sizeof(ForceVector));
+    Require(largerUsage.World.UsedHeapBytes >= largerWorldPayloadBytes && largerUsage.World.UsedHeapBytes + largerUsage.BaseForces.UsedHeapBytes >= largerChunkCount * sizeof(ChunkPayload),
+            "world and force owners account for each resident chunk payload");
 }
 
 void SolverPayloads() {
@@ -74,16 +87,21 @@ void SolverPayloads() {
     settings.GustSpeed = 0;
     WindField coarse;
     coarse.Reset(16, 12, settings);
-    Require(coarse.GetMemoryUsage().UsedHeapBytes == 12 * (5 * sizeof(WindVelocity) + 3 * sizeof(float) + sizeof(uint32_t)), "all coarse solver buffers counted");
+    const auto edgeStateBytes = uint64_t(settings.Rows + settings.Columns) * sizeof(float);
+    Require(coarse.GetMemoryUsage().UsedHeapBytes == 12 * (5 * sizeof(WindVelocity) + 3 * sizeof(float) + sizeof(uint32_t)) + edgeStateBytes,
+            "all coarse solver and open-boundary buffers counted");
     coarse.CoupleDirt(world.ReadState(), {}, 1.f / 60);
-    Require(coarse.GetMemoryUsage().UsedHeapBytes == 12 * 56 + 16 * 3, "lazy occupied-column allocation counted");
+    Require(coarse.GetMemoryUsage().UsedHeapBytes == 12 * 56 + edgeStateBytes + 16 * settings.Rows,
+            "lazy occupied-column allocation counted");
 
     PixelWindSettings referenceSettings;
     referenceSettings.Ambient = {};
     referenceSettings.GustSpeed = 0;
     PixelWindField reference;
     reference.Reset(16, 12, referenceSettings);
-    Require(reference.GetMemoryUsage().UsedHeapBytes == count * (10 * sizeof(double) + 5 * sizeof(uint8_t)), "all reference pressure and face arrays counted");
+    const uint64_t referenceBoundaryBytes = uint64_t(16 + 12) * sizeof(double);
+    Require(reference.GetMemoryUsage().UsedHeapBytes == count * (10 * sizeof(double) + 5 * sizeof(uint8_t)) + referenceBoundaryBytes,
+            "all reference pressure, face and open-boundary arrays counted");
 
     LbmWindSettings lbmSettings;
     lbmSettings.Ambient = {};

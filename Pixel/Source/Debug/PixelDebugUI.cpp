@@ -10,19 +10,16 @@ namespace {
 void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
     auto &World = session.GetWorld();
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
-        const int worldHeight = int(World.ReadState().Height);
-        int height = worldHeight - int(World.GetWindEndRow());
-        ImGui::TextUnformatted("Wind blows above the selected height.");
-        ImGui::TextUnformatted("Height is measured from the world bottom.");
+        int64_t boundary = World.GetWindBoundary();
+        ImGui::TextUnformatted("Wind blows above the world Y boundary.");
         ImGui::SetNextItemWidth(190);
-        if (ImGui::SliderInt("Wind start height", &height, 0, worldHeight, "%d cells", ImGuiSliderFlags_AlwaysClamp))
-            session.SetWindStartHeight(height);
+        if (ImGui::InputScalar("Wind boundary Y", ImGuiDataType_S64, &boundary))
+            session.SetWindBoundary(boundary);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Drag to adjust, or %s+click to enter a height.", ImGui::GetIO().ConfigMacOSXBehaviors ? "Cmd" : "Ctrl");
-        ImGui::Text("Wind coverage: %u / %d rows", World.GetWindEndRow(), worldHeight);
-        ImGui::Text("0 = whole world; %d = wind off", worldHeight);
+            ImGui::SetTooltip("Enter the world Y coordinate; wind covers cells above this boundary.");
+        ImGui::Text("Wind coverage: %u rows in the player window", World.GetWindEndRow());
         ImGui::TextDisabled("Changing height restarts the wind simulation.");
-        if (ImGui::Button("Default height (600)"))
+        if (ImGui::Button("Default boundary (Y = 424)"))
             session.SetWindStartHeight(GameSession::DefaultWindStartHeight);
         int selected = int(session.GetSelectedWindStrategy());
         if (ImGui::Combo("Wind strategy", &selected, "Coarse NS\0Pixel reference (1:1)\0Procedural + obstacles\0Coarse NS + local model\0Adaptive NS (CPU prototype)\0LBM D2Q9 (CPU prototype)\0Empty (no wind)\0")) {
@@ -30,6 +27,21 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
         }
         if (session.GetSelectedWindStrategy() == WindStrategyKind::Empty)
             ImGui::TextDisabled("No wind simulation; height is kept for comparison.");
+        if (const auto *streamer = World.GetStreamer()) {
+            if (World.GetEnvironment().IsWaitingForBudget())
+                ImGui::TextWrapped("Simulation is waiting for world storage budget.");
+            ImGui::Text("Resident: %zu chunks; loading/saving: %zu", World.GetMap().ChunkCount(), streamer->PendingCount());
+            ImGui::Text("World storage: %.1f MiB", double(streamer->RetainedBytes()) / (1024 * 1024));
+            if (!streamer->LastError().empty()) {
+                ImGui::TextWrapped("World I/O: %s", streamer->LastError().c_str());
+                if (ImGui::Button("Retry world I/O"))
+                    World.RetryStreaming();
+            }
+            if (ImGui::Button("Save world"))
+                session.TrySave();
+            if (!session.GetSaveError().empty())
+                ImGui::TextWrapped("Save failed: %s", session.GetSaveError().c_str());
+        }
         bool paused = session.IsPaused();
         if (ImGui::Checkbox("Pause simulation", &paused))
             session.SetPaused(paused);

@@ -16,8 +16,11 @@ void GameCamera::SetView(const GridView2D &view) {
     for (auto size : view.CellSizePixels)
         if (size < 1 || size > 64)
             throw std::invalid_argument("cell size must be in [1, 64]");
-    Camera.SetPosition({(double(view.OriginPixels[0]) + FramebufferSize[0] / 2.0) / view.CellSizePixels[0],
-                        (double(view.OriginPixels[1]) + FramebufferSize[1] / 2.0) / view.CellSizePixels[1]});
+    WorldPosition position;
+    position.Chunk = ChunkOf({view.WorldOriginCells[0], view.WorldOriginCells[1]});
+    position.Local = {double(view.WorldOriginCells[0] - position.Chunk.X * storage::ChunkEdge) + (double(view.OriginPixels[0]) + FramebufferSize[0] / 2.0) / view.CellSizePixels[0],
+                      double(view.WorldOriginCells[1] - position.Chunk.Y * storage::ChunkEdge) + (double(view.OriginPixels[1]) + FramebufferSize[1] / 2.0) / view.CellSizePixels[1]};
+    Camera.SetWorldPosition(position);
     ViewSettings = view;
 }
 void GameCamera::Reset(const World &world) {
@@ -25,14 +28,20 @@ void GameCamera::Reset(const World &world) {
     Camera.SetPosition({world.ReadState().Width / 2.0, world.ReadState().Height / 2.0});
     if (world.GetPlayer()) {
         const auto &player = *world.GetPlayer();
-        Camera.SetPosition({player.X + Character::Width / 2, player.Y + Character::Height / 2});
+        auto position = player.GetWorldPosition();
+        position.Local[0] += Character::Width / 2;
+        position.Local[1] += Character::Height / 2;
+        Camera.SetWorldPosition(position);
     }
 }
 void GameCamera::FollowPlayer(const World &world, float duration) {
     if (!world.GetPlayer())
         return;
     const auto &player = *world.GetPlayer();
-    Camera.Follow({player.X + Character::Width / 2, player.Y + Character::Height / 2}, std::min(duration, .25f));
+    auto position = player.GetWorldPosition();
+    position.Local[0] += Character::Width / 2;
+    position.Local[1] += Character::Height / 2;
+    Camera.FollowWorld(position, std::min(duration, .25f));
 }
 void GameCamera::Pan(std::array<int, 2> direction, float duration) {
     // Keep 240 framebuffer pixels/second, independently of zoom.
@@ -47,11 +56,10 @@ void GameCamera::Zoom(bool in) {
 }
 void GameCamera::NextRegion() {
     auto view = GetView();
-    view.OriginPixels[1] = ((std::max(0, view.OriginPixels[1]) / int(view.CellSizePixels[1]) / int(Grid2D::PageHeight) + 1)
-                           % int(Grid2D::PageCount)) * int(Grid2D::PageHeight * view.CellSizePixels[1]);
+    view.WorldOriginCells[1] += storage::ChunkEdge;
     SetView(view);
 }
-std::optional<std::array<uint32_t, 2>> GameCamera::PickCell(const MousePointerState &pointer) const {
+std::optional<std::array<int64_t, 2>> GameCamera::PickCell(const MousePointerState &pointer) const {
     if (pointer.FramebufferSize[0] <= 0 || pointer.FramebufferSize[1] <= 0)
         return std::nullopt;
     // A queued click can predate a resize; projection and scaling use its own dimensions.

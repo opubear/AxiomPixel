@@ -2,11 +2,23 @@
 #include "World/World.h"
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 namespace {
+std::vector<pixel::CellState> CopyCells(pixel::WorldMapView view) {
+    std::vector<pixel::CellState> cells;
+    cells.reserve(view.CellCount());
+    for (size_t i = 0; i < view.CellCount(); ++i)
+        cells.push_back(view.AtIndex(i));
+    return cells;
+}
+bool SameCells(pixel::WorldMapView left, pixel::WorldMapView right) {
+    return CopyCells(left) == CopyCells(right);
+}
 void Check(bool value, const char *reason) {
     if (!value)
         throw std::runtime_error(reason);
@@ -31,9 +43,9 @@ void CellInformation() {
     const auto &air = GetCellInfo(world.GetCell(0, 0).Type);
     Check(&air == &CellDefinition<CellTypeId::Air>::Info, "air lookup copied static information");
     world.PlaceDirt(0, 0);
-    WorldState snapshot(2, 2);
+    WorldSnapshot snapshot(2, 2);
     world.PublishState(snapshot);
-    const auto &dirt = GetCellInfo(snapshot.Read().Cells[0].Type);
+    const auto &dirt = GetCellInfo(snapshot.Read().AtIndex(0).Type);
     Check(&dirt == &CellDefinition<CellTypeId::Dirt>::Info, "dirt lookup copied static information");
     Check(&dirt == &GetCellInfo(world.GetCell(0, 0).Type), "world and snapshot do not share information");
     world.RemoveDirt(0, 0);
@@ -44,63 +56,62 @@ void CellInformation() {
 void WorldOperations() {
     Reject<std::invalid_argument>([] { pixel::World world(0, 4); });
     Reject<std::invalid_argument>([] { pixel::World world(4, 0); });
-    Reject<std::invalid_argument>([] { pixel::WorldState state(UINT32_MAX, UINT32_MAX); });
+    Reject<std::invalid_argument>([] { pixel::World world(UINT32_MAX, UINT32_MAX); });
     pixel::World world(3, 2);
-    Check(world.ReadState().Cells.size() == 6, "incorrect world extent");
-    for (auto cell : world.ReadState().Cells)
+    Check(world.ReadState().CellCount() == 6, "incorrect world extent");
+    for (auto cell : CopyCells(world.ReadState()))
         Check(cell.Type == pixel::CellTypeId::Air, "world not initially empty");
     world.SetCell(2, 1, {pixel::CellTypeId::Dirt});
-    Check(world.GetCell(2, 1).Type == pixel::CellTypeId::Dirt && world.ReadState().Cells[5].Type == pixel::CellTypeId::Dirt, "world indexing incorrect");
+    Check(world.GetCell(2, 1).Type == pixel::CellTypeId::Dirt && world.ReadState().AtIndex(5).Type == pixel::CellTypeId::Dirt, "world indexing incorrect");
     Reject<std::out_of_range>([&] { world.SetCell(3, 0, {static_cast<pixel::CellTypeId>(20)}); });
     Reject<std::out_of_range>([&] { world.GetCell(0, 2); });
     Reject<std::out_of_range>([&] { world.GetCell(UINT32_MAX, 0); });
     world.Fill({static_cast<pixel::CellTypeId>(20)});
     world.Tick(0.016f);
-    for (auto cell : world.ReadState().Cells)
+    for (auto cell : CopyCells(world.ReadState()))
         Check(cell.Type == static_cast<pixel::CellTypeId>(20), "fill or empty character/environment tick changed world");
     world.Fill({});
     Check(world.GetCell(2, 1).Type == pixel::CellTypeId::Air, "world clearing failed");
 }
 void WorldPublication() {
     pixel::World world(3, 2);
-    pixel::WorldState snapshot(3, 2);
-    const std::array storage{world.ReadState().Cells.data(), snapshot.Read().Cells.data()};
+    pixel::WorldSnapshot snapshot(3, 2);
     world.SetCell(0, 0, {pixel::CellTypeId::Dirt});
-    for (size_t frame = 0; frame < 8; ++frame) {
-        world.PublishState(snapshot);
-        Check(world.ReadState().Cells.data() == storage[(frame + 1) % 2], "world allocated instead of recycling storage");
-        Check(snapshot.Read().Cells.data() == storage[frame % 2], "snapshot did not receive the working storage");
-        Check(world.GetCell(0, 0).Type == pixel::CellTypeId::Dirt && snapshot.Read().Cells[0].Type == pixel::CellTypeId::Dirt, "persistent edit lost across frames");
-        const auto before = snapshot.Read().Cells[5];
-        world.SetCell(2, 1, {static_cast<pixel::CellTypeId>(uint32_t(20 + frame))});
-        Check(snapshot.Read().Cells[5] == before, "working edit changed the published snapshot");
-        if (frame > 0)
-            Check(before.Type == static_cast<pixel::CellTypeId>(19 + frame), "second edit did not persist until publication");
-    }
+    world.PublishState(snapshot);
+    Check(snapshot.Read().AtIndex(0).Type == pixel::CellTypeId::Dirt, "publication lost an existing edit");
+
+    world.SetCell(2, 1, {static_cast<pixel::CellTypeId>(27)});
+    Check(snapshot.Read().AtIndex(5).Type == pixel::CellTypeId::Air, "working edit changed the published snapshot");
+    Check(world.ReadState().AtIndex(5).Type == static_cast<pixel::CellTypeId>(27), "working edit did not persist until publication");
+    world.PublishState(snapshot);
+    Check(snapshot.Read().AtIndex(5).Type == static_cast<pixel::CellTypeId>(27), "publication did not expose the persistent edit");
+
     world.SetCell(0, 0, {});
     world.PublishState(snapshot);
-    world.PublishState(snapshot); // An unchanged frame must not resurrect old values.
-    Check(snapshot.Read().Cells[0].Type == pixel::CellTypeId::Air && snapshot.Read().Cells[5].Type == static_cast<pixel::CellTypeId>(27), "clear or unchanged frame reverted data");
-    pixel::WorldState wrongShape(2, 3);
-    const auto before = world.ReadState().Cells.data();
+    world.PublishState(snapshot); // An unchanged publication must preserve the latest contents.
+    Check(snapshot.Read().AtIndex(0).Type == pixel::CellTypeId::Air && snapshot.Read().AtIndex(5).Type == static_cast<pixel::CellTypeId>(27),
+          "clear or unchanged publication reverted data");
+
+    pixel::WorldSnapshot wrongShape(2, 3);
+    const auto before = CopyCells(world.ReadState());
     Reject<std::invalid_argument>([&] { world.PublishState(wrongShape); });
-    Check(world.ReadState().Cells.data() == before && world.GetCell(2, 1).Type == static_cast<pixel::CellTypeId>(27), "rejected publication modified world");
+    Check(CopyCells(world.ReadState()) == before, "rejected publication modified world");
 }
 void PresentationMapping() {
-    pixel::World world(Grid2D::Width, Grid2D::Height);
-    pixel::WorldState snapshot(Grid2D::Width, Grid2D::Height);
+    pixel::World world(3, 2);
+    pixel::WorldSnapshot snapshot(3, 2);
     WorldGridFrame output;
-    const auto *renderStorage = output.Cells().data();
     CellAppearanceTable appearances{{10, 2}, {20, 2}};
     world.SetCell(0, 0, {pixel::CellTypeId::Dirt});
-    world.SetCell(Grid2D::Width - 1, Grid2D::Height - 1, {static_cast<pixel::CellTypeId>(20)});
+    world.SetCell(2, 1, {static_cast<pixel::CellTypeId>(20)});
     world.PublishState(snapshot);
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(output.Read().Cells.front() == 2 && output.Read().Cells.back() == 2 && output.Read().Cells[1] == 0, "nonidentity or shared appearance mapping failed");
+    const auto *renderStorage = output.Cells().data();
     appearances[10] = 3;
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(output.Read().Cells.front() == 3 && output.Cells().data() == renderStorage, "mapping change did not reuse render storage");
-    Check(world.GetCell(0, 0).Type == pixel::CellTypeId::Dirt && snapshot.Read().Cells[0].Type == pixel::CellTypeId::Dirt, "presentation changed gameplay identity");
+    Check(world.GetCell(0, 0).Type == pixel::CellTypeId::Dirt && snapshot.Read().AtIndex(0).Type == pixel::CellTypeId::Dirt, "presentation changed gameplay identity");
     world.SetCell(0, 0, {static_cast<pixel::CellTypeId>(99)});
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(output.Read().Cells[0] == 3, "unpublished gameplay leaked into conversion");
@@ -115,10 +126,8 @@ void PresentationMapping() {
     BuildWorldGridFrame(snapshot.Read(), appearances, output);
     Check(std::all_of(output.Read().Cells.begin(), output.Read().Cells.end(), [](uint32_t id) { return id == 0; }), "empty gameplay cells must map to zero");
     auto malformed = snapshot.Read();
-    malformed.Width = 2;
-    Reject<std::invalid_argument>([&] { BuildWorldGridFrame(malformed, appearances, output); });
-    malformed = snapshot.Read();
-    malformed.Cells = malformed.Cells.first(1);
+    malformed.Map = nullptr;
+    malformed.Snapshot = nullptr;
     Reject<std::invalid_argument>([&] { BuildWorldGridFrame(malformed, appearances, output); });
 }
 void TerrainAndGravity() {
@@ -136,7 +145,8 @@ void TerrainAndGravity() {
     Check(terrain.GetCell(1, 511) == dirt && terrain.GetCell(1, 510).Type == pixel::CellTypes::Empty, "dirt did not stop above terrain");
     Check(terrain.RemoveDirt(1, 513) && !terrain.RemoveDirt(1, 513), "removal must affect dirt only");
     terrain.Tick(1.f / 60);
-    Check(terrain.GetCell(1, 511).Type == pixel::CellTypes::Empty && terrain.GetCell(1, 512) == dirt && terrain.GetCell(1, 513) == dirt, "unsupported stack did not fall into the excavated cell");
+    Check(terrain.GetCell(1, 511) == dirt && terrain.GetCell(1, 512).Type == pixel::CellTypes::Empty && terrain.GetCell(1, 513) == dirt,
+          "an excavated vacancy must advance one block per simulation step");
     Check(terrain.GetCell(0, 511).Type == pixel::CellTypes::Empty && terrain.GetCell(0, 512) == dirt, "gravity moved a neighbouring column");
     terrain.GenerateTerrain(512);
     Reject<std::out_of_range>([&] { terrain.GenerateTerrain(1025); });
@@ -148,15 +158,16 @@ void TerrainAndGravity() {
     world.PlaceDirt(2, 5);
     world.SetCell(1, 3, {static_cast<pixel::CellTypeId>(20)});
     Check(!world.RemoveDirt(1, 3) && !world.PlaceDirt(1, 3), "dirt editing overwrote another material");
-    pixel::WorldState snapshot(3, 6);
+    pixel::WorldSnapshot snapshot(3, 6);
     world.PublishState(snapshot);
     for (int i = 0; i < 20; ++i)
         world.Tick(1.f / 60);
     Check(world.GetCell(0, 4) == dirt && world.GetCell(0, 5) == dirt && world.GetCell(2, 5) == dirt, "stack escaped the bottom or failed to settle");
-    Check(std::count(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), dirt) == 3, "gravity lost or duplicated dirt");
-    Check(snapshot.Read().Cells[0] == dirt && snapshot.Read().Cells[3] == dirt, "simulation mutated a published snapshot");
+    const auto cellsAfterGravity = CopyCells(world.ReadState());
+    Check(std::count(cellsAfterGravity.begin(), cellsAfterGravity.end(), dirt) == 3, "gravity lost or duplicated dirt");
+    Check(snapshot.Read().AtIndex(0) == dirt && snapshot.Read().AtIndex(3) == dirt, "simulation mutated a published snapshot");
     world.PublishState(snapshot);
-    Check(snapshot.Read().Cells[12] == dirt && snapshot.Read().Cells[15] == dirt, "publication lost settled blocks");
+    Check(snapshot.Read().AtIndex(12) == dirt && snapshot.Read().AtIndex(15) == dirt, "publication lost settled blocks");
     pixel::World singleRow(1, 1);
     singleRow.PlaceDirt(0, 0);
     singleRow.Tick(1);
@@ -175,7 +186,7 @@ void GravityTiming() {
         fast.Tick(1.f / 120);
     for (int i = 0; i < 15; ++i)
         slow.Tick(1.f / 30);
-    Check(std::equal(fast.ReadState().Cells.begin(), fast.ReadState().Cells.end(), slow.ReadState().Cells.begin()), "gravity depends on frame rate");
+    Check(SameCells(fast.ReadState(), slow.ReadState()), "gravity depends on frame rate");
     Check(fast.GetCell(0, 30).Type == pixel::CellTypes::Dirt, "gravity does not move at 60 cells per second");
     fast.GenerateTerrain(100);
     fast.PlaceDirt(0, 0);
@@ -187,18 +198,20 @@ void GravityTiming() {
 void MousePicking() {
     GridView2D view;
     view.OriginPixels = {32, 512 * 16 - 32};
-    Check(PickGridCell(view, {8, 16}, {800, 600}, {1600, 1200}) == std::array<uint32_t, 2>{3, 512}, "HiDPI picking missed terrain surface");
-    Check(PickGridCell(view, {15.99, 31.99}, {800, 600}, {800, 600}) == std::array<uint32_t, 2>{2, 511}, "picking rounded up at cell boundary");
+    Check(PickGridCell(view, {8, 16}, {800, 600}, {1600, 1200}) == std::array<int64_t, 2>{3, 512}, "HiDPI picking missed terrain surface");
+    Check(PickGridCell(view, {15.99, 31.99}, {800, 600}, {800, 600}) == std::array<int64_t, 2>{2, 511}, "picking rounded up at cell boundary");
     view.CellSizePixels = {8, 8};
     view.OriginPixels = {-1, 0};
-    Check(!PickGridCell(view, {0, 0}, {800, 600}, {1600, 1200}), "negative world coordinate wrapped to cell zero");
-    Check(PickGridCell(view, {0.5, 4}, {800, 600}, {1600, 1200}) == std::array<uint32_t, 2>{0, 1}, "zoomed picking failed");
+    Check(PickGridCell(view, {0, 0}, {800, 600}, {1600, 1200}) == std::array<int64_t, 2>{-1, 0},
+          "negative world coordinate was not preserved");
+    Check(PickGridCell(view, {0.5, 4}, {800, 600}, {1600, 1200}) == std::array<int64_t, 2>{0, 1}, "zoomed picking failed");
     Check(!PickGridCell(view, {-1, 0}, {800, 600}, {1600, 1200}) && !PickGridCell(view, {800, 0}, {800, 600}, {1600, 1200}), "outside-window click accepted");
     Check(!PickGridCell(view, {0, 0}, {800, 600}, {0, 0}), "minimized framebuffer accepted");
     view.OriginPixels = {0, 1024 * 8};
-    Check(!PickGridCell(view, {0, 0}, {800, 600}, {1600, 1200}), "click below world accepted");
+    Check(PickGridCell(view, {0, 0}, {800, 600}, {1600, 1200}) == std::array<int64_t, 2>{0, 1024},
+          "camera pick did not retain the world coordinate below the former finite extent");
     view.OriginPixels = {1024 * 8 - 1, 1024 * 8 - 1};
-    Check(PickGridCell(view, {0, 0}, {800, 600}, {1600, 1200}) == std::array<uint32_t, 2>{1023, 1023}, "last cell cannot be selected");
+    Check(PickGridCell(view, {0, 0}, {800, 600}, {1600, 1200}) == std::array<int64_t, 2>{1023, 1023}, "camera offset selected the wrong world cell");
 }
 } // namespace
 void RunPixelWorldTests() {

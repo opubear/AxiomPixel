@@ -21,8 +21,15 @@ enum class Stage : size_t {
     Count
 };
 enum class Counter : size_t {
-    SimulationSteps, MaterialCells, WindVisualCells, WorldUploadBytes, WindUploadBytes,
-    SimulationInputMicroseconds, FramebufferPixels, Count
+    SimulationSteps,
+    MaterialCells,
+    ActiveRegions,
+    WindVisualCells,
+    WorldUploadBytes,
+    WindUploadBytes,
+    SimulationInputMicroseconds,
+    FramebufferPixels,
+    Count
 };
 constexpr size_t StageCount = size_t(Stage::Count);
 constexpr size_t CounterCount = size_t(Counter::Count);

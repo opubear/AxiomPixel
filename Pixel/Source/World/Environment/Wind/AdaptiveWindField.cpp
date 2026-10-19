@@ -7,17 +7,17 @@
 
 namespace pixel {
 performance::MemoryUsage AdaptiveWindField::GetMemoryUsage() const {
-    return performance::MeasureObject(*this, Solid, Owner, Cells, Faces);
+    return performance::MeasureObject(*this, Solid, Owner, Cells, Faces, BoundaryFaces);
 }
 
-AdaptiveWindField::AdaptiveWindField(WorldStateView world, uint32_t height, const AdaptiveWindSettings &settings)
+AdaptiveWindField::AdaptiveWindField(WorldMapView world, uint32_t height, const AdaptiveWindSettings &settings)
     : Width(world.Width), Height(height), Settings(settings) {
     if (!settings.BlockSize || settings.BlockSize > 32)
         throw std::invalid_argument("adaptive block size must be 1..32");
     // Same physical parameter bounds and deterministic initial shear as reference.
     PixelWindField initial;
     initial.Reset(Width, Height, settings.Flow);
-    if (world.Height < Height || world.Cells.size() != size_t(Width) * world.Height)
+    if (!world.IsValid() || world.Height < Height || world.CellCount() != size_t(Width) * world.Height)
         throw std::invalid_argument("adaptive wind requires complete matching world");
     Solid.assign(size_t(Width) * Height, 2); // Force first geometry rebuild.
     Owner.assign(Solid.size(), -1);
@@ -25,7 +25,7 @@ AdaptiveWindField::AdaptiveWindField(WorldStateView world, uint32_t height, cons
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             previous[size_t(y) * Width + x] = initial.Sample(x + .5f, y + .5f);
-            Solid[size_t(y) * Width + x] = world.Cells[size_t(y) * Width + x].Type != CellTypes::Empty;
+            Solid[size_t(y) * Width + x] = world.AtIndex(size_t(y) * Width + x).Type != CellTypes::Empty;
         }
     for (uint32_t y = 0; y < Height; y += settings.BlockSize)
         for (uint32_t x = 0; x < Width; x += settings.BlockSize)
@@ -63,19 +63,32 @@ void AdaptiveWindField::Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, co
         Split(x, y + h / 2, w, h - h / 2, previous);
     }
 }
-void AdaptiveWindField::SetObstacles(WorldStateView world) {
-    if (world.Width != Width || world.Height < Height || world.Cells.size() != size_t(world.Width) * world.Height)
+void AdaptiveWindField::MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY) {
+    AdaptiveWindField next(world, height, Settings);
+    std::vector<WindVelocity> velocities(size_t(world.Width) * height, Settings.Flow.Ambient);
+    for (uint32_t y = 0; y < height; ++y)
+        for (uint32_t x = 0; x < world.Width; ++x) {
+            const double oldX = double(x) + double(offsetX), oldY = double(y) + double(offsetY);
+            if (oldX >= 0 && oldY >= 0 && oldX < Width && oldY < Height)
+                velocities[size_t(y) * world.Width + x] = Sample(float(oldX) + .5f, float(oldY) + .5f);
+        }
+    // Unit pixels form exact overlap volumes, including coarse/fine transitions.
+    next.SetVelocities(velocities);
+    *this = std::move(next);
+}
+void AdaptiveWindField::SetObstacles(WorldMapView world) {
+    if (!world.IsValid() || world.Width != Width || world.Height < Height || world.CellCount() != size_t(world.Width) * world.Height)
         throw std::invalid_argument("adaptive obstacle extent mismatch");
     bool changed = false;
     for (size_t i = 0; i < Solid.size(); ++i)
-        changed |= Solid[i] != (world.Cells[i].Type != CellTypes::Empty);
+        changed |= Solid[i] != (world.AtIndex(i).Type != CellTypes::Empty);
     if (!changed)
         return;
     std::vector<WindVelocity> previous(Solid.size());
     for (size_t i = 0; i < Solid.size(); ++i) {
         if (Owner[i] >= 0)
             previous[i] = Cells[size_t(Owner[i])].Velocity;
-        Solid[i] = world.Cells[i].Type != CellTypes::Empty;
+        Solid[i] = world.AtIndex(i).Type != CellTypes::Empty;
     }
     Cells.clear();
     std::fill(Owner.begin(), Owner.end(), -1);
@@ -95,10 +108,25 @@ void AdaptiveWindField::BuildFaces() {
                 continue;
             const auto right = Owner[size_t(y) * Width + (x + 1) % Width];
             const auto down = Owner[size_t((y + 1) % Height) * Width + x];
-            if (right >= 0 && (right != a || x + 1 == Width))
+            if ((Settings.Flow.Boundary == WindBoundaryMode::Periodic || x + 1 < Width)
+                && right >= 0 && (right != a || x + 1 == Width))
                 ++lengths[{a, right, true}];
-            if (down >= 0 && (down != a || y + 1 == Height))
+            if ((Settings.Flow.Boundary == WindBoundaryMode::Periodic || y + 1 < Height)
+                && down >= 0 && (down != a || y + 1 == Height))
                 ++lengths[{a, down, false}];
+        }
+    BoundaryFaces.clear();
+    if (Settings.Flow.Boundary == WindBoundaryMode::Open)
+        for (uint32_t i = 0; i < Cells.size(); ++i) {
+            const auto &c = Cells[i];
+            if (c.X == 0)
+                BoundaryFaces.push_back({i, true, false, IsWindInflow(WindBoundarySide::Left, Settings.Flow.Ambient), double(c.H), double(c.W), 0});
+            if (c.X + c.W == Width)
+                BoundaryFaces.push_back({i, true, true, IsWindInflow(WindBoundarySide::Right, Settings.Flow.Ambient), double(c.H), double(c.W), 0});
+            if (c.Y == 0)
+                BoundaryFaces.push_back({i, false, false, IsWindInflow(WindBoundarySide::Top, Settings.Flow.Ambient), double(c.W), double(c.H), 0});
+            if (c.Y + c.H == Height)
+                BoundaryFaces.push_back({i, false, true, IsWindInflow(WindBoundarySide::Bottom, Settings.Flow.Ambient), double(c.W), double(c.H), 0});
         }
     Faces.clear();
     for (const auto &[key, length] : lengths) {
@@ -108,6 +136,10 @@ void AdaptiveWindField::BuildFaces() {
     }
 }
 void AdaptiveWindField::InitializeFaceVelocities() {
+    for (auto &f : BoundaryFaces) {
+        const auto &v = f.Inflow ? Settings.Flow.Ambient : Cells[f.Owner].Velocity;
+        f.Velocity = f.Horizontal ? v.X : v.Y;
+    }
     for (auto &f : Faces) {
         const auto &a = Cells[f.A], &b = Cells[f.B];
         const double wa = f.Horizontal ? a.W : a.H, wb = f.Horizontal ? b.W : b.H;
@@ -118,6 +150,13 @@ void AdaptiveWindField::InitializeFaceVelocities() {
 void AdaptiveWindField::ReconstructVelocities() {
     for (auto &cell : Cells)
         cell.Velocity = {};
+    for (const auto &f : BoundaryFaces) {
+        auto &c = Cells[f.Owner];
+        if (f.Horizontal)
+            c.Velocity.X += float(f.Length * f.Velocity / (2 * c.H));
+        else
+            c.Velocity.Y += float(f.Length * f.Velocity / (2 * c.W));
+    }
     for (const auto &f : Faces) {
         auto &a = Cells[f.A], &b = Cells[f.B];
         if (f.Horizontal) {
@@ -139,6 +178,11 @@ void AdaptiveWindField::Project() {
             diagonal[f.A] += f.Length / f.Distance;
             diagonal[f.B] += f.Length / f.Distance;
         }
+    }
+    for (const auto &f : BoundaryFaces) {
+        rhs[f.Owner] -= (f.Positive ? 1 : -1) * f.Length * f.Velocity;
+        if (!f.Inflow)
+            diagonal[f.Owner] += f.Length / f.Distance;
     }
     auto measure = [&](const std::vector<double> &residual) {
         double sum = 0, volume = 0, maximum = 0;
@@ -171,6 +215,9 @@ void AdaptiveWindField::Project() {
             ad[f.A] += flux;
             ad[f.B] -= flux;
         }
+        for (const auto &f : BoundaryFaces)
+            if (!f.Inflow)
+                ad[f.Owner] += d[f.Owner] * f.Length / f.Distance;
         const double denominator = dot(d, ad);
         if (!(denominator > 0) || !std::isfinite(denominator))
             break;
@@ -193,6 +240,12 @@ void AdaptiveWindField::Project() {
         f.Velocity -= (p[f.B] - p[f.A]) / f.Distance;
         rhs[f.A] += f.Length * f.Velocity;
         rhs[f.B] -= f.Length * f.Velocity;
+    }
+    for (auto &f : BoundaryFaces) {
+        const double normal = f.Positive ? 1 : -1;
+        if (!f.Inflow)
+            f.Velocity += normal * p[f.Owner] / f.Distance;
+        rhs[f.Owner] += normal * f.Length * f.Velocity;
     }
     measure(rhs); // Report the actual shared face flux, including roundoff.
     ReconstructVelocities();
@@ -229,6 +282,13 @@ void AdaptiveWindField::Transport(double dt) {
         next[f.B].X += float(flux * upstream.X / Cells[f.B].Volume());
         next[f.B].Y += float(flux * upstream.Y / Cells[f.B].Volume());
     }
+    for (const auto &f : BoundaryFaces) {
+        const double outward = (f.Positive ? 1 : -1) * f.Velocity;
+        const auto &upstream = outward < 0 ? Settings.Flow.Ambient : diffused[f.Owner];
+        const double flux = dt * f.Length * outward / Cells[f.Owner].Volume();
+        next[f.Owner].X -= float(flux * upstream.X);
+        next[f.Owner].Y -= float(flux * upstream.Y);
+    }
     const float blend = float(-std::expm1(-Settings.Flow.Relaxation * dt));
     for (size_t i = 0; i < Cells.size(); ++i)
         Cells[i].Velocity = {std::lerp(next[i].X, Settings.Flow.Ambient.X, blend), std::lerp(next[i].Y, Settings.Flow.Ambient.Y, blend)};
@@ -247,6 +307,10 @@ void AdaptiveWindField::Step(float seconds) {
         for (const auto &f : Faces) {
             const auto upstream = f.Velocity >= 0 ? f.A : f.B;
             outgoing[upstream] += f.Length * std::abs(f.Velocity) / Cells[upstream].Volume();
+        }
+        for (const auto &f : BoundaryFaces) {
+            const double outward = (f.Positive ? 1 : -1) * f.Velocity;
+            outgoing[f.Owner] += f.Length * std::max(0., outward) / Cells[f.Owner].Volume();
         }
         double rate = 1;
         for (const auto value : outgoing)
@@ -280,8 +344,8 @@ void AdaptiveWindField::AddImpulse(float x, float y, float radius, WindVelocity 
         throw std::invalid_argument("invalid adaptive wind impulse");
     bool changed = false;
     for (auto &c : Cells) {
-        const double dx = std::remainder(c.X + .5 * c.W - x, double(Width)) / radius;
-        const double dy = std::remainder(c.Y + .5 * c.H - y, double(Height)) / radius;
+        const double dx = WindDistance(c.X + .5 * c.W - x, double(Width), Settings.Flow.Boundary) / radius;
+        const double dy = WindDistance(c.Y + .5 * c.H - y, double(Height), Settings.Flow.Boundary) / radius;
         const float weight = float(std::pow(std::max(0.0, 1 - dx * dx - dy * dy), 2));
         changed |= delta.X * weight != 0 || delta.Y * weight != 0;
         if (delta.X * weight != 0)

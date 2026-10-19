@@ -1,7 +1,7 @@
 # AxiomPixel
 
 AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
-`PixelWorld` 管理纯 CPU 世界，Environment 统一持有基础力场与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景、暂停及单步策略。
+`PixelWorld` 管理纯 CPU 世界，WorldMap 持有分块材料/基础力，Environment 负责合成受力与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景、暂停及单步策略。
 `PixelInput` 的 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，直接调用游戏会话、表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
 `PixelPresentation` 管理相机、外观与帧首快照转换；`PixelRender` 消费快照完成上传、世界与角色及风效合成、后处理。PixelInput链接CPU表现模块，不链接运行时或ImGui。
 `Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 创建策略，`PixelApplication` 创建游戏，应用所有的 DebugUI 通过引擎 overlay 回调叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。
@@ -17,23 +17,24 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 
 ## 世界与现有玩法
 
-基础世界为 1024×1024 格，上 512 行蓝色空气、下 512 行棕褐色土块。
-左键放置、右键移除单格；每格 Force 保存空间受力方向，Environment 以固定步长按方向驱动土块并处理堆叠和碰撞。
-方向支持八邻域和静止。游戏高度自底向上：底部600格为向下重力场，600高度以上叠加简化二维NS风场，故512～600高度之间有88格稳定天空。
-存储行号自顶向下，对应y<424有风、y>=424仅受基础方向场影响，土地为y>=512。Environment拥有32×16连续风速网格，以60Hz推进平流、扩散和压力投影，再与基础Force合成移动方向。完整移动批次后，风区中的泥土按覆盖面积和实际移动速度向空气反馈阻力，再作压力投影；静止泥土减速，移动泥土带风。启动及R重置恢复可复现的风；基础Force不随物体搬迁。风采用周期边界和粗网格双向阻力耦合，尚无逐像素无穿透边界或方块惯性。默认地面仍在风区之外，88格稳定天空保留。参数和使用接口见README的简化风场章节。玩家已实现独立CPU矩形碰撞体、重力和跳跃，NPC仍为空入口，尚未引入脏区或多线程。
+世界现为可用正负坐标的流式平坦地形，y<512空气、其他泥土。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。
 
-F1切换力场调试视图：所有格子的连续合成场方向单位化后，映射为RGB=(0.5+0.5*dx,0.5+0.5*dy,0.5)，零向量灰色。World仅提供数值采样，表现层在帧首生成颜色快照，复用现有数据纹理；Draw不读取实时世界，普通材质视图行为保留。
+材料采用同步60 Hz：只申请步首空气，按源(y,x)裁决后批量提交，长链空位逐步传递；空间力不随材料移动。无风静止区域休眠，编辑、力变化、加载和移动唤醒邻域。未驻留区域阻挡角色/材料并显示占位，编辑返回NotReady。存档为Saves/<world-id>，R保存后创建新世界且保留旧文件。
 
-`Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定到 `6baecde`，准确提交见 `AxiomVersion.json`。该提交已包含鼠标事件快照、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
+风域跟随玩家并截取世界y<424，保留地表上方88格无风带。七后端迁移重叠状态，游戏使用环境流入/流出开放边界；周期模式仅显式数值测试使用。默认Empty且暂停，可单步/切换策略。材料、F1和风效使用可见区域快照，frame slot独立缓存并只上传变化区域，Draw不读取实时World。
+
+现行接口、算法、预算与失败处理见 [世界表示约定](../Docs/WorldRepresentation.md)，实测、验证和审查证据见 [验证报告](../Docs/WorldRepresentationValidation.md)。早期世界/风场文档中整图数组、移动链、四张纹理与周期游戏边界已被替代。
+
+`Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定到 `150ea98`，准确提交见 `AxiomVersion.json`。该提交包含通用纹理区域上传、鼠标事件快照、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
 通用 RHI、Forward 渲染和 AET 留在引擎；相邻 `../Axiom` 仅供只读历史参考。
 本目录为 AWT Project 根，真实工程为其父目录。
 构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。
 
-Pixel默认显示ImGui Pixel Debug面板，Environment分组运行时设置从底部计的风场起始高度（0全世界、1024关闭、默认600），F2显隐；修改高度保留物体及基础场并重建风速，R恢复默认。方向视图也可用复选框切换。UI独立于3D场景，后处理结束前在present pass中叠加；输入经ImGui捕获过滤。
+Pixel默认显示ImGui Pixel Debug面板，Environment使用世界坐标Wind boundary Y（默认424），F2显隐；可查看驻留/排队、预算、I/O重试与手动保存。F1切换合成方向视图，暂停冻结模拟但允许加载/相机移动；UI输入经ImGui捕获过滤。
 
 玩家默认标准模式：A/D移动、Space跳跃、相机跟随；F3切换自由调试相机（WASD平移、PageDown切区域），切换清空输入。角色使用纯色2×4格头身矩形，以连续屏幕坐标独立快照在世界Pass之后合成，不写地图材料或地图数据纹理；F1仍是纯力场诊断。碰撞和限制见README的角色操作说明。
 
-Camera2D以世界格为单位保存双精度中心；标准模式速度为目标距离乘跟随系数（默认8/s），指数积分平滑追近角色，F3返回不瞬移。视口由相机中心、缩放和framebuffer生成；尺寸变化保留世界中心。调试面板可调Camera follow rate。
+Camera2D以块坐标和块内双精度保存连续中心；标准模式速度为目标距离乘跟随系数（默认8/s），指数积分平滑追近角色，F3返回不瞬移。视口由相机中心、缩放和framebuffer生成；尺寸变化保留世界中心。调试面板可调Camera follow rate。
 
 角色合成使用未取整Camera中心与世界位置差，解析矩形的屏幕像素覆盖以支持亚像素移动；每个frame slot独立RGBA8合成目标，F1或无角色跳过该Pass，角色合成后再后处理和UI。
 

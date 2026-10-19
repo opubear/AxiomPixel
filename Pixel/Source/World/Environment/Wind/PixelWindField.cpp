@@ -7,7 +7,7 @@
 
 namespace pixel {
 performance::MemoryUsage PixelWindField::GetMemoryUsage() const {
-    return performance::MeasureObject(*this, U, V, NextU, NextV, Solid, OpenX, OpenY, SupportX, SupportY, Pressure, Residual, Direction, Product, Preconditioned, Diagonal);
+    return performance::MeasureObject(*this, U, V, NextU, NextV, Solid, OpenX, OpenY, SupportX, SupportY, Pressure, Residual, Direction, Product, Preconditioned, Diagonal, RightU, BottomV);
 }
 
 namespace {
@@ -20,26 +20,74 @@ double Dot(const std::vector<double> &a, const std::vector<double> &b) {
 }
 } // namespace
 size_t PixelWindField::Index(int x, int y) const {
-    if (x < 0)
-        x += int(Width);
-    else if (x >= int(Width))
-        x -= int(Width);
-    if (y < 0)
-        y += int(Height);
-    else if (y >= int(Height))
-        y -= int(Height);
+    if (Periodic()) {
+        x = (x % int(Width) + int(Width)) % int(Width);
+        y = (y % int(Height) + int(Height)) % int(Height);
+    } else {
+        x = std::clamp(x, 0, int(Width) - 1);
+        y = std::clamp(y, 0, int(Height) - 1);
+    }
     return size_t(y) * Width + size_t(x);
+}
+
+double PixelWindField::UFace(int x, int y) const {
+    if (!Periodic() && x >= int(Width))
+        return RightU[size_t(std::clamp(y, 0, int(Height) - 1))];
+    return U[Index(x, y)];
+}
+double PixelWindField::VFace(int x, int y) const {
+    if (!Periodic() && y >= int(Height))
+        return BottomV[size_t(std::clamp(x, 0, int(Width) - 1))];
+    return V[Index(x, y)];
+}
+double PixelWindField::DivergenceAt(int x, int y) const {
+    return UFace(x + 1, y) - UFace(x, y) + VFace(x, y + 1) - VFace(x, y);
+}
+double PixelWindField::PressureWeight(int x, int y, int dx, int dy) const {
+    if (Solid[Index(x, y)])
+        return 0;
+    const int nx = x + dx, ny = y + dy;
+    if (Periodic() || (nx >= 0 && ny >= 0 && nx < int(Width) && ny < int(Height)))
+        return !Solid[Index(nx, ny)];
+    const auto side = nx < 0 ? WindBoundarySide::Left : nx >= int(Width) ? WindBoundarySide::Right
+                                                  : ny < 0               ? WindBoundarySide::Top
+                                                                         : WindBoundarySide::Bottom;
+    return Inflow(side) ? 0 : 1; // Prescribed flux in; zero exterior pressure out.
+}
+void PixelWindField::PrescribeInflow() {
+    if (Periodic())
+        return;
+    for (uint32_t y = 0; y < Height; ++y) {
+        if (Inflow(WindBoundarySide::Left))
+            U[Index(0, y)] = Solid[Index(0, y)] ? 0 : Settings.Ambient.X;
+        if (Inflow(WindBoundarySide::Right))
+            RightU[y] = Solid[Index(Width - 1, y)] ? 0 : Settings.Ambient.X;
+    }
+    for (uint32_t x = 0; x < Width; ++x) {
+        if (Inflow(WindBoundarySide::Top))
+            V[Index(x, 0)] = Solid[Index(x, 0)] ? 0 : Settings.Ambient.Y;
+        if (Inflow(WindBoundarySide::Bottom))
+            BottomV[x] = Solid[Index(x, Height - 1)] ? 0 : Settings.Ambient.Y;
+    }
 }
 size_t PixelWindField::CheckedIndex(uint32_t x, uint32_t y) const {
     if (x >= Width || y >= Height)
         throw std::out_of_range("wind face outside grid");
     return size_t(y) * Width + x;
 }
-double PixelWindField::FaceX(uint32_t x, uint32_t y) const { return U.at(CheckedIndex(x, y)); }
-double PixelWindField::FaceY(uint32_t x, uint32_t y) const { return V.at(CheckedIndex(x, y)); }
+double PixelWindField::FaceX(uint32_t x, uint32_t y) const {
+    if (!Periodic() && x == Width && y < Height)
+        return RightU.at(y);
+    return U.at(CheckedIndex(x, y));
+}
+double PixelWindField::FaceY(uint32_t x, uint32_t y) const {
+    if (!Periodic() && y == Height && x < Width)
+        return BottomV.at(x);
+    return V.at(CheckedIndex(x, y));
+}
 bool PixelWindField::IsSolid(uint32_t x, uint32_t y) const { return Solid.at(CheckedIndex(x, y)) != 0; }
 void PixelWindField::Reset(uint32_t width, uint32_t endRow, const PixelWindSettings &settings) {
-    if (width < 1 || endRow < 1 || width > 2048 || endRow > 2048 || !Bounded(settings.Ambient.X, 1000) || !Bounded(settings.Ambient.Y, 1000) || !Bounded(settings.GustSpeed, 1000) || settings.GustSpeed < 0 || !Bounded(settings.Viscosity, 100) || settings.Viscosity < 0 || !Bounded(settings.Relaxation, 100) || settings.Relaxation < 0 || !std::isfinite(settings.DivergenceTolerance) || settings.DivergenceTolerance < 1e-10 || settings.DivergenceTolerance > 0.1 || !settings.MaxPressureIterations || settings.MaxPressureIterations > 20000)
+    if (!IsValidWindBoundary(settings.Boundary) || width < 1 || endRow < 1 || width > 2048 || endRow > 2048 || !Bounded(settings.Ambient.X, 1000) || !Bounded(settings.Ambient.Y, 1000) || !Bounded(settings.GustSpeed, 1000) || settings.GustSpeed < 0 || !Bounded(settings.Viscosity, 100) || settings.Viscosity < 0 || !Bounded(settings.Relaxation, 100) || settings.Relaxation < 0 || !std::isfinite(settings.DivergenceTolerance) || settings.DivergenceTolerance < 1e-10 || settings.DivergenceTolerance > 0.1 || !settings.MaxPressureIterations || settings.MaxPressureIterations > 20000)
         throw std::invalid_argument("invalid pixel wind settings (dimensions 1..2048)");
     PixelWindField next;
     next.Width = width;
@@ -49,6 +97,8 @@ void PixelWindField::Reset(uint32_t width, uint32_t endRow, const PixelWindSetti
     for (auto *values : {&next.U, &next.V, &next.NextU, &next.NextV, &next.Pressure, &next.Residual,
                          &next.Direction, &next.Product, &next.Preconditioned, &next.Diagonal})
         values->resize(count);
+    next.RightU.assign(endRow, settings.Ambient.X);
+    next.BottomV.assign(width, settings.Ambient.Y);
     next.Solid.resize(count);
     next.OpenX.resize(count);
     next.OpenY.resize(count);
@@ -63,33 +113,68 @@ void PixelWindField::Reset(uint32_t width, uint32_t endRow, const PixelWindSetti
             next.V[i] = settings.Ambient.Y + settings.GustSpeed * std::sin(2 * std::numbers::pi * (x + 0.5) / width - phase);
         }
     next.RebuildFaces();
+    if (!next.Periodic())
+        next.Project();
     *this = std::move(next);
 }
 void PixelWindField::RebuildFaces() {
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             const size_t i = Index(x, y);
-            SupportX[i] = !Solid[i] || !Solid[Index(int(x) - 1, y)];
-            SupportY[i] = !Solid[i] || !Solid[Index(x, int(y) - 1)];
-            OpenX[i] = !Solid[i] && !Solid[Index(int(x) - 1, y)];
-            OpenY[i] = !Solid[i] && !Solid[Index(x, int(y) - 1)];
+            const bool left = !Periodic() && x == 0 ? false : Solid[Index(int(x) - 1, y)];
+            const bool up = !Periodic() && y == 0 ? false : Solid[Index(x, int(y) - 1)];
+            SupportX[i] = !Solid[i] || !left;
+            SupportY[i] = !Solid[i] || !up;
+            OpenX[i] = !Solid[i] && !left;
+            OpenY[i] = !Solid[i] && !up;
             if (!OpenX[i])
                 U[i] = 0;
             if (!OpenY[i])
                 V[i] = 0;
+            Diagonal[i] = PressureWeight(x, y, -1, 0) + PressureWeight(x, y, 1, 0)
+                        + PressureWeight(x, y, 0, -1) + PressureWeight(x, y, 0, 1);
         }
     for (uint32_t y = 0; y < Height; ++y)
-        for (uint32_t x = 0; x < Width; ++x) {
-            const size_t i = Index(x, y);
-            Diagonal[i] = OpenX[i] + OpenX[Index(x + 1, y)] + OpenY[i] + OpenY[Index(x, y + 1)];
-        }
+        if (Solid[Index(Width - 1, y)])
+            RightU[y] = 0;
+    for (uint32_t x = 0; x < Width; ++x)
+        if (Solid[Index(x, Height - 1)])
+            BottomV[x] = 0;
+    PrescribeInflow();
 }
-void PixelWindField::SetObstacles(WorldStateView world) {
-    if (!IsEnabled() || world.Width != Width || world.Height < Height || world.Cells.size() != size_t(world.Width) * world.Height)
+void PixelWindField::MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY) {
+    PixelWindField next;
+    next.Reset(world.Width, height, Settings);
+    next.SetObstacles(world);
+    for (uint32_t y = 0; y < height; ++y)
+        for (uint32_t x = 0; x < world.Width; ++x) {
+            const double oldX = double(x) + double(offsetX), oldY = double(y) + double(offsetY);
+            if (oldX < 0 || oldY < 0 || oldX >= Width || oldY >= Height)
+                continue;
+            const size_t i = next.Index(x, y);
+            next.U[i] = SampleFace(U, SupportX, oldX, oldY);
+            next.V[i] = SampleFace(V, SupportY, oldX, oldY);
+        }
+    for (uint32_t y = 0; y < height; ++y) {
+        const double oldX = double(world.Width) + double(offsetX), oldY = double(y) + double(offsetY);
+        if (oldX >= 0 && oldX <= Width && oldY >= 0 && oldY < Height)
+            next.RightU[y] = SampleFace(U, SupportX, oldX, oldY);
+    }
+    for (uint32_t x = 0; x < world.Width; ++x) {
+        const double oldX = double(x) + double(offsetX), oldY = double(height) + double(offsetY);
+        if (oldX >= 0 && oldX < Width && oldY >= 0 && oldY <= Height)
+            next.BottomV[x] = SampleFace(V, SupportY, oldX, oldY);
+    }
+    next.RebuildFaces();
+    next.Project();
+    *this = std::move(next);
+}
+void PixelWindField::SetObstacles(WorldMapView world) {
+    if (!IsEnabled() || !world.IsValid() || world.Width != Width || world.Height < Height || world.CellCount() != size_t(world.Width) * world.Height)
         throw std::invalid_argument("obstacle world does not match pixel wind");
     bool changed = false;
     for (size_t i = 0; i < Solid.size(); ++i) {
-        const bool solid = world.Cells[i].Type != CellTypes::Empty;
+        const bool solid = world.AtIndex(i).Type != CellTypes::Empty;
         changed |= Solid[i] != solid;
         Solid[i] = solid;
     }
@@ -99,17 +184,32 @@ void PixelWindField::SetObstacles(WorldStateView world) {
     Project();
 }
 double PixelWindField::SampleFace(const std::vector<double> &values, const std::vector<uint8_t> &open, double x, double y) const {
-    x = std::fmod(x, double(Width));
-    y = std::fmod(y, double(Height));
+    const bool horizontal = &values == &U || &values == &NextU;
+    if (Periodic()) {
+        x = std::fmod(x, double(Width));
+        y = std::fmod(y, double(Height));
+    } else {
+        const double px = x + (horizontal ? 0 : .5), py = y + (horizontal ? .5 : 0);
+        if ((px < 0 && Inflow(WindBoundarySide::Left)) || (px > Width && Inflow(WindBoundarySide::Right))
+            || (py < 0 && Inflow(WindBoundarySide::Top)) || (py > Height && Inflow(WindBoundarySide::Bottom)))
+            return horizontal ? Settings.Ambient.X : Settings.Ambient.Y;
+        x = std::clamp(x, 0., double(horizontal ? Width : Width - 1));
+        y = std::clamp(y, 0., double(horizontal ? Height - 1 : Height));
+    }
     const int ix = int(std::floor(x)), iy = int(std::floor(y));
     const double fx = x - ix, fy = y - iy;
     double sum = 0, weights = 0;
     for (int dy = 0; dy < 2; ++dy)
         for (int dx = 0; dx < 2; ++dx) {
-            const size_t i = Index(ix + dx, iy + dy);
+            const int px = ix + dx, py = iy + dy;
+            const size_t i = Index(px, py);
             const double weight = (dx ? fx : 1 - fx) * (dy ? fy : 1 - fy);
-            if (open[i]) {
-                sum += weight * values[i];
+            const bool outerX = !Periodic() && horizontal && px >= int(Width);
+            const bool outerY = !Periodic() && !horizontal && py >= int(Height);
+            if (outerX || outerY || open[i]) {
+                const double value = outerX ? UFace(Width, py) : outerY ? VFace(px, Height)
+                                                                        : values[i];
+                sum += weight * value;
                 weights += weight;
             }
         }
@@ -156,7 +256,8 @@ void PixelWindField::Transport(double dt) {
                 double bx = px - dt * ux, by = py - dt * vy;
                 // With <=0.5 pixel travel per axis, the midpoint/end checks
                 // prevent the trace from entering or crossing a one-pixel wall.
-                if (Solid[Index(int(std::floor(bx)), int(std::floor(by)))] || Solid[Index(int(std::floor((px + bx) * 0.5)), int(std::floor((py + by) * 0.5)))]) {
+                if ((Periodic() || (bx >= 0 && by >= 0 && bx < Width && by < Height))
+                    && (Solid[Index(int(std::floor(bx)), int(std::floor(by)))] || Solid[Index(int(std::floor((px + bx) * 0.5)), int(std::floor((py + by) * 0.5)))])) {
                     bx = px;
                     by = py;
                 }
@@ -168,23 +269,33 @@ void PixelWindField::Transport(double dt) {
     component(V, OpenY, SupportY, NextV, 0.5, 0, Settings.Ambient.Y);
     U.swap(NextU);
     V.swap(NextV);
+    if (!Periodic()) {
+        for (uint32_t y = 0; y < Height; ++y)
+            if (!Inflow(WindBoundarySide::Right))
+                RightU[y] = U[Index(Width - 1, y)];
+        for (uint32_t x = 0; x < Width; ++x)
+            if (!Inflow(WindBoundarySide::Bottom))
+                BottomV[x] = V[Index(x, Height - 1)];
+    }
 }
 void PixelWindField::ApplyMatrix(const std::vector<double> &input, std::vector<double> &output) const {
-    for (uint32_t y = 0; y < Height; ++y)
-        for (uint32_t x = 0; x < Width; ++x) {
-            const size_t i = Index(x, y), left = Index(int(x) - 1, y), right = Index(x + 1, y);
-            const size_t up = Index(x, int(y) - 1), down = Index(x, y + 1);
-            output[i] = Diagonal[i] * input[i] - OpenX[i] * input[left] - OpenX[right] * input[right]
-                      - OpenY[i] * input[up] - OpenY[down] * input[down];
+    for (int y = 0; y < int(Height); ++y)
+        for (int x = 0; x < int(Width); ++x) {
+            const size_t i = Index(x, y);
+            output[i] = Diagonal[i] * input[i];
+            for (const auto [dx, dy] : {std::pair{-1, 0}, {1, 0}, {0, -1}, {0, 1}})
+                if (Periodic() || (x + dx >= 0 && y + dy >= 0 && x + dx < int(Width) && y + dy < int(Height)))
+                    output[i] -= PressureWeight(x, y, dx, dy) * input[Index(x + dx, y + dy)];
         }
 }
 void PixelWindField::Project() {
+    PrescribeInflow();
     std::fill(Pressure.begin(), Pressure.end(), 0);
     size_t fluidCount = 0;
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             const size_t i = Index(x, y);
-            Residual[i] = U[i] - U[Index(x + 1, y)] + V[i] - V[Index(x, y + 1)];
+            Residual[i] = Solid[i] ? 0 : -DivergenceAt(x, y);
             Preconditioned[i] = Diagonal[i] ? Residual[i] / Diagonal[i] : 0;
             fluidCount += !Solid[i];
         }
@@ -213,8 +324,14 @@ void PixelWindField::Project() {
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             const size_t i = Index(x, y);
-            U[i] -= OpenX[i] * (Pressure[i] - Pressure[Index(int(x) - 1, y)]);
-            V[i] -= OpenY[i] * (Pressure[i] - Pressure[Index(x, int(y) - 1)]);
+            const double left = !Periodic() && x == 0 ? 0 : Pressure[Index(int(x) - 1, y)];
+            const double up = !Periodic() && y == 0 ? 0 : Pressure[Index(x, int(y) - 1)];
+            U[i] -= PressureWeight(x, y, -1, 0) * (Pressure[i] - left);
+            V[i] -= PressureWeight(x, y, 0, -1) * (Pressure[i] - up);
+            if (!Periodic() && x + 1 == Width)
+                RightU[y] += PressureWeight(x, y, 1, 0) * Pressure[i];
+            if (!Periodic() && y + 1 == Height)
+                BottomV[x] += PressureWeight(x, y, 0, 1) * Pressure[i];
         }
     Report.PressureIterations += iterations;
     MeasureDivergence();
@@ -228,7 +345,7 @@ void PixelWindField::MeasureDivergence() {
             const size_t i = Index(x, y);
             if (Solid[i])
                 continue;
-            const double divergence = U[Index(x + 1, y)] - U[i] + V[Index(x, y + 1)] - V[i];
+            const double divergence = DivergenceAt(x, y);
             sum += divergence * divergence;
             maximum = std::max(maximum, std::abs(divergence));
             ++count;
@@ -267,7 +384,7 @@ void PixelWindField::SetFaceVelocities(std::span<const double> u, std::span<cons
 void PixelWindField::AddImpulse(float x, float y, float radius, WindVelocity delta) {
     if (!IsEnabled() || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(radius) || radius <= 0 || !Bounded(delta.X, 1000) || !Bounded(delta.Y, 1000))
         throw std::invalid_argument("invalid pixel wind impulse");
-    auto distance = [](double a, double b, double extent) { return std::remainder(a - b, extent); };
+    auto distance = [this](double a, double b, double extent) { return WindDistance(a - b, extent, Settings.Boundary); };
     for (uint32_t row = 0; row < Height; ++row)
         for (uint32_t col = 0; col < Width; ++col) {
             const size_t i = Index(col, row);

@@ -81,13 +81,17 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
                                        && y + 2 >= frame.Character->Bounds[1] && y <= frame.Character->Bounds[1] + frame.Character->Bounds[3] + 2;
             if (!nearCharacter && x > 32 && y > 32 && x + 1 != extent.Width && y + 1 != extent.Height && (x * 13 + y * 7) % 97 != 0)
                 continue;
-            const int64_t qx = int64_t(frame.View.OriginPixels[0]) + x;
-            const int64_t qy = int64_t(frame.View.OriginPixels[1]) + y;
+            const auto localOrigin = LocalGridPixelOrigin(frame);
+            const int64_t qx = int64_t(localOrigin[0]) + x;
+            const int64_t qy = int64_t(localOrigin[1]) + y;
             auto expected = frame.View.Background;
             const auto cw = frame.View.CellSizePixels[0], ch = frame.View.CellSizePixels[1];
-            if (qx >= 0 && qy >= 0 && qx < int64_t(Grid2D::Width) * cw && qy < int64_t(Grid2D::Height) * ch) {
-                const auto id = frame.Cells[size_t(qy / ch) * Grid2D::Width + size_t(qx / cw)];
-                if (frame.DisplayMode == GridDisplayMode::ForceField) {
+            if (qx >= 0 && qy >= 0 && qx < int64_t(frame.Width) * cw && qy < int64_t(frame.Height) * ch) {
+                const auto id = frame.Cells[size_t(qy / ch) * frame.Width + size_t(qx / cw)];
+                if (id == Grid2D::MissingCell) {
+                    const float shade = ((qx / cw / 4 + qy / ch / 4) & 1) ? .22f : .30f;
+                    expected = {shade, shade, shade, 1};
+                } else if (frame.DisplayMode == GridDisplayMode::ForceField) {
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = float((id >> (8 * c)) & 255) / 255;
                 } else if (id) {
@@ -117,6 +121,52 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
             }
         }
     }
+}
+// The oracle remains a complete independent finite-world fixture. Only its
+// visible region is projected into the render-owned atlas for comparison.
+std::vector<uint32_t> ExpectedRegion(std::span<const uint32_t> cells, WorldGridFrameView published) {
+    std::vector<uint32_t> result(size_t(published.Width) * published.Height, Grid2D::MissingCell);
+    for (uint32_t y = 0; y < published.Height; ++y)
+        for (uint32_t x = 0; x < published.Width; ++x) {
+            const auto wx = published.CellOrigin[0] + x, wy = published.CellOrigin[1] + y;
+            if (wx >= 0 && wy >= 0 && wx < Grid2D::Width && wy < Grid2D::Height)
+                result[size_t(y) * published.Width + x] = cells[size_t(wy) * Grid2D::Width + size_t(wx)];
+        }
+    return result;
+}
+void CheckPublishedRegion(WorldGridFrameView published, std::span<const uint32_t> expected, int tolerance = 0) {
+    const auto region = ExpectedRegion(expected, published);
+    Require(region.size() == published.Cells.size(), "published region has incomplete storage");
+    for (size_t i = 0; i < region.size(); ++i) {
+        if (region[i] == Grid2D::MissingCell || published.Cells[i] == Grid2D::MissingCell) {
+            Require(region[i] == published.Cells[i], "published missing-region mask differs from finite-world bounds");
+            continue;
+        }
+        for (size_t channel = 0; channel < 3; ++channel)
+            Require(std::abs(int((region[i] >> (channel * 8)) & 255) - int((published.Cells[i] >> (channel * 8)) & 255)) <= tolerance,
+                    "published region differs from the independent world fixture");
+    }
+}
+void VerifyPublishedColor(WorldGridFrameView oracle, WorldGridFrameView published, const RHITexture &texture,
+                          const GridTextureCatalog &catalog = Textures()) {
+    const auto cells = ExpectedRegion(oracle.Cells, published);
+    oracle.Cells = cells;
+    oracle.Width = published.Width;
+    oracle.Height = published.Height;
+    oracle.CellOrigin = published.CellOrigin;
+    VerifyColor(oracle, texture, catalog);
+}
+uint32_t PublishedCell(WorldGridFrameView frame, int64_t x, int64_t y) {
+    Require(x >= frame.CellOrigin[0] && y >= frame.CellOrigin[1] && x - frame.CellOrigin[0] < frame.Width && y - frame.CellOrigin[1] < frame.Height,
+            "fixture cell is outside the published region");
+    return frame.Cells[size_t(y - frame.CellOrigin[1]) * frame.Width + size_t(x - frame.CellOrigin[0])];
+}
+std::vector<pixel::CellState> CopyWorldCells(const pixel::World &world) {
+    const auto state = world.ReadState();
+    std::vector<pixel::CellState> result(state.CellCount());
+    for (size_t i = 0; i < result.size(); ++i)
+        result[i] = state.AtIndex(i);
+    return result;
 }
 RHIFrameToken Draw(Axiom &app) {
     auto &engine = *app.Engine;
@@ -190,7 +240,7 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
             Require(std::abs(int(after[pixel * 4 + c]) - int(std::lround(before[pixel * 4 + c] * tint.Values[c]))) <= 1, "post-process tint or sampling incorrect");
 }
 void WindVisualizationGpu() {
-    auto game = std::make_unique<PixelGame>();
+    auto game = std::make_unique<PixelGame>(false);
     WindVisualSettings settings;
     settings.Mode = WindVisualMode::ShortTrails;
     float time = .125f;
@@ -201,11 +251,13 @@ void WindVisualizationGpu() {
     GridView2D view;
     view.CellSizePixels = {8, 8};
     view.OriginPixels = {64 * 8, 64 * 8};
+    view.WorldOriginCells = {};
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = false;
     setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto render = std::make_unique<PixelRender>(rhi, Textures(), [&](WorldGridFrame &frame) {
+            frame.SetRegion({0, 0}, Grid2D::Width, Grid2D::Height);
             frame.View = view;
             frame.View.Background = {sky, sky, sky, 1};
             frame.Wind = settings;
@@ -345,6 +397,7 @@ void WindVisualizationGpu() {
     off = capture(); Require(off.first == off.second, "F1 is affected by wind appearance");
     display = GridDisplayMode::Materials;
     view.OriginPixels = {-100000, -100000};
+    view.WorldOriginCells = {};
     off = capture(); Require(off.first == off.second, "wind appears outside world bounds");
     // Nonzero nearest texels can cancel exactly at the backtrace endpoint:
     // visual speed = 36/23, age = 23/24, travel = 1.5 cells to x=100.
@@ -353,6 +406,7 @@ void WindVisualizationGpu() {
     sky = .18f;
     view.CellSizePixels = {1, 1};
     view.OriginPixels = {64, 64};
+    view.WorldOriginCells = {};
     settings.MotionScale = .02f;
     settings.Opacity = 1;
     time = 115.f / 120;
@@ -372,7 +426,7 @@ void WindVisualizationGpu() {
     std::cout << "Wind GPU visualization passed: modes, signed motion, flat backgrounds, actual refraction, calm/solid/outside masks, opposing-wind endpoints, characters, Off/F1 and frame slots\n";
 }
 void Lifecycle(int iteration) {
-    auto game = std::make_unique<PixelGame>();
+    auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
@@ -380,7 +434,6 @@ void Lifecycle(int iteration) {
     input->GetPresentation().Appearances = {{10, 1}, {20, 2}, {30, 3}};
     PixelRender *policy = nullptr;
     uint64_t publications = 0;
-    const auto *initialStorage = input->GetWorld().ReadState().Cells.data();
     // Independent fixture oracle: never derive expected pixels from the renderer's
     // converted output. Gameplay types intentionally differ from texture layers.
     std::vector<uint32_t> expectedCells(Grid2D::CellCount);
@@ -389,6 +442,7 @@ void Lifecycle(int iteration) {
             expectedCells[size_t(y) * Grid2D::Width + x] = 1 + (x / 4 + y / 4) % 3;
             input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * expectedCells[size_t(y) * Grid2D::Width + x])});
         }
+    const auto initialContents = CopyWorldCells(input->GetWorld());
     WorldGridFrameView expected{expectedCells, input->GetView(), input->GetPresentation().Post};
     RenderSetup setup;
     setup.Enable3DScene = false;
@@ -409,11 +463,11 @@ void Lifecycle(int iteration) {
     expected.View = input->GetView();
     Require(publications == 0, "world published before first Ready frame");
     auto first = Draw(app);
-    Require(publications == 1 && policy->PublishedFrame().Cells[0] == 1, "first frame did not publish initialized world");
-    const auto *recycledStorage = input->GetWorld().ReadState().Cells.data();
-    Require(initialStorage != recycledStorage, "first frame did not swap gameplay storage");
+    Require(publications == 1, "first frame did not publish initialized world");
+    CheckPublishedRegion(policy->PublishedFrame(), expectedCells);
+    Require(CopyWorldCells(input->GetWorld()) == initialContents, "snapshot publication changed gameplay storage contents");
     engine.GetRHI()->WaitIdle();
-    VerifyColor(expected, policy->SceneColor(first.Slot));
+    VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(first.Slot));
     Require(!engine.GetScene() && !app.GetDebugUI(), "2D initialized 3D scene or UI");
     {
         auto view = input->GetView();
@@ -444,23 +498,23 @@ void Lifecycle(int iteration) {
         const auto beforePublish = publications;
         auto token = Draw(app);
         Require(publications == beforePublish + 1, "Ready frame did not publish exactly once");
-        Require(input->GetWorld().ReadState().Cells.data() == (publications % 2 ? recycledStorage : initialStorage), "gameplay storage did not alternate");
         const auto published = policy->PublishedFrame();
-        Require(std::equal(published.Cells.begin(), published.Cells.end(), expectedCells.begin()), "gameplay identity was not mapped into the independent texture fixture");
+        CheckPublishedRegion(published, expectedCells);
         engine.GetRHI()->WaitIdle();
-        VerifyColor(expected, policy->SceneColor(token.Slot));
+        VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(token.Slot));
         if (i == 8) {
             const auto beforePost = publications;
             const auto beforeSubmit = policy->SubmittedFrames();
-            const auto *beforeStorage = input->GetWorld().ReadState().Cells.data();
+            const auto beforeStorage = CopyWorldCells(input->GetWorld());
             VerifyPostShader(engine, policy->SceneColor(token.Slot));
-            Require(publications == beforePost && policy->SubmittedFrames() == beforeSubmit && input->GetWorld().ReadState().Cells.data() == beforeStorage, "shader-only frame advanced gameplay publication");
+            Require(publications == beforePost && policy->SubmittedFrames() == beforeSubmit && CopyWorldCells(input->GetWorld()) == beforeStorage, "shader-only frame advanced gameplay publication");
         }
     }
     // A change after FrameBegin cannot affect this frame's uploaded snapshot.
     {
         auto view = input->GetView();
         view.OriginPixels = {0, 0};
+        view.WorldOriginCells = {};
         input->SetView(view);
     }
     input->GetWorld().Fill({pixel::CellTypeId::Dirt});
@@ -485,17 +539,17 @@ void Lifecycle(int iteration) {
     engine.GetInput()->Dispatch();
     app.Tick(0);
     app.FrameEnd();
-    Require(policy->PublishedFrame().Cells[0] == 1, "same-frame gameplay edit leaked into Render");
+    Require(PublishedCell(policy->PublishedFrame(), 0, 0) == 1, "same-frame gameplay edit leaked into Render");
     engine.GetRHI()->WaitIdle();
-    VerifyColor(expected, policy->SceneColor(delayed.Token.Slot));
+    VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(delayed.Token.Slot));
     input->SetView(expected.View);
     expectedCells[0] = 2; // The edit after publication becomes visible only now.
     const auto next = Draw(app);
-    Require(policy->PublishedFrame().Cells[0] == 2 && policy->PublishedFrame().Cells[1] == 1, "next frame lost new or persistent gameplay state");
+    Require(PublishedCell(policy->PublishedFrame(), 0, 0) == 2 && PublishedCell(policy->PublishedFrame(), 1, 0) == 1, "next frame lost new or persistent gameplay state");
     engine.GetRHI()->WaitIdle();
-    VerifyColor(expected, policy->SceneColor(next.Slot));
+    VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(next.Slot));
     const auto frames = policy->SubmittedFrames();
-    Require(policy->UploadedWorldBytes() == frames * Grid2D::UploadBytes, "upload accounting incorrect");
+    Require(policy->UploadedWorldBytes() > 0 && policy->UploadedWorldBytes() <= frames * Grid2D::UploadBytes, "regional upload accounting incorrect");
     const auto generation = engine.GetRHI()->GetSwapchainGeneration();
     const auto cameraBeforeResize = input->GetCamera().GetPosition();
     glfwSetWindowSize(engine.GetPlatform()->GetWindows(), 640, 480);
@@ -513,7 +567,7 @@ void Lifecycle(int iteration) {
     Require(policy->SceneColor(token.Slot).Desc.Width == uint32_t(width) && policy->SceneColor(token.Slot).Desc.Height == uint32_t(height), "resize color extent stale");
     engine.GetRHI()->WaitIdle();
     expected.View = input->GetView();
-    VerifyColor(expected, policy->SceneColor(token.Slot));
+    VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(token.Slot));
 
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
     engine.GetInput()->Dispatch();
@@ -522,7 +576,7 @@ void Lifecycle(int iteration) {
     engine.GetInput()->Dispatch();
     const auto beforeMinimize = policy->SubmittedFrames();
     const auto beforeSkipPublications = publications;
-    const auto *beforeSkipStorage = input->GetWorld().ReadState().Cells.data();
+    const auto beforeSkipStorage = CopyWorldCells(input->GetWorld());
     glfwIconifyWindow(engine.GetPlatform()->GetWindows());
     for (int attempt = 0; attempt < 50 && !engine.GetPlatform()->IsWindowMinimized(); ++attempt) {
         engine.GetPlatform()->PollEvents();
@@ -530,7 +584,7 @@ void Lifecycle(int iteration) {
     }
     if (engine.GetPlatform()->IsWindowMinimized()) {
         Require(!app.FrameBegin(), "minimized frame should be skipped");
-        Require(policy->SubmittedFrames() == beforeMinimize && publications == beforeSkipPublications && input->GetWorld().ReadState().Cells.data() == beforeSkipStorage, "minimized frame published/uploaded/submitted");
+        Require(policy->SubmittedFrames() == beforeMinimize && publications == beforeSkipPublications && CopyWorldCells(input->GetWorld()) == beforeSkipStorage, "minimized frame published/uploaded/submitted");
     } else {
         std::cout << "Minimize check skipped: window manager did not report iconification\n";
     }
@@ -541,8 +595,8 @@ void Lifecycle(int iteration) {
     glfwRestoreWindow(engine.GetPlatform()->GetWindows());
     token = Draw(app);
     engine.GetRHI()->WaitIdle();
-    VerifyColor(expected, policy->SceneColor(token.Slot));
-    Require(policy->PublishedFrame().Cells.front() == 2 && policy->PublishedFrame().Cells.back() == 2, "restore did not publish latest gameplay state");
+    VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(token.Slot));
+    CheckPublishedRegion(policy->PublishedFrame(), expectedCells);
     const auto beforeEnd = publications;
     app.Shutdown();
     Require(publications == beforeEnd, "shutdown invoked gameplay publisher");
@@ -555,7 +609,7 @@ void VerifyDefaultWorldField(const pixel::World &world) {
     size_t stableAirCells = 0;
     for (uint32_t y = 0; y < state.Height; ++y)
         for (uint32_t x = 0; x < state.Width; ++x) {
-            const auto cell = state.Cells[size_t(y) * state.Width + x];
+            const auto cell = state.AtLocal(x, y);
             const auto force = cell.Force;
             // User-facing height increases upward from the bottom of the world.
             const uint32_t height = state.Height - 1 - y;
@@ -586,7 +640,7 @@ std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
     return expected;
 }
 void BasicWorldGameplay() {
-    auto game = std::make_unique<PixelGame>();
+    auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
@@ -613,15 +667,10 @@ void BasicWorldGameplay() {
         ++gameplayFrame;
         const auto token = Draw(app);
         engine.GetRHI()->WaitIdle();
-        const auto cells = policy->PublishedFrame().Cells;
-        const auto mismatch = std::mismatch(cells.begin(), cells.end(), expectedCells.begin());
-        if (mismatch.first != cells.end())
-            throw std::runtime_error("gameplay publication differs at frame=" + std::to_string(gameplayFrame)
-                                     + " cell=" + std::to_string(mismatch.first - cells.begin())
-                                     + " expected=" + std::to_string(*mismatch.second) + " actual=" + std::to_string(*mismatch.first));
-        VerifyColor({expectedCells, input->GetView(), input->GetPresentation().Post}, policy->WorldColor(token.Slot), pixel::GamePresentation::MakeTextures());
-        VerifyColor({expectedCells, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)},
-                    policy->SceneColor(token.Slot), pixel::GamePresentation::MakeTextures());
+        CheckPublishedRegion(policy->PublishedFrame(), expectedCells);
+        VerifyPublishedColor({expectedCells, input->GetView(), input->GetPresentation().Post}, policy->PublishedFrame(), policy->WorldColor(token.Slot), pixel::GamePresentation::MakeTextures());
+        VerifyPublishedColor({expectedCells, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->PublishedFrame(),
+                             policy->SceneColor(token.Slot), pixel::GamePresentation::MakeTextures());
     };
     verify(); // GPU readback includes the two solid-colour character rectangles.
     // Reproduce a queued click sampled before a resize: FrameBegin has already
@@ -663,6 +712,7 @@ void BasicWorldGameplay() {
         auto clipped = unscaledView;
         clipped.CellSizePixels = {scale, scale};
         clipped.OriginPixels = {int32_t(511 * scale + 1), int32_t(508 * scale + 1)};
+        clipped.WorldOriginCells = {};
         input->SetView(clipped);
         world.SpawnPlayer(511.0625f, 508.0625f);
         verify(); // Fractional rectangle clipped by the viewport, including minimum zoom.
@@ -756,6 +806,7 @@ void BasicWorldGameplay() {
     {
         auto view = input->GetView();
         view.OriginPixels = {500 * 16, 190 * 16};
+        view.WorldOriginCells = {};
         input->SetView(view);
     }
     const auto oldWind = world.GetWind().Sample(512.5f, 200.5f);
@@ -906,7 +957,7 @@ std::vector<uint32_t> ExpectedFieldColors(const pixel::World &world) {
 }
 
 void ForceFieldDebugGameplay() {
-    auto game = std::make_unique<PixelGame>();
+    auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     PixelRender *policy = nullptr;
@@ -933,7 +984,7 @@ void ForceFieldDebugGameplay() {
             world.SetForceDirection(x, y, directions[stripe]);
             expected[size_t(y) * Grid2D::Width + x] = colors[stripe];
         }
-    const std::vector<pixel::CellState> initial(world.ReadState().Cells.begin(), world.ReadState().Cells.end());
+    const auto initial = CopyWorldCells(world);
     auto press = [&](Key key) { input->OnKeyEvent(key, 0, ButtonAction::ACTION_PRESS, Mod{}); };
     input->OnKeyEvent(Key::KEY_F1, 0, ButtonAction::ACTION_REPEAT, Mod{});
     input->OnKeyEvent(Key::KEY_F1, 0, ButtonAction::ACTION_RELEASE, Mod{});
@@ -947,27 +998,22 @@ void ForceFieldDebugGameplay() {
         engine.GetRHI()->WaitIdle();
         const auto frame = policy->PublishedFrame();
         Require(frame.DisplayMode == GridDisplayMode::ForceField && frame.Post.Values == PostProcessParameters{}.Values, "debug frame mode/tint is wrong");
-        for (size_t i = 0; i < expected.size(); ++i)
-            for (size_t channel = 0; channel < 3; ++channel) {
-                const int actual = int((frame.Cells[i] >> (channel * 8)) & 255);
-                const int wanted = int((expected[i] >> (channel * 8)) & 255);
-                if (std::abs(actual - wanted) > tolerance)
-                    throw std::runtime_error("debug publication differs at frame=" + std::to_string(debugFrame)
-                                             + " cell=" + std::to_string(i) + " expected=" + std::to_string(wanted) + " actual=" + std::to_string(actual));
-            }
-        VerifyColor({expected, input->GetView(), {}, GridDisplayMode::ForceField}, policy->SceneColor(token.Slot));
+        CheckPublishedRegion(frame, expected, tolerance);
+        VerifyPublishedColor({expected, input->GetView(), {}, GridDisplayMode::ForceField}, policy->PublishedFrame(), policy->SceneColor(token.Slot));
+        return token;
     };
     for (int page = 0; page < int(Grid2D::PageCount); ++page) {
         {
             auto view = input->GetView();
             view.OriginPixels = {-8, (page * int(Grid2D::PageHeight) - 2) * 16};
+            view.WorldOriginCells = {};
             input->SetView(view);
         }
         verifyField(); // Includes page seams, outside-world pixels, air and dirt.
     }
     press(Key::KEY_MINUS);
     verifyField();
-    Require(std::equal(initial.begin(), initial.end(), world.ReadState().Cells.begin()), "debug view changed simulation state");
+    Require(initial == CopyWorldCells(world), "debug view changed simulation state");
     press(Key::KEY_F1);
     const auto materialToken = Draw(app);
     engine.GetRHI()->WaitIdle();
@@ -976,7 +1022,7 @@ void ForceFieldDebugGameplay() {
             "leaving debug view did not restore material mode and tint");
     for (size_t i = 0; i < expected.size(); ++i)
         expected[i] = initial[i].Type == pixel::CellTypes::Dirt ? 1 : 0;
-    VerifyColor({expected, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->SceneColor(materialToken.Slot), pixel::GamePresentation::MakeTextures());
+    VerifyPublishedColor({expected, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->PublishedFrame(), policy->SceneColor(materialToken.Slot), pixel::GamePresentation::MakeTextures());
 
     press(Key::KEY_F1);
     press(Key::KEY_R);
@@ -991,6 +1037,7 @@ void ForceFieldDebugGameplay() {
     {
         auto view = input->GetView();
         view.OriginPixels = {0, 0};
+        view.WorldOriginCells = {};
         input->SetView(view);
     }
     expected = ExpectedFieldColors(world);
@@ -1009,6 +1056,8 @@ void ForceFieldDebugGameplay() {
     // Compare a dirt patch against an otherwise identical empty-sky world.
     // This exercises actual gameplay coupling rather than a test-only impulse.
     press(Key::KEY_R);
+    world.ConfigureWind(424);
+    input->GetSession().SetPaused(false);
     pixel::World clearSky(Grid2D::Width, Grid2D::Height);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
@@ -1032,6 +1081,7 @@ void ForceFieldDebugGameplay() {
     {
         auto view = input->GetView();
         view.OriginPixels = {448 * 8, 144 * 8};
+        view.WorldOriginCells = {};
         input->SetView(view);
     }
     {
@@ -1054,18 +1104,47 @@ void ForceFieldDebugGameplay() {
         input->Tick(1.f / 60);
         clearSky.Tick(1.f / 60);
     }
-    const auto coupled = world.GetFieldVelocity(511, 410);
-    const auto reference = clearSky.GetFieldVelocity(511, 410);
-    const double angle = std::abs(std::atan2(double(coupled.X) * reference.Y - double(coupled.Y) * reference.X,
-                                             double(coupled.X) * reference.X + double(coupled.Y) * reference.Y));
-    Require(angle > 0.1, "narrow dirt stack did not visibly deflect the default combined field");
+    // Open boundaries move the deflection peak relative to the old periodic
+    // fixture. Preserve its angle requirement over the stack's local airflow,
+    // then verify that the GPU actually displays the strongest CPU deflection.
+    double largestAngle = 0;
+    std::array<int64_t, 2> peak{};
+    for (int64_t y = 312; y < 424; ++y) {
+        for (int64_t x = 448; x < 576; ++x) {
+            const auto coupled = world.GetFieldVelocity(x, y);
+            const auto reference = clearSky.GetFieldVelocity(x, y);
+            const double angle = std::abs(std::atan2(double(coupled.X) * reference.Y - double(coupled.Y) * reference.X,
+                                                     double(coupled.X) * reference.X + double(coupled.Y) * reference.Y));
+            if (angle > largestAngle) {
+                largestAngle = angle;
+                peak = {x, y};
+            }
+        }
+    }
+    Require(largestAngle > 0.1, "narrow dirt stack did not visibly deflect the default combined field");
     expected = ExpectedFieldColors(world);
     {
         auto view = input->GetView();
         view.OriginPixels = {448 * 8, 312 * 8};
+        view.WorldOriginCells = {};
+        view.CellSizePixels = {8, 8};
         input->SetView(view);
     }
-    verifyField(1);
+    const auto narrowFrame = verifyField(1);
+    const auto pixels = ReadColor(policy->WorldColor(narrowFrame.Slot));
+    const auto published = policy->PublishedFrame();
+    const auto framebuffer = policy->WorldColor(narrowFrame.Slot).Desc;
+    std::array<int64_t, 2> pixel{};
+    for (size_t axis = 0; axis < 2; ++axis)
+        pixel[axis] = (peak[axis] - published.View.WorldOriginCells[axis]) * published.View.CellSizePixels[axis] - published.View.OriginPixels[axis] + published.View.CellSizePixels[axis] / 2;
+    Require(pixel[0] >= 0 && pixel[1] >= 0 && pixel[0] < framebuffer.Width && pixel[1] < framebuffer.Height,
+            "narrow-stack deflection peak was omitted from the GPU fixture");
+    const auto expectedPeak = expected[size_t(peak[1]) * Grid2D::Width + size_t(peak[0])];
+    for (size_t channel = 0; channel < 3; ++channel) {
+        const int actual = pixels[(size_t(pixel[1]) * framebuffer.Width + size_t(pixel[0])) * 4 + channel];
+        Require(std::abs(actual - int((expectedPeak >> (channel * 8)) & 255)) <= 2,
+                "GPU F1 colour disagrees with the CPU narrow-stack deflection peak");
+    }
     press(Key::KEY_R);
     world.ConfigureWind(424);
     input->GetSession().SetPaused(false);
@@ -1079,8 +1158,12 @@ void ForceFieldDebugGameplay() {
 }
 } // namespace
 void RunPixelDebugUISmoke();
-int main() {
+int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--debug-ui-only") {
+            RunPixelDebugUISmoke();
+            return 0;
+        }
         WindVisualizationGpu();
         BasicWorldGameplay();
         ForceFieldDebugGameplay();

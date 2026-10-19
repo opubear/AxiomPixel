@@ -29,6 +29,7 @@ void RunPixelWindVisualTests() {
     Check(rejected, "nonfinite wind accepted");
     pixel::World world(Grid2D::Width, Grid2D::Height);
     WorldGridFrame frame;
+    frame.SetRegion({0, 0}, Grid2D::Width, Grid2D::Height);
     WindVisualSettings settings;
     BuildWindVisualFrame(world, settings, .25f, frame);
     Check(!frame.HasWind, "gravity was visualized as wind");

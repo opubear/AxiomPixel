@@ -1,17 +1,16 @@
-#include "Performance/FrameProfiler.h"
 #include "PixelRender.h"
 #include "HAL/Shader/ShaderLibrary.h"
+#include "Performance/FrameProfiler.h"
+#include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <utility>
 
 namespace {
 constexpr std::array WorldBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
     DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLED_IMAGE, 1},
-    DescriptorRequirement{0, 2, ShaderDescriptorType::SAMPLED_IMAGE, 1},
-    DescriptorRequirement{0, 3, ShaderDescriptorType::SAMPLED_IMAGE, 1},
-    DescriptorRequirement{0, 4, ShaderDescriptorType::SAMPLED_IMAGE, 1},
-    DescriptorRequirement{0, 5, ShaderDescriptorType::SAMPLER, 1},
+    DescriptorRequirement{0, 2, ShaderDescriptorType::SAMPLER, 1},
 };
 constexpr std::array WindBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
@@ -25,8 +24,10 @@ struct WindConstants {
     float Time;
     float Opacity, RefractionPixels, MotionScale;
     float Reserved = 0;
+    std::array<uint32_t, 2> GridExtent;
+    std::array<uint32_t, 2> NoiseOrigin;
 };
-static_assert(sizeof(WindConstants) == 48 && offsetof(WindConstants, Opacity) == 32);
+static_assert(sizeof(WindConstants) == 64 && offsetof(WindConstants, Opacity) == 32);
 constexpr std::array CharacterBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
 constexpr std::array PostBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
@@ -37,11 +38,11 @@ struct WorldConstants {
     std::array<uint32_t, 2> CellSize;
     std::array<float, 4> Background;
     uint32_t LayerCount;
-    uint32_t Width = Grid2D::Width;
-    uint32_t Height = Grid2D::Height;
-    uint32_t PageHeight = Grid2D::PageHeight;
+    uint32_t Width;
+    uint32_t Height;
+    uint32_t Reserved = 0;
     uint32_t DisplayMode = 0;
-    std::array<uint32_t, 3> Reserved{};
+    std::array<uint32_t, 3> Padding{};
 };
 static_assert(offsetof(WorldConstants, Background) == 16 && offsetof(WorldConstants, LayerCount) == 32);
 static_assert(offsetof(WorldConstants, DisplayMode) == 48);
@@ -73,21 +74,19 @@ void PixelRender::Initialize() {
     Materials = RHI.CreateTexture({Catalog.Width, Catalog.Height, Catalog.Layers, RHITextureFormat::RGBA8SRGB, true, false});
     MaterialUpload = RHI.CreateUploadBuffer(Catalog.Pixels.size());
     MaterialUpload->Write(Catalog.Pixels);
-    Pool = RHI.CreateImageDescriptorPool(7 * slots, 12 * slots, 4 * slots);
+    Pool = RHI.CreateImageDescriptorPool(7 * slots, 9 * slots, 4 * slots);
     Frames.resize(slots);
     for (auto &frame : Frames) {
-        frame.Upload = RHI.CreateUploadBuffer(Grid2D::UploadBytes);
-        frame.WindUpload = RHI.CreateUploadBuffer(Grid2D::UploadBytes);
-        frame.WindData = RHI.CreateTexture({Grid2D::Width, Grid2D::Height, 1, RHITextureFormat::R32UInt});
-        for (auto &page : frame.Data)
-            page = RHI.CreateTexture({Grid2D::Width, Grid2D::PageHeight, 1, RHITextureFormat::R32UInt});
+        constexpr uint64_t initialBytes = uint64_t(Grid2D::RegionSize) * Grid2D::RegionSize * sizeof(uint32_t);
+        frame.Upload = RHI.CreateUploadBuffer(initialBytes);
+        frame.WindUpload = RHI.CreateUploadBuffer(initialBytes);
+        frame.WindData = RHI.CreateTexture({Grid2D::RegionSize, Grid2D::RegionSize, 1, RHITextureFormat::R32UInt});
+        frame.Data = RHI.CreateTexture({Grid2D::RegionSize, Grid2D::RegionSize, 1, RHITextureFormat::R32UInt});
     }
     CreateColorTargets();
     for (auto &frame : Frames) {
-        const std::array bindings{
-            RHIImageBinding{0, frame.Data[0].get()}, RHIImageBinding{1, frame.Data[1].get()},
-            RHIImageBinding{2, frame.Data[2].get()}, RHIImageBinding{3, frame.Data[3].get()},
-            RHIImageBinding{4, Materials.get()}, RHIImageBinding{5, nullptr, Sampler.get()}};
+        const std::array bindings{RHIImageBinding{0, frame.Data.get()}, RHIImageBinding{1, Materials.get()},
+                                  RHIImageBinding{2, nullptr, Sampler.get()}};
         frame.WorldSet = RHI.CreateImageDescriptorSet(*Pool, *WorldPipeline, bindings);
     }
     Published = std::make_unique<WorldGridFrame>();
@@ -117,6 +116,8 @@ void PixelRender::CreateColorTargets() {
         frame.WindCharacterSet.reset();
         frame.HasWind = false;
         frame.HasCharacter = false;
+        frame.RegionVersions.clear();
+        frame.WindRegionVersions.clear();
     }
     PostPipeline.reset();
     for (auto &frame : Frames) {
@@ -159,20 +160,89 @@ void PixelRender::SetFullViewport(RHICommandList &commands) {
     commands.BindVertexBuffer(*Vertices);
     commands.BindIndexBuffer(*Indices);
 }
-void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, const GridView2D &view, GridDisplayMode mode) {
+void PixelRender::CreateGridResources(FrameResources &frame, uint32_t width, uint32_t height) {
+    // The active frame slot has completed on the GPU. Other slots keep their
+    // descriptors and images until their own next use.
+    frame.WorldSet.reset();
+    frame.WindSet.reset();
+    frame.Data = RHI.CreateTexture({width, height, 1, RHITextureFormat::R32UInt});
+    frame.WindData = RHI.CreateTexture({width, height, 1, RHITextureFormat::R32UInt});
+    const size_t bytes = size_t(width) * height * sizeof(uint32_t);
+    frame.Upload = RHI.CreateUploadBuffer(bytes);
+    frame.WindUpload = RHI.CreateUploadBuffer(bytes);
+    const std::array bindings{RHIImageBinding{0, frame.Data.get()}, RHIImageBinding{1, Materials.get()},
+                              RHIImageBinding{2, nullptr, Sampler.get()}};
+    frame.WorldSet = RHI.CreateImageDescriptorSet(*Pool, *WorldPipeline, bindings);
+    const std::array windBindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, frame.WindData.get()}};
+    frame.WindSet = RHI.CreateImageDescriptorSet(*Pool, *WindPipeline, windBindings);
+    frame.RegionVersions.clear();
+    frame.WindRegionVersions.clear();
+}
+void PixelRender::PrepareGridUpload(FrameResources &frame, const WorldGridFrameView &input) {
+    if (frame.Data->Desc.Width != input.Width || frame.Data->Desc.Height != input.Height)
+        CreateGridResources(frame, input.Width, input.Height);
+    const bool relocated = frame.CellOrigin != input.CellOrigin;
+    if (relocated)
+        frame.WindRegionVersions.clear();
+    const auto prepare = [&](RHIUploadBuffer &upload, std::span<const uint32_t> cells,
+                             std::span<const uint64_t> versions, const std::vector<uint64_t> &cached,
+                             std::vector<RHITextureCopyRegion> &dirty) {
+        dirty.clear();
+        const bool full = versions.empty() || relocated || cached.size() != versions.size();
+        if (full) {
+            upload.Write(std::as_bytes(cells));
+            dirty.push_back({0, 0, 0, 0, 0, input.Width, input.Height});
+            return;
+        }
+        const uint32_t columns = (input.Width + Grid2D::RegionSize - 1) / Grid2D::RegionSize;
+        for (size_t index = 0; index < versions.size(); ++index) {
+            if (cached[index] == versions[index])
+                continue;
+            const uint32_t x = uint32_t(index % columns) * Grid2D::RegionSize;
+            const uint32_t y = uint32_t(index / columns) * Grid2D::RegionSize;
+            const uint32_t width = std::min(Grid2D::RegionSize, input.Width - x);
+            const uint32_t height = std::min(Grid2D::RegionSize, input.Height - y);
+            for (uint32_t row = 0; row < height; ++row) {
+                const size_t first = size_t(y + row) * input.Width + x;
+                upload.WriteRegion(std::as_bytes(cells.subspan(first, width)), first * sizeof(uint32_t));
+            }
+            dirty.push_back({(size_t(y) * input.Width + x) * sizeof(uint32_t), input.Width, input.Height,
+                             x, y, width, height});
+        }
+    };
+    if (frame.DisplayMode != input.DisplayMode)
+        frame.RegionVersions.clear();
+    prepare(*frame.Upload, input.Cells, input.RegionVersions, frame.RegionVersions, frame.DirtyRegions);
+    frame.WindDirtyRegions.clear();
+    if (frame.HasWind)
+        prepare(*frame.WindUpload, input.WindCells, input.WindRegionVersions, frame.WindRegionVersions, frame.WindDirtyRegions);
+    const auto bytes = [](const auto &regions) {
+        uint64_t total = 0;
+        for (const auto &region : regions)
+            total += uint64_t(region.Width) * region.Height * sizeof(uint32_t);
+        return total;
+    };
+    pixel::performance::FrameProfiler::Count(pixel::performance::Counter::WorldUploadBytes, bytes(frame.DirtyRegions));
+    pixel::performance::FrameProfiler::Count(pixel::performance::Counter::WindUploadBytes, bytes(frame.WindDirtyRegions));
+}
+void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input) {
     PIXEL_PROFILE_SCOPE(WorldCommands);
-    for (uint32_t page = 0; page < Grid2D::PageCount; ++page) {
-        commands.TransitionTexture(*frame.Data[page], RHITextureState::TransferDestination);
-        commands.CopyBufferToTexture(*frame.Upload, *frame.Data[page], page * Grid2D::PageBytes);
-        commands.TransitionTexture(*frame.Data[page], RHITextureState::FragmentSampledRead);
+    if (!frame.DirtyRegions.empty()) {
+        commands.TransitionTexture(*frame.Data, RHITextureState::TransferDestination);
+        for (const auto &region : frame.DirtyRegions)
+            commands.CopyBufferToTextureRegion(*frame.Upload, *frame.Data, region);
+        commands.TransitionTexture(*frame.Data, RHITextureState::FragmentSampledRead);
     }
     commands.TransitionTexture(*frame.Color, RHITextureState::ColorAttachment);
     commands.BeginColorPass(*frame.Color);
     SetFullViewport(commands);
     commands.BindPipeline(*WorldPipeline);
     commands.BindDescriptorSet(*WorldPipeline, *frame.WorldSet, 0);
-    WorldConstants constants{view.OriginPixels, view.CellSizePixels, view.Background, Catalog.Layers};
-    constants.DisplayMode = uint32_t(mode);
+    auto view = input.View;
+    view.OriginPixels = LocalGridPixelOrigin(input);
+    WorldConstants constants{view.OriginPixels, view.CellSizePixels, view.Background, Catalog.Layers, input.Width, input.Height};
+    constants.DisplayMode = uint32_t(input.DisplayMode);
+    constants.Reserved = input.MissingOutsideRegion ? 1u : 0u;
     commands.PushConstants(*WorldPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
     commands.DrawIndexed(6);
     commands.EndPass();
@@ -180,17 +250,23 @@ void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, c
 }
 void PixelRender::RecordWind(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input) {
     PIXEL_PROFILE_SCOPE(WindCommands);
-    commands.TransitionTexture(*frame.WindData, RHITextureState::TransferDestination);
-    commands.CopyBufferToTexture(*frame.WindUpload, *frame.WindData);
-    commands.TransitionTexture(*frame.WindData, RHITextureState::FragmentSampledRead);
+    if (!frame.WindDirtyRegions.empty()) {
+        commands.TransitionTexture(*frame.WindData, RHITextureState::TransferDestination);
+        for (const auto &region : frame.WindDirtyRegions)
+            commands.CopyBufferToTextureRegion(*frame.WindUpload, *frame.WindData, region);
+        commands.TransitionTexture(*frame.WindData, RHITextureState::FragmentSampledRead);
+    }
     commands.TransitionTexture(*frame.WindColor, RHITextureState::ColorAttachment);
     commands.BeginColorPass(*frame.WindColor);
     SetFullViewport(commands);
     commands.BindPipeline(*WindPipeline);
     commands.BindDescriptorSet(*WindPipeline, *frame.WindSet, 0);
-    const WindConstants constants{input.View.OriginPixels, input.View.CellSizePixels, {Extent.Width, Extent.Height},
-                                  uint32_t(input.Wind.Mode), input.WindTimeSeconds,
-                                  input.Wind.Opacity, input.Wind.RefractionPixels, input.Wind.MotionScale};
+    const auto origin = LocalGridPixelOrigin(input);
+    const auto noiseOrigin = [](int64_t coordinate) {
+        const auto remainder = coordinate % 1536;
+        return uint32_t(remainder < 0 ? remainder + 1536 : remainder);
+    };
+    const WindConstants constants{origin, input.View.CellSizePixels, {Extent.Width, Extent.Height}, uint32_t(input.Wind.Mode), input.WindTimeSeconds, input.Wind.Opacity, input.Wind.RefractionPixels, input.Wind.MotionScale, 0, {input.Width, input.Height}, {noiseOrigin(input.CellOrigin[0]), noiseOrigin(input.CellOrigin[1])}};
     commands.PushConstants(*WindPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
     commands.DrawIndexed(6);
     commands.EndPass();
@@ -230,12 +306,7 @@ void PixelRender::Draw() {
     frame.HasWind = input.HasWind && input.Wind.Mode != WindVisualMode::Off && input.Wind.Opacity > 0 && input.DisplayMode == GridDisplayMode::Materials;
     {
         PIXEL_PROFILE_SCOPE(Upload);
-        frame.Upload->Write(std::as_bytes(input.Cells));
-        pixel::performance::FrameProfiler::Count(pixel::performance::Counter::WorldUploadBytes, input.Cells.size_bytes());
-        if (frame.HasWind) {
-            frame.WindUpload->Write(std::as_bytes(input.WindCells));
-            pixel::performance::FrameProfiler::Count(pixel::performance::Counter::WindUploadBytes, input.WindCells.size_bytes());
-        }
+        PrepareGridUpload(frame, input);
     }
     frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
@@ -244,7 +315,7 @@ void PixelRender::Draw() {
             commands.CopyBufferToTexture(*MaterialUpload, *Materials);
             commands.TransitionTexture(*Materials, RHITextureState::FragmentSampledRead);
         }
-        RecordWorld(commands, frame, input.View, input.DisplayMode);
+        RecordWorld(commands, frame, input);
         if (frame.HasWind)
             RecordWind(commands, frame, input);
         if (frame.HasCharacter)
@@ -252,6 +323,13 @@ void PixelRender::Draw() {
         RecordPost(commands, frame, input.Post);
     });
     MaterialsUploaded = true;
+    frame.RegionVersions.assign(input.RegionVersions.begin(), input.RegionVersions.end());
+    if (frame.HasWind)
+        frame.WindRegionVersions.assign(input.WindRegionVersions.begin(), input.WindRegionVersions.end());
+    frame.CellOrigin = input.CellOrigin;
+    frame.DisplayMode = input.DisplayMode;
+    for (const auto &region : frame.DirtyRegions)
+        WorldUploadBytes += uint64_t(region.Width) * region.Height * sizeof(uint32_t);
     ++FrameCount;
 }
 const RHITexture &PixelRender::SceneColor(uint32_t slot) const {
@@ -283,4 +361,5 @@ void PixelRender::Clear() {
     Vertices.reset();
     MaterialsUploaded = false;
     FrameCount = 0;
+    WorldUploadBytes = 0;
 }

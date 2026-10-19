@@ -1,136 +1,144 @@
 # AxiomPixel
 
-基于 Axiom 的早期 Pixel 游戏，从引擎 `2DRender` 分支的 `5c8af21` 拆出。
-`Axiom/` 通过 Git 子模块引入 [Axiom 引擎](https://github.com/opubear/Axiom)，当前锁定 **PixelMain** 的 `6baecde`，已包含鼠标事件快照、嵌入测试路径及数学/交换链修复；AET 样例与通用引擎代码留在该仓库。准确版本见 [AxiomVersion.json](AxiomVersion.json)，父仓库的 gitlink 是实际检出依据。当前接口适配与验证范围见下文。
+基于 Axiom 的早期像素游戏，从引擎 `2DRender` 的 `5c8af21` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
+
+世界现按需加载1024×1024物理块，由稀疏四叉树组织64×64区域，采用同步材料更新、文件存档和跟随玩家的开放风域。现行接口、存储布局和失败处理见 [世界表示约定](Docs/WorldRepresentation.md)，本轮实测及验证限制见 [验证与性能报告](Docs/WorldRepresentationValidation.md)。早期文档中的整图连续数组、移动链和四张固定世界纹理已被替代。
 
 | 路径 | 职责 |
 |---|---|
-| `Pixel/Source/Application/` | `PixelGame` 装配模块、编排生命周期并转接引擎输入接口；`PixelRuntime` 创建渲染策略；`PixelApplication` 创建游戏，通用引擎入口启动应用 |
-| `Pixel/Source/Gameplay/` | `GameSession` 持有世界，管理默认场景、暂停、单步、模拟时间及风配置 |
-| `Pixel/Source/Input/` | `GameInput` 接收键鼠事件并直接调用游戏功能，负责模式切换、输入清理、鼠标编辑、相机控制和重置 |
-| `Pixel/Source/Camera/` | `Camera2D` 保存世界中心；`GameCamera` 管理跟随、平移、缩放、视口和事件坐标选格 |
-| `Pixel/Source/World/` | 纯 CPU 世界、格子状态、双缓冲发布和角色；`Environment/` 持有基础力场与 `Wind/` 模拟 |
-| `Pixel/Source/PixelRender/` | `GamePresentation` 发布快照和外观；`PixelRender` 负责 GPU Pass、资源与上传 |
-| `Pixel/Source/Debug/` | `PixelDebugUI` 通过各模块接口编辑状态，仅自己持有面板显隐 |
-| `Pixel/Source/Performance/` | CPU 采样器与运行时采集、报告和面板，分别构建 |
-| `Pixel/Shader/` | Pixel 专用 Slang shader |
-| `UnitTest/` | 按 World、Gameplay、Rendering、Performance、Runtime、Formula 分类的回归测试 |
-| `UnitTest/Benchmarks/` | 显式运行的离线风场基准及 Material 性能调查工具，不加入默认构建或 CTest |
-| `Docs/Architecture/` | 当前模块划分、状态所有权和依赖说明 |
-| `Pixel/Formula/` | 可独立构建的构式描述语言、不可变组合、CPU 模拟器和 CLI 原型 |
-| `Axiom/` | Git 子模块：引擎、RHI、AET 和引擎测试 |
+| `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
+| `Pixel/Source/Gameplay/` | GameSession持有世界，管理存档、暂停、单步、时间及风配置 |
+| `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树、流式与角色；Environment管理材料及风 |
+| `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
+| `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
+| `Pixel/Source/PixelRender/` | 帧首区域快照、外观映射、每frame slot缓存及GPU上传 |
+| `Pixel/Source/Debug/` | ImGui调试与性能面板 |
+| `Pixel/Source/Performance/` | 无渲染依赖的采样核心及独立运行时报告 |
+| `Pixel/Shader/` | Pixel专用Slang shader |
+| `Pixel/Formula/` | 独立构式DSL、不可变组合、CPU模拟器和CLI原型 |
+| `UnitTest/` | CPU/mock、Gameplay、Rendering、Runtime、Formula及显式离线基准 |
+| `Axiom/` | 引擎、RHI、AET及引擎测试 |
 
-测试代码统一放在根目录 `UnitTest/`，包含 CPU 回归、头文件编译检查、GPU smoke、构式测试及离线基准；独立引擎的测试仍由 `Axiom/UnitTest/` 管理。`BUILD_TESTING` 控制回归测试，`PIXEL_BUILD_SMOKE` 控制 GPU smoke，基准目标需显式构建。
+核心依赖为 `PixelGameplay → PixelWorld → PixelPerformance`，World另外链接 `Axiom::Core` 使用容器和对齐allocator，不依赖窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
 
-模块与各自的 `CMakeLists.txt` 放在一起，`Pixel/CMakeLists.txt` 组织生产源码及独立 Formula 子系统，根构建入口通过 `UnitTest/CMakeLists.txt` 组织测试和基准。核心构建依赖为 `PixelGameplay → PixelWorld → PixelPerformance`；输入模块 `PixelInput` 依赖 `PixelPresentation` 及其游戏会话接口，在 CPU 上调用游戏和相机功能。`PixelPresentation` 完成相机和快照转换，`PixelRender` 使用 RHI 接口消费快照。应用链接 `AxiomApplication`，由它拥有游戏和 DebugUI；只有运行时模块使用 ImGui。具体设计见 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)。
+## 构建和运行
 
-每帧保留引擎原有顺序：游戏帧首采样与视口更新 → 渲染快照发布 → 输入和游戏推进 → Draw 消费已发布数据 → 帧尾采样。引擎负责 ImGui 捕获、失焦与排队过滤，`PixelGame` 的输入接口只转发给 `GameInput`；按键分支、鼠标选格与编辑、模式清理和功能调用全部位于 `GameInput`。退出窗口、切换面板和读取 framebuffer 尺寸通过 `GameInputHost` 注入，输入模块不依赖引擎全局对象或 ImGui。模拟推进后由 `GameInput` 按控制模式调用相机跟随或平移，面板切换模式也使用同一输入入口。启动及 R 重置后默认暂停模拟；在 **Pixel Debug → Environment** 取消勾选 **Pause simulation** 即可运行，也可用 **Step 1/60 second** 单步。暂停冻结模拟及风动画、相机仍可移动；R 恢复世界和视角并保留控制模式与显示模式。每个发布器拥有独立 CPU 快照，Draw 不访问实时 World。
+需要CMake 3.23+、C++20、引擎锁定子模块及运行时Slang/Vulkan工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎；窗口配置位于 `Pixel/Config/GameConfig.json`。
 
-基础力场和风场统一由 `World::GetEnvironment()` 所指对象持有；材料只随模拟搬迁，不携带空间力场。`World` 保留原有编辑和采样入口，使旧调用方继续同步方向元数据与连续基础力。环境求解器放在同一个 `PixelWorld` 目标中，避免世界与环境相互依赖时产生构建环。本次整理不改变求解算法、shader、世界尺寸或引擎实现。
+```sh
+git submodule update --init --recursive
+./build-debug.sh
+./run-debug.sh
 
-世界为 1024×1024 格。游戏高度从底部向上计算，存储和渲染行号 `y` 从顶部向下计算，二者对应 `height = 1023 - y`。
-底部 512 格为棕褐色土地；其上是蓝色天空。底部 600 格统一使用向下重力场，因此高度 `[512, 600)` 是 88 格稳定天空区；高度 `[600, 1024)` 为预设风区；当前默认空风场，选择有风策略后才叠加动态风。
-换成存储行号：`y < 424` 为预设风区，`y >= 424` 仅受原有方向场影响，土地从 `y = 512` 开始。左键点击空格放置一个土块，右键点击移除一个土块。每格的 `CellState::Force` 保留兼容方向接口；连续基础受力由独立 `ForceField` 保存，Environment 叠加风贡献后移动土块（见逐像素基准章节）。
-Environment 使用固定 1/60 秒步长，单帧最多补算 0.25 秒；玩家使用独立矩形碰撞体和重力，NPC 仍未实现。
-保留四张世界数据纹理（每张 1024×256）、每 Ready 帧全量上传。材质视图的顺序为世界格子 Pass → 独立角色合成 Pass → 后处理/UI；F1或无角色时跳过角色 Pass。
-
-方向场使用 `ForceDirection{X, Y}`，每个分量为 -1、0 或 1，支持八个邻格方向；无风时 `(0, 0)` 表示静止，正 Y 向下。方块每步最多移动到一个邻格，尚不保存自身速度或惯性；风场独立保存连续速度。
-方向属于空间位置，不随土块移动；放置和移除土块也不会改变方向。方块进入新格后，下一个模拟步读取新位置的方向。越界、不可移动障碍和互相顶住的闭环会阻挡移动；连续排列的方块可跟随前方方块腾出的空位移动。争用目标格时，按行从上到下、从左到右发起的移动链依次处理，先到者占据目标格。
-
-可通过纯 CPU World 接口修改场，无需改变渲染代码：
-
-```cpp
-world.SetForceDirection(x, y, {1, 0});  // 该位置向右，保留原有物体
-world.FillForceDirection({0, -1});     // 整个世界向上，保留物体分布
-auto force = world.GetCell(x, y).Force;
+./build-release.sh
+./run-release.sh
 ```
 
-`SetCell` / `Fill` 替换完整格子状态（包含方向），保留正在运行的风。`GenerateTerrain` 生成地形、初始化向下场并清除风及模拟计时；游戏启动和 R 重置随后选择空风场，并保留顶部 424 行作为切换对照的区域。旧的 `RandomizeForceDirections(endRow, seed)` 仍可生成固定离散场，但不再用于默认游戏。基础方向随 WorldState 一起发布，风速属于 Environment；普通视图映射物体类型，F1 调试视图映射合成场的方向。
+构建与启动入口已拆分，替代原 `build-and-run.sh`。Debug使用 `build/`，Release使用独立的 `build-release/`；构建脚本只配置并编译Pixel。启动脚本自动切到 `Pixel/`，透传启动参数和环境变量，缺少程序时提示对应构建命令。脚本支持从任意工作目录调用；`run.sh` 保留为 `run-debug.sh` 的兼容入口。
 
-## 地图块静态信息
+手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
 
-`CellTypeId` 是强类型枚举，目前定义 `Air = 0` 和 `Dirt = 10`；`CellTypes::Empty` 是空气的兼容名称。每格的材料只保存此枚举，不保存质量、信息指针或类实例。原有 `Force` 仍属于空间状态。
+游戏默认从运行目录的 `Saves/current.txt` 恢复当前世界；首次生成新世界。每块文件位于 `Saves/<world-id>/chunks/`，正常退出和面板 `Save world` 写盘；R先保存再创建新世界，旧目录保留。存档已加入忽略规则。可在启动前覆盖：
 
-`World/CellType.h` 中的 `CellDefinition<Type>` 模板特化各自拥有一份 `inline static constexpr CellInfo`，唯一属性为 `Mass`。目前采用游戏相对质量：空气为 0、泥土为 1，尚不参与运动或风场计算，也不代表真实空气密度。
-
-```cpp
-const auto &dirt = pixel::CellDefinition<pixel::CellTypeId::Dirt>::Info;
-const auto &info = pixel::GetCellInfo(world.GetCell(x, y).Type);
-float mass = info.Mass;
+```sh
+(cd Pixel && PIXEL_SAVE_ROOT=/private/tmp/pixel-saves \
+  PIXEL_SIMULATION_WINDOW=1024 PIXEL_WORLD_BUDGET_MIB=512 \
+  ../build/bin/Debug/Pixel)
 ```
 
-运行时查询返回对应模板特化的静态实例引用；未知枚举值抛出 `std::invalid_argument`。世界存储仍可承载显式转换的未注册 ID（用于现有障碍/渲染测试），但它们没有材料信息。新增正式材料时需增加枚举、模板特化及查询分支；外观映射由表现层单独维护。
+窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告异常，本版没有跨文件崩溃恢复。
 
-## 简化风场
+## 世界与操作
 
-`WindField` 是纯 CPU 的二维不可压缩 NS 近似，采用 [Stable Fluids](https://www.dgp.toronto.edu/public_user/stam/reality/Research/pdf/ns.pdf) 的分步求解思路：半拉格朗日平流、隐式黏性扩散和压力投影。本实现使用交错 MAC 网格，使离散散度和压力梯度匹配。
+默认无限平坦世界：世界y<512为空气，y>=512为泥土；正Y向下，任意正负X都延伸。玩家模拟窗口默认1024×1024，按64格对齐并在玩家离开中央512×512后重新居中；远处冻结并卸载保存。自由相机只改变显示加载范围。
 
-求解的速度方程为 `du/dt + (u·∇)u = -∇p + ν∇²u + λ(U-u) + βB(v_dirt-u)`，目标为 `∇·u ≈ 0`。`U` 是背景风，`λ` 控制扰动向背景风的衰减；`B` 是按两个轴分别计算的泥土迎风遮挡比例，`v_dirt` 是泥土实际移动速度，`β` 控制泥土对风的阻力反馈。初始扰动为两组由种子控制相位的剪切波；之后由求解器推进，不逐帧随机。默认 32×16 网格覆盖 1024×424 个世界格，背景风向右 90 格/秒，扰动幅度 60 格/秒，黏性 8 格²/秒，衰减率 0.05/秒，泥土阻力系数 60/秒。
-
-```cpp
-pixel::WindSettings settings;
-settings.Ambient = {90, 0};
-settings.GustSpeed = 60;             // 设为0可从均匀风开始
-settings.Viscosity = 8;
-settings.Relaxation = 0.05f;
-settings.DirtDrag = 60;              // 泥土对风的反馈；设为0可关闭反向耦合
-settings.Seed = 20261004;
-world.ConfigureWind(424, settings); // 顶部[0,424)行，保留基础Force和物体
-auto velocity = world.GetWind().Sample(512.5f, 200.5f);
-world.AddWindImpulse(512, 200, 64, {0, -120}); // 半径64格的向上脉冲
-world.DisableWind();
-```
-
-`World` 默认关闭风，游戏默认选择空风场；下述求解行为适用于显式选择 Coarse NS。`ConfigureWind` 重建风速，种子相同可复现；R 会恢复默认空风场和高度 600。模拟使用现有 60Hz 固定步长，先推进风，再移动方块，最后统一施加泥土反馈并进行压力投影。风速单位是世界格/秒；移动时计算 `a_base / 60 + wind`（旧方向接口下等价于 `60 * Force + wind`），每分量大于 30 取 +1、小于 -30 取 -1，其余取 0。因此弱风不会移动静止物体，更强风也不会让方块单步跨越多格。
-
-泥土反馈按横向和纵向分别计算投影遮挡：横向气流统计被泥土占据的行高并集，纵向气流统计列宽并集，不再用泥土面积占比作为两个方向共同的阻力。这样，伸入风区的高而薄土堆也能阻挡横向气流。实际泥土移动速度仍按占据面积平均到 MAC 面；未移动的泥土目标速度为零。所有移动链完成后才反馈，避免前面的方块改变后面方块在同一步采样到的风。
-
-局部阻力按 `m = max(0.001, exp(-βB·dt))` 松弛到泥土速度，再使用相同响应权重求解 `div(M·grad(p)) = div(u*)`，以 `u = u* - M·grad(p)` 修正速度，使压力修正遵守方向性阻力。有限的最小响应保持压力系统连通；这仍是允许穿流的游戏近似。放置、移除、移动后的占据每步重算；移除泥土不再施加旧阻力，但已产生的气流扰动继续演化。
-
-边界与限制：
-
-- 风网格四边周期相接，采样位置超出活动矩形时返回零。周期边界只影响风，方块仍受世界边界阻挡。
-- 泥土与风有双向影响，但属于粗网格阻力近似：允许有限穿流，不是逐像素硬墙或精确固体边界。障碍形状在粗网格上只保留两个轴的投影并集，不能恢复全部像素几何；不模拟浮力、温度或方块惯性，也不保证整个耦合系统的动量守恒。
-- 仅活动风区中的泥土参与反馈；默认风区仍为 `y<424`，地面 `y>=512` 在风区之外，原有88格稳定天空保留。若在自定义世界调用 `ConfigureWind(worldHeight, settings)` 覆盖全世界，地面也会参与反馈，相应稳定天空不再保持纯重力。当前仅泥土类型参与，其他材料未定义风阻。
-- 压力每次投影迭代 80 次，扩散迭代 20 次，属于游戏近似；高分辨率或极端长宽比下不保证很小的散度误差。
-- 网格各维支持 2～128；背景风/脉冲每分量及扰动幅度上限为 1000，黏性范围 0～1,000,000，衰减率范围 0～100，泥土阻力范围 0～1000。反复脉冲限制实际收到非零增量的网格分量为 ±1000，零脉冲及范围外分量保持原值；压力投影在下一模拟步执行。非法参数拒绝且保留旧场。
-
-观察粗 NS 风：先在 Wind strategy 选择 Coarse NS，再按 F3 切换自由调试相机，再按 PageDown 切换到顶部区域，或按 W 向上平移到 `y < 424` 后放置土块。F1 可以观察泥土周围合成场方向的变化；它只显示方向，纯减速而方向不变时颜色不会改变。默认视角仍对准地面，那里保持重力下落；当前没有风向箭头叠加。
-
-## 力场调试视图
-
-启动后显示 ImGui **Pixel Debug → Environment** 面板，**F2** 可隐藏或重新打开。`Wind start height` 是从世界底部计算的风场起始高度，默认 **600**：拖动滑块或 **Ctrl+单击**（macOS 为 **Command+单击**）输入整数即可实时生效。**0** 表示整个世界都有风，**1024** 表示关闭风；输入超出范围会被限制在合法范围。降低到 **512 以下**即可让部分地面进入风区，观察泥土与气流的双向影响。面板显示当前覆盖的行数，并提供默认高度按钮和力场方向视图复选框。
-
-调整高度会按已有风参数重新初始化风速，保留泥土、基础力场、视角及显示模式；拖动过程中每次高度变化都会重新初始化。关闭再开启仍保留风参数。R 恢复默认世界、空风场和600高度。操作面板时鼠标和键盘由 ImGui 接收，不会穿透到世界编辑或视角移动；在面板外仍可正常操作游戏。UI 叠加在后处理之后，不受世界调色影响。
-
-按 **F1** 在材质视图与力场方向视图之间切换（部分 Mac 键盘需按 Fn+F1）。调试模式会给整个世界着色，包括空格和土块所在格；模拟和鼠标编辑照常进行；F3 自由调试相机模式中 WASD 平移、`+/-` 缩放、PageDown 切区域仍可用。R 重建世界和视角，保留当前显示模式。默认地面附近是向下重力，颜色相同；向上移到 `y < 424` 可观察动态风造成的方向变化。
-
-显示的是 Environment 用于移动的连续合成场 `v = GetForce / 60`（仅使用旧方向接口时等价于 `60 * CellState::Force + wind`），在格子中心采样、应用移动死区之前取值。先计算单位方向 `d = v / |v|`，再转换为线性 RGB：
-
-```text
-R = 0.5 * (d.x + 1)
-G = 0.5 * (d.y + 1)
-B = 0.5
-```
-
-所有分量均在 `[0,1]` 内；零向量单独显示为 `(0.5,0.5,0.5)` 灰色。负方向经过平移缩放，不会直接截断成黑色。
-
-| 方向（正 Y 向下） | 线性 RGB |
+| 操作 | 行为 |
 |---|---|
-| 右 / 左 | `(1, 0.5, 0.5)` / `(0, 0.5, 0.5)` |
-| 下 / 上 | `(0.5, 1, 0.5)` / `(0.5, 0, 0.5)` |
-| 左上 / 右下 | 约 `(0.146, 0.146, 0.5)` / `(0.854, 0.854, 0.5)` |
-| 零 | `(0.5, 0.5, 0.5)` |
+| A / D，Space | 标准模式移动、跳跃；相机平滑跟随 |
+| F3 | 切换自由调试相机，清理持续按键状态 |
+| WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
+| 左键 / 右键 | 放置 / 移除一个土块；人物内部不能放置 |
+| F1 | 材料 / 合成力场方向视图 |
+| F2 | 显示或隐藏Pixel Debug |
+| R | 保存当前世界，创建新世界，重置视角；保留显示/控制模式 |
 
-调试模式跳过后处理调色，切回后恢复游戏的调色设置。颜色编码保留方向，不表示力的大小；低于移动死区的非零向量仍显示方向，不代表方块一定移动。颜色量化为 RGB8，最终屏幕通过已有 sRGB 输出流程显示。
+启动和R后默认暂停。Environment的 `Pause simulation` 和 `Step 1/60 second` 控制运行；暂停冻结材料、风和动画，相机/加载仍工作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
 
-World 仅通过 `GetFieldVelocity(x,y)` 提供数值，颜色转换位于 PixelWorldPresentation。帧首采样并写入渲染拥有的快照，Draw 不读取实时 World/Wind。模式和数据一起发布，复用四张 R32UInt 数据纹理；普通模式存材质 ID，调试模式存 RGB8，不增加纹理数量或绘制 Pass。调试模式有额外的全世界采样与颜色转换开销，关闭后不执行该转换。
+材料采用60 Hz同步规则：只向步首为空的邻格申请；同目标按源坐标(y,x)裁决；统一提交后反馈风场。长链空位通过多个步传播，规则不依赖四叉树遍历顺序。静止无风区域休眠；编辑、材料成功移动、基础力变化和加载唤醒邻域。方块不保存速度/惯性，空间力不随材料搬迁。
 
-## 构式（Formula）描述语言原型
+`CellTypeId`为32位强类型枚举，当前Air=0、Dirt=10。`CellDefinition<Type>::Info`是静态质量信息（空气0、泥土1），尚不参与动力学；未知材料可作为障碍存储，但GetCellInfo会拒绝未知ID。外观映射只在表现层。
 
-核心组合玩法与代码统一使用“构式（Formula）”。系统设计与状态见 [AWT 构式系统](.awtcontext/GlobalDoc/FormulaSystem.md)，当前四层架构见 [构式语言架构](.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
+```cpp
+world.SetForceDirection(-1, 500, {1, 0}); // 兼容八方向；不改变材料
+world.SetBaseForce(-1, 500, {600, 0});    // 空间加速度，格/秒²
+world.AddBaseForce(-1, 500, {0, 120});
+auto force = world.GetForce(-1, 500);    // 基础力 + 当前材料受风贡献
+// 无限地图批量修改必须指定已驻留范围
+world.FillRegion({-64, 0, 64, 64}, {pixel::CellTypes::Empty, {0, 1}});
+```
 
-独立子系统 `Pixel/Formula` 支持 `let` 复用、管道修改器、散射、延迟重复与命中子构式。它使用不可变的统一 `Formula` 描述，输出可检查的弹体、风和挖掘事件；当前不接入实际世界或渲染。
+方向压缩为两个int8分量（-1/0/1），兼容方向写入映射为 `3600 * direction` 基础力。实际移动速度按 `baseForce / 60 + wind` 换算，各分量超过±30才移动，最多一邻格。直接编辑基础力不重写兼容方向，查询实际场使用GetForce。`World(width,height)`仍可用于有限小地图测试；全图Fill仅对有限地图开放。
+
+角色为独立2×4格矩形，速度16格/秒、跳跃32格/秒、重力90格/秒²，按≤0.25格分段碰撞。角色不受风，不向泥土施力；地图缺失作为实体阻挡。相机与人物使用块坐标加块内double，GPU接收相机附近相对值，远距离仍保留亚格精度。相机跟随系数默认8/s，可在面板调整；角色使用连续屏幕矩形覆盖合成，不写入地图材料。
+
+## 风场和显示
+
+Environment可在Empty、Coarse NS、Pixel reference、Procedural、Hybrid、Adaptive NS、LBM D2Q9七策略间切换，默认Empty。Reference、Adaptive和LBM切换后自动暂停，建议先单步。切换重建当前风后端，保留地图、基础力及物理时钟；不保存每策略的独立运行历史。
+
+`Wind boundary Y`是世界坐标，默认424：风域为玩家窗口与y<424的交集，地表512上方保留88格无风带。风域随玩家移动，迁移重叠速度/分布，新进入区域由背景风初始化；离开窗口的动态扰动丢弃。正常游戏使用流入/流出开放边界，周期模式仅在显式数值测试中开启。
+
+```cpp
+pixel::WindStrategySettings settings;
+settings.Kind = pixel::WindStrategyKind::Coarse;
+settings.Coarse.Ambient = {90, 0};
+settings.Coarse.GustSpeed = 60;
+world.ConfigureWindDomain(424, settings);
+auto air = world.SampleWind(pixel::CellCoord{-1, 200}); // 远坐标精确格中心采样
+world.AddWindImpulse(100, 200, 64, {0, -120});
+```
+
+粗NS是MAC平流/扩散/投影与有限泥土阻力；reference为逐像素MAC/PCG；程序风与Hybrid使用局部障碍模型；Adaptive是有限体积CPU原型；LBM为弱可压缩BGK并有稳定化计数。数值误差、迁移方法及适用边界见世界约定。复杂自适应、1:1和CPU LBM不承诺实时，也不实现完整移动壁面动量守恒。
+
+F1在格中心把合成速度单位方向映射为 `RGB=(.5+.5*dx, .5+.5*dy, .5)`；零向量灰色，颜色不表示强度，跳过人物与风效。普通视图顺序为世界 → 风效 → 人物 → 后处理 → UI。Wind appearance可选Off、Short trails、Air refraction，调可见度/折光/视觉流速不改变物理。
+
+发布只复制可见64格区域的变化版本，额外覆盖32格风回溯边界；每个frame slot独占动态尺寸纹理与版本。稳定材料区域不重复映射或上传；F1/外观切换、进入新区、加载/卸载及GPU重建分别失效。风纹理每分量signed16、单位1/32格/秒，固体特殊标记；shader和缓存均属于Pixel。本地引擎只增加通用纹理区域上传接口，保留整图入口。
+
+## 验证和性能
+
+```sh
+# 无窗口/GPU：Pixel、Formula和Axiom CPU/mock回归
+cmake -S . -B build-cpu -DAXIOM_BUILD_RUNTIME=OFF
+cmake --build build-cpu -j4
+ctest --test-dir build-cpu --output-on-failure
+
+# 同一存储/流式/风域测试使用另一块尺寸
+cmake -S . -B build-chunk64 -DAXIOM_BUILD_RUNTIME=OFF -DPIXEL_CHUNK_EDGE=64 -DCMAKE_BUILD_TYPE=Release
+cmake --build build-chunk64 --target PixelChunkTests PixelPersistenceTests PixelWindDomainTests -j4
+ctest --test-dir build-chunk64 -R 'Pixel.(Chunks|Persistence|WindDomains)' --output-on-failure
+
+# 需要窗口服务与Vulkan驱动；不注册到默认CTest
+cmake -S . -B build -DPIXEL_BUILD_SMOKE=ON -DAXIOM_BUILD_LIFECYCLE_SMOKE=ON
+cmake --build build --target Pixel Axiom PixelRuntimeSmoke AxiomLifecycleSmoke -j4
+(cd Pixel && ../build/tests/PixelRuntimeSmoke)
+(cd Axiom && ../build/tests/AxiomLifecycleSmoke --skip-minimize)
+
+# AET仍可单独构建
+cmake -S Axiom -B build-engine -DAXIOM_BUILD_FEATURE_SHOW=OFF
+cmake --build build-engine --target Axiom -j4
+
+# 显式Release基准，不加入默认构建/CTest
+cmake -S . -B build-region-release -DAXIOM_BUILD_RUNTIME=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-region-release --target PixelRegionBenchmark -j4
+./build-region-release/bin/Release/PixelRegionBenchmark /private/tmp/pixel-regions.csv 40
+```
+
+Environment显示驻留/排队块、预算与I/O错误；Performance显示阶段时间、P95、材料访问格数、活动区域、上传量及内存，支持CSV。内存为所有权容量与工作预留，不等于进程RSS；风求解器单列，GPU不计。自动捕获和扩展方式见 [采样模块](Pixel/Source/Performance/README.md)。本轮结果以 [新规则基准和最终验证](Docs/WorldRepresentationValidation.md) 为准，早期测量保留于Docs/PerformanceProfiling.md、MemoryProfiling.md和MaterialUpdatePerformance.md。
+
+Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置光标，可设置 `XDG_SESSION_TYPE=x11` 运行smoke。2026-10-19历史RTX 3070/X11完整Pixel smoke曾在后续生命周期阶段报 `no drawable 2D frame`；Axiom `--skip-minimize`两轮通过，该历史结果不覆盖最小化恢复。本机Apple M5完整Pixel smoke通过（含两轮最小化恢复），AET --skip-minimize两轮通过；validation layer不可用，完整范围见验证报告。
+
+## 构式（Formula）原型与AWT
+
+构式是不可变、可嵌套的行为描述。独立 `Pixel/Formula` 实现let复用、管道修改、散射、延迟重复与命中子构式，输出弹体/风/挖掘事件；当前仍未接入真实World、碰撞、伤害或费用系统。
 
 ```sh
 cmake -S Pixel/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
@@ -139,198 +147,6 @@ ctest --test-dir build-formula --output-on-failure
 ./build-formula/PixelFormulaDemo Pixel/Formula/Examples/impact_burst.formula --ticks 30 --hit-at 6
 ```
 
-这个入口不依赖引擎或 GPU。语法、示例、作用域和原型边界见 [构式语言说明](Pixel/Formula/README.md)。`--hit-at` 显式注入模拟命中，便于观察子构式，不表示已经实现游戏碰撞。
+`--hit-at`是显式命中注入。语法见 [Formula README](Pixel/Formula/README.md)，架构与实现边界见 [.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md](.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
 
-## 构建和运行
-
-需要 CMake 3.23+、C++20 工具链，以及 [AxiomVersion.json](AxiomVersion.json) 对应的 Axiom 引擎子模块。新引擎通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入游戏；窗口尺寸与标题由 `Pixel/Config/GameConfig.json` 的 `Window` 配置提供。
-
-父仓库通过 `.gitmodules` 保存引擎地址和 `PixelMain` 分支，通过 gitlink 锁定具体提交；普通 `git submodule update` 使用该提交，不自动升级到分支最新版本。首次克隆可使用 `git clone --recurse-submodules git@github.com:opubear/AxiomPixel.git`，已有工作区在根目录执行 `git submodule update --init --recursive`。SSH 地址需要可用的 GitHub SSH 访问权限。
-
-**当前接口适配（2026-10-19）：** 当前锁定 `PixelMain/6baecdea9a3eccaa0842c579c11fb4afe864adbe`，已包含 `Input/MousePointerState.h` 及相关事件快照接口。Pixel 通过 `OnPresentationChanged(const RHIPresentationChanged &)` 重写引擎回调，窗口变化后重建颜色目标与后处理资源；测试 RHI 的 `RecordFrame` 参数已同步为 const 引用。回归通过基类接口分派呈现变化，检查各帧槽及角色/风合成目标的新尺寸。完整 Debug 构建通过，CTest 47/47 通过；CPU-only 构建通过，CTest 42/42 通过。旧版接入与验证见 [devmain 适配记录](.awtcontext/GlobalDoc/DevmainAdaptation-2026-10-16.md)。
-
-初始化子模块后，可执行根目录的脚本，配置 Debug 构建、以 4 个并行任务编译 Pixel 并启动游戏（任一步失败即停止）：
-
-```bash
-./build-and-run.sh
-```
-
-已有 Debug 构建时，可只启动游戏，不配置或编译：
-
-```bash
-./run.sh
-```
-
-`run.sh` 直接运行 `build/bin/Debug/Pixel`，若程序不存在则提示先编译。两个脚本均可通过绝对路径从其他目录调用。首次初始化和手动构建命令如下：
-
-```bash
-git submodule update --init --recursive
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target Pixel Axiom -j4
-cmake --build build --target run-pixel
-```
-
-默认使用引擎内置 Slang 编译器。若已有兼容的编译器，可在配置时指定
-`-DAXIOM_SLANGC_EXECUTABLE=/absolute/path/to/slangc`。
-`AXIOM_USE_PRECOMPILED_SHADERS=ON` 需要显式提供包含引擎/UI 六个和 Pixel 五个产物的目录；引擎原有的六个预编译文件不足以运行 Pixel。
-
-`run-pixel` 使用 `Pixel/` 作为工作目录，以加载自己的 `Config/GameConfig.json`。
-直接运行可用 `(cd Pixel && ../build/bin/Debug/Pixel)`；运行 AET 则用
-`(cd Axiom && ../build/bin/Debug/Axiom)`。多配置生成器需在构建时增加 `--config Debug`。
-Pixel 的素材仍由代码生成，`Content/Root.json` 只声明游戏名称，尚无资产或关卡读取逻辑。
-
-启动默认进入标准模式，角色出现在地面中央。角色为 2×4 格的矩形，使用纯色头部与身体；角色几何独立发布到渲染快照，不再写入地图数据纹理，也不占用地图材料格。
-
-- **标准模式**：A/D 左右移动，Space 跳跃，相机平滑跟随角色。角色受重力影响，可站在泥土上，与墙壁、天花板和世界边界碰撞；挖掉脚下泥土后会下落。
-- **F3**：切换标准模式与自由调试相机模式，也可使用面板底部的 `Free debug camera`。调试模式中 WASD 平移相机、PageDown 切换世界区域，输入不移动角色；世界和角色的重力模拟继续运行。切回标准模式从当前相机位置平滑追近角色，并清空旧的按键状态。
-- **通用操作**：`+/-` 缩放（每格 1～64 个 framebuffer 像素），F1 切换力场视图，F2 显隐面板，T 切换调色（调试相机模式中 Space 也保留旧调色操作），R 重建世界与角色并重置视角、保留当前控制模式，Escape 退出。
-
-相机由 `Camera/Camera2D` 保存世界坐标中心（单位：格），可见区域从相机中心、缩放和 framebuffer 尺寸计算。角色中心是标准模式的跟随目标：`v = k × (target - camera)`，距离越远追得越快，越接近越慢。每帧使用 `camera += (target - camera) × (1 - exp(-k × dt))`，避免直接欧拉积分在低帧率下超调；静止目标下不依赖时间步分割。游戏每帧相机时间最多计0.25秒，避免长时间停顿后突然追赶。
-
-默认 `k = 8 /秒`（静止目标距离约0.29秒缩小90%），可在 Debug 面板的 **Camera follow rate** 调到 **0.5～20 /秒**：越小越柔和、跟随延迟越大，越大越紧跟角色。相机内部保留小数，世界格子视口在最终投影时取整到 framebuffer 像素；角色使用未取整的相机位置。缩放和调整窗口大小保持相机世界中心；F3切换保留当前位置，R重置时直接对准出生角色并保留跟随系数。自由调试模式仍是WASD控制相机，速度240 framebuffer像素/秒。
-
-角色绘制保留连续世界位置，先减去真实相机中心，再转换为屏幕坐标，不按地图格子或屏幕像素取整。独立 `Pixel2DCharacter` Pass 在世界图像之后绘制头部和身体矩形，按矩形与每个屏幕像素的面积交集计算边缘覆盖，支持四分之一像素等细小移动；这消除了原来 `floor(角色位置)` 在默认缩放下造成的16像素跳动。世界图像保持原来的像素格子效果。角色仍参与后处理调色，ImGui最后绘制。每个在途帧增加一张与viewport等大的RGBA8合成图和一次全屏合成；角色几何/颜色与相机一起帧首发布，Draw不读取实时游戏状态。
-
-角色速度为 16 格/秒，跳跃初速度 32 格/秒，重力 90 格/秒²；碰撞按不超过 0.25 格的位移分段检测。角色目前不受风场影响，也不向泥土和风施力；泥土进入角色区域时优先向上脱离，整列无空间时停留等待空间恢复。鼠标不能直接把泥土放进角色内部。F1 是纯力场诊断图，不叠加角色外观；切回材质视图重新显示角色。
-鼠标每次按下只编辑一格，支持平移、缩放及高分屏坐标；世界或窗口外的点击忽略。光标位置、窗口和 framebuffer 尺寸在事件采集时一起保存，同一批多个点击分别使用自己的位置，不会跟随后续光标移动。
-
-## 验证
-
-```bash
-# 不初始化窗口或GPU：包含Pixel和AET的CPU/mock回归
-cmake -S . -B build-cpu -DAXIOM_BUILD_RUNTIME=OFF
-cmake --build build-cpu -j4
-ctest --test-dir build-cpu --output-on-failure
-
-# 需要实际窗口服务和Vulkan驱动；不自动注册到默认CTest
-cmake -S . -B build -DPIXEL_BUILD_SMOKE=ON -DAXIOM_BUILD_LIFECYCLE_SMOKE=ON
-cmake --build build --target PixelRuntimeSmoke AxiomLifecycleSmoke -j4
-(cd Pixel && ../build/tests/PixelRuntimeSmoke)
-(cd Axiom && ../build/tests/AxiomLifecycleSmoke)
-
-# 引擎本身仍能独立构建与运行AET
-cmake -S Axiom -B build-engine -DAXIOM_BUILD_FEATURE_SHOW=OFF
-cmake --build build-engine --target Axiom -j4
-```
-
-迁移来源、模块边界和本轮验证见 [迁移记录](.awtcontext/GlobalDoc/PixelMigration.md)。
-AWT 工具位置由本次环境提供，在当前布局可用 `../AIWorkTask/awt task list --project .awtcontext`。
-
-Linux 的 `PixelRuntimeSmoke` 使用 `glfwSetCursorPos` 模拟鼠标点击；当前 GLFW Wayland 后端不支持程序设置光标位置，因此自动化输入检查需要可用的 X11/XWayland 显示服务（`DISPLAY`）。在 Wayland 桌面上可用下列命令选择 X11 后端运行测试；这不改变游戏默认的平台选择：
-
-```bash
-(cd Pixel && XDG_SESSION_TYPE=x11 ../build/tests/PixelRuntimeSmoke)
-```
-
-2026-10-19 在 RTX 3070 Laptop GPU / X11 上验证：Pixel 的风场、基础玩法、力场视图及 ImGui 窗口缩放检查通过，但完整 `PixelRuntimeSmoke` 在后续生命周期检查中报 `no drawable 2D frame`，尚未全部通过。`AxiomLifecycleSmoke --skip-minimize` 的两轮生命周期检查通过；该结果不覆盖最小化/恢复。
-
-## 逐像素基础力场与风场 reference
-
-`ForceField` 是与世界等宽等高的连续向量网格，独立于风求解器。`World::GetBaseForceField()` 保存持久基础加速度（像素/秒²，单位质量，正 Y 向下），可叠加重力、爆炸等来源；`GetForce(x,y)` 返回基础场与当前风贡献的合成值。风存储空气速度（像素/秒），由 Environment 调用 `FieldResponse` 的适配规则 `a_wind = 60 * u_air` 转换，关闭或重建风不会修改基础场。
-
-```cpp
-world.FillBaseForce({0, 3600});       // 兼容旧下落速度的基础重力
-world.AddBaseForce(300, 200, {600, 0}); // 持久外力贡献；源撤销由调用方负责
-world.SetBaseForce(301, 200, {0, 0});
-auto acceleration = world.GetForce(300, 200);
-pixel::PixelWindSettings reference;
-reference.DivergenceTolerance = 1e-6;
-world.ConfigurePixelWind(424, reference);
-auto report = world.GetPixelWind().GetReport();
-```
-
-`WindSimulation` 独占一个风场后端，统一配置、采样与材料更新前后的推进；切换先完成新场构造，失败保留原场。`WindTypes` 定义共享数据类型，两个数值求解器互不依赖。`FieldResponse` 集中维护玩法单位换算和移动死区，固体表面受风采样位于适配层。`GetWind()` / `GetPixelWind()` 只提供诊断视图，返回的引用不可跨风场重配置或关闭操作保存。
-
-旧 `SetForceDirection` / `FillForceDirection` / `SetCell` / `Fill` 将方向映射为 `3600 * direction`，以保持旧行为。直接编辑连续基础场后，`CellState::Force` 只保留最后一次旧接口写入的方向元数据；查询实际受力必须用 `GetForce`。`ReadState` / `PublishState` 仍只发布原格子状态，连续场不随材料或格子缓冲交换；F1 在帧首通过 `GetFieldVelocity = GetForce / 60` 生成独立渲染快照。旧的移动死区 ±30 和每步最多一邻格继续保留，没有新增物体速度积分或惯性。
-
-`PixelWindField` 以一像素一个压力单元、共享面速度构成 MAC 网格，支持每维 1～2048。非空材料是不可穿透固体；界面法向面速度为零，切向采用 free-slip 近似。外边界四边周期相接，与旧场保持相同拓扑；不是开放进出口或封闭世界边界。显式黏性扩散后执行半拉格朗日平流，内部步长满足每轴位移不超过0.5像素以及 `ν*dt <= 0.2`，每子步以双精度 PCG 投影到散度容差。`GetReport()` 提供 RMS/最大散度、迭代次数、子步数与 `Converged`；达到迭代上限不会伪报收敛。
-
-每个固定步开始及材料移动后同步障碍；固体内部的纯风采样为零，物体受风使用相邻暴露空气的平均速度。此版本将移动物体作为分步更新的静态几何，不实现移动壁面的排流、压力牵引或严格双向动量守恒。它适用于像素几何与静态流场对照；动态物体轨迹不应被当作物理真值。黏性上限100、松弛率上限100，风/脉冲分量上限1000；参数非法时保留原状态。
-
-ImGui Environment 面板的 **Wind strategy → Pixel reference (1:1)** 启用该基准并自动暂停，可用 **Step 1/60 second** 单步，或取消 **Pause simulation** 连续运行。切换/调整高度会重建风；R恢复默认空风场和暂停状态。逐像素 CPU 压力求解成本高，尤其狭缝，不承诺实时。
-
-```sh
-cmake --build build-cpu --target PixelBaselineTests PixelWindBenchmark -j4
-ctest --test-dir build-cpu --output-on-failure
-# 性能测量请使用 Release/RelWithDebInfo 或 -O2，而非 Debug 数字
-./build-cpu/bin/Debug/PixelWindBenchmark 64 48 4 /private/tmp/wind-samples.csv
-# 大尺度初始化（steps=0）；非空复杂场景推进可能很慢
-./build-cpu/bin/Debug/PixelWindBenchmark 1024 424 0
-```
-
-比较工具固定均匀初态，导出静态空场、整高单像素墙和单像素缝的求解成本、散度、固体面通量、旧粗场相对中心速度 RMSE，末尾可选参数导出逐像素 CSV。粗场使用有限阻力，reference 使用硬边界，误差包含模型差异，不是仅由分辨率引起的误差。`SetFaceVelocities` 支持确定的自定义 MAC 初态。测试另外验证离散 Fourier 黏性衰减、纯梯度投影和时间步细化。
-
-设计比较与实际证据见 [设计报告](Docs/PixelWindDesignReport.docx)、[实现与审查记录](.awtcontext/GlobalDoc/PixelWindBaseline.md)。数值参考：[Bridson / Müller-Fischer, Fluid Simulation](https://www.cs.ubc.ca/~rbridson/fluidsimulation/)。
-
-
-## 可切换风场策略（首版）
-
-Environment 面板的 **Wind strategy** 可在七个版本间切换，启动默认选择 **Empty (no wind)**。切换重建该风场的内部状态，保留材料、基础力场及其他外力；不是保存并恢复每个版本的运行进度。关闭再开启保留所选策略，R 恢复默认空风场。Reference、自适应 NS 和 CPU LBM 选中后自动暂停，建议单步观察。
-
-| 策略 | 实现与首版边界 |
-|---|---|
-| Empty (no wind) | 恒零空气与材料受风采样；脉冲无效果；沿用原有表现层采样、固体标记和零风速判断流程 |
-| Coarse NS | 保留原粗 MAC 网格、方向性泥土阻力与实际运动反馈 |
-| Pixel reference (1:1) | 保留逐像素 MAC + PCG baseline，用于对照 |
-| Procedural + obstacles | 随时间连续变化的剪切阵风、脉冲及像素障碍近邻减速/偏转/尾流；没有全局压力求解 |
-| Coarse NS + local model | 粗 NS 保留传播历史与泥土反馈，局部模型只修正采样，不将同一阻力再次反馈 |
-| Adaptive NS (CPU prototype) | 混合障碍块递归细分，统一有限体积共享面通量与 PCG 压力，上风动量输运；首阶、叶内常量采样，数值扩散较强 |
-| LBM D2Q9 (CPU prototype) | 逐像素 BGK 碰撞与周期 streaming、固体 bounce-back；弱可压缩，尚无 GPU 后端 |
-
-```cpp
-pixel::WindStrategySettings settings;
-settings.Kind = pixel::WindStrategyKind::Hybrid;
-settings.Local.Radius = 6;
-world.ConfigureWindStrategy(424, settings);
-auto air = world.SampleWind(512.5f, 200.5f); // 纯空气速度，不含重力
-world.AddBaseForce(512, 200, {0, 120});      // 独立外力，切换风场不会清除
-auto total = world.GetForce(512, 200);       // 基础场 + 材料受风贡献
-```
-
-空风场保留所选高度（默认 600，即顶部 424 行），手动启用模拟后基础重力和材料运动继续运行。可在同一高度切换 Empty 与 Coarse NS 等策略进行有风/无风对照；高度 1024 仍表示关闭活动区域。`WindStrategySettings{}` 默认为空风场；显式调用旧 `ConfigureWind` 仍创建粗 NS。
-
-`WindStrategy` 仅管理空气模拟、几何同步和空气/材料表面采样；`WindSimulation` 事务式独占策略。`ForceField` 不引用风类型，`FieldResponse` 负责单位换算，Environment 合成受力。新增策略需实现该接口、在 `MakeWindStrategy` 注册并补充选择项，数值求解不进入 World 或引擎。旧 `ConfigureWind`、`ConfigurePixelWind` 和诊断接口继续可用；`GetWind()` 仅诊断旧粗场，跨策略纯风查询使用 `SampleWind()`。
-
-新模型均使用周期外边界；非空材料作为新模型的障碍。程序化/混合的局部作用半径为 1～32 像素，使用近似最近障碍距离，不保证无散、精确无穿透或孔洞通风。自适应方案保留像素几何，粗细面共享通量，但中心连线近似、首阶输运及重网格会引入误差；报告的散度是共享面通量散度，不是显示采样向量的散度。密集碎片可能细化到接近全像素，当前不设截断细化预算。三种硬障碍模型将移动物体按分步静态几何处理，没有移动壁面的排流与总动量守恒。
-
-LBM 默认风速为 `(30,0)`、阵风 10，使用自己的低马赫数参数，并非其他版本默认 `(90,0)`、阵风 60。固定 lattice 时间默认 1/600 秒，初始 lattice 速度上限 0.2；`tau` 下限 0.51，面板报告实际黏性。脉冲/演化中平衡分布速度受限，负分布恢复至平衡分布并累计 `Stabilizations`，发生恢复时不可视为未经修正的物理解。静态障碍可检验空气质量守恒；编辑障碍会移除或补入空气。CPU LBM 与复杂自适应场不保证实时。
-
-```sh
-cmake --build build-cpu --target PixelWindStrategyTests
-ctest --test-dir build-cpu --output-on-failure
-cmake --build build-runtime --target PixelWindStrategyBenchmark
-./build-runtime/bin/RelWithDebInfo/PixelWindStrategyBenchmark 64 4
-./build-runtime/bin/RelWithDebInfo/PixelWindStrategyBenchmark 1024 1 skip-reference
-```
-
-比较工具使用相同低速均匀初态、静态空域/整高薄墙/单像素缝，计时包括策略的几何同步与反馈，不包括材料运动、渲染和 GPU。版本编号依次为表中 0～5；不适用的诊断值为 -1。单次测量仅作成本样本，不能当作等精度或完整游戏性能比较。实现、测试和审查记录见 [风场策略首版](.awtcontext/GlobalDoc/WindStrategiesV1.md)。
-
-### 风场可视化：短轨迹与空气折光
-
-`Pixel Debug → Wind appearance → Visualization` 可选 `Off`、`Short trails`、`Air refraction`（默认）。
-`Visibility` 调可见度，`Refraction` 调背景折光量（framebuffer 像素），`Flow motion` 调视觉流速；均不改变风场物理。`Flow motion = 0` 冻结流纹，暂停模拟也会冻结动画。R 重置世界与动画时间，保留外观参数。
-
-默认风只覆盖高度 600 以上，玩家出生位置附近是无风区。近距离试用可在 Environment 将 `Wind start height` 改为 `512`；也可按 F3 进入自由相机，用 W 向上进入风区。F1 是独立的合成力场诊断，不叠加风效。
-
-渲染顺序为 **世界 → 风效 → 人物 → 后处理 → UI**。短轨迹使用细软尾迹；空气折光使用更宽的柔和遮罩和少量中性明暗提示，使纯色天空仍可读。人物最后合成，固体与世界之外不显示风，折光的每个双线性采样点也会排除固体。
-
-`BuildWindVisualFrame` 通过 `World::SampleWind` 读取纯空气速度（不含重力），逐格发布 1024×1024 的 `R32UInt` 纹理快照：X/Y 各 signed 16-bit，量化单位 1/32 格/秒，范围 ±1023.96875；`0x80008000` 为固体标记。每个启用帧增加 4 MiB 上传，各 frame slot 独占风纹理、上传缓冲和颜色目标。Off、零可见度、无风、F1 跳过风 Pass。Pixel 专用实现均在本仓库，引擎源代码没有改动。
-
-这是瞬时场的流动近似：双层独立种子的回溯流纹沿局部场移动，速度经过视觉缩放与上限压缩；它不记录物质的真实历史路径。首版每帧全图 CPU 采样与上传，默认粗风场的独立本机测量约 7.6 ms/次（优化构建、Apple M5，非完整帧时间）；后续可优化为可见范围或低分辨率上传。
-
-验证：CPU CTest 9/9；`PixelRuntimeSmoke` 包含两模式、正反风向、低速相位交替、零运动倍率、深/中灰/亮背景、实际折光位移、固体采样边缘、人物、Off/F1 和 frame slot 切换。可设置 `PIXEL_WIND_CAPTURE_DIR` 保存 GPU 读回预览。当前机器 Vulkan validation layer 不可用，已运行像素读回与生命周期 smoke。
-
-完整设计见 `Docs/WindVisualizationSystemDesign.docx`。
-
-
-## 性能统计
-
-`Pixel Debug → Performance` 可查看最近240帧的平均/P95/独占CPU时间、固定模拟步数与上传量，以及世界和力场的有效内存、预留容量和窗口峰值，支持关闭采样、清空与CSV导出。力场进一步拆分为基础力场与当前风后端，覆盖七种策略。内存按帧末保留的CPU对象/容器存储核算，排除临时分配、渲染快照和GPU，不等于进程RSS。计量、聚合和运行时UI分别封装在 `Pixel/Source/Performance/`，World保持纯CPU依赖。自动捕获示例：
-
-```sh
-(cd Pixel && PIXEL_PROFILE_FRAMES=120 PIXEL_PROFILE_WARMUP=30 \
-  PIXEL_PROFILE_CSV=/private/tmp/pixel-profile.csv \
-  ../build-runtime/bin/RelWithDebInfo/Pixel)
-```
-
-该构建的配置方式见 [采样使用与扩展说明](Pixel/Source/Performance/README.md)。2026-10-14 粗网格风基线实测本机Debug约4.5 FPS，优化构建约59.6 FPS；主要CPU成本为全图材料步进与风效快照，详见 [性能分析与对照数据](Docs/PerformanceProfiling.md)。数据为CPU wall time，不是GPU执行时间；性能比较应使用优化构建并区分限速等待。当前 Empty 风默认场景的帧末保留内存约为世界 13.008 MiB、力场 8.000 MiB，测量范围和对照见 [内存统计记录](Docs/MemoryProfiling.md)。
+本布局AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`；状态通过CLI维护，工程文档见 [.awtcontext/GlobalDoc/DocIndex.md](.awtcontext/GlobalDoc/DocIndex.md)。

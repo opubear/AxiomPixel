@@ -3,13 +3,15 @@
 #include "Performance/MemoryUsage.h"
 
 #include "WindTypes.h"
-#include "World/WorldState.h"
+#include "World/WorldMap.h"
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace pixel {
 struct WindSettings {
+    WindBoundaryMode Boundary = WindBoundaryMode::Open;
     uint32_t Columns = 32;
     uint32_t Rows = 16;
     WindVelocity Ambient{90, 0}; // World cells/second; positive Y points down.
@@ -20,13 +22,14 @@ struct WindSettings {
     float DirtDrag = 60; // Per-second drag at full projected blockage; zero disables feedback.
 };
 
-// A coarse, periodic MAC grid over [0, width) x [0, endRow). Dirt feedback uses
+// A coarse MAC grid over [0, width) x [0, endRow). Dirt feedback uses
 // directional projected blockage and a matching pressure solve. No renderer dependencies.
 class WindField {
   public:
     performance::MemoryUsage GetMemoryUsage() const;
 
     void Reset(uint32_t width, uint32_t endRow, const WindSettings &settings = {});
+    void MoveDomain(uint32_t width, uint32_t height, int64_t offsetX, int64_t offsetY);
     void Clear() { *this = {}; }
     bool IsEnabled() const { return !Velocity.empty(); }
     uint32_t GetEndRow() const { return Height; }
@@ -36,10 +39,10 @@ class WindField {
     // Bilinear sampling in world coordinates. Outside the wind region is calm.
     WindVelocity Sample(float x, float y) const;
     // A smooth velocity impulse; radius/position in world cells, delta in cells/s.
-    // Periodic distance makes an impulse crossing an edge continuous.
+    // Open domains clip the impulse; periodic mode wraps it for numerical tests.
     void AddImpulse(float x, float y, float radius, WindVelocity delta);
     // Apply feedback once after a complete material step. No world storage is retained.
-    void CoupleDirt(WorldStateView world, std::span<const DirtMotion> motion, float seconds);
+    void CoupleDirt(WorldMapView world, std::span<const DirtMotion> motion, float seconds);
     float RmsDivergence() const;
 
   private:
@@ -49,6 +52,7 @@ class WindField {
     // X lives at (x, y+1/2), Y at (x+1/2, y). Shared periodic array extents.
     std::vector<WindVelocity> Velocity, Previous;
     std::vector<float> Pressure, Divergence;
+    std::vector<float> RightU, BottomV;
     std::vector<float> DirtCoverage;
     std::vector<WindVelocity> DirtVelocitySum;
     std::vector<WindVelocity> DirtBlockage, PressureMobility;
@@ -60,6 +64,12 @@ class WindField {
     void Diffuse(float seconds);
     void Advect(float seconds);
     void Project(std::span<const WindVelocity> mobility = {});
+    bool Periodic() const { return Settings.Boundary == WindBoundaryMode::Periodic; }
+    bool Inflow(WindBoundarySide side) const { return IsWindInflow(side, Settings.Ambient); }
+    float UFace(int x, int y) const;
+    float VFace(int x, int y) const;
+    void PrescribeInflow();
+    void ProjectOpen(std::span<const WindVelocity> mobility);
     void AccumulateDirt(uint32_t x, uint32_t y, float coverage, WindVelocity velocity);
 };
 } // namespace pixel

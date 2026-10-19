@@ -18,9 +18,9 @@ constexpr std::array<int, 9> Cy{0, 0, 1, 0, -1, 1, 1, -1, -1};
 constexpr std::array<int, 9> Opposite{0, 3, 4, 1, 2, 7, 8, 5, 6};
 constexpr std::array<double, 9> Weight{4. / 9, 1. / 9, 1. / 9, 1. / 9, 1. / 9, 1. / 36, 1. / 36, 1. / 36, 1. / 36};
 } // namespace
-LbmWindField::LbmWindField(WorldStateView world, uint32_t height, const LbmWindSettings &settings)
+LbmWindField::LbmWindField(WorldMapView world, uint32_t height, const LbmWindSettings &settings)
     : Width(world.Width), Height(height), Settings(settings) {
-    if (!Width || !Height || Width > 2048 || Height > 2048 || world.Height < Height || world.Cells.size() != size_t(Width) * world.Height
+    if (!IsValidWindBoundary(settings.Boundary) || !world.IsValid() || !Width || !Height || Width > 2048 || Height > 2048 || world.Height < Height || world.CellCount() != size_t(Width) * world.Height
         || !std::isfinite(settings.LatticeSeconds) || settings.LatticeSeconds < 1.0 / 4000 || settings.LatticeSeconds > 1.0 / 60
         || !std::isfinite(settings.Ambient.X) || !std::isfinite(settings.Ambient.Y)
         || !std::isfinite(settings.GustSpeed) || settings.GustSpeed < 0
@@ -28,7 +28,9 @@ LbmWindField::LbmWindField(WorldStateView world, uint32_t height, const LbmWindS
         || !std::isfinite(settings.Viscosity) || settings.Viscosity < 0 || settings.Viscosity > 100
         || !std::isfinite(settings.Relaxation) || settings.Relaxation < 0 || settings.Relaxation > 100)
         throw std::invalid_argument("invalid LBM settings or initial lattice speed > 0.2");
-    Tau = std::max(.51, .5 + 3 * settings.Viscosity * settings.LatticeSeconds);
+    // Open velocity/pressure boundaries amplify BGK's near-half relaxation
+    // instability. Keep a dissipative floor and report its effective viscosity.
+    Tau = std::max(settings.Boundary == WindBoundaryMode::Open ? .6 : .51, .5 + 3 * settings.Viscosity * settings.LatticeSeconds);
     Report.EffectiveViscosity = (Tau - .5) / (3 * settings.LatticeSeconds);
     F.resize(size_t(Width) * Height);
     Next.resize(F.size());
@@ -39,7 +41,7 @@ LbmWindField::LbmWindField(WorldStateView world, uint32_t height, const LbmWindS
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             const auto i = size_t(y) * Width + x;
-            Solid[i] = world.Cells[i].Type != CellTypes::Empty;
+            Solid[i] = world.AtIndex(i).Type != CellTypes::Empty;
             const WindVelocity v{settings.Ambient.X + settings.GustSpeed * float(std::sin(2 * std::numbers::pi * (y + .5) / Height + phase)),
                                  settings.Ambient.Y + settings.GustSpeed * float(std::sin(2 * std::numbers::pi * (x + .5) / Width - phase))};
             F[i] = Equilibrium(1, Solid[i] ? WindVelocity{} : v);
@@ -61,12 +63,103 @@ LbmWindField::Distribution LbmWindField::Equilibrium(double rho, WindVelocity ve
     }
     return result;
 }
-void LbmWindField::SetObstacles(WorldStateView world) {
-    if (world.Width != Width || world.Height < Height || world.Cells.size() != size_t(world.Width) * world.Height)
+void LbmWindField::MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY) {
+    LbmWindField next(world, height, Settings);
+    for (uint32_t y = 0; y < height; ++y)
+        for (uint32_t x = 0; x < world.Width; ++x) {
+            const double oldX = double(x) + double(offsetX), oldY = double(y) + double(offsetY);
+            const size_t i = size_t(y) * world.Width + x;
+            if (oldX < 0 || oldY < 0 || oldX >= Width || oldY >= Height || next.Solid[i])
+                continue;
+            const size_t old = size_t(oldY) * Width + size_t(oldX);
+            if (!Solid[old])
+                next.F[i] = F[old];
+        }
+    next.Remainder = Remainder;
+    next.Report.Stabilizations += Report.Stabilizations;
+    next.Measure();
+    *this = std::move(next);
+}
+void LbmWindField::ReconstructBoundary(uint32_t x, uint32_t y, int normalX, int normalY) {
+    const size_t i = size_t(y) * Width + x;
+    if (Solid[i])
+        return;
+    const int tangentX = -normalY, tangentY = normalX;
+    auto direction = [&](int normal, int tangent) {
+        const int vx = normal * normalX + tangent * tangentX;
+        const int vy = normal * normalY + tangent * tangentY;
+        for (size_t q = 0; q < 9; ++q)
+            if (Cx[q] == vx && Cy[q] == vy)
+                return q;
+        return size_t(0);
+    };
+    auto &f = F[i];
+    const size_t e = direction(1, 0), w = direction(-1, 0);
+    const size_t n = direction(0, 1), s = direction(0, -1);
+    const size_t ne = direction(1, 1), nw = direction(-1, 1);
+    const size_t se = direction(1, -1), sw = direction(-1, -1);
+    const double known = f[0] + f[n] + f[s] + 2 * (f[w] + f[nw] + f[sw]);
+    const double ambientNormal = (Settings.Ambient.X * normalX + Settings.Ambient.Y * normalY) * Settings.LatticeSeconds;
+    const auto side = normalX > 0 ? WindBoundarySide::Left : normalX < 0 ? WindBoundarySide::Right
+                                                       : normalY > 0     ? WindBoundarySide::Top
+                                                                         : WindBoundarySide::Bottom;
+    const bool inflow = IsWindInflow(side, Settings.Ambient);
+    double un = inflow ? ambientNormal : 1 - known;
+    double rho = inflow ? known / (1 - un) : 1;
+    // Prescribing the tangential background closes the pressure boundary;
+    // extrapolating it from the previous step destabilizes side outlets.
+    const auto v = Settings.Ambient;
+    const double ut = (v.X * tangentX + v.Y * tangentY) * Settings.LatticeSeconds;
+    // Zou and He, arXiv:comp-gas/9611001: nonequilibrium bounce-back
+    // reconstructs the three unknown incoming
+    // populations. Pressure outlets fix rho=1 and infer their normal velocity.
+    f[e] = f[w] + (2. / 3) * rho * un;
+    f[ne] = f[sw] + .5 * (f[s] - f[n]) + rho * un / 6 + .5 * rho * ut;
+    f[se] = f[nw] + .5 * (f[n] - f[s]) + rho * un / 6 - .5 * rho * ut;
+    if (!std::isfinite(rho) || rho <= 0 || std::abs(un) > .2
+        || std::any_of(f.begin(), f.end(), [](double value) { return !std::isfinite(value) || value < 0; })) {
+        f = Equilibrium(1, Settings.Ambient);
+        ++Report.Stabilizations;
+    }
+}
+void LbmWindField::ApplyOpenBoundaries() {
+    if (Width < 2 || Height < 2) {
+        for (size_t i = 0; i < F.size(); ++i)
+            if (!Solid[i])
+                F[i] = Equilibrium(1, Settings.Ambient);
+        return;
+    }
+    for (uint32_t y = 1; y + 1 < Height; ++y) {
+        ReconstructBoundary(0, y, 1, 0);
+        ReconstructBoundary(Width - 1, y, -1, 0);
+    }
+    for (uint32_t x = 1; x + 1 < Width; ++x) {
+        ReconstructBoundary(x, 0, 0, 1);
+        ReconstructBoundary(x, Height - 1, 0, -1);
+    }
+    // Two intersecting Zou-He equations leave corner diagonals underdetermined.
+    // Close corners with equilibrium at the adjacent interior density. This is
+    // explicit and does not let sequential edge reconstruction reuse stale f.
+    for (uint32_t y : {0u, Height - 1})
+        for (uint32_t x : {0u, Width - 1}) {
+            const size_t i = size_t(y) * Width + x;
+            if (Solid[i])
+                continue;
+            const uint32_t ix = x == 0 ? 1 : Width - 2, iy = y == 0 ? 1 : Height - 2;
+            const size_t inner = size_t(iy) * Width + ix;
+            const double rho = std::accumulate(F[inner].begin(), F[inner].end(), 0.);
+            const bool inletX = IsWindInflow(x == 0 ? WindBoundarySide::Left : WindBoundarySide::Right, Settings.Ambient);
+            const bool inletY = IsWindInflow(y == 0 ? WindBoundarySide::Top : WindBoundarySide::Bottom, Settings.Ambient);
+            const auto velocity = inletX || inletY ? Settings.Ambient : Velocity[inner];
+            F[i] = Equilibrium(std::isfinite(rho) && rho > 0 ? rho : 1, velocity);
+        }
+}
+void LbmWindField::SetObstacles(WorldMapView world) {
+    if (!world.IsValid() || world.Width != Width || world.Height < Height || world.CellCount() != size_t(world.Width) * world.Height)
         throw std::invalid_argument("LBM obstacle extent mismatch");
     bool changed = false;
     for (size_t i = 0; i < Solid.size(); ++i) {
-        const bool solid = world.Cells[i].Type != CellTypes::Empty;
+        const bool solid = world.AtIndex(i).Type != CellTypes::Empty;
         if (Solid[i] != solid) {
             Solid[i] = solid;
             F[i] = Equilibrium(1, {});
@@ -100,6 +193,7 @@ void LbmWindField::Measure() {
         Report.MinDensity = 0;
 }
 void LbmWindField::CollideAndStream() {
+    std::fill(Next.begin(), Next.end(), Distribution{});
     const float blend = float(-std::expm1(-Settings.Relaxation * Settings.LatticeSeconds));
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
@@ -122,9 +216,14 @@ void LbmWindField::CollideAndStream() {
                 ++Report.Stabilizations;
             }
             for (size_t q = 0; q < 9; ++q) {
-                const auto nx = uint32_t((int(x) + Cx[q] + int(Width)) % int(Width));
-                const auto ny = uint32_t((int(y) + Cy[q] + int(Height)) % int(Height));
-                const auto j = size_t(ny) * Width + nx;
+                int nx = int(x) + Cx[q], ny = int(y) + Cy[q];
+                if (Settings.Boundary == WindBoundaryMode::Periodic) {
+                    nx = (nx + int(Width)) % int(Width);
+                    ny = (ny + int(Height)) % int(Height);
+                } else if (nx < 0 || ny < 0 || nx >= int(Width) || ny >= int(Height)) {
+                    continue; // Outgoing populations leave; unknown incoming populations follow below.
+                }
+                const auto j = size_t(ny) * Width + size_t(nx);
                 if (Solid[j])
                     Next[i][Opposite[q]] = post[q];
                 else
@@ -132,6 +231,8 @@ void LbmWindField::CollideAndStream() {
             }
         }
     F.swap(Next);
+    if (Settings.Boundary == WindBoundaryMode::Open)
+        ApplyOpenBoundaries();
     Measure();
 }
 void LbmWindField::Step(float seconds) {
@@ -160,8 +261,8 @@ void LbmWindField::AddImpulse(float x, float y, float radius, WindVelocity delta
             const auto i = size_t(py) * Width + px;
             if (Solid[i])
                 continue;
-            const double dx = std::remainder(px + .5 - x, double(Width)) / radius;
-            const double dy = std::remainder(py + .5 - y, double(Height)) / radius;
+            const double dx = WindDistance(px + .5 - x, double(Width), Settings.Boundary) / radius;
+            const double dy = WindDistance(py + .5 - y, double(Height), Settings.Boundary) / radius;
             const float weight = float(std::pow(std::max(0., 1 - dx * dx - dy * dy), 2));
             if (weight == 0 || (delta.X == 0 && delta.Y == 0))
                 continue;

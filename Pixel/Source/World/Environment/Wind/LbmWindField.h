@@ -2,11 +2,13 @@
 
 #include "Performance/MemoryUsage.h"
 #include "WindTypes.h"
-#include "World/WorldState.h"
+#include "World/WorldMap.h"
 #include <array>
+#include <vector>
 
 namespace pixel {
 struct LbmWindSettings {
+    WindBoundaryMode Boundary = WindBoundaryMode::Open;
     WindVelocity Ambient{30, 0};
     float GustSpeed = 10;
     float Viscosity = 8;
@@ -20,15 +22,16 @@ struct LbmWindReport {
     uint64_t Stabilizations = 0; // Cumulative velocity limits/positivity recoveries.
     double EffectiveViscosity = 0;
 };
-// CPU D2Q9 BGK prototype, periodic streaming and halfway bounce-back on solids.
+// CPU D2Q9 BGK prototype, open/periodic streaming and halfway solid bounce-back.
 // Fixed lattice time, low-Mach velocity cap, reported positivity recovery. This
 // is weakly compressible and is not an incompressible reference or GPU backend.
 class LbmWindField {
   public:
     performance::MemoryUsage GetMemoryUsage() const;
 
-    LbmWindField(WorldStateView world, uint32_t height, const LbmWindSettings &settings);
-    void SetObstacles(WorldStateView world);
+    LbmWindField(WorldMapView world, uint32_t height, const LbmWindSettings &settings);
+    void SetObstacles(WorldMapView world);
+    void MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY);
     void Step(float seconds);
     void AddImpulse(float x, float y, float radius, WindVelocity delta);
     WindVelocity Sample(float x, float y) const;
@@ -49,5 +52,7 @@ class LbmWindField {
     Distribution Equilibrium(double rho, WindVelocity velocity);
     void CollideAndStream();
     void Measure();
+    void ApplyOpenBoundaries();
+    void ReconstructBoundary(uint32_t x, uint32_t y, int normalX, int normalY);
 };
 } // namespace pixel

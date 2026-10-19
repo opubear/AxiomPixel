@@ -48,14 +48,15 @@ inline MemoryUsage operator+(const MemoryUsage &a, const MemoryUsage &b) {
 
 // Only flat, trivially-copyable elements: nested ownership must be accounted
 // explicitly by its owner, rather than silently counting vector/string handles.
-template <class T>
-MemoryUsage VectorStorage(const std::vector<T> &values) {
+template <class Buffer>
+MemoryUsage VectorStorage(const Buffer &values) {
+    using T = typename Buffer::value_type;
     static_assert(std::is_trivially_copyable_v<T> && !std::is_same_v<T, bool>);
     return {0, uint64_t(values.size()) * sizeof(T), uint64_t(values.capacity()) * sizeof(T)};
 }
 
-template <class Object, class... Elements>
-MemoryUsage MeasureObject(const Object &, const std::vector<Elements> &...buffers) {
+template <class Object, class... Buffers>
+MemoryUsage MeasureObject(const Object &, const Buffers &...buffers) {
     MemoryUsage result{sizeof(Object)};
     (result.AddEmbedded(VectorStorage(buffers)), ...);
     return result;

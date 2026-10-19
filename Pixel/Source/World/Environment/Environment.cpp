@@ -1,97 +1,184 @@
-#include "Performance/FrameProfiler.h"
 #include "Environment.h"
 #include "FieldResponse.h"
+#include "Performance/FrameProfiler.h"
 #include "World/World.h"
 #include <algorithm>
 #include <cmath>
-#include <optional>
 
 namespace pixel {
 namespace {
-std::optional<size_t> ForceDestination(WorldStateView state, size_t source, const World &world) {
-    const auto velocity = world.GetFieldVelocity(uint32_t(source % state.Width), uint32_t(source / state.Width));
-    const auto force = FieldResponse::MovementDirection(velocity);
-    if (force.X == 0 && force.Y == 0)
-        return std::nullopt;
-    const int64_t x = int64_t(source % state.Width) + force.X;
-    const int64_t y = int64_t(source / state.Width) + force.Y;
-    if (x < 0 || y < 0 || x >= state.Width || y >= state.Height)
-        return std::nullopt;
-    return size_t(y) * state.Width + size_t(x);
+uint64_t ScratchBytes(const Environment &environment) {
+    return environment.GetMemoryUsage().ReservedHeapBytes - environment.GetWindSimulation().GetMemoryUsage().ReservedHeapBytes;
+}
+
+template <class T>
+void AppendScratch(axiom::Array<T> &values, T value, World &world, const Environment &environment) {
+    if (values.size() == values.capacity()) {
+        const auto capacity = std::max<size_t>(64, values.capacity() * 2);
+        world.ReserveSimulationBytes(ScratchBytes(environment) + capacity * sizeof(T));
+        {
+            axiom::Array<T> next;
+            next.reserve(capacity);
+            next.insert(next.end(), values.begin(), values.end());
+            values.swap(next);
+        }
+        // Destroying the old allocator releases its cached allocation pools.
+        world.ReserveSimulationBytes(ScratchBytes(environment));
+    }
+    values.push_back(value);
 }
 } // namespace
 performance::MemoryUsage Environment::GetMemoryUsage() const {
-    auto usage = performance::MeasureObject(*this, Processed, MovementChain, DirtMovements);
-    usage.AddEmbedded(BaseForces.GetMemoryUsage());
+    auto usage = performance::MeasureObject(*this, Proposals, DirtMovements, Winners, WinnerEpochs);
     usage.AddEmbedded(Wind.GetMemoryUsage());
-
     return usage;
 }
 
-Environment::Environment(uint32_t width, uint32_t height) : BaseForces(width, height) {
-    BaseForces.Fill(FieldResponse::FromDirection({0, 1}));
+ForceVector Environment::SampleForce(CellCoord cell) const {
+    return FieldResponse::AddWind(BaseForces.Get(cell.X, cell.Y), Wind.SampleForMaterial(cell));
 }
-ForceVector Environment::SampleForce(uint32_t x, uint32_t y) const {
-    return FieldResponse::AddWind(BaseForces.Get(x, y), Wind.SampleForMaterial(x, y));
+
+void Environment::RestoreClock(double seconds, double remainder, bool deferredStep) {
+    if (!std::isfinite(seconds) || seconds < 0 || !std::isfinite(remainder) || remainder < 0 || (deferredStep ? remainder < FieldResponse::StepSeconds || remainder > .25 : remainder >= FieldResponse::StepSeconds))
+        throw std::invalid_argument("invalid fixed simulation clock");
+    SimulationSeconds = seconds;
+    TimeRemainder = remainder;
+    Wind.SetSimulationTime(seconds + (deferredStep ? FieldResponse::StepSeconds : 0));
+    WindAdvancedForStep = deferredStep;
+    WaitingForBudget = deferredStep;
 }
+
 void Environment::Tick(float duration, World &world) {
     PIXEL_PROFILE_SCOPE(Environment);
     if (!std::isfinite(duration) || duration <= 0)
         return;
     constexpr double stepSeconds = FieldResponse::StepSeconds;
-    // Bound catch-up work after a pause; normal frame rates share the same speed.
-    TimeRemainder += std::min(double(duration), 0.25);
+    if (!WaitingForBudget)
+        TimeRemainder += std::min(double(duration), 0.25);
+    VisitedCells = 0;
+    ActiveRegions = 0;
     while (TimeRemainder >= stepSeconds) {
-        performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
-        Wind.AdvanceBeforeMaterials(world.ReadState(), float(stepSeconds));
-        StepForceField(world);
-        Wind.UpdateAfterMaterials(world.ReadState(), DirtMovements, float(stepSeconds));
+        if (!WindAdvancedForStep) {
+            Wind.SetSimulationTime(SimulationSeconds);
+            Wind.AdvanceBeforeMaterials(world.GetWindView(), float(stepSeconds));
+            Wind.SetSimulationTime(SimulationSeconds + stepSeconds);
+            WindAdvancedForStep = true;
+        }
+        try {
+            StepMaterials(world);
+        } catch (const WorldBudgetUnavailable &) {
+            // Nothing has committed. Retry against the same advanced wind on
+            // the next tick, after storage can be released at a safe boundary.
+            world.GetMutableMap().Wake(world.GetSimulationBounds());
+            TimeRemainder = std::min(TimeRemainder, .25);
+            WaitingForBudget = true;
+            return;
+        }
+        Wind.UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
         TimeRemainder -= stepSeconds;
+        SimulationSeconds += stepSeconds;
+        Wind.SetSimulationTime(SimulationSeconds);
+        WindAdvancedForStep = false;
+        WaitingForBudget = false;
+        performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
     }
 }
-void Environment::StepForceField(World &world) {
+
+void Environment::ProposeRegion(World &world, WorldRect region) {
+    auto &map = world.GetMutableMap();
+    const auto bounds = world.GetSimulationBounds();
+    for (uint32_t row = 0; row < region.Height; ++row) {
+        const CellCoord begin{region.X, region.Y + row};
+        const auto materials = map.MaterialRow(begin, region.Width);
+        for (uint32_t column = 0; column < region.Width; ++column) {
+            if (materials[column] != CellTypes::Dirt)
+                continue;
+            const CellCoord source{begin.X + column, begin.Y};
+            const auto direction = FieldResponse::MovementDirection(world.GetFieldVelocity(source.X, source.Y));
+            if (direction.X == 0 && direction.Y == 0)
+                continue;
+            const CellCoord destination{source.X + direction.X, source.Y + direction.Y};
+            if (!bounds.Contains(destination))
+                continue;
+            const auto target = map.TryGet(destination);
+            if (target && target->Type == CellTypes::Empty) {
+                if (Proposals.empty())
+                    ProposalDirection = direction;
+                else if (ProposalDirection != direction)
+                    SharedProposalDirection = false;
+                AppendScratch(Proposals, MaterialMove{source, destination}, world, *this);
+            }
+        }
+    }
+}
+
+void Environment::StepMaterials(World &world) {
     PIXEL_PROFILE_SCOPE(MaterialStep);
-    const auto state = world.ReadState();
-    performance::FrameProfiler::Count(performance::Counter::MaterialCells, state.Cells.size());
+    Proposals.clear();
+    SharedProposalDirection = true;
     DirtMovements.clear();
-    Processed.assign(state.Cells.size(), 0);
-    // Stable row-major priority resolves competing destinations deterministically.
-    for (size_t source = 0; source < state.Cells.size(); ++source)
-        if (state.Cells[source].Type == CellTypes::Dirt && !Processed[source])
-            ResolveMovementChain(world, state, source);
+    auto &map = world.GetMutableMap();
+    const auto dynamicForces = Wind.GetKind() == WindStrategyKind::Empty ? WorldRect{} : world.GetWindBounds();
+    const auto regions = map.TakeActiveRegions(world.GetSimulationBounds(), dynamicForces);
+    ActiveRegions += regions.size();
+    performance::FrameProfiler::Count(performance::Counter::ActiveRegions, regions.size());
+    for (const auto region : regions) {
+        const auto cells = uint64_t(region.Width) * region.Height;
+        VisitedCells += cells;
+        performance::FrameProfiler::Count(performance::Counter::MaterialCells, cells);
+        ProposeRegion(world, region);
+    }
+
+    ResolveConflicts(world, world.GetSimulationBounds());
+    if (Wind.NeedsMaterialMotion())
+        std::sort(Proposals.begin(), Proposals.end(), [](const MaterialMove &a, const MaterialMove &b) {
+            return CellCoordLess{}(a.Destination, b.Destination);
+        });
+    const auto windOrigin = world.GetWindView().Origin;
+    for (const auto &move : Proposals) {
+        if (Wind.NeedsMaterialMotion() && world.GetWindBounds().Contains(move.Destination)) {
+            AppendScratch(DirtMovements, DirtMotion{uint32_t(move.Destination.X - windOrigin.X), uint32_t(move.Destination.Y - windOrigin.Y), {float(move.Destination.X - move.Source.X) * FieldResponse::StepsPerSecond, float(move.Destination.Y - move.Source.Y) * FieldResponse::StepsPerSecond}}, world, *this);
+        }
+    }
+    map.CommitMaterialMoves(Proposals);
 }
-void Environment::ResolveMovementChain(World &world, WorldStateView state, size_t source) {
-    MovementChain.clear();
-    bool canMove = false;
-    // Follow occupied destinations to find space. Iteration also handles long
-    // stacks without recursion; revisiting a cell blocks closed cycles.
-    while (state.Cells[source].Type == CellTypes::Dirt && !Processed[source]) {
-        Processed[source] = 1;
-        const auto destination = ForceDestination(state, source, world);
-        if (!destination)
-            break;
-        MovementChain.push_back({source, *destination});
-        if (state.Cells[*destination].Type == CellTypes::Empty) {
-            canMove = true;
-            break;
-        }
-        source = *destination;
-    }
-    if (!canMove)
+
+void Environment::ResolveConflicts(World &world, WorldRect bounds) {
+    if (Proposals.empty())
         return;
-    // Vacate the front first, then let following blocks advance one cell each.
-    // Only Type moves. Each source and destination retains its own force field.
-    for (auto move = MovementChain.rbegin(); move != MovementChain.rend(); ++move) {
-        world.MoveMaterial(move->Source, move->Destination);
-        Processed[move->Destination] = 1;
-        if (Wind.NeedsMaterialMotion()) {
-            const auto x = uint32_t(move->Destination % state.Width), y = uint32_t(move->Destination / state.Width);
-            const float dx = float(int64_t(x) - int64_t(move->Source % state.Width));
-            const float dy = float(int64_t(y) - int64_t(move->Source / state.Width));
-            // Only successful moves transfer motion. Defer feedback until every
-            // chain has finished so earlier blocks cannot alter later blocks' wind.
-            DirtMovements.push_back({x, y, {dx * FieldResponse::StepsPerSecond, dy * FieldResponse::StepsPerSecond}});
+    // Translation by one shared direction is injective: distinct sources cannot
+    // compete for a destination. Gravity-dominated dense motion needs no table.
+    if (SharedProposalDirection)
+        return;
+    const auto cells = size_t(bounds.Width) * bounds.Height;
+    if (Winners.size() != cells) {
+        world.ReserveSimulationBytes(ScratchBytes(*this) + cells * 2 * sizeof(uint32_t));
+        {
+            axiom::Array<uint32_t> winners(cells), epochs(cells);
+            Winners.swap(winners);
+            WinnerEpochs.swap(epochs);
+        }
+        world.ReserveSimulationBytes(ScratchBytes(*this));
+        Epoch = 0;
+    }
+    if (++Epoch == 0) {
+        std::fill(WinnerEpochs.begin(), WinnerEpochs.end(), 0);
+        Epoch = 1;
+    }
+    const auto index = [&](CellCoord cell) {
+        return size_t(cell.Y - bounds.Y) * bounds.Width + size_t(cell.X - bounds.X);
+    };
+    for (uint32_t i = 0; i < Proposals.size(); ++i) {
+        const auto target = index(Proposals[i].Destination);
+        if (WinnerEpochs[target] != Epoch || CellCoordLess{}(Proposals[i].Source, Proposals[Winners[target]].Source)) {
+            Winners[target] = i;
+            WinnerEpochs[target] = Epoch;
         }
     }
+    size_t accepted = 0;
+    for (size_t i = 0; i < Proposals.size(); ++i)
+        if (Winners[index(Proposals[i].Destination)] == i)
+            Proposals[accepted++] = Proposals[i];
+    Proposals.resize(accepted);
 }
 } // namespace pixel

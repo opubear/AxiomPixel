@@ -80,6 +80,7 @@ void FieldFramePublication() {
         for (uint32_t x = 0; x < directions.size(); ++x)
             world.SetCell(x, page * Grid2D::PageHeight, {x % 2 ? pixel::CellTypes::Dirt : pixel::CellTypes::Empty, directions[x]});
     WorldGridFrame output;
+    output.SetRegion({0, 0}, Grid2D::Width, Grid2D::Height);
     auto *storage = output.Cells().data();
     output.Post.Values[1] = 0.35f;
     BuildForceFieldFrame(world, output);
@@ -109,7 +110,10 @@ void FieldFramePublication() {
     Check(output.DisplayMode == GridDisplayMode::Materials && output.Cells()[1] == 1 && output.Cells().back() == 0, "material view retained encoded debug colours");
     ValidateWorldGridFrame(output.Read(), 2, 800, 600);
     pixel::World small(4, 4);
-    Reject<std::invalid_argument>([&] { BuildForceFieldFrame(small, output); });
+    output.SetRegion({0, 0}, 4, 4);
+    BuildForceFieldFrame(small, output);
+    Check(output.Cells().size() == 16 && output.Cells().back() == 0x80FF80,
+          "finite non-page-sized world must publish its force field");
 }
 } // namespace
 

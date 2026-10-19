@@ -3,11 +3,14 @@
 #include "Performance/MemoryUsage.h"
 
 #include "WindTypes.h"
-#include "World/WorldState.h"
+#include "World/WorldMap.h"
 #include <cstddef>
+#include <span>
+#include <vector>
 
 namespace pixel {
 struct PixelWindSettings {
+    WindBoundaryMode Boundary = WindBoundaryMode::Open;
     WindVelocity Ambient{90, 0};
     float GustSpeed = 60;
     float Viscosity = 8;
@@ -24,7 +27,7 @@ struct WindSolveReport {
     bool Converged = true;
 };
 
-// Reference solver: one unit MAC cell per world pixel, periodic outer edges,
+// Reference solver: one unit MAC cell per world pixel, open or periodic edges,
 // impermeable stair-step solids with free-slip tangential boundaries. Double
 // precision, CFL-limited semi-Lagrangian advection and converged PCG projection.
 // Geometry is frozen during each step; moving solids update at step boundaries.
@@ -39,7 +42,8 @@ class PixelWindField {
     uint32_t GetEndRow() const { return Height; }
     const PixelWindSettings &GetSettings() const { return Settings; }
     const WindSolveReport &GetReport() const { return Report; }
-    void SetObstacles(WorldStateView world);
+    void SetObstacles(WorldMapView world);
+    void MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY);
     void Step(float seconds);
     // Deterministic staggered initial conditions for cross-solver validation.
     // Inputs are row-major face velocities in pixels/s; projection follows.
@@ -56,6 +60,7 @@ class PixelWindField {
     PixelWindSettings Settings;
     WindSolveReport Report;
     std::vector<double> U, V, NextU, NextV;
+    std::vector<double> RightU, BottomV;
     std::vector<uint8_t> Solid, OpenX, OpenY, SupportX, SupportY;
     std::vector<double> Pressure, Residual, Direction, Product, Preconditioned, Diagonal;
     size_t Index(int x, int y) const;
@@ -66,5 +71,12 @@ class PixelWindField {
     void Project();
     void MeasureDivergence();
     void RebuildFaces();
+    bool Periodic() const { return Settings.Boundary == WindBoundaryMode::Periodic; }
+    bool Inflow(WindBoundarySide side) const { return IsWindInflow(side, Settings.Ambient); }
+    double PressureWeight(int x, int y, int dx, int dy) const;
+    double UFace(int x, int y) const;
+    double VFace(int x, int y) const;
+    double DivergenceAt(int x, int y) const;
+    void PrescribeInflow();
 };
 } // namespace pixel

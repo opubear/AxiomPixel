@@ -15,8 +15,9 @@ class AdaptiveWindField {
   public:
     performance::MemoryUsage GetMemoryUsage() const;
 
-    AdaptiveWindField(WorldStateView world, uint32_t height, const AdaptiveWindSettings &settings);
-    void SetObstacles(WorldStateView world);
+    AdaptiveWindField(WorldMapView world, uint32_t height, const AdaptiveWindSettings &settings);
+    void SetObstacles(WorldMapView world);
+    void MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY);
     void Step(float seconds);
     // Row-major pixel velocities are volume-averaged into leaves, then projected.
     void SetVelocities(std::span<const WindVelocity> velocities);
@@ -45,7 +46,13 @@ class AdaptiveWindField {
     std::vector<uint8_t> Solid;
     std::vector<int32_t> Owner;
     std::vector<Cell> Cells;
+    struct BoundaryFace {
+        uint32_t Owner;
+        bool Horizontal, Positive, Inflow;
+        double Length, Distance, Velocity;
+    };
     std::vector<Face> Faces;
+    std::vector<BoundaryFace> BoundaryFaces;
     void Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const std::vector<WindVelocity> &previous);
     void BuildFaces();
     void InitializeFaceVelocities();

@@ -8,7 +8,7 @@
 
 namespace pixel {
 performance::MemoryUsage WindField::GetMemoryUsage() const {
-    return performance::MeasureObject(*this, Velocity, Previous, Pressure, Divergence, DirtCoverage, DirtVelocitySum, DirtBlockage, PressureMobility, LastDirtRow, OccupiedColumns);
+    return performance::MeasureObject(*this, Velocity, Previous, Pressure, Divergence, DirtCoverage, DirtVelocitySum, DirtBlockage, PressureMobility, LastDirtRow, OccupiedColumns, RightU, BottomV);
 }
 
 namespace {
@@ -24,7 +24,7 @@ float Wrap(float coordinate, uint32_t extent) {
 } // namespace
 
 void WindField::Reset(uint32_t width, uint32_t endRow, const WindSettings &settings) {
-    if (!width || !endRow || settings.Columns < 2 || settings.Columns > 128 || settings.Rows < 2 || settings.Rows > 128
+    if (!IsValidWindBoundary(settings.Boundary) || !width || !endRow || settings.Columns < 2 || settings.Columns > 128 || settings.Rows < 2 || settings.Rows > 128
         || !ValidVelocity(settings.Ambient) || !std::isfinite(settings.GustSpeed) || settings.GustSpeed < 0 || settings.GustSpeed > InputSpeedLimit
         || !std::isfinite(settings.Viscosity) || settings.Viscosity < 0 || settings.Viscosity > 1000000
         || !std::isfinite(settings.Relaxation) || settings.Relaxation < 0 || settings.Relaxation > 100
@@ -47,6 +47,8 @@ void WindField::Reset(uint32_t width, uint32_t endRow, const WindSettings &setti
     next.DirtBlockage.resize(count);
     next.PressureMobility.resize(count);
     next.LastDirtRow.resize(count);
+    next.RightU.assign(settings.Rows, settings.Ambient.X);
+    next.BottomV.assign(settings.Columns, settings.Ambient.Y);
     std::mt19937 random(settings.Seed);
     const float tau = 2 * std::numbers::pi_v<float>;
     const float phaseX = tau * float(double(random()) / double(std::mt19937::max()));
@@ -57,18 +59,122 @@ void WindField::Reset(uint32_t width, uint32_t endRow, const WindSettings &setti
             next.Velocity[next.Index(x, y)] = {
                 settings.Ambient.X + settings.GustSpeed * std::sin(tau * (float(y) + 0.5f) / float(settings.Rows) + phaseX),
                 settings.Ambient.Y + settings.GustSpeed * std::sin(tau * (float(x) + 0.5f) / float(settings.Columns) + phaseY)};
+    next.PrescribeInflow();
     *this = std::move(next);
+}
+
+void WindField::MoveDomain(uint32_t width, uint32_t height, int64_t offsetX, int64_t offsetY) {
+    WindField next;
+    next.Reset(width, height, Settings);
+    for (uint32_t y = 0; y < Settings.Rows; ++y)
+        for (uint32_t x = 0; x < Settings.Columns; ++x) {
+            const float oldX = float(double(x) * next.SpacingX + double(offsetX));
+            const float oldY = float(double(y) * next.SpacingY + double(offsetY));
+            auto &v = next.Velocity[next.Index(x, y)];
+            if (oldX >= 0 && oldX < Width && oldY + .5f * next.SpacingY >= 0 && oldY + .5f * next.SpacingY < Height)
+                v.X = SampleGrid(Velocity, oldX / SpacingX, (oldY + .5f * next.SpacingY) / SpacingY).X;
+            if (oldX + .5f * next.SpacingX >= 0 && oldX + .5f * next.SpacingX < Width && oldY >= 0 && oldY < Height)
+                v.Y = SampleGrid(Velocity, (oldX + .5f * next.SpacingX) / SpacingX, oldY / SpacingY).Y;
+        }
+    next.Project();
+    *this = std::move(next);
+}
+
+float WindField::UFace(int x, int y) const {
+    return !Periodic() && x >= int(Settings.Columns) ? RightU[size_t(y)] : Velocity[Index(x, y)].X;
+}
+float WindField::VFace(int x, int y) const {
+    return !Periodic() && y >= int(Settings.Rows) ? BottomV[size_t(x)] : Velocity[Index(x, y)].Y;
+}
+void WindField::PrescribeInflow() {
+    if (Periodic())
+        return;
+    for (uint32_t y = 0; y < Settings.Rows; ++y) {
+        if (Inflow(WindBoundarySide::Left))
+            Velocity[Index(0, y)].X = Settings.Ambient.X;
+        if (Inflow(WindBoundarySide::Right))
+            RightU[y] = Settings.Ambient.X;
+        else
+            RightU[y] = Velocity[Index(Settings.Columns - 1, y)].X;
+    }
+    for (uint32_t x = 0; x < Settings.Columns; ++x) {
+        if (Inflow(WindBoundarySide::Top))
+            Velocity[Index(x, 0)].Y = Settings.Ambient.Y;
+        if (Inflow(WindBoundarySide::Bottom))
+            BottomV[x] = Settings.Ambient.Y;
+        else
+            BottomV[x] = Velocity[Index(x, Settings.Rows - 1)].Y;
+    }
+}
+void WindField::ProjectOpen(std::span<const WindVelocity> mobility) {
+    PrescribeInflow();
+    const float ax = 1 / (SpacingX * SpacingX), ay = 1 / (SpacingY * SpacingY);
+    const int columns = int(Settings.Columns), rows = int(Settings.Rows);
+    auto response = [&](int x, int y, bool horizontal) {
+        if (mobility.empty())
+            return 1.f;
+        const auto m = mobility[Index(x, y)];
+        return horizontal ? m.X : m.Y;
+    };
+    auto weight = [&](int x, int y, int dx, int dy) {
+        const int nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= columns || ny < 0 || ny >= rows) {
+            const auto side = nx < 0 ? WindBoundarySide::Left : nx >= columns ? WindBoundarySide::Right
+                                                          : ny < 0            ? WindBoundarySide::Top
+                                                                              : WindBoundarySide::Bottom;
+            if (Inflow(side))
+                return 0.f;
+        }
+        return dx ? ax * response(x + (dx > 0), y, true) : ay * response(x, y + (dy > 0), false);
+    };
+    std::fill(Pressure.begin(), Pressure.end(), 0);
+    for (int y = 0; y < rows; ++y)
+        for (int x = 0; x < columns; ++x)
+            Divergence[Index(x, y)] = (UFace(x + 1, y) - UFace(x, y)) / SpacingX
+                                    + (VFace(x, y + 1) - VFace(x, y)) / SpacingY;
+    // Prescribed inlet flux and zero outlet pressure give a nonsingular system.
+    for (int iteration = 0; iteration < 400; ++iteration)
+        for (int y = 0; y < rows; ++y)
+            for (int x = 0; x < columns; ++x) {
+                float sum = -Divergence[Index(x, y)], diagonal = 0;
+                for (const auto [dx, dy] : {std::pair{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+                    const float w = weight(x, y, dx, dy);
+                    diagonal += w;
+                    if (x + dx >= 0 && x + dx < columns && y + dy >= 0 && y + dy < rows)
+                        sum += w * Pressure[Index(x + dx, y + dy)];
+                }
+                Pressure[Index(x, y)] = diagonal ? sum / diagonal : 0;
+            }
+    for (int y = 0; y < rows; ++y)
+        for (int x = 0; x < columns; ++x) {
+            const auto i = Index(x, y);
+            Velocity[i].X -= weight(x, y, -1, 0) * SpacingX * (Pressure[i] - (x ? Pressure[Index(x - 1, y)] : 0));
+            Velocity[i].Y -= weight(x, y, 0, -1) * SpacingY * (Pressure[i] - (y ? Pressure[Index(x, y - 1)] : 0));
+            if (x + 1 == columns)
+                RightU[size_t(y)] += weight(x, y, 1, 0) * SpacingX * Pressure[i];
+            if (y + 1 == rows)
+                BottomV[size_t(x)] += weight(x, y, 0, 1) * SpacingY * Pressure[i];
+        }
 }
 
 size_t WindField::Index(int x, int y) const {
     const int columns = int(Settings.Columns), rows = int(Settings.Rows);
-    return size_t((y % rows + rows) % rows) * columns + size_t((x % columns + columns) % columns);
+    if (Periodic())
+        return size_t((y % rows + rows) % rows) * columns + size_t((x % columns + columns) % columns);
+    return size_t(std::clamp(y, 0, rows - 1)) * columns + size_t(std::clamp(x, 0, columns - 1));
 }
 
 WindVelocity WindField::SampleGrid(const std::vector<WindVelocity> &field, float x, float y) const {
+    if (!Periodic() && ((x < 0 && Inflow(WindBoundarySide::Left)) || (x > Settings.Columns && Inflow(WindBoundarySide::Right)) || (y < 0 && Inflow(WindBoundarySide::Top)) || (y > Settings.Rows && Inflow(WindBoundarySide::Bottom))))
+        return Settings.Ambient;
     auto interpolate = [&](float sx, float sy, float WindVelocity::*component) {
-        sx = Wrap(sx, Settings.Columns);
-        sy = Wrap(sy, Settings.Rows);
+        if (Periodic()) {
+            sx = Wrap(sx, Settings.Columns);
+            sy = Wrap(sy, Settings.Rows);
+        } else {
+            sx = std::clamp(sx, 0.f, float(Settings.Columns - 1));
+            sy = std::clamp(sy, 0.f, float(Settings.Rows - 1));
+        }
         const int ix = int(std::floor(sx)), iy = int(std::floor(sy));
         const float tx = sx - float(ix), ty = sy - float(iy);
         return std::lerp(std::lerp(field[Index(ix, iy)].*component, field[Index(ix + 1, iy)].*component, tx),
@@ -88,8 +194,8 @@ void WindField::AddImpulse(float x, float y, float radius, WindVelocity delta) {
         || !std::isfinite(radius) || radius <= 0 || !ValidVelocity(delta))
         throw std::invalid_argument("wind impulse requires an active region, valid position, radius and velocity");
     auto weight = [&](float px, float py) {
-        const double dx = std::remainder(double(px) - x, double(Width)) / radius;
-        const double dy = std::remainder(double(py) - y, double(Height)) / radius;
+        const double dx = WindDistance(double(px) - x, double(Width), Settings.Boundary) / radius;
+        const double dy = WindDistance(double(py) - y, double(Height), Settings.Boundary) / radius;
         const double falloff = std::max(0.0, 1 - dx * dx - dy * dy);
         return float(falloff * falloff);
     };
@@ -157,14 +263,14 @@ void WindField::AccumulateDirt(uint32_t x, uint32_t y, float coverage, WindVeloc
     }
 }
 
-void WindField::CoupleDirt(WorldStateView world, std::span<const DirtMotion> motion, float seconds) {
+void WindField::CoupleDirt(WorldMapView world, std::span<const DirtMotion> motion, float seconds) {
     if (!IsEnabled() || Settings.DirtDrag == 0 || !std::isfinite(seconds) || seconds <= 0)
         return;
-    if (world.Width != Width || world.Height < Height || uint64_t(world.Width) * world.Height != world.Cells.size())
+    if (!world.IsValid() || world.Width != Width || world.Height < Height || uint64_t(world.Width) * world.Height != world.CellCount())
         throw std::invalid_argument("dirt feedback requires the wind's world extent and complete cell storage");
     for (const auto &moved : motion)
         if (moved.X >= world.Width || moved.Y >= world.Height || !ValidVelocity(moved.Velocity)
-            || world.Cells[size_t(moved.Y) * world.Width + moved.X].Type != CellTypes::Dirt)
+            || world.AtIndex(size_t(moved.Y) * world.Width + moved.X).Type != CellTypes::Dirt)
             throw std::invalid_argument("dirt motion must refer to a final occupied dirt cell with finite velocity");
     std::fill(DirtCoverage.begin(), DirtCoverage.end(), 0);
     std::fill(DirtVelocitySum.begin(), DirtVelocitySum.end(), WindVelocity{});
@@ -174,7 +280,7 @@ void WindField::CoupleDirt(WorldStateView world, std::span<const DirtMotion> mot
     bool occupied = false;
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < world.Width; ++x)
-            if (world.Cells[size_t(y) * world.Width + x].Type == CellTypes::Dirt) {
+            if (world.AtIndex(size_t(y) * world.Width + x).Type == CellTypes::Dirt) {
                 AccumulateDirt(x, y, 1, {});
                 occupied = true;
             }
@@ -240,6 +346,10 @@ void WindField::Advect(float seconds) {
 }
 
 void WindField::Project(std::span<const WindVelocity> mobility) {
+    if (!Periodic()) {
+        ProjectOpen(mobility);
+        return;
+    }
     const float invX = 1 / SpacingX, invY = 1 / SpacingY;
     const float ax = invX * invX, ay = invY * invY;
     std::fill(Pressure.begin(), Pressure.end(), 0);
@@ -284,9 +394,8 @@ float WindField::RmsDivergence() const {
     double sum = 0;
     for (int y = 0; y < int(Settings.Rows); ++y)
         for (int x = 0; x < int(Settings.Columns); ++x) {
-            const auto i = Index(x, y);
-            const double div = (Velocity[Index(x + 1, y)].X - Velocity[i].X) / SpacingX
-                             + (Velocity[Index(x, y + 1)].Y - Velocity[i].Y) / SpacingY;
+            const double div = (UFace(x + 1, y) - UFace(x, y)) / SpacingX
+                             + (VFace(x, y + 1) - VFace(x, y)) / SpacingY;
             sum += div * div;
         }
     return float(std::sqrt(sum / double(Velocity.size())));

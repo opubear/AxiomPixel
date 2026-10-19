@@ -21,11 +21,27 @@ ProceduralWindField::ProceduralWindField(uint32_t width, uint32_t height, const 
     std::mt19937 random(settings.Seed);
     Phase = double(random()) / std::mt19937::max() * 2 * std::numbers::pi;
 }
+void ProceduralWindField::MoveDomain(uint32_t width, uint32_t height, CellCoord origin) {
+    std::vector<WindVelocity> next(size_t(width) * height);
+    const int64_t dx = WindCoordinateOffset(origin.X, Origin.X);
+    const int64_t dy = WindCoordinateOffset(origin.Y, Origin.Y);
+    if (dx < int64_t(Width) && dy < int64_t(Height) && dx > -int64_t(width) && dy > -int64_t(height))
+        for (uint32_t y = 0; y < height; ++y)
+            for (uint32_t x = 0; x < width; ++x) {
+                const int64_t oldX = dx + x, oldY = dy + y;
+                if (oldX >= 0 && oldY >= 0 && oldX < int64_t(Width) && oldY < int64_t(Height))
+                    next[size_t(y) * width + x] = Impulses[size_t(oldY) * Width + size_t(oldX)];
+            }
+    Width = width;
+    Height = height;
+    Origin = origin;
+    Impulses = std::move(next);
+}
 void ProceduralWindField::Step(float seconds) {
     if (!std::isfinite(seconds) || seconds <= 0)
         return;
     const double dt = std::min(double(seconds), .25);
-    Time = std::fmod(Time + dt, 20 * std::numbers::pi);
+    Time += dt;
     const float decay = float(std::exp(-Settings.Relaxation * dt));
     for (auto &v : Impulses) {
         v.X *= decay;
@@ -37,8 +53,8 @@ WindVelocity ProceduralWindField::Sample(float x, float y) const {
         return {};
     const double tau = 2 * std::numbers::pi;
     const auto impulse = Impulses[size_t(y) * Width + uint32_t(x)];
-    return {Settings.Ambient.X + Settings.GustSpeed * float(std::sin(tau * y / Height + Phase + .2 * Time)) + impulse.X,
-            Settings.Ambient.Y + Settings.GustSpeed * float(std::sin(tau * x / Width - Phase - .1 * Time)) + impulse.Y};
+    return {Settings.Ambient.X + Settings.GustSpeed * float(std::sin(tau * (double(Origin.Y % int64_t(GustWavelength)) + y) / GustWavelength + Phase + .2 * Time)) + impulse.X,
+            Settings.Ambient.Y + Settings.GustSpeed * float(std::sin(tau * (double(Origin.X % int64_t(GustWavelength)) + x) / GustWavelength - Phase - .1 * Time)) + impulse.Y};
 }
 void ProceduralWindField::AddImpulse(float x, float y, float radius, WindVelocity delta) {
     if (!std::isfinite(x) || !std::isfinite(y) || x < 0 || y < 0 || x >= Width || y >= Height || !std::isfinite(radius) || radius <= 0
@@ -46,8 +62,8 @@ void ProceduralWindField::AddImpulse(float x, float y, float radius, WindVelocit
         throw std::invalid_argument("invalid procedural wind impulse");
     for (uint32_t py = 0; py < Height; ++py)
         for (uint32_t px = 0; px < Width; ++px) {
-            const double dx = std::remainder(px + .5 - x, double(Width)) / radius;
-            const double dy = std::remainder(py + .5 - y, double(Height)) / radius;
+            const double dx = WindDistance(px + .5 - x, double(Width), Settings.Boundary) / radius;
+            const double dy = WindDistance(py + .5 - y, double(Height), Settings.Boundary) / radius;
             const float weight = float(std::pow(std::max(0.0, 1 - dx * dx - dy * dy), 2));
             auto &v = Impulses[size_t(py) * Width + px];
             v.X = std::clamp(v.X + delta.X * weight, -1000.f, 1000.f);

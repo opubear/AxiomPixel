@@ -21,6 +21,7 @@ void Reject(Action action) {
 }
 pixel::WindSettings Uniform(pixel::WindVelocity velocity = {}) {
     pixel::WindSettings settings;
+    settings.Boundary = pixel::WindBoundaryMode::Periodic;
     settings.Columns = 16;
     settings.Rows = 16;
     settings.Ambient = velocity;
@@ -212,15 +213,15 @@ void WorldWindCoupling() {
     world.ConfigureWind(8, Uniform({60, 0}));
     world.PlaceDirt(4, 4);
     world.PlaceDirt(4, 8);
-    pixel::WorldState snapshot(16, 16);
+    pixel::WorldSnapshot snapshot(16, 16);
     world.PublishState(snapshot);
     world.Tick(1.f / 60);
     Check(world.GetCell(5, 5).Type == pixel::CellTypes::Dirt, "wind did not combine with gravity");
     Check(world.GetCell(4, 9).Type == pixel::CellTypes::Dirt, "wind leaked into the stable sky band");
-    Check(snapshot.Read().Cells[4 * 16 + 4].Type == pixel::CellTypes::Dirt && snapshot.Read().Cells[5 * 16 + 5].Type == pixel::CellTypes::Empty,
+    Check(snapshot.Read().AtLocal(4, 4).Type == pixel::CellTypes::Dirt && snapshot.Read().AtLocal(5, 5).Type == pixel::CellTypes::Empty,
           "wind movement mutated the published snapshot");
-    for (const auto cell : world.ReadState().Cells)
-        Check(cell.Force == pixel::ForceDirection{0, 1}, "wind overwrote a base force");
+    for (size_t i = 0; i < world.ReadState().CellCount(); ++i)
+        Check(world.ReadState().AtIndex(i).Force == pixel::ForceDirection{0, 1}, "wind overwrote a base force");
     world.DisableWind();
     world.Tick(1.f / 60);
     Check(world.GetCell(5, 6).Type == pixel::CellTypes::Dirt, "disabling wind did not restore gravity");
@@ -236,7 +237,7 @@ void WorldWindCoupling() {
     }
     Check(rejected && world.GetWind().Sample(2, 2).X == 60, "invalid wind extent changed the world");
 
-    // Wind must still obey the existing obstacle/chain/collision rules.
+    // Synchronous movement preserves obstacles and advances the front of a chain.
     world.GenerateTerrain(16);
     world.FillForceDirection({0, 0});
     world.ConfigureWind(16, Uniform({60, 0}));
@@ -250,7 +251,9 @@ void WorldWindCoupling() {
     // the chain rule independently of its accumulated drag.
     world.ConfigureWind(16, Uniform({60, 0}));
     world.Tick(1.f / 60);
-    Check(world.GetCell(4, 3).Type == pixel::CellTypes::Dirt && world.GetCell(5, 3).Type == pixel::CellTypes::Dirt, "wind broke movement chains");
+    Check(world.GetCell(3, 3).Type == pixel::CellTypes::Dirt && world.GetCell(4, 3).Type == pixel::CellTypes::Empty
+              && world.GetCell(5, 3).Type == pixel::CellTypes::Dirt,
+          "synchronous wind movement did not advance only the chain front");
 }
 
 void WorldWindTimingAndConservation() {
@@ -264,14 +267,19 @@ void WorldWindTimingAndConservation() {
         world->AddWindImpulse(20, 20, 10, {-100, -100});
     }
     auto count = [](const pixel::World &world) {
-        return std::count_if(world.ReadState().Cells.begin(), world.ReadState().Cells.end(), [](auto cell) { return cell.Type == pixel::CellTypes::Dirt; });
+        size_t count = 0;
+        const auto view = world.ReadState();
+        for (size_t i = 0; i < view.CellCount(); ++i)
+            count += view.AtIndex(i).Type == pixel::CellTypes::Dirt;
+        return count;
     };
     const auto initialCount = count(fast);
     for (int i = 0; i < 240; ++i)
         fast.Tick(1.f / 120);
     for (int i = 0; i < 60; ++i)
         slow.Tick(1.f / 30);
-    Check(std::equal(fast.ReadState().Cells.begin(), fast.ReadState().Cells.end(), slow.ReadState().Cells.begin()), "wind-driven movement depends on frame rate");
+    for (size_t i = 0; i < fast.ReadState().CellCount(); ++i)
+        Check(fast.ReadState().AtIndex(i) == slow.ReadState().AtIndex(i), "wind-driven movement depends on frame rate");
     Check(Samples(fast.GetWind(), 64, 48) == Samples(slow.GetWind(), 64, 48), "wind solver depends on frame rate");
     Check(count(fast) == initialCount && count(slow) == initialCount, "wind movement created or lost material");
     fast.Tick(10);

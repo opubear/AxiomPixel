@@ -12,10 +12,19 @@ void ValidatePosition(Camera2D::Position position) {
 }
 void Camera2D::SetPosition(Position position) {
     ValidatePosition(position);
-    Centre = position;
+    SetWorldPosition(WorldPosition::FromAbsolute(position[0], position[1]));
+}
+void Camera2D::SetWorldPosition(WorldPosition position) {
+    position.Normalize();
+    WorldCentre = position;
+    Centre = position.RelativeTo({});
 }
 void Camera2D::Translate(Position displacement) {
-    SetPosition({Centre[0] + displacement[0], Centre[1] + displacement[1]});
+    ValidatePosition(displacement);
+    auto next = WorldCentre;
+    next.Local[0] += displacement[0];
+    next.Local[1] += displacement[1];
+    SetWorldPosition(next);
 }
 void Camera2D::SetFollowRate(double rate) {
     if (!std::isfinite(rate) || rate < 0)
@@ -26,9 +35,18 @@ void Camera2D::Follow(Position target, double duration) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
     ValidatePosition(target);
-    // expm1 keeps small timesteps accurate; the factor never exceeds one.
+    FollowWorld(WorldPosition::FromAbsolute(target[0], target[1]), duration);
+}
+void Camera2D::FollowWorld(WorldPosition target, double duration) {
+    if (!std::isfinite(duration) || duration <= 0)
+        return;
+    target.Normalize();
+    const CellCoord origin{WorldCentre.Chunk.X * storage::ChunkEdge, WorldCentre.Chunk.Y * storage::ChunkEdge};
+    const auto relative = target.RelativeTo(origin);
     const double blend = -std::expm1(-FollowRate * duration);
-    for (size_t axis = 0; axis < Centre.size(); ++axis)
-        Centre[axis] = std::lerp(Centre[axis], target[axis], blend);
+    auto next = WorldCentre;
+    for (size_t axis = 0; axis < next.Local.size(); ++axis)
+        next.Local[axis] = std::lerp(next.Local[axis], relative[axis], blend);
+    SetWorldPosition(next);
 }
 } // namespace pixel

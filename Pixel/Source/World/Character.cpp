@@ -3,30 +3,40 @@
 #include <cmath>
 
 namespace pixel {
-bool Character::Occupies(int x, int y) const {
-    return x + 1 > X && x < X + Width && y + 1 > Y && y < Y + Height;
+bool Character::Occupies(int64_t x, int64_t y) const {
+    const auto origin = CellOrigin();
+    const double localX = double(x - origin.X), localY = double(y - origin.Y);
+    return localX + 1 > X && localX < X + Width && localY + 1 > Y && localY < Y + Height;
 }
-bool Character::Collides(WorldStateView world, float x, float y) const {
-    if (x < 0 || y < 0 || x + Width > world.Width || y + Height > world.Height)
-        return true;
-    for (int row = int(std::floor(y)); row < int(std::ceil(y + Height)); ++row)
-        for (int column = int(std::floor(x)); column < int(std::ceil(x + Width)); ++column)
-            if (world.Cells[size_t(row) * world.Width + column].Type != CellTypes::Empty)
+
+bool Character::Collides(WorldMapView world, double x, double y) const {
+    const auto origin = CellOrigin();
+    const auto firstX = int64_t(std::floor(x)), firstY = int64_t(std::floor(y));
+    const auto lastX = int64_t(std::ceil(x + Width)), lastY = int64_t(std::ceil(y + Height));
+    for (int64_t row = firstY; row < lastY; ++row) {
+        for (int64_t column = firstX; column < lastX; ++column) {
+            const CellCoord cell{origin.X + column, origin.Y + row};
+            const int64_t vx = cell.X - world.Origin.X, vy = cell.Y - world.Origin.Y;
+            if (vx < 0 || vy < 0 || vx >= world.Width || vy >= world.Height)
                 return true;
+            const auto material = world.TryAtLocal(uint32_t(vx), uint32_t(vy));
+            if (!material || material->Type != CellTypes::Empty)
+                return true;
+        }
+    }
     return false;
 }
-void Character::MoveAxis(WorldStateView world, float distance, bool vertical) {
-    // Sub-cell sweeps prevent tunnelling through even a one-cell platform.
-    const int steps = std::max(1, int(std::ceil(std::abs(distance) / 0.25f)));
-    const float step = distance / steps;
+
+void Character::MoveAxis(WorldMapView world, double distance, bool vertical) {
+    const int steps = std::max(1, int(std::ceil(std::abs(distance) / 0.25)));
+    const double step = distance / steps;
     for (int i = 0; i < steps; ++i) {
-        const float x = X + (vertical ? 0 : step);
-        const float y = Y + (vertical ? step : 0);
+        const double x = X + (vertical ? 0 : step);
+        const double y = Y + (vertical ? step : 0);
         if (Collides(world, x, y)) {
-            // Find the contact point without assuming an integer starting position.
-            float low = 0, high = 1;
-            for (int iteration = 0; iteration < 16; ++iteration) {
-                const float middle = (low + high) * 0.5f;
+            double low = 0, high = 1;
+            for (int iteration = 0; iteration < 20; ++iteration) {
+                const double middle = (low + high) * .5;
                 if (Collides(world, X + (vertical ? 0 : step * middle), Y + (vertical ? step * middle : 0)))
                     high = middle;
                 else
@@ -41,14 +51,15 @@ void Character::MoveAxis(WorldStateView world, float distance, bool vertical) {
         Y = y;
     }
 }
-void Character::Tick(float duration, WorldStateView world, int horizontal, bool jump) {
+
+void Character::Tick(float duration, WorldMapView world, int horizontal, bool jump) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
-    // Terrain may move into the body: resolve upward without deleting material.
     if (Collides(world, X, Y)) {
-        const float original = Y;
-        while (Y > 0 && Collides(world, X, Y))
-            Y = std::max(0.f, std::floor(Y) - 1);
+        const double original = Y;
+        const double top = double(world.Origin.Y - CellOrigin().Y);
+        while (Y > top && Collides(world, X, Y))
+            Y = std::max(top, std::floor(Y) - 1);
         if (Collides(world, X, Y)) {
             Y = original;
             Grounded = false;
@@ -56,17 +67,22 @@ void Character::Tick(float duration, WorldStateView world, int horizontal, bool 
         }
         VerticalSpeed = 0;
     }
-    Grounded = Collides(world, X, Y + 0.01f);
+    Grounded = Collides(world, X, Y + .01);
     if (jump && Grounded)
         VerticalSpeed = -32;
-    float remaining = std::min(duration, 0.25f);
+    double remaining = std::min(double(duration), .25);
     while (remaining > 0) {
-        const float dt = std::min(remaining, 1.f / 120);
-        MoveAxis(world, std::clamp(horizontal, -1, 1) * 16.f * dt, false);
-        VerticalSpeed = std::min(VerticalSpeed + 90 * dt, 80.f);
+        const double dt = std::min(remaining, 1.0 / 120);
+        MoveAxis(world, std::clamp(horizontal, -1, 1) * 16.0 * dt, false);
+        VerticalSpeed = std::min(VerticalSpeed + 90 * dt, 80.0);
         MoveAxis(world, VerticalSpeed * dt, true);
         remaining -= dt;
     }
-    Grounded = VerticalSpeed >= 0 && Collides(world, X, Y + 0.01f);
+    Grounded = VerticalSpeed >= 0 && Collides(world, X, Y + .01);
+    auto position = GetWorldPosition();
+    position.Normalize();
+    OriginChunk = position.Chunk;
+    X = position.Local[0];
+    Y = position.Local[1];
 }
 } // namespace pixel

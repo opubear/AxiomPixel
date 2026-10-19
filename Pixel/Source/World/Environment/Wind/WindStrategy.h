@@ -40,9 +40,11 @@ class WindStrategy {
 
     virtual WindStrategyKind Kind() const = 0;
     virtual uint32_t GetEndRow() const = 0;
+    virtual void MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY) = 0;
+    virtual void SetSimulationTime(double) {}
     virtual bool NeedsMaterialMotion() const { return false; }
-    virtual void AdvanceBeforeMaterials(WorldStateView world, float seconds) = 0;
-    virtual void UpdateAfterMaterials(WorldStateView world, std::span<const DirtMotion> motion, float seconds) = 0;
+    virtual void AdvanceBeforeMaterials(WorldMapView world, float seconds) = 0;
+    virtual void UpdateAfterMaterials(WorldMapView world, std::span<const DirtMotion> motion, float seconds) = 0;
     virtual void AddImpulse(float x, float y, float radius, WindVelocity delta) = 0;
     virtual WindVelocity Sample(float x, float y) const = 0;
     virtual WindVelocity SampleForMaterial(uint32_t x, uint32_t y) const = 0;
@@ -51,5 +53,5 @@ class WindStrategy {
     virtual const LbmWindField *LbmDiagnostics() const { return nullptr; }
     virtual const PixelWindField *ReferenceDiagnostics() const { return nullptr; }
 };
-std::unique_ptr<WindStrategy> MakeWindStrategy(WorldStateView world, uint32_t endRow, const WindStrategySettings &settings);
+std::unique_ptr<WindStrategy> MakeWindStrategy(WorldMapView world, uint32_t endRow, const WindStrategySettings &settings);
 } // namespace pixel
