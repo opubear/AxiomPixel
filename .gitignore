@@ -4,3 +4,16 @@ imgui.ini
 *.awt-tmp
 /Pixel/Saves/
 /Saves/
+
+# Local source assets stay outside version control.
+/ArtRaw/
+
+# Keep Content configuration, but leave models, textures and other assets local.
+/Pixel/Content/**
+!/Pixel/Content/**/
+!/Pixel/Content/**/*.json
+!/Pixel/Content/**/*.yaml
+!/Pixel/Content/**/*.yml
+!/Pixel/Content/**/*.toml
+!/Pixel/Content/**/*.ini
+!/Pixel/Content/**/*.cfg
