@@ -1,6 +1,7 @@
 # Dependency order: measurement -> world -> gameplay -> presentation -> runtime.
 add_subdirectory(Performance)
 add_subdirectory(World)
+add_subdirectory(FormulaEditing)
 add_subdirectory(Gameplay)
 add_subdirectory(Assets)
 add_subdirectory(PixelRender)

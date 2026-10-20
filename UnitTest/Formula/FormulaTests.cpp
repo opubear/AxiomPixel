@@ -210,11 +210,45 @@ void NumericContracts() {
     expired.AdvanceTo(121);
     Require(Entries<DigArea>(expired).empty(), "failed final-position logging must not revive a carrier");
 }
+void PublicDescriptionAccess() {
+    const auto formula = Formula::Bolt(12, 30, 7).After(4).OnHit(Formula::Wind(2, -5));
+    Require(formula.Kind() == NodeKind::OnHit && formula.ChildCount() == 2, "public trigger has explicit carrier and payload slots");
+    const auto carrier = formula.Child(0);
+    const auto bolt = carrier.Child(0);
+    Require(carrier.Kind() == NodeKind::Delay && carrier.Values().Ticks == 4, "public access retains wrapper parameters");
+    Require(bolt.Kind() == NodeKind::Bolt && bolt.ChildCount() == 0, "public access retains base node kind");
+    auto parameters = bolt.Values();
+    Require(parameters.Damage == 12 && parameters.Speed == 30 && parameters.Lifetime == 7, "public base parameters copied accurately");
+    parameters.Damage = 100;
+    Require(bolt.Values().Damage == 12, "a copied parameter record cannot mutate a formula");
+    Require(formula.Child(1).Kind() == NodeKind::Wind && formula.Child(1).Values().Impulse == -5, "payload access is immutable and complete");
+    Throws<std::out_of_range>([&] { formula.Child(2); }, "out-of-range description child rejected");
+    Throws<std::out_of_range>([&] { bolt.Child(0); }, "leaf child access rejected");
+    Require(Format(carrier) == "delay(4, bolt(12, 30, 7))", "copied child remains a complete stable formula value");
+}
+void IncrementalTraceAndCancellation() {
+    Simulator sim;
+    Require(sim.IsIdle(), "new simulator is idle");
+    sim.Cast(Formula::Bolt(1, 0, 2).OnHit(Formula::Dig(1)).After(3));
+    sim.AdvanceTo(0);
+    Require(!sim.IsIdle() && sim.PendingCount() == 1 && sim.Projectiles().empty(), "future activation retains simulator even without projectiles");
+    sim.AdvanceTo(3);
+    auto trace = sim.DrainTrace();
+    Require(trace.size() == 1 && std::holds_alternative<BoltSpawn>(trace[0].Data), "drain returns current batch");
+    Require(sim.Trace().empty() && sim.DrainTrace().empty(), "drain does not replay events");
+    Require(sim.DiscardProjectile(1) && !sim.Hit(1, {}) && !sim.DiscardProjectile(1), "discard consumes carrier without collision");
+    Require(!sim.IsIdle() && sim.PendingCount() == 1, "discarded expiration remains pending");
+    sim.AdvanceTo(5);
+    Require(sim.IsIdle() && sim.DrainTrace().empty(), "discard emits neither expiry nor payload");
+    sim.Cast(Formula::Dig(1));
+    sim.AdvanceTo(5);
+    Require(sim.Trace().size() == 1, "legacy cumulative Trace remains available without drain");
+}
 } // namespace
 int main() {
     try {
         for (const auto &[name, test] : std::vector<std::pair<const char *, std::function<void()>>>{
-                 {"order and immutability", OrderAndImmutability}, {"closure and scope", ClosureAndScope}, {"scheduling and fan", SchedulingAndFan}, {"trigger isolation", TriggerIsolation}, {"nested triggers", NestedTriggers}, {"lifetime and independent casts", LifetimeAndIndependentCasts}, {"source diagnostics", Diagnostics}, {"numeric contracts", NumericContracts}}) {
+                 {"order and immutability", OrderAndImmutability}, {"closure and scope", ClosureAndScope}, {"scheduling and fan", SchedulingAndFan}, {"trigger isolation", TriggerIsolation}, {"nested triggers", NestedTriggers}, {"lifetime and independent casts", LifetimeAndIndependentCasts}, {"source diagnostics", Diagnostics}, {"numeric contracts", NumericContracts}, {"public description access", PublicDescriptionAccess}, {"incremental trace and cancellation", IncrementalTraceAndCancellation}}) {
             test();
             std::cout << "PASS " << name << '\n';
         }

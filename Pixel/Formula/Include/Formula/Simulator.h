@@ -64,6 +64,12 @@ class Simulator {
     Tick Now() const;
     std::vector<ProjectileView> Projectiles() const;
     const std::vector<TraceEntry> &Trace() const;
+    std::vector<TraceEntry> DrainTrace();
+    bool IsIdle() const;
+    std::size_t PendingCount() const;
+    // Removes a carrier without a hit, expiration event, or payload activation.
+    // Its already queued expiration remains pending until that tick is reached.
+    bool DiscardProjectile(ProjectileId id);
 
   private:
     std::unique_ptr<SimulatorState> State;

@@ -236,6 +236,14 @@ std::vector<ProjectileView> Simulator::Projectiles() const {
     return result;
 }
 const std::vector<TraceEntry> &Simulator::Trace() const { return State->Log; }
+std::vector<TraceEntry> Simulator::DrainTrace() {
+    std::vector<TraceEntry> result;
+    result.swap(State->Log);
+    return result;
+}
+bool Simulator::IsIdle() const { return State->Active.empty() && State->Jobs.empty(); }
+std::size_t Simulator::PendingCount() const { return State->Jobs.size(); }
+bool Simulator::DiscardProjectile(ProjectileId id) { return State->Active.erase(id) != 0; }
 std::string FormatTrace(const TraceEntry &entry) {
     std::ostringstream out;
     out.imbue(std::locale::classic());

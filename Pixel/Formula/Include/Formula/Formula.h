@@ -11,6 +11,29 @@ using Tick = std::uint64_t;
 struct Node;
 struct FormulaAccess;
 
+enum class NodeKind {
+    Empty, Bolt, Wind, Dig, Sequence, AddDamage, MultiplyDamage,
+    MultiplySpeed, Delay, Repeat, Fan, OnHit
+};
+
+// A copied parameter record, with only the fields belonging to Kind in use.
+// This is a public value type; the immutable implementation node stays private.
+struct NodeValues {
+    double Damage = 10;
+    double Speed = 60;
+    Tick Lifetime = 120;
+    double Radius = 3;
+    double Impulse = 120;
+    double Amount = 5;
+    double Factor = 2;
+    Tick Ticks = 30;
+    std::uint32_t Count = 3;
+    Tick Interval = 12;
+    double SpacingDegrees = 10;
+};
+
+const char *NodeKindName(NodeKind kind);
+
 // A value is an immutable description, never a live projectile. Shared bindings
 // remain unchanged when a new modifier/decorator wraps the same description.
 class Formula {
@@ -27,6 +50,12 @@ class Formula {
     Formula Repeated(std::uint32_t count, Tick interval) const;
     Formula Spread(std::uint32_t count, double spacingDegrees) const;
     Formula OnHit(const Formula &payload) const;
+
+    NodeKind Kind() const;
+    NodeValues Values() const;
+    std::size_t ChildCount() const;
+    // Children are shared immutable values. Throws out_of_range for a bad slot.
+    Formula Child(std::size_t index) const;
 
   private:
     explicit Formula(std::shared_ptr<const Node> node);

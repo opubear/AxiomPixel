@@ -86,6 +86,87 @@ Formula Formula::OnHit(const Formula &payload) const {
     FormulaAccess::Get(payload);
     return Formula(std::make_shared<Node>(Node{OnHitNode{*this, payload}}));
 }
+NodeKind Formula::Kind() const {
+    return std::visit(Overload{
+        [](const EmptyNode &) { return NodeKind::Empty; },
+        [](const BoltNode &) { return NodeKind::Bolt; },
+        [](const WindNode &) { return NodeKind::Wind; },
+        [](const DigNode &) { return NodeKind::Dig; },
+        [](const SequenceNode &) { return NodeKind::Sequence; },
+        [](const ModifyNode &n) {
+            switch (n.Kind) {
+            case ModifierKind::AddDamage: return NodeKind::AddDamage;
+            case ModifierKind::MultiplyDamage: return NodeKind::MultiplyDamage;
+            case ModifierKind::MultiplySpeed: return NodeKind::MultiplySpeed;
+            }
+            throw std::logic_error("unknown modifier");
+        },
+        [](const DelayNode &) { return NodeKind::Delay; },
+        [](const RepeatNode &) { return NodeKind::Repeat; },
+        [](const FanNode &) { return NodeKind::Fan; },
+        [](const OnHitNode &) { return NodeKind::OnHit; }
+    }, FormulaAccess::Get(*this).Data);
+}
+NodeValues Formula::Values() const {
+    NodeValues values;
+    std::visit(Overload{
+        [](const EmptyNode &) {},
+        [&](const BoltNode &n) { values.Damage = n.Damage; values.Speed = n.Speed; values.Lifetime = n.Lifetime; },
+        [&](const WindNode &n) { values.Radius = n.Radius; values.Impulse = n.Impulse; },
+        [&](const DigNode &n) { values.Radius = n.Radius; },
+        [](const SequenceNode &) {},
+        [&](const ModifyNode &n) {
+            if (n.Kind == ModifierKind::AddDamage) values.Amount = n.Value;
+            else values.Factor = n.Value;
+        },
+        [&](const DelayNode &n) { values.Ticks = n.Ticks; },
+        [&](const RepeatNode &n) { values.Count = n.Count; values.Interval = n.Interval; },
+        [&](const FanNode &n) { values.Count = n.Count; values.SpacingDegrees = n.SpacingDegrees; },
+        [](const OnHitNode &) {}
+    }, FormulaAccess::Get(*this).Data);
+    return values;
+}
+std::size_t Formula::ChildCount() const {
+    return std::visit(Overload{
+        [](const SequenceNode &n) { return n.Children.size(); },
+        [](const ModifyNode &) { return std::size_t{1}; },
+        [](const DelayNode &) { return std::size_t{1}; },
+        [](const RepeatNode &) { return std::size_t{1}; },
+        [](const FanNode &) { return std::size_t{1}; },
+        [](const OnHitNode &) { return std::size_t{2}; },
+        [](const auto &) { return std::size_t{0}; }
+    }, FormulaAccess::Get(*this).Data);
+}
+Formula Formula::Child(std::size_t index) const {
+    if (index >= ChildCount())
+        throw std::out_of_range("formula child index");
+    return std::visit(Overload{
+        [&](const SequenceNode &n) { return n.Children[index]; },
+        [](const ModifyNode &n) { return n.Child; },
+        [](const DelayNode &n) { return n.Child; },
+        [](const RepeatNode &n) { return n.Child; },
+        [](const FanNode &n) { return n.Child; },
+        [&](const OnHitNode &n) { return index == 0 ? n.Carrier : n.Payload; },
+        [](const auto &) -> Formula { throw std::out_of_range("formula has no children"); }
+    }, FormulaAccess::Get(*this).Data);
+}
+const char *NodeKindName(NodeKind kind) {
+    switch (kind) {
+    case NodeKind::Empty: return "Empty";
+    case NodeKind::Bolt: return "Bolt (base input)";
+    case NodeKind::Wind: return "Wind";
+    case NodeKind::Dig: return "Dig";
+    case NodeKind::Sequence: return "Sequence";
+    case NodeKind::AddDamage: return "Add damage";
+    case NodeKind::MultiplyDamage: return "Multiply damage";
+    case NodeKind::MultiplySpeed: return "Multiply speed";
+    case NodeKind::Delay: return "Delay";
+    case NodeKind::Repeat: return "Repeat";
+    case NodeKind::Fan: return "Fan";
+    case NodeKind::OnHit: return "On hit";
+    }
+    throw std::invalid_argument("unknown formula node kind");
+}
 const char *ModifierName(ModifierKind kind) {
     switch (kind) {
     case ModifierKind::AddDamage:
