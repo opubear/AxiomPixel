@@ -22,6 +22,7 @@ class GameCamera {
     void Zoom(bool in);
     void NextRegion();
     std::optional<std::array<int64_t, 2>> PickCell(const MousePointerState &pointer) const;
+    std::optional<WorldPosition> PickWorldPosition(const MousePointerState &pointer) const;
 
   private:
     Camera2D Camera;

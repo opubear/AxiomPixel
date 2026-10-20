@@ -64,7 +64,8 @@ ForceVector Environment::SampleForce(CellCoord cell) const {
 }
 
 void Environment::RestoreClock(double seconds, double remainder, bool deferredStep) {
-    if (!std::isfinite(seconds) || seconds < 0 || !std::isfinite(remainder) || remainder < 0 || (deferredStep ? remainder < FieldResponse::StepSeconds || remainder > .25 : remainder >= FieldResponse::StepSeconds))
+    if (!std::isfinite(seconds) || seconds < 0 || !std::isfinite(remainder) || remainder < 0 || remainder > .25
+        || (deferredStep && remainder < FieldResponse::StepSeconds))
         throw std::invalid_argument("invalid fixed simulation clock");
     SimulationSeconds = seconds;
     TimeRemainder = remainder;
@@ -73,13 +74,18 @@ void Environment::RestoreClock(double seconds, double remainder, bool deferredSt
     WaitingForBudget = deferredStep;
 }
 
-void Environment::Tick(float duration, World &world) {
+uint32_t Environment::Tick(float duration, World &world, const std::function<void()> &onStep, bool singleStep) {
     PIXEL_PROFILE_SCOPE(Environment);
     if (!std::isfinite(duration) || duration <= 0)
-        return;
+        return 0;
     constexpr double stepSeconds = FieldResponse::StepSeconds;
-    if (!WaitingForBudget)
-        TimeRemainder += std::min(double(duration), 0.25);
+    if (singleStep) {
+        if (TimeRemainder < stepSeconds)
+            TimeRemainder += stepSeconds;
+    } else if (!WaitingForBudget) {
+        TimeRemainder = std::min(TimeRemainder + double(duration), 0.25);
+    }
+    uint32_t completed = 0;
     VisitedCells = 0;
     ActiveRegions = 0;
     while (TimeRemainder >= stepSeconds) {
@@ -97,7 +103,7 @@ void Environment::Tick(float duration, World &world) {
             world.GetMutableMap().Wake(world.GetSimulationBounds());
             TimeRemainder = std::min(TimeRemainder, .25);
             WaitingForBudget = true;
-            return;
+            return completed;
         }
         Wind.UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
         TimeRemainder -= stepSeconds;
@@ -106,7 +112,13 @@ void Environment::Tick(float duration, World &world) {
         WindAdvancedForStep = false;
         WaitingForBudget = false;
         performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
+        ++completed;
+        if (onStep)
+            onStep();
+        if (singleStep)
+            break;
     }
+    return completed;
 }
 
 void Environment::ProposeRegion(World &world, WorldRect region) {

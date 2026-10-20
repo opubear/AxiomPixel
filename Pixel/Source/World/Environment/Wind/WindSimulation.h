@@ -31,6 +31,7 @@ class WindSimulation {
     void UpdateAfterMaterials(WorldMapView world, std::span<const DirtMotion> motion, float seconds);
     void AddImpulse(float x, float y, float radius, WindVelocity delta);
     void AddWorldImpulse(double x, double y, float radius, WindVelocity delta);
+    bool AddWorldImpulse(WorldPosition position, float radius, WindVelocity delta);
     WindVelocity Sample(float x, float y) const { return Backend ? Backend->Sample(x, y) : WindVelocity{}; }
     WindVelocity SampleWorld(double x, double y) const;
     WindVelocity SampleWorld(CellCoord cell, float offsetX = .5f, float offsetY = .5f) const;

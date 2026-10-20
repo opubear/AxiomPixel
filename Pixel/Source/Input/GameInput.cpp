@@ -9,13 +9,13 @@
 namespace pixel {
 GameInput::GameInput(GameSession &session, GameCamera &camera, GamePresentation &presentation, GameInputHost host)
     : Session(session), Camera(camera), Presentation(presentation), Host(std::move(host)) {
-    if (!Host.RequestQuit || !Host.ToggleDebugUI || !Host.GetFramebufferSize)
-        throw std::invalid_argument("game input requires quit, debug UI and framebuffer callbacks");
+    if (!Host.RequestQuit || !Host.ToggleDebugUI || !Host.ToggleFormulaEditor || !Host.GetFramebufferSize)
+        throw std::invalid_argument("game input requires quit, debug UI, formula editor and framebuffer callbacks");
 }
 void GameInput::ClearInputState() {
     Move.fill(false);
     JumpRequested = false;
-    Session.GetWorld().SetPlayerInput(0, false);
+    Session.GetWorld().ClearPlayerInput();
 }
 void GameInput::SetControlMode(ControlMode mode) {
     if (mode == Mode)
@@ -54,11 +54,16 @@ void GameInput::ResetGame() {
     ClearInputState();
     ResetView();
 }
-void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int, const MousePointerState &pointer) {
-    if (!Session.IsReady())
+void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) {
+    if (!Session.CanEditWorld())
         return;
     if (action != ButtonAction::ACTION_PRESS || (button != MouseButton::MOUSE_BUTTON_LEFT && button != MouseButton::MOUSE_BUTTON_RIGHT))
         return;
+    if (button == MouseButton::MOUSE_BUTTON_RIGHT && !(mods & int(Mod::MOD_SHIFT))) {
+        if (const auto target = Camera.PickWorldPosition(pointer))
+            Session.CastFormulaAt(*target);
+        return;
+    }
     const auto cell = Camera.PickCell(pointer);
     if (!cell)
         return;
@@ -89,6 +94,7 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     case Key::KEY_F3:
         SetControlMode(Mode == ControlMode::Standard ? ControlMode::DebugCamera : ControlMode::Standard);
         break;
+    case Key::KEY_F4: Host.ToggleFormulaEditor(); break;
     case Key::KEY_R: ResetGame(); break;
     case Key::KEY_PAGE_DOWN:
         if (Mode == ControlMode::DebugCamera)
@@ -100,6 +106,6 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     }
 }
 const char *GameInput::ControlsDescription() {
-    return "Pixel: left click place dirt; right click mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; T tint; PageDown next region; R new world with selected generator; Escape quit";
+    return "Pixel: left click place dirt; right click activate formula; Shift+right click mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
 }
 } // namespace pixel

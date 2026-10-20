@@ -31,6 +31,7 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
     auto &World = session.GetWorld();
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::BeginDisabled(!session.IsReady());
+        ImGui::BeginDisabled(!session.CanEditWorld());
         int64_t boundary = World.GetWindBoundary();
         ImGui::TextUnformatted("Wind blows above the world Y boundary.");
         ImGui::SetNextItemWidth(190);
@@ -51,6 +52,7 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
         }
         if (session.GetSelectedWindStrategy() == WindStrategyKind::Empty)
             ImGui::TextDisabled("No wind simulation; height is kept for comparison.");
+        ImGui::EndDisabled();
         if (const auto *streamer = World.GetStreamer()) {
             if (World.GetEnvironment().IsWaitingForBudget())
                 ImGui::TextWrapped("Simulation is waiting for world storage budget.");
@@ -110,26 +112,28 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
                                                GamePresentation &presentation, ControlMode mode,
                                                performance::GameProfiler &performance) {
     PIXEL_PROFILE_SCOPE(DebugUI);
-    if (!Visible)
-        return std::nullopt;
     std::optional<ControlMode> requestedMode;
-    ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
-        DrawGeneration(session);
-        DrawEnvironment(session, presentation);
-        DrawWindAppearance(presentation);
-        bool debugCamera = mode == ControlMode::DebugCamera;
-        if (ImGui::Checkbox("Free debug camera (F3)", &debugCamera))
-            requestedMode = debugCamera ? ControlMode::DebugCamera : ControlMode::Standard;
-        ImGui::TextUnformatted(debugCamera ? "DEBUG: WASD camera; +/- zoom; PageDown region" : "STANDARD: A/D move; Space jump; camera follows");
-        float followRate = float(camera.GetCamera().GetFollowRate());
-        if (ImGui::SliderFloat("Camera follow rate", &followRate, 0.5f, 20.f, "%.1f /s", ImGuiSliderFlags_AlwaysClamp))
-            camera.GetCamera().SetFollowRate(followRate);
-        ImGui::TextDisabled("F2: show/hide debug panel; T: tint");
-        performance.DrawUI();
+    if (Visible) {
+        ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+            DrawGeneration(session);
+            DrawEnvironment(session, presentation);
+            DrawWindAppearance(presentation);
+            ImGui::Checkbox("Formula editor (F4)", &FormulaEditor.Visible);
+            bool debugCamera = mode == ControlMode::DebugCamera;
+            if (ImGui::Checkbox("Free debug camera (F3)", &debugCamera))
+                requestedMode = debugCamera ? ControlMode::DebugCamera : ControlMode::Standard;
+            ImGui::TextUnformatted(debugCamera ? "DEBUG: WASD camera; +/- zoom; PageDown region" : "STANDARD: A/D move; Space jump; camera follows");
+            float followRate = float(camera.GetCamera().GetFollowRate());
+            if (ImGui::SliderFloat("Camera follow rate", &followRate, 0.5f, 20.f, "%.1f /s", ImGuiSliderFlags_AlwaysClamp))
+                camera.GetCamera().SetFollowRate(followRate);
+            ImGui::TextDisabled("F2: debug panel; F4: Formula Editor; T: tint");
+            performance.DrawUI();
+        }
+        ImGui::End();
     }
-    ImGui::End();
+    FormulaEditor.Draw(session);
     return requestedMode;
 }
 } // namespace pixel

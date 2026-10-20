@@ -102,10 +102,38 @@ void SessionAndPublicationContracts() {
     Require(session.IsPaused() && world.GetWindEndRow() == 0,
             "selecting expensive strategy while off must preserve disabled wind");
 }
+void FixedClockAndLatchedJump() {
+    std::optional<pixel::WorldPosition> reference;
+    for (const int rate : {30, 60, 120, 240}) {
+        pixel::GameSession session;
+        session.SetPaused(false);
+        for (int frame = 0; frame < rate; ++frame)
+            session.Tick(1.f / rate, {1, frame == 0});
+        Require(std::abs(session.GetSimulationTime() - 1) < 1e-9,
+                "session clock must count committed steps at all frame rates");
+        const auto position = session.GetWorld().GetPlayer()->GetWorldPosition();
+        if (reference) {
+            Require(position.Chunk == reference->Chunk && std::abs(position.Local[0] - reference->Local[0]) < 1e-8
+                        && std::abs(position.Local[1] - reference->Local[1]) < 1e-8,
+                    "fixed character motion/jump depends on frame subdivision");
+        } else {
+            reference = position;
+        }
+    }
+
+    pixel::GameSession session;
+    session.GetWorld().RestoreSimulationClock(0, .1, false);
+    session.RequestStep();
+    session.Tick(.2f, {});
+    Require(std::abs(session.GetSimulationTime() - 1.0 / 60) < 1e-10
+                && std::abs(session.GetWorld().GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+            "single step must consume one backlog step without adding or draining other time");
+}
 } // namespace
 int main() {
     try {
         SessionAndPublicationContracts();
+        FixedClockAndLatchedJump();
         std::cout << "Pixel session contracts passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

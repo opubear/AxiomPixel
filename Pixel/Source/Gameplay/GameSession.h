@@ -1,5 +1,6 @@
 #pragma once
 #include "PlayerInput.h"
+#include "FormulaRuntime.h"
 #include "World/World.h"
 #include <string>
 
@@ -19,6 +20,11 @@ class GameSession {
     bool TryReset();
     bool TryRecover();
     bool IsReady() const { return Ready; }
+    bool CanEditWorld() const { return Ready && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
+    FormulaRuntime &GetFormulaRuntime() { return Formulas; }
+    const FormulaRuntime &GetFormulaRuntime() const { return Formulas; }
+    bool CastFormulaAt(WorldPosition target);
+    const std::string &GetFormulaError() const { return FormulaError; }
     const WorldGenerationSettings &GetGenerationSettings() const { return StreamConfiguration.Generation; }
     const WorldGenerationSettings &GetNextGenerationSettings() const { return NextGeneration; }
     void SetNextGenerator(WorldGeneratorKind kind) { NextGeneration.Kind = kind; }
@@ -32,13 +38,16 @@ class GameSession {
     void RequestStep() { StepRequested = true; }
     double GetSimulationTime() const { return SimulationTime; }
     WindStrategyKind GetSelectedWindStrategy() const { return WindKind; }
-    void SelectWindStrategy(WindStrategyKind kind);
-    void SetWindStartHeight(int height);
-    void SetWindBoundary(int64_t y);
+    bool SelectWindStrategy(WindStrategyKind kind);
+    bool SetWindStartHeight(int height);
+    bool SetWindBoundary(int64_t y);
     const std::filesystem::path &GetSaveDirectory() const { return SaveDirectory; }
 
   private:
     World GameWorld{WorldWidth, WorldHeight};
+    FormulaRuntime Formulas;
+    std::array<double, 2> LastAim{1, 0};
+    std::string FormulaError;
     bool Persistent = false;
     bool Paused = true;
     bool StepRequested = false;
@@ -53,5 +62,6 @@ class GameSession {
     bool Load();
     void LoadDirectory(const std::filesystem::path &directory);
     void WriteMetadata();
+    void ReplacingWorld();
 };
 } // namespace pixel

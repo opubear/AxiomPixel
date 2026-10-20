@@ -147,6 +147,15 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
             character.Parameters[0] < 0 || character.Parameters[0] > 1)
             throw std::invalid_argument("character geometry and opaque colours must be finite and valid");
     }
+    for (const auto &draw : frame.FormulaDraws) {
+        const auto &geometry = draw.CenterRadius;
+        if (std::any_of(geometry.begin(), geometry.end(), [](float value) { return !std::isfinite(value); }) ||
+            geometry[2] <= 0 || geometry[3] <= 0 ||
+            !std::isfinite(geometry[0] - geometry[2]) || !std::isfinite(geometry[0] + geometry[2]) ||
+            !std::isfinite(geometry[1] - geometry[3]) || !std::isfinite(geometry[1] + geometry[3]) ||
+            draw.Color[3] != 1 || std::any_of(draw.Color.begin(), draw.Color.end(), [](float value) { return !std::isfinite(value) || value < 0 || value > 1; }))
+            throw std::invalid_argument("formula circles require finite geometry and opaque colours");
+    }
     switch (frame.DisplayMode) {
     case GridDisplayMode::Materials:
         if (std::any_of(frame.Cells.begin(), frame.Cells.end(), [layers](uint32_t id) {

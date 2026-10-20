@@ -57,6 +57,12 @@ struct CharacterDraw {
     std::array<float, 4> Parameters{0.25f, 0, 0, 0}; // head height fraction
 };
 static_assert(sizeof(CharacterDraw) == 64);
+// Opaque render-owned projectile geometry. IDs remain CPU diagnostics only.
+struct FormulaDraw {
+    std::array<float, 4> CenterRadius{}; // centre X/Y, horizontal/vertical radius
+    std::array<float, 4> Color{1, 1, 0, 1}; // linear opaque yellow
+    uint64_t WorldEpoch = 0, CastId = 0, ProjectileId = 0;
+};
 struct WorldGridFrameView {
     // Material layer IDs plus surface/strip bits, or packed linear RGB8 in ForceField mode.
     std::span<const uint32_t> Cells;
@@ -73,6 +79,7 @@ struct WorldGridFrameView {
     std::span<const uint64_t> RegionVersions;
     std::span<const uint64_t> WindRegionVersions;
     bool MissingOutsideRegion = false;
+    std::span<const FormulaDraw> FormulaDraws;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
@@ -90,7 +97,7 @@ class WorldGridFrame {
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
     std::span<uint32_t> WindCells() { return WindStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws}; }
     void SetRegion(std::array<int64_t, 2> origin, uint32_t width, uint32_t height);
     uint32_t GetWidth() const { return Width; }
     uint32_t GetHeight() const { return Height; }
@@ -109,6 +116,10 @@ class WorldGridFrame {
     bool WindRegionIsActive(size_t index) const { return WindRegionActive.at(index) != 0; }
     void SetWindRegionActive(size_t index, bool active) { WindRegionActive.at(index) = active; }
     pixel::performance::MemoryUsage GetMemoryUsage() const;
+    // Formula presentation is reported separately from world publication budget.
+    pixel::performance::MemoryUsage GetFormulaMemoryUsage() const {
+        return pixel::performance::VectorStorage(FormulaDraws);
+    }
     void TrackPublication(uint64_t identity, std::function<void()> release) {
         if (BudgetIdentity == identity)
             return;
@@ -125,6 +136,7 @@ class WorldGridFrame {
     float WindTimeSeconds = 0;
     bool HasWind = false;
     bool MissingOutsideRegion = false;
+    std::vector<FormulaDraw> FormulaDraws;
 
   private:
     std::vector<uint32_t> CellStorage, WindStorage;

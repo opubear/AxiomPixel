@@ -16,9 +16,9 @@ struct Fixture {
     pixel::GameCamera Camera;
     pixel::GamePresentation Presentation;
     std::array<int, 2> Framebuffer{800, 600};
-    int QuitRequests = 0, PanelToggles = 0;
+    int QuitRequests = 0, PanelToggles = 0, EditorToggles = 0;
     pixel::GameInput Input{Session, Camera, Presentation, {
-        [this] { ++QuitRequests; }, [this] { ++PanelToggles; }, [this] { return Framebuffer; }}};
+        [this] { ++QuitRequests; }, [this] { ++PanelToggles; }, [this] { ++EditorToggles; }, [this] { return Framebuffer; }}};
     Fixture() {
         Session.GetWorld().DisableWind();
         Input.ResetView();
@@ -74,6 +74,12 @@ void CommandsAndReset() {
     Require(f.Presentation.DisplayMode == GridDisplayMode::ForceField, "F1 must execute once per press");
     f.KeyEvent(Key::KEY_F2);
     f.KeyEvent(Key::KEY_F2, ButtonAction::ACTION_REPEAT);
+    f.KeyEvent(Key::KEY_F2, ButtonAction::ACTION_RELEASE);
+    Require(f.PanelToggles == 1 && f.EditorToggles == 0, "F2 must toggle only the debug panel");
+    f.KeyEvent(Key::KEY_F4);
+    f.KeyEvent(Key::KEY_F4, ButtonAction::ACTION_REPEAT);
+    f.KeyEvent(Key::KEY_F4, ButtonAction::ACTION_RELEASE);
+    Require(f.PanelToggles == 1 && f.EditorToggles == 1, "F4 must toggle only the formula editor once per press");
     f.KeyEvent(Key::KEY_ESCAPE);
     f.KeyEvent(Key::KEY_ESCAPE, ButtonAction::ACTION_RELEASE);
     Require(f.PanelToggles == 1 && f.QuitRequests == 1, "host actions must execute once per press");
@@ -121,6 +127,10 @@ void MouseEditing() {
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_RELEASE, 0, oldEvent);
     Require(world.GetCell(100, 100).Type == pixel::CellTypes::Dirt, "mouse release must not edit world");
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, oldEvent);
+    Require(world.GetCell(100, 100).Type == pixel::CellTypes::Dirt &&
+                f.Session.GetFormulaRuntime().Projectiles().size() == 1,
+            "right press must activate a formula without mining the target");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), oldEvent);
     Require(world.GetCell(100, 100).Type == pixel::CellTypes::Empty, "right press must remove dirt");
     auto invalid = oldEvent;
     invalid.FramebufferSize = {0, 0};
@@ -130,12 +140,43 @@ void MouseEditing() {
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, invalid);
     Require(world.GetCell(100, 100).Type == pixel::CellTypes::Empty, "invalid/outside click must not edit world");
 }
+
+void FormulaInputAndContinuousAim() {
+    Fixture f;
+    auto &runtime = f.Session.GetFormulaRuntime();
+    const MousePointerState centre{{400, 300}, {800, 600}, {800, 600}};
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, centre);
+    Require(runtime.Projectiles().size() == 1, "paused right press must create the final bolt");
+    const auto ball = runtime.Projectiles().front();
+    const auto relative = ball.Position.RelativeTo({512, 510});
+    Require(std::abs(relative[0] - 1.6) < 1e-9 && std::abs(relative[1]) < 1e-9,
+            "zero-distance aim must use right-facing muzzle outside the player");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_RELEASE, 0, centre);
+    f.Session.Tick(.2f, {});
+    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles().front().Position.Local == ball.Position.Local,
+            "release or pause moved/repeated the bolt");
+    f.Session.RequestStep();
+    f.Session.Tick(.2f, {});
+    const auto moved = runtime.Projectiles().front().Position.RelativeTo(ball.Position.Cell());
+    const auto before = ball.Position.RelativeTo(ball.Position.Cell());
+    Require(std::abs(moved[0] - before[0] - 1) < 1e-9, "single step must move the default bolt one cell");
+
+    const pixel::WorldPosition distant{{int64_t{1} << 44, -(int64_t{1} << 44)}, {.125, .75}};
+    f.Camera.GetCamera().SetWorldPosition(distant);
+    f.Camera.SetFramebufferSize({1600, 1200});
+    const auto target = f.Camera.PickWorldPosition({{400.25, 300.5}, {800, 600}, {800, 600}});
+    Require(target && target->Chunk == distant.Chunk &&
+                std::abs(target->Local[0] - .140625) < 1e-12 && std::abs(target->Local[1] - .78125) < 1e-12,
+            "continuous old-size event lost distant fractional aim");
+    Require(!f.Camera.PickWorldPosition({{800, 300}, {800, 600}, {800, 600}}), "outside continuous aim accepted");
+}
 } // namespace
 int main() {
     try {
         HeldInputAndModes();
         CommandsAndReset();
         MouseEditing();
+        FormulaInputAndContinuousAim();
         std::cout << "Pixel input behavior passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

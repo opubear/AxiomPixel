@@ -86,7 +86,7 @@ void LegacyFlatAndResetFailure() {
     std::ostringstream rest;
     rest << input.rdbuf();
     input.close();
-    header.replace(header.find("World 3"), 7, "World 2");
+    header.replace(header.find("World 4"), 7, "World 2");
     { std::ofstream output(metadata); output << header << '\n' << rest.str(); }
     WorldGenerationSettings natural;
     natural.Kind = WorldGeneratorKind::Natural;
@@ -140,6 +140,27 @@ void FailedRecoveryIsIsolatedAndRetryable() {
     Require(world.GetCell(32, 10).Type == CellTypeId::Dirt && session.GetSaveError().empty(),
             "recovery failed to restore content or clear the error");
 }
+void Version3GenerationRemainsReadable() {
+    SaveRoot files;
+    WorldGenerationSettings natural;
+    natural.Kind = WorldGeneratorKind::Natural;
+    natural.Seed = 987654;
+    std::filesystem::path metadata;
+    {
+        GameSession session(true, natural);
+        session.Save();
+        metadata = session.GetSaveDirectory() / "world.meta";
+    }
+    std::ifstream input(metadata);
+    std::ostringstream contents;
+    contents << input.rdbuf();
+    input.close();
+    auto text = contents.str();
+    text.replace(text.find("World 4"), 7, "World 3");
+    { std::ofstream output(metadata); output << text; }
+    GameSession loaded(true);
+    Require(loaded.GetGenerationSettings() == natural, "v3 generation descriptor was skipped by the v4 reader");
+}
 } // namespace
 
 int main() {
@@ -147,6 +168,7 @@ int main() {
         NaturalPersistenceAndStrategySelection();
         LegacyFlatAndResetFailure();
         FailedRecoveryIsIsolatedAndRetryable();
+        Version3GenerationRemainsReadable();
         std::cout << "Generation strategy persistence, legacy compatibility and reset recovery passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

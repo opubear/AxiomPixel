@@ -59,6 +59,9 @@ class World {
     void AddWindImpulse(double x, double y, float radius, WindVelocity delta) {
         Environment.GetWindSimulation().AddWorldImpulse(x, y, radius, delta);
     }
+    bool AddWindImpulse(WorldPosition position, float radius, WindVelocity delta) {
+        return Environment.GetWindSimulation().AddWorldImpulse(position, radius, delta);
+    }
     WorldRect GetWindBounds() const;
     WorldMapView GetWindView() const { return Map.View(GetWindBounds()); }
 
@@ -72,11 +75,12 @@ class World {
         if (Streamer)
             Streamer->RetryFailures();
     }
-    void Tick(float duration);
+    uint32_t Tick(float duration, const std::function<void()> &onStep = {}, bool singleStep = false);
     void SpawnPlayer(double x, double y);
     void RestorePlayer(WorldPosition position);
     const std::optional<Character> &GetPlayer() const { return Player; }
     void SetPlayerInput(int horizontal, bool jump);
+    void ClearPlayerInput() { PlayerHorizontal = 0; PlayerJump = false; }
     const pixel::Environment &GetEnvironment() const { return Environment; }
     const WorldMap &GetMap() const { return Map; }
     WorldMap &GetMutableMap() { return Map; }

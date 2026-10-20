@@ -10,6 +10,7 @@
 #include "imgui_internal.h"
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <thread>
 
@@ -51,13 +52,16 @@ void MovePointer(Axiom &app, ImVec2 p) {
     platform->PollEvents();
     platform->OnCursorPosCallback(p.x, p.y);
 }
-void Click(Axiom &app, ImVec2 p, int mods = 0) {
+void ClickButton(Axiom &app, ImVec2 p, int button, int mods = 0) {
     auto &engine = *app.Engine;
     MovePointer(app, p);
-    engine.GetPlatform()->OnButtonCallback(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, mods);
+    engine.GetPlatform()->OnButtonCallback(button, GLFW_PRESS, mods);
     Draw(app, 2);
-    engine.GetPlatform()->OnButtonCallback(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, mods);
+    engine.GetPlatform()->OnButtonCallback(button, GLFW_RELEASE, mods);
     Draw(app, 2);
+}
+void Click(Axiom &app, ImVec2 p, int mods = 0) {
+    ClickButton(app, p, GLFW_MOUSE_BUTTON_LEFT, mods);
 }
 void SendKey(Axiom &app, int code, bool down, int mods = 0) {
     auto &engine = *app.Engine;
@@ -66,8 +70,17 @@ void SendKey(Axiom &app, int code, bool down, int mods = 0) {
 }
 // Tab navigation gives the actual production item's rectangle. This avoids
 // duplicating row counts as optional solver diagnostics and memory rows change.
-ImVec2 ControlPoint(Axiom &app, const char *label) {
-    auto *window = ImGui::FindWindowByName("Pixel Debug");
+ImVec2 ControlPoint(Axiom &app, const char *label, const char *owner = "Pixel Debug", const char *child = nullptr) {
+    auto *window = ImGui::FindWindowByName(owner);
+    if (window && child) {
+        auto *root = window;
+        window = nullptr;
+        for (auto *candidate : ImGui::GetCurrentContext()->Windows)
+            if (candidate->RootWindow == root && std::strstr(candidate->Name, child)) {
+                window = candidate;
+                break;
+            }
+    }
     Require(window && window->Active, "default Pixel Debug window is missing");
     const auto id = window->GetID(label);
     auto &context = *ImGui::GetCurrentContext();
@@ -77,7 +90,7 @@ ImVec2 ControlPoint(Axiom &app, const char *label) {
     context.IO.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     const auto padding = ImGui::GetStyle().WindowPadding;
     Click(app, {window->Pos.x + padding.x / 2, window->Pos.y + window->TitleBarHeight + padding.y / 2});
-    for (int attempt = 0; attempt < 64; ++attempt) {
+    for (int attempt = 0; attempt < 128; ++attempt) {
         if (context.NavWindow == window && context.NavId == id && context.NavIdIsAlive) {
             const auto rect = ImGui::WindowRectRelToAbs(window, window->NavRectRel[ImGuiNavLayer_Main]);
             context.IO.ConfigFlags = originalFlags;
@@ -157,6 +170,11 @@ void RunPixelDebugUISmoke() {
     app.Initialize();
     app.Begin();
     Draw(app, 3);
+    auto *formulaWindow = ImGui::FindWindowByName("Formula Editor");
+    Require(formulaWindow && formulaWindow->Active, "default Formula Editor is missing");
+    Click(app, {formulaWindow->Pos.x + formulaWindow->Size.x - ImGui::GetStyle().FramePadding.x - ImGui::GetFontSize() / 2,
+                formulaWindow->Pos.y + formulaWindow->TitleBarHeight / 2});
+    Require(!ImGui::FindWindowByName("Formula Editor")->Active, "Formula editor close button did not hide the separate window");
     Require(app.GetDebugUI() && !engine.GetScene() && !g_render_context, "2D UI created a 3D scene/material context");
     Require(ImGui::GetDrawData()->TotalVtxCount > 0 && app.GetDebugUI()->FrameBuffers.LiveBufferCount() > 0,
             "debug UI did not upload GPU geometry");
@@ -255,4 +273,82 @@ void RunPixelDebugUISmoke() {
     app.Shutdown();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
     std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, resize, memory collection/table, 2D-only lifecycle\n";
+}
+
+void RunPixelFormulaUISmoke() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *pixel = game.get();
+    PixelSmokeApplication app(std::move(game), {true});
+    app.Initialize();
+    app.Begin();
+    Draw(app, 3);
+    auto &runtime = pixel->GetSession().GetFormulaRuntime();
+    auto *editor = ImGui::FindWindowByName("Formula Editor");
+    Require(editor && editor->Active, "separate Formula Editor did not open");
+    SendKey(app, GLFW_KEY_F2, true);
+    SendKey(app, GLFW_KEY_F2, false);
+    Require(!ImGui::FindWindowByName("Pixel Debug")->Active && editor->Active,
+            "F2 must hide only Pixel Debug while Formula Editor remains usable");
+    const auto worldBefore = CopyWorldCells(pixel->GetWorld());
+    ClickButton(app, {editor->Pos.x + 20, editor->Pos.y + 120}, GLFW_MOUSE_BUTTON_RIGHT);
+    Require(runtime.Projectiles().empty() && CopyWorldCells(pixel->GetWorld()) == worldBefore,
+            "right click inside Formula Editor leaked into gameplay");
+
+    const auto choose = [&](const char *label, int row, const char *child = nullptr) {
+        Click(app, ControlPoint(app, label, "Formula Editor", child));
+        const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
+        Require(!popups.empty() && popups.back().Window, "Formula combo did not open");
+        const auto *popup = popups.back().Window;
+        const auto &style = ImGui::GetStyle();
+        Click(app, {popup->Pos.x + style.WindowPadding.x + 35,
+                    popup->Pos.y + style.WindowPadding.y + row * (ImGui::GetFontSize() + style.ItemSpacing.y) + ImGui::GetFontSize() / 2});
+    };
+    choose("Preset (draft only)", 1);
+    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Bolt,
+            "preset changed the active description before Apply");
+    Click(app, ControlPoint(app, "Apply", "Formula Editor"));
+    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Fan,
+            "production Apply did not install fan preset");
+
+    choose("New node type", int(pixel::formula::NodeKind::Sequence), "/Parameters_");
+    Click(app, ControlPoint(app, "Wrap selected", "Formula Editor", "/Parameters_"));
+    Click(app, ControlPoint(app, "Apply", "Formula Editor"));
+    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Sequence
+                && runtime.ActiveFormula().ChildCount() == 1
+                && runtime.ActiveFormula().Child(0).Kind() == pixel::formula::NodeKind::Fan,
+            "production tree wrap did not change the structure");
+
+    SendKey(app, GLFW_KEY_F2, true);
+    SendKey(app, GLFW_KEY_F2, false);
+    Require(ImGui::FindWindowByName("Pixel Debug")->Active && editor->Active,
+            "F2 must reopen only Pixel Debug");
+    SendKey(app, GLFW_KEY_F4, true);
+    SendKey(app, GLFW_KEY_F4, false);
+    Require(!editor->Active && ImGui::FindWindowByName("Pixel Debug")->Active,
+            "F4 must hide only Formula Editor");
+    SendKey(app, GLFW_KEY_F2, true);
+    SendKey(app, GLFW_KEY_F2, false);
+    Require(!editor->Active && !ImGui::FindWindowByName("Pixel Debug")->Active,
+            "F2 must not reopen a hidden Formula Editor");
+    auto *platform = app.Engine->GetPlatform();
+    int width = 0, height = 0;
+    glfwGetWindowSize(platform->GetWindows(), &width, &height);
+    ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_RIGHT);
+    Require(runtime.Projectiles().size() == 3, "real outside right click did not activate three-way fan");
+    SendKey(app, GLFW_KEY_F4, true);
+    SendKey(app, GLFW_KEY_F4, false);
+    Require(editor->Active && !ImGui::FindWindowByName("Pixel Debug")->Active,
+            "F4 must reopen Formula Editor while Pixel Debug stays hidden");
+    Click(app, ControlPoint(app, "Delete", "Formula Editor", "/Parameters_"));
+    Click(app, ControlPoint(app, "Apply", "Formula Editor"));
+    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Empty && runtime.Projectiles().size() == 3,
+            "deleting the root did not produce Empty or mutated old instances");
+    Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
+    Require(runtime.Projectiles().empty() && runtime.Stats().Pending == 0, "Clear running retained active or delayed work");
+    editor = ImGui::FindWindowByName("Formula Editor");
+    editor->Collapsed = true;
+    Draw(app, 2);
+    Require(CopyWorldCells(pixel->GetWorld()) == worldBefore, "Formula UI structure editing changed world cells");
+    app.Shutdown();
+    std::cout << "Formula ImGui passed: preset/Apply, tree wrap/delete, version isolation, right capture, independent F2/F4 and clear\n";
 }

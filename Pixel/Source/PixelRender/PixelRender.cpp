@@ -4,6 +4,7 @@
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -30,6 +31,13 @@ struct WindConstants {
     std::array<uint32_t, 2> NoiseOrigin;
 };
 static_assert(sizeof(WindConstants) == 64 && offsetof(WindConstants, Opacity) == 32);
+struct FormulaConstants {
+    std::array<float, 4> CenterRadius{};
+    std::array<float, 4> Color{1, 1, 0, 1};
+    std::array<uint32_t, 4> Mode{};
+};
+static_assert(sizeof(FormulaConstants) == 48);
+constexpr std::array FormulaBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
 constexpr std::array CharacterBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
 constexpr std::array PostBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
@@ -75,7 +83,7 @@ void PixelRender::Initialize() {
     if (!RHI.IsPresentationSRGB())
         throw std::runtime_error("2D rendering requires an sRGB presentation target");
     const uint32_t slots = RHI.GetFrameSlotCount();
-    if (!slots || slots > UINT32_MAX / 12)
+    if (!slots || slots > UINT32_MAX / 15)
         throw std::runtime_error("invalid RHI frame slot count");
     constexpr std::array<float, 8> vertices{-1, -1, 1, -1, 1, 1, -1, 1};
     constexpr std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
@@ -93,7 +101,7 @@ void PixelRender::Initialize() {
         for (size_t index = 0; index < Background->Layers.size(); ++index)
             BackgroundUpload->WriteRegion(Background->Layers[index].Image->Pixels, index * layerBytes);
     }
-    Pool = RHI.CreateImageDescriptorPool(7 * slots, 10 * slots, 4 * slots);
+    Pool = RHI.CreateImageDescriptorPool(11 * slots, 15 * slots, 5 * slots);
     Frames.resize(slots);
     for (auto &frame : Frames) {
         constexpr uint64_t initialBytes = uint64_t(Grid2D::RegionSize) * Grid2D::RegionSize * sizeof(uint32_t);
@@ -134,6 +142,11 @@ void PixelRender::CreateColorTargets() {
         frame.WindSet.reset();
         frame.WindPostSet.reset();
         frame.WindCharacterSet.reset();
+        frame.FormulaSet.reset();
+        frame.WindFormulaSet.reset();
+        frame.FormulaPostSet.reset();
+        frame.FormulaCharacterSet.reset();
+        frame.HasFormula = false;
         frame.HasWind = false;
         frame.HasCharacter = false;
         frame.RegionVersions.clear();
@@ -143,6 +156,7 @@ void PixelRender::CreateColorTargets() {
     for (auto &frame : Frames) {
         frame.Color = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.WindColor = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
+        frame.FormulaColor = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.CharacterColor = RHI.CreateTexture({Extent.Width, Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
     }
     const auto &vertex = GetShaderInfo("Pixel2DFullscreen.vs");
@@ -150,6 +164,8 @@ void PixelRender::CreateColorTargets() {
         WorldPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DWorldGrid.fs"), WorldBindings, Frames.front().Color.get(), sizeof(WorldConstants)});
     if (!WindPipeline)
         WindPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DWind.fs"), WindBindings, Frames.front().WindColor.get(), sizeof(WindConstants)});
+    if (!FormulaPipeline)
+        FormulaPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DFormula.fs"), FormulaBindings, Frames.front().FormulaColor.get(), sizeof(FormulaConstants)});
     if (!CharacterPipeline)
         CharacterPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo("Pixel2DCharacter.fs"), CharacterBindings, Frames.front().CharacterColor.get(), sizeof(CharacterDraw)});
     PostPipeline = RHI.CreateRasterPipeline({vertex, GetShaderInfo(PostShader), PostBindings, nullptr, sizeof(PostProcessParameters)});
@@ -166,6 +182,12 @@ void PixelRender::CreateColorTargets() {
         frame.WindPostSet = RHI.CreateImageDescriptorSet(*Pool, *PostPipeline, windPostBindings);
         const std::array windCharacterBindings{RHIImageBinding{0, frame.WindColor.get()}};
         frame.WindCharacterSet = RHI.CreateImageDescriptorSet(*Pool, *CharacterPipeline, windCharacterBindings);
+        frame.FormulaSet = RHI.CreateImageDescriptorSet(*Pool, *FormulaPipeline, characterBindings);
+        frame.WindFormulaSet = RHI.CreateImageDescriptorSet(*Pool, *FormulaPipeline, windCharacterBindings);
+        const std::array formulaBindings{RHIImageBinding{0, frame.FormulaColor.get()}};
+        frame.FormulaCharacterSet = RHI.CreateImageDescriptorSet(*Pool, *CharacterPipeline, formulaBindings);
+        const std::array formulaPostBindings{RHIImageBinding{0, frame.FormulaColor.get()}, RHIImageBinding{1, nullptr, Sampler.get()}};
+        frame.FormulaPostSet = RHI.CreateImageDescriptorSet(*Pool, *PostPipeline, formulaPostBindings);
     }
 }
 void PixelRender::OnPresentationChanged(const RHIPresentationChanged &) {
@@ -304,13 +326,41 @@ void PixelRender::RecordWind(RHICommandList &commands, FrameResources &frame, co
     commands.EndPass();
     commands.TransitionTexture(*frame.WindColor, RHITextureState::FragmentSampledRead);
 }
+void PixelRender::RecordFormula(RHICommandList &commands, FrameResources &frame, std::span<const FormulaDraw> draws) {
+    commands.TransitionTexture(*frame.FormulaColor, RHITextureState::ColorAttachment);
+    commands.BeginColorPass(*frame.FormulaColor);
+    SetFullViewport(commands);
+    commands.BindPipeline(*FormulaPipeline);
+    commands.BindDescriptorSet(*FormulaPipeline, frame.HasWind ? *frame.WindFormulaSet : *frame.FormulaSet, 0);
+    FormulaConstants constants;
+    commands.PushConstants(*FormulaPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
+    commands.DrawIndexed(6); // Copy the scene once, then preserve previous circles with discard.
+    constants.Mode[0] = 1;
+    for (const auto &draw : draws) {
+        const auto &g = draw.CenterRadius;
+        const float left = std::max(0.f, std::floor(g[0] - g[2]));
+        const float top = std::max(0.f, std::floor(g[1] - g[3]));
+        const float right = std::min(float(Extent.Width), std::ceil(g[0] + g[2]));
+        const float bottom = std::min(float(Extent.Height), std::ceil(g[1] + g[3]));
+        if (right <= left || bottom <= top)
+            continue;
+        commands.SetViewport({left, top, right - left, bottom - top, 0, 1});
+        commands.SetScissor({int32_t(left), int32_t(top), uint32_t(right - left), uint32_t(bottom - top)});
+        constants.CenterRadius = draw.CenterRadius;
+        constants.Color = draw.Color;
+        commands.PushConstants(*FormulaPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
+        commands.DrawIndexed(6);
+    }
+    commands.EndPass();
+    commands.TransitionTexture(*frame.FormulaColor, RHITextureState::FragmentSampledRead);
+}
 void PixelRender::RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character) {
     PIXEL_PROFILE_SCOPE(CharacterCommands);
     commands.TransitionTexture(*frame.CharacterColor, RHITextureState::ColorAttachment);
     commands.BeginColorPass(*frame.CharacterColor);
     SetFullViewport(commands);
     commands.BindPipeline(*CharacterPipeline);
-    commands.BindDescriptorSet(*CharacterPipeline, frame.HasWind ? *frame.WindCharacterSet : *frame.CharacterSet, 0);
+    commands.BindDescriptorSet(*CharacterPipeline, frame.HasFormula ? *frame.FormulaCharacterSet : (frame.HasWind ? *frame.WindCharacterSet : *frame.CharacterSet), 0);
     commands.PushConstants(*CharacterPipeline, RHIShaderStage::Fragment, 0, sizeof(character), &character);
     commands.DrawIndexed(6);
     commands.EndPass();
@@ -321,7 +371,7 @@ void PixelRender::RecordPost(RHICommandList &commands, FrameResources &frame, co
     commands.BeginPresentPass();
     SetFullViewport(commands);
     commands.BindPipeline(*PostPipeline);
-    commands.BindDescriptorSet(*PostPipeline, frame.HasCharacter ? *frame.CharacterPostSet : (frame.HasWind ? *frame.WindPostSet : *frame.PostSet), 0);
+    commands.BindDescriptorSet(*PostPipeline, frame.HasCharacter ? *frame.CharacterPostSet : (frame.HasFormula ? *frame.FormulaPostSet : (frame.HasWind ? *frame.WindPostSet : *frame.PostSet)), 0);
     commands.PushConstants(*PostPipeline, RHIShaderStage::Fragment, 0, sizeof(parameters), &parameters);
     commands.DrawIndexed(6);
     RecordOverlay(commands);
@@ -340,6 +390,7 @@ void PixelRender::Draw() {
         PIXEL_PROFILE_SCOPE(Upload);
         PrepareGridUpload(frame, input);
     }
+    frame.HasFormula = !input.FormulaDraws.empty() && input.DisplayMode == GridDisplayMode::Materials;
     frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
         if (!MaterialsUploaded) {
@@ -355,6 +406,8 @@ void PixelRender::Draw() {
         RecordWorld(commands, frame, input);
         if (frame.HasWind)
             RecordWind(commands, frame, input);
+        if (frame.HasFormula)
+            RecordFormula(commands, frame, input.FormulaDraws);
         if (frame.HasCharacter)
             RecordCharacter(commands, frame, *input.Character);
         RecordPost(commands, frame, input.Post);
@@ -371,7 +424,7 @@ void PixelRender::Draw() {
 }
 const RHITexture &PixelRender::SceneColor(uint32_t slot) const {
     const auto &frame = Frames.at(slot);
-    return frame.HasCharacter ? *frame.CharacterColor : (frame.HasWind ? *frame.WindColor : *frame.Color);
+    return frame.HasCharacter ? *frame.CharacterColor : (frame.HasFormula ? *frame.FormulaColor : (frame.HasWind ? *frame.WindColor : *frame.Color));
 }
 const RHITexture &PixelRender::WorldColor(uint32_t slot) const { return *Frames.at(slot).Color; }
 WorldGridFrameView PixelRender::PublishedFrame() const {
@@ -391,6 +444,7 @@ void PixelRender::Clear() {
     WorldPipeline.reset();
     CharacterPipeline.reset();
     WindPipeline.reset();
+    FormulaPipeline.reset();
     MaterialUpload.reset();
     Materials.reset();
     BackgroundUpload.reset();

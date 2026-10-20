@@ -127,6 +127,20 @@ void WindSimulation::AddWorldImpulse(double x, double y, float radius, WindVeloc
         throw std::invalid_argument("wind impulse lies outside the active domain");
     AddImpulse(float(localX), float(localY), radius, delta);
 }
+bool WindSimulation::AddWorldImpulse(WorldPosition position, float radius, WindVelocity delta) {
+    if (!Backend || !Domain.Width || !Domain.Height || !std::isfinite(radius) || radius <= 0
+        || !std::isfinite(delta.X) || !std::isfinite(delta.Y))
+        return false;
+    position.Normalize();
+    const auto local = position.RelativeTo(Domain.Origin);
+    if (local[0] < 0 || local[1] < 0 || local[0] >= Domain.Width || local[1] >= Domain.Height)
+        return false;
+    const auto narrowInside = [](double value, uint32_t extent) {
+        return std::clamp(float(value), 0.0f, std::nextafter(float(extent), 0.0f));
+    };
+    AddImpulse(narrowInside(local[0], Domain.Width), narrowInside(local[1], Domain.Height), radius, delta);
+    return true;
+}
 WindVelocity WindSimulation::SampleWorld(double x, double y) const {
     return Sample(float(x - double(Domain.Origin.X)), float(y - double(Domain.Origin.Y)));
 }

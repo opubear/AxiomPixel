@@ -11,7 +11,7 @@
 #include <cmath>
 
 PixelGame::PixelGame(bool persistent)
-    : Session(persistent, persistent ? pixel::GameSession::DefaultGeneration() : pixel::WorldGenerationSettings{}), ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, {[] { GAxiom->Engine->GetPlatform()->CloseWindow(); }, [this] { DebugUI.Toggle(); }, [] {
+    : Session(persistent, persistent ? pixel::GameSession::DefaultGeneration() : pixel::WorldGenerationSettings{}), ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, {[] { GAxiom->Engine->GetPlatform()->CloseWindow(); }, [this] { DebugUI.Toggle(); }, [this] { DebugUI.ToggleFormulaEditor(); }, [] {
               std::array<int, 2> size{};
               GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);
               return size; }}) {}
@@ -74,6 +74,7 @@ void PixelGame::Initialize() {
 }
 
 void PixelGame::FrameBegin() {
+    Session.GetFormulaRuntime().BeginFrame();
     Performance.BeginFrame();
     std::array<int, 2> size{};
     GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);

@@ -15,6 +15,7 @@ enum class ControlMode { Standard, DebugCamera };
 struct GameInputHost {
     std::function<void()> RequestQuit;
     std::function<void()> ToggleDebugUI;
+    std::function<void()> ToggleFormulaEditor;
     std::function<std::array<int, 2>()> GetFramebufferSize;
 };
 

@@ -2,6 +2,7 @@
 
 #include "ForceField.h"
 #include "Wind/WindSimulation.h"
+#include <functional>
 
 namespace pixel {
 class World;
@@ -11,7 +12,8 @@ class Environment {
     explicit Environment(WorldMap &map) : BaseForces(map) {}
     performance::MemoryUsage GetMemoryUsage() const;
     const ForceField &GetBaseForceField() const { return BaseForces; }
-    void Tick(float duration, World &world);
+    // Notifications run only after a complete material/wind step commits.
+    uint32_t Tick(float duration, World &world, const std::function<void()> &onStep = {}, bool singleStep = false);
     ForceVector SampleForce(CellCoord cell) const;
     WindSimulation &GetWindSimulation() { return Wind; }
     const WindSimulation &GetWindSimulation() const { return Wind; }

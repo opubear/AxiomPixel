@@ -1,5 +1,6 @@
 #pragma once
 #include "Input/GameInput.h"
+#include "FormulaDebugUI.h"
 #include <optional>
 
 namespace pixel {
@@ -12,11 +13,13 @@ namespace performance { class GameProfiler; }
 class PixelDebugUI {
   public:
     void Toggle() { Visible = !Visible; }
+    void ToggleFormulaEditor() { FormulaEditor.Visible = !FormulaEditor.Visible; }
     // Mode changes return to GameInput through the application's lifecycle adapter.
     std::optional<ControlMode> Draw(GameSession &session, GameCamera &camera,
                                     GamePresentation &presentation, ControlMode mode,
                                     performance::GameProfiler &performance);
   private:
     bool Visible = true;
+    FormulaDebugUI FormulaEditor;
 };
 } // namespace pixel

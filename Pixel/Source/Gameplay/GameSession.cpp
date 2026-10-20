@@ -177,6 +177,7 @@ void GameSession::Reset() {
     if (!Persistent) {
         // Finite fixtures retain their original flat layout and dimensions.
         StreamConfiguration.Generation = {};
+        ReplacingWorld();
         GameWorld.GenerateTerrain(512);
         InitializeScene();
         return;
@@ -201,6 +202,7 @@ void GameSession::Reset() {
         stream.Directory = candidate;
         const auto surface = CreateWorldGenerator(NextGeneration)->SurfaceHeight(512);
         const auto position = WorldPosition::FromAbsolute(511, double(surface - int64_t(Character::Height)));
+        ReplacingWorld();
         GameWorld.EnableStreaming(stream, InitialWindow(position, stream.WindowEdge));
         InitializeScene();
         GameWorld.Save();
@@ -239,6 +241,7 @@ bool GameSession::TryRecover() {
     if (Ready) return true;
     if (!Persistent || SaveDirectory.empty()) return false;
     try {
+        ReplacingWorld();
         GameWorld.DiscardStreaming();
         LoadDirectory(SaveDirectory);
         SaveError.clear();
@@ -278,13 +281,15 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     bool enabled, deferredStep, paused;
     double physicsTime, remainder, simulationTime;
     input >> magic >> version >> edge >> window >> budget;
-    if (magic != "AxiomPixelWorld" || (version != 2 && version != 3) || edge != storage::ChunkEdge)
+    if (magic != "AxiomPixelWorld" || (version != 2 && version != 3 && version != 4) || edge != storage::ChunkEdge)
         throw std::runtime_error("incompatible world metadata");
-    const auto generation = version == 3 ? ReadGeneration(input) : WorldGenerationSettings{};
+    const auto generation = version >= 3 ? ReadGeneration(input) : WorldGenerationSettings{};
     input >> player.Chunk.X >> player.Chunk.Y >> player.Local[0] >> player.Local[1]
         >> simulationTime >> physicsTime >> remainder >> deferredStep >> boundary >> enabled >> paused;
     if (!std::isfinite(simulationTime) || simulationTime < 0)
         throw std::runtime_error("invalid saved simulation time");
+    if (version < 4 && !deferredStep && remainder >= 1.0 / 60)
+        throw std::runtime_error("invalid legacy fixed simulation clock");
     player.Normalize();
     const auto wind = ReadSettings(input);
     auto stream = StreamConfiguration;
@@ -294,6 +299,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     stream.SurfaceY = generation.SurfaceY;
     stream.Directory = directory;
     Ready = false;
+    ReplacingWorld();
     GameWorld.EnableStreaming(stream, InitialWindow(player, stream.WindowEdge));
     GameWorld.RestorePlayer(player);
     GameWorld.LoadSimulationNow();
@@ -310,7 +316,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
 
 void GameSession::WriteMetadata() {
     CommitTextFile(SaveDirectory / "world.meta", [&](auto &out) {
-        out << "AxiomPixelWorld 3 " << storage::ChunkEdge << ' ' << StreamConfiguration.WindowEdge << ' '
+        out << "AxiomPixelWorld 4 " << storage::ChunkEdge << ' ' << StreamConfiguration.WindowEdge << ' '
             << StreamConfiguration.BudgetBytes << '\n';
         WriteGeneration(out, StreamConfiguration.Generation);
         const auto position = GameWorld.GetPlayer() ? GameWorld.GetPlayer()->GetWorldPosition() : WorldPosition{};
@@ -342,24 +348,34 @@ void GameSession::Tick(float duration, PlayerInput input) {
     performance::FrameProfiler::Count(performance::Counter::SimulationInputMicroseconds,
                                      uint64_t(std::min(duration, .25f) * 1e6));
     GameWorld.SetPlayerInput(input.Horizontal, input.Jump);
-    if (!Paused || StepRequested) {
-        const float step = StepRequested ? 1.f / 60 : std::min(duration, .25f);
-        GameWorld.Tick(step);
-        if (!GameWorld.GetEnvironment().IsWaitingForBudget()) SimulationTime += step;
-    }
-    StepRequested = false;
+    if (Paused && !StepRequested)
+        return;
+    const auto completed = GameWorld.Tick(std::min(duration, .25f), [this] {
+        SimulationTime += 1.0 / 60;
+        Formulas.Step(GameWorld);
+    }, StepRequested);
+    if (completed)
+        StepRequested = false;
 }
 
-void GameSession::SetWindStartHeight(int height) {
+bool GameSession::SetWindStartHeight(int height) {
+    if (!CanEditWorld())
+        return false;
     const int64_t boundary = WorldHeight - std::clamp(height, 0, int(WorldHeight));
     GameWorld.ConfigureWindDomain(boundary, GameWorld.GetWindSettings(), height < int(WorldHeight));
+    return true;
 }
 
-void GameSession::SetWindBoundary(int64_t y) {
+bool GameSession::SetWindBoundary(int64_t y) {
+    if (!CanEditWorld())
+        return false;
     GameWorld.ConfigureWindDomain(y, GameWorld.GetWindSettings());
+    return true;
 }
 
-void GameSession::SelectWindStrategy(WindStrategyKind kind) {
+bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
+    if (!CanEditWorld())
+        return false;
     auto settings = GameWorld.GetWindSettings();
     settings.Kind = kind;
     GameWorld.ConfigureWindDomain(GameWorld.GetWindBoundary(), settings, GameWorld.IsWindEnabled());
@@ -367,5 +383,51 @@ void GameSession::SelectWindStrategy(WindStrategyKind kind) {
     if (kind == WindStrategyKind::Reference || kind == WindStrategyKind::Adaptive || kind == WindStrategyKind::Lbm)
         Paused = true;
     StepRequested = false;
+    return true;
+}
+
+void GameSession::ReplacingWorld() {
+    Formulas.OnWorldReplaced();
+    LastAim = {1, 0};
+    FormulaError.clear();
+    GameWorld.ClearPlayerInput();
+}
+
+bool GameSession::CastFormulaAt(WorldPosition target) {
+    FormulaError.clear();
+    if (!CanEditWorld() || !GameWorld.GetPlayer()) {
+        FormulaError = "World unavailable or waiting for storage budget";
+        return false;
+    }
+    auto centre = GameWorld.GetPlayer()->GetWorldPosition();
+    centre.Local[0] += Character::Width / 2.0;
+    centre.Local[1] += Character::Height / 2.0;
+    centre.Normalize();
+    target.Normalize();
+    const auto reference = centre.Cell();
+    const auto mouse = target.RelativeTo(reference);
+    const auto player = centre.RelativeTo(reference);
+    const double dx = mouse[0] - player[0], dy = mouse[1] - player[1];
+    const double length = std::hypot(dx, dy);
+    if (length > 1e-9)
+        LastAim = {dx / length, dy / length};
+
+    constexpr double radius = FormulaWorldAdapter::BoltRadius;
+    const double horizontal = LastAim[0] == 0 ? std::numeric_limits<double>::infinity()
+        : (Character::Width / 2.0 + radius) / std::abs(LastAim[0]);
+    const double vertical = LastAim[1] == 0 ? std::numeric_limits<double>::infinity()
+        : (Character::Height / 2.0 + radius) / std::abs(LastAim[1]);
+    const double distance = std::min(horizontal, vertical) + .25;
+    const auto origin = FormulaWorldAdapter::Offset(centre, {LastAim[0] * distance, LastAim[1] * distance});
+    if (FormulaWorldAdapter::Sweep(GameWorld, centre, origin).Kind != FormulaContactKind::None) {
+        FormulaError = "Launch path is blocked";
+        return false;
+    }
+    const double angle = std::atan2(LastAim[1], LastAim[0]) * 180 / std::acos(-1.0);
+    if (!Formulas.Cast(GameWorld, origin, angle)) {
+        FormulaError = Formulas.LastError();
+        return false;
+    }
+    return true;
 }
 } // namespace pixel

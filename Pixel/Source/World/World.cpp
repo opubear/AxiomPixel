@@ -217,7 +217,7 @@ void World::SpawnPlayer(double x, double y) {
 
 void World::SetPlayerInput(int horizontal, bool jump) {
     PlayerHorizontal = std::clamp(horizontal, -1, 1);
-    PlayerJump = jump;
+    PlayerJump = PlayerJump || jump;
 }
 
 void World::DiscardStreaming() {
@@ -248,7 +248,10 @@ void World::RequestVisibleRegion(WorldRect bounds) {
 void World::UpdateStreaming() {
     if (!Streamer)
         return;
-    if (Player) {
+    // A failed material step already advanced wind in the current domain.
+    // Storage may make progress, but recentering/remapping must wait for commit.
+    const bool deferred = Environment.IsWaitingForBudget();
+    if (Player && !deferred) {
         const auto cell = Player->GetWorldPosition().Cell();
         const auto quarter = SimulationBounds.Width / 4;
         WorldRect centre{SimulationBounds.X + quarter, SimulationBounds.Y + quarter,
@@ -260,7 +263,7 @@ void World::UpdateStreaming() {
         }
     }
     Streamer->Update(SimulationBounds, VisibleBounds);
-    if (WindEnabled) {
+    if (WindEnabled && !deferred) {
         const auto view = GetWindView();
         Environment.GetWindSimulation().MoveDomain(view, view.Height);
     }
@@ -324,13 +327,16 @@ void World::ReserveSimulationBytes(uint64_t bytes) {
     ScratchReservation = bytes;
 }
 
-void World::Tick(float duration) {
+uint32_t World::Tick(float duration, const std::function<void()> &onStep, bool singleStep) {
     UpdateStreaming();
-    Environment.Tick(duration, *this);
-    if (Player && !Environment.IsWaitingForBudget()) {
-        PIXEL_PROFILE_SCOPE(Character);
-        Player->Tick(duration, ReadState(), PlayerHorizontal, PlayerJump);
-    }
-    PlayerJump = false;
+    return Environment.Tick(duration, *this, [&] {
+        if (Player) {
+            PIXEL_PROFILE_SCOPE(Character);
+            Player->Tick(1.f / 60, ReadState(), PlayerHorizontal, PlayerJump);
+        }
+        PlayerJump = false;
+        if (onStep)
+            onStep();
+    }, singleStep);
 }
 } // namespace pixel

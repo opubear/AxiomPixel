@@ -654,6 +654,67 @@ std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
     expected.BodyColor = {Linear(40), Linear(210), Linear(180), 1};
     return expected;
 }
+void FormulaGameplayGpu() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *input = game.get();
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
+        policy = result.get();
+        return result;
+    };
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize();
+    app.Begin();
+    auto &runtime = input->GetSession().GetFormulaRuntime();
+    Require(runtime.Apply(pixel::formula::Formula::Bolt().Spread(3, 12)), "GPU formula fixture rejected a fan");
+    Require(input->GetSession().CastFormulaAt(pixel::WorldPosition::FromAbsolute(600, 510)), "GPU fixture failed to launch");
+    const auto verifyYellow = [&] {
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        const auto frame = policy->PublishedFrame();
+        Require(frame.FormulaDraws.size() == 3, "GPU publication lost fan projectiles");
+        const auto &scene = policy->SceneColor(token.Slot);
+        const auto pixels = ReadColor(scene);
+        for (const auto &draw : frame.FormulaDraws) {
+            const auto x = uint32_t(draw.CenterRadius[0]), y = uint32_t(draw.CenterRadius[1]);
+            Require(x < scene.Desc.Width && y < scene.Desc.Height, "GPU sphere fixture is outside the viewport");
+            const auto offset = (size_t(y) * scene.Desc.Width + x) * 4;
+            Require(pixels[offset] == 255 && pixels[offset + 1] == 255 && pixels[offset + 2] == 0 && pixels[offset + 3] == 255,
+                    "sphere centre was not opaque yellow after composition");
+        }
+    };
+    for (int slot = 0; slot < 4; ++slot)
+        verifyYellow();
+    input->GetSession().RequestStep();
+    input->Tick(1.f / 60);
+    verifyYellow();
+    input->GetPresentation().ToggleFieldView();
+    Draw(app);
+    Require(policy->PublishedFrame().FormulaDraws.empty() && runtime.Projectiles().size() == 3,
+            "F1 must hide formula rendering without removing instances");
+    input->GetPresentation().ToggleFieldView();
+    verifyYellow();
+    auto *platform = app.Engine->GetPlatform();
+    const auto generation = app.Engine->GetRHI()->GetSwapchainGeneration();
+    glfwSetWindowSize(platform->GetWindows(), 720, 540);
+    for (int attempt = 0; attempt < 100 && app.Engine->GetRHI()->GetSwapchainGeneration() == generation; ++attempt) {
+        Draw(app);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    Require(app.Engine->GetRHI()->GetSwapchainGeneration() > generation, "formula resize fixture never recreated targets");
+    verifyYellow();
+    runtime.Clear();
+    Draw(app);
+    Require(policy->PublishedFrame().FormulaDraws.empty(), "cleared GPU formula snapshot retained a sphere");
+    app.Shutdown();
+    std::cout << "Formula GPU passed: yellow readback, overlapping fan, slots, step, F1, resize and clear\n";
+}
+
 void BasicWorldGameplay() {
     auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
@@ -706,7 +767,7 @@ void BasicWorldGameplay() {
         input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
         Require(world.GetCell(512, 507).Type == pixel::CellTypes::Dirt,
                 "queued click used current viewport instead of event viewport after resize");
-        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, pointer);
+        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), pointer);
         Require(world.GetCell(512, 507).Type == pixel::CellTypes::Empty, "queued removal after resize missed original cell");
         pointer.FramebufferSize = {-1, 0};
         input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
@@ -852,7 +913,7 @@ void BasicWorldGameplay() {
     };
     auto queueClick = [&](uint32_t x, uint32_t y, int button) {
         moveCursorToCell(x, y);
-        platform->OnButtonCallback(button, GLFW_PRESS, 0);
+        platform->OnButtonCallback(button, GLFW_PRESS, button == GLFW_MOUSE_BUTTON_RIGHT ? GLFW_MOD_SHIFT : 0);
         platform->OnButtonCallback(button, GLFW_RELEASE, 0);
     };
     auto clickCell = [&](uint32_t x, uint32_t y, int button) {
@@ -1340,6 +1401,7 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
 }
 } // namespace
 void RunPixelDebugUISmoke();
+void RunPixelFormulaUISmoke();
 int main(int argc, char **argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--art-only") {
@@ -1355,6 +1417,11 @@ int main(int argc, char **argv) {
             RunPixelDebugUISmoke();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--formula-only") {
+            FormulaGameplayGpu();
+            RunPixelFormulaUISmoke();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--lifecycle-only") {
             Lifecycle(1);
             Lifecycle(2);
@@ -1367,6 +1434,8 @@ int main(int argc, char **argv) {
         BasicWorldGameplay();
         ForceFieldDebugGameplay();
         RunPixelDebugUISmoke();
+        FormulaGameplayGpu();
+        RunPixelFormulaUISmoke();
         Lifecycle(1);
         Lifecycle(2);
         return 0;

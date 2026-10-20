@@ -1,4 +1,5 @@
 #include "GamePresentation.h"
+#include "FormulaFrame.h"
 #include "Assets/ArtAssets.h"
 #include <algorithm>
 #include <cmath>
@@ -56,6 +57,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         delete value;
     });
     return [this, &session, &camera, snapshot = std::move(snapshot)](WorldGridFrame &frame) {
+        frame.FormulaDraws.clear();
         auto &world = session.GetWorld();
         const auto lifetime = world.PublicationLifetime();
         frame.TrackPublication(world.GetMap().GetIdentity(), [&world, lifetime, key = &frame] {
@@ -63,6 +65,8 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
                 world.ReleasePublication(key);
         });
         frame.View = camera.GetView();
+        if (session.IsReady() && DisplayMode == GridDisplayMode::Materials)
+            BuildFormulaFrame(session.GetFormulaRuntime().Projectiles(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
         const auto region = LimitPublication(VisibleWorldRegion(frame.View, camera.GetFramebufferSize()), world.PublicationBudget());
         const bool resizing = frame.GetWidth() != region.Width || frame.GetHeight() != region.Height;
         const uint64_t oldCells = uint64_t(frame.GetWidth()) * frame.GetHeight();

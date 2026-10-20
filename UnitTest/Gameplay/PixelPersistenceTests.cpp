@@ -184,6 +184,98 @@ void DistantCameraAndCollision() {
     player.Tick(.1f, missing.View({position.Cell().X - 64, position.Cell().Y - 64, 128, 128}), 1, false);
     Require(player.X == .5 && player.Y == .5, "character crossed missing streamed geometry");
 }
+void DeferredStepKeepsStreamingDomain() {
+    SaveRoot files;
+    pixel::GameSession session;
+    auto &world = session.GetWorld();
+    pixel::WorldStreamSettings settings;
+    settings.Directory = files.Path / "deferred-domain";
+    settings.WindowEdge = 256;
+    settings.BudgetBytes = 50ull * 1024 * 1024;
+    settings.Generation.SurfaceY = 10000;
+    world.EnableStreaming(settings);
+    world.SpawnPlayer(191.9, 128);
+    pixel::WindStrategySettings wind;
+    wind.Kind = pixel::WindStrategyKind::Coarse;
+    wind.Coarse.Columns = wind.Coarse.Rows = 32;
+    wind.Coarse.Ambient = {};
+    wind.Coarse.GustSpeed = 0;
+    world.ConfigureWindDomain(256, wind);
+    world.AddWindImpulse(190, 128, 16, {100, 0});
+    world.WaitForStreaming();
+
+    pixel::GameCamera camera;
+    camera.SetFramebufferSize({256, 256});
+    camera.Reset(world);
+    pixel::GamePresentation presentation;
+    presentation.WindVisual.Mode = WindVisualMode::Off;
+    auto publish = presentation.CreateFramePublisher(session, camera);
+    WorldGridFrame frame;
+    publish(frame);
+    const auto discardOptional = [&] {
+        world.WaitForStreaming();
+        for (const auto coordinate : world.GetMap().ChunkCoordinates())
+            if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
+                world.GetMutableMap().Remove(coordinate);
+    };
+    discardOptional();
+    world.SetPlayerInput(1, false);
+    const auto steps = world.Tick(2.f / 60, [&] {
+        world.SetCell(10, 10, {pixel::CellTypeId::Dirt, {0, 1}});
+        discardOptional();
+        world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
+    });
+    Require(steps == 1 && world.GetEnvironment().IsWaitingForBudget()
+                && world.GetPlayer()->GetWorldPosition().Cell().X >= 192,
+            "partial-step fixture did not cross the streaming threshold before waiting");
+    const auto bounds = world.GetSimulationBounds();
+    const auto domain = world.GetEnvironment().GetWindSimulation().GetDomain();
+    const auto revision = world.GetEnvironment().GetWindSimulation().GetRevision();
+    const auto sample = world.SampleWind(190.5, 128.5);
+    world.UpdateStreaming();
+    publish(frame);
+    Require(world.GetSimulationBounds() == bounds && world.GetEnvironment().GetWindSimulation().GetDomain() == domain
+                && world.GetEnvironment().GetWindSimulation().GetRevision() == revision && world.SampleWind(190.5, 128.5) == sample,
+            "streaming/publication remapped preadvanced wind while a material step was waiting");
+    world.SetPublicationBytes(0);
+    world.ClearPlayerInput();
+    Require(world.Tick(1.f / 60, {}, true) == 1 && !world.GetEnvironment().IsWaitingForBudget()
+                && std::abs(world.GetEnvironment().GetSimulationTime() - 2.0 / 60) < 1e-10,
+            "deferred material step did not finish exactly once");
+    world.UpdateStreaming();
+    Require(world.GetSimulationBounds().X == 64 && world.GetEnvironment().GetWindSimulation().GetDomain().Origin.X == 64,
+            "streaming did not recenter after successful retry");
+}
+
+void SuccessfulSingleStepBacklogRoundTrip() {
+    SaveRoot root;
+    {
+        pixel::GameSession session(true);
+        Require(session.CastFormulaAt(pixel::WorldPosition::FromAbsolute(600, 510)), "backlog fixture failed to cast");
+        auto &world = session.GetWorld();
+        world.RestoreSimulationClock(0, .1, true);
+        Require(!session.SetWindBoundary(500) && !session.SelectWindStrategy(pixel::WindStrategyKind::Coarse),
+                "waiting step permits wind backend replacement");
+        Require(!session.CastFormulaAt(pixel::WorldPosition::FromAbsolute(600, 510)), "waiting step accepted a new cast");
+        session.RequestStep();
+        session.Tick(.2f, {});
+        Require(!world.GetEnvironment().IsWaitingForBudget()
+                    && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+                "single-step did not preserve unadvanced backlog");
+        session.Save();
+    }
+    pixel::GameSession loaded(true);
+    auto &world = loaded.GetWorld();
+    Require(loaded.GetFormulaRuntime().Projectiles().empty(), "live formula instances entered a world save");
+    Require(!world.GetEnvironment().IsWaitingForBudget()
+                && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+            "v4 failed to restore complete backlog without preadvanced wind");
+    loaded.RequestStep();
+    loaded.Tick(.2f, {});
+    Require(std::abs(world.GetEnvironment().GetSimulationTime() - 2.0 / 60) < 1e-10
+                && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 2.0 / 60)) < 1e-10,
+            "restored backlog advanced wind twice or drained more than one step");
+}
 } // namespace
 
 int main() {
@@ -193,6 +285,8 @@ int main() {
         PublicationBudgetAndOwnership();
         DeferredStepSurvivesSave();
         ManualSaveFailureCanRetry();
+        SuccessfulSingleStepBacklogRoundTrip();
+        DeferredStepKeepsStreamingDomain();
         std::cout << "Persistent session and distant coordinate tests passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

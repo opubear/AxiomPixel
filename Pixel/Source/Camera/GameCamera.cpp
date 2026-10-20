@@ -1,6 +1,7 @@
 #include "GameCamera.h"
 #include "PixelRender/PixelWorldPresentation.h"
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace pixel {
@@ -64,5 +65,19 @@ std::optional<std::array<int64_t, 2>> GameCamera::PickCell(const MousePointerSta
         return std::nullopt;
     // A queued click can predate a resize; projection and scaling use its own dimensions.
     return PickGridCell(GetViewForFramebuffer(pointer.FramebufferSize), pointer.Position, pointer.WindowSize, pointer.FramebufferSize);
+}
+
+std::optional<WorldPosition> GameCamera::PickWorldPosition(const MousePointerState &pointer) const {
+    auto position = Camera.GetWorldPosition();
+    for (size_t axis = 0; axis < 2; ++axis) {
+        if (pointer.WindowSize[axis] <= 0 || pointer.FramebufferSize[axis] <= 0
+            || !std::isfinite(pointer.Position[axis]) || pointer.Position[axis] < 0
+            || pointer.Position[axis] >= pointer.WindowSize[axis])
+            return std::nullopt;
+        const double pixel = pointer.Position[axis] * pointer.FramebufferSize[axis] / pointer.WindowSize[axis];
+        position.Local[axis] += (pixel - pointer.FramebufferSize[axis] / 2.0) / ViewSettings.CellSizePixels[axis];
+    }
+    position.Normalize();
+    return position;
 }
 } // namespace pixel
