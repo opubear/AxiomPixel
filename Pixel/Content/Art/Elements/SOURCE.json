@@ -1,0 +1,20 @@
+{
+    "CopiedWithoutModification": true,
+    "SourceRecord": "ArtRaw/Materials/Elements/SOURCE.json",
+    "Resources": [
+        {
+            "Path": "01_water_body.png",
+            "Source": "ArtRaw/Materials/Elements/Textures64/01_water_body.png",
+            "SHA256": "c825ffde73e233abefd6da1d75c037b0ad524ce46f409d3c7f8e350a331829fe",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "02_water_surface.png",
+            "Source": "ArtRaw/Materials/Elements/Textures64/02_water_surface.png",
+            "SHA256": "1e2e29d1028113c8440ce00a36912930c0540458fd2682e181d0d2bdb357f920",
+            "Width": 64,
+            "Height": 64
+        }
+    ]
+}

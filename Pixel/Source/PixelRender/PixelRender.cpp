@@ -1,4 +1,5 @@
 #include "PixelRender.h"
+#include "BackgroundView.h"
 #include "HAL/Shader/ShaderLibrary.h"
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
@@ -11,6 +12,7 @@ constexpr std::array WorldBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
     DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLED_IMAGE, 1},
     DescriptorRequirement{0, 2, ShaderDescriptorType::SAMPLER, 1},
+    DescriptorRequirement{0, 3, ShaderDescriptorType::SAMPLED_IMAGE, 1},
 };
 constexpr std::array WindBindings{
     DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
@@ -42,18 +44,27 @@ struct WorldConstants {
     uint32_t Height;
     uint32_t Reserved = 0;
     uint32_t DisplayMode = 0;
-    std::array<uint32_t, 3> Padding{};
+    // Shared body repeat period and CPU-reduced world origin (X,Y). Reducing
+    // before float conversion preserves texel phase at distant/negative cells.
+    std::array<uint32_t, 3> TerrainTiling{1, 0, 0};
+    std::array<float, 4> BackgroundPhases{};
+    // displayed image width/height, framebuffer width, active layer count
+    std::array<float, 4> BackgroundSize{};
 };
 static_assert(offsetof(WorldConstants, Background) == 16 && offsetof(WorldConstants, LayerCount) == 32);
 static_assert(offsetof(WorldConstants, DisplayMode) == 48);
-static_assert(sizeof(WorldConstants) == 64 && sizeof(PostProcessParameters) == 64);
+static_assert(sizeof(WorldConstants) == 96 && sizeof(PostProcessParameters) == 64);
 } // namespace
 PixelRender::PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,
-                         std::function<void(WorldGridFrame &)> input, std::string postShader)
-    : RHI(rhi), Catalog(std::move(catalog)), Input(std::move(input)), PostShader(std::move(postShader)) {
+                         std::function<void(WorldGridFrame &)> input, std::string postShader,
+                         std::shared_ptr<const pixel::BackgroundAssets> background)
+    : RHI(rhi), Catalog(std::move(catalog)), Input(std::move(input)), PostShader(std::move(postShader)),
+      Background(std::move(background)) {
     ValidateGridTextureCatalog(Catalog);
     if (!Input)
         throw std::invalid_argument("2D rendering requires an input provider");
+    if (Background)
+        pixel::ValidateBackgroundAssets(*Background);
 }
 PixelRender::~PixelRender() { Clear(); }
 void PixelRender::Initialize() {
@@ -74,7 +85,15 @@ void PixelRender::Initialize() {
     Materials = RHI.CreateTexture({Catalog.Width, Catalog.Height, Catalog.Layers, RHITextureFormat::RGBA8SRGB, true, false});
     MaterialUpload = RHI.CreateUploadBuffer(Catalog.Pixels.size());
     MaterialUpload->Write(Catalog.Pixels);
-    Pool = RHI.CreateImageDescriptorPool(7 * slots, 9 * slots, 4 * slots);
+    if (Background) {
+        const auto &image = *Background->Layers.front().Image;
+        const size_t layerBytes = image.Pixels.size();
+        BackgroundTexture = RHI.CreateTexture({image.Width, image.Height, uint32_t(Background->Layers.size()), RHITextureFormat::RGBA8SRGB, true, false});
+        BackgroundUpload = RHI.CreateUploadBuffer(layerBytes * Background->Layers.size());
+        for (size_t index = 0; index < Background->Layers.size(); ++index)
+            BackgroundUpload->WriteRegion(Background->Layers[index].Image->Pixels, index * layerBytes);
+    }
+    Pool = RHI.CreateImageDescriptorPool(7 * slots, 10 * slots, 4 * slots);
     Frames.resize(slots);
     for (auto &frame : Frames) {
         constexpr uint64_t initialBytes = uint64_t(Grid2D::RegionSize) * Grid2D::RegionSize * sizeof(uint32_t);
@@ -86,7 +105,8 @@ void PixelRender::Initialize() {
     CreateColorTargets();
     for (auto &frame : Frames) {
         const std::array bindings{RHIImageBinding{0, frame.Data.get()}, RHIImageBinding{1, Materials.get()},
-                                  RHIImageBinding{2, nullptr, Sampler.get()}};
+                                  RHIImageBinding{2, nullptr, Sampler.get()},
+                                  RHIImageBinding{3, BackgroundTexture ? BackgroundTexture.get() : Materials.get()}};
         frame.WorldSet = RHI.CreateImageDescriptorSet(*Pool, *WorldPipeline, bindings);
     }
     Published = std::make_unique<WorldGridFrame>();
@@ -171,7 +191,8 @@ void PixelRender::CreateGridResources(FrameResources &frame, uint32_t width, uin
     frame.Upload = RHI.CreateUploadBuffer(bytes);
     frame.WindUpload = RHI.CreateUploadBuffer(bytes);
     const std::array bindings{RHIImageBinding{0, frame.Data.get()}, RHIImageBinding{1, Materials.get()},
-                              RHIImageBinding{2, nullptr, Sampler.get()}};
+                              RHIImageBinding{2, nullptr, Sampler.get()},
+                              RHIImageBinding{3, BackgroundTexture ? BackgroundTexture.get() : Materials.get()}};
     frame.WorldSet = RHI.CreateImageDescriptorSet(*Pool, *WorldPipeline, bindings);
     const std::array windBindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, frame.WindData.get()}};
     frame.WindSet = RHI.CreateImageDescriptorSet(*Pool, *WindPipeline, windBindings);
@@ -243,6 +264,17 @@ void PixelRender::RecordWorld(RHICommandList &commands, FrameResources &frame, c
     WorldConstants constants{view.OriginPixels, view.CellSizePixels, view.Background, Catalog.Layers, input.Width, input.Height};
     constants.DisplayMode = uint32_t(input.DisplayMode);
     constants.Reserved = input.MissingOutsideRegion ? 1u : 0u;
+    const auto tilePhase = [&](int64_t coordinate) {
+        const auto remainder = coordinate % int64_t(Catalog.CellsPerTile);
+        return uint32_t(remainder < 0 ? remainder + Catalog.CellsPerTile : remainder);
+    };
+    constants.TerrainTiling = {Catalog.CellsPerTile, tilePhase(input.CellOrigin[0]), tilePhase(input.CellOrigin[1])};
+    if (Background && input.DisplayMode == GridDisplayMode::Materials) {
+        constants.BackgroundPhases = pixel::BackgroundPhases(*Background, input.View, Extent.Width);
+        const auto &image = *Background->Layers.front().Image;
+        const float height = Extent.Height * Background->HeightFraction;
+        constants.BackgroundSize = {height * image.Width / image.Height, height, float(Extent.Width), float(Background->Layers.size())};
+    }
     commands.PushConstants(*WorldPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
     commands.DrawIndexed(6);
     commands.EndPass();
@@ -314,6 +346,11 @@ void PixelRender::Draw() {
             commands.TransitionTexture(*Materials, RHITextureState::TransferDestination);
             commands.CopyBufferToTexture(*MaterialUpload, *Materials);
             commands.TransitionTexture(*Materials, RHITextureState::FragmentSampledRead);
+            if (BackgroundTexture) {
+                commands.TransitionTexture(*BackgroundTexture, RHITextureState::TransferDestination);
+                commands.CopyBufferToTexture(*BackgroundUpload, *BackgroundTexture);
+                commands.TransitionTexture(*BackgroundTexture, RHITextureState::FragmentSampledRead);
+            }
         }
         RecordWorld(commands, frame, input);
         if (frame.HasWind)
@@ -356,6 +393,9 @@ void PixelRender::Clear() {
     WindPipeline.reset();
     MaterialUpload.reset();
     Materials.reset();
+    BackgroundUpload.reset();
+    BackgroundTexture.reset();
+    Background.reset();
     Sampler.reset();
     Indices.reset();
     Vertices.reset();

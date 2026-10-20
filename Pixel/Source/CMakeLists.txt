@@ -2,6 +2,7 @@
 add_subdirectory(Performance)
 add_subdirectory(World)
 add_subdirectory(Gameplay)
+add_subdirectory(Assets)
 add_subdirectory(PixelRender)
 add_subdirectory(Input)
 if(AXIOM_BUILD_RUNTIME)

@@ -1,6 +1,7 @@
 #include "PixelGame.h"
 #include "PixelRuntime.h"
 #include "Axiom.h"
+#include "Asset/Loaders/AssetLoader.h"
 #include "DebugUI/ImguiManager.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
@@ -10,7 +11,7 @@
 #include <cmath>
 
 PixelGame::PixelGame(bool persistent)
-    : Session(persistent, persistent ? pixel::GameSession::DefaultGeneration() : pixel::WorldGenerationSettings{}), Input(Session, Camera, Presentation, {[] { GAxiom->Engine->GetPlatform()->CloseWindow(); }, [this] { DebugUI.Toggle(); }, [] {
+    : Session(persistent, persistent ? pixel::GameSession::DefaultGeneration() : pixel::WorldGenerationSettings{}), ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, {[] { GAxiom->Engine->GetPlatform()->CloseWindow(); }, [this] { DebugUI.Toggle(); }, [] {
               std::array<int, 2> size{};
               GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);
               return size; }}) {}

@@ -1,4 +1,5 @@
 #pragma once
+#include "Assets/ArtAssets.h"
 #include "Camera/GameCamera.h"
 #include "Debug/PixelDebugUI.h"
 #include "GamePlay/GameInterface.h"
@@ -18,6 +19,7 @@ class PixelGame final : public IGameInterface {
     void ConfigurePerformanceCapture();
     void ConfigureEngine(GameEngine &engine) override;
     pixel::GameSession &GetSession() { return Session; }
+    pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
     std::function<void(WorldGridFrame &)> CreateFramePublisher() {
@@ -52,6 +54,7 @@ class PixelGame final : public IGameInterface {
     pixel::GameSession Session;
     pixel::GameCamera Camera;
     pixel::GamePresentation Presentation;
+    pixel::ArtAssetStore ArtAssets;
     pixel::PixelDebugUI DebugUI;
     pixel::performance::GameProfiler Performance;
     pixel::GameInput Input;

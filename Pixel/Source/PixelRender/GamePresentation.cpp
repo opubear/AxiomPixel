@@ -1,10 +1,26 @@
 #include "GamePresentation.h"
+#include "Assets/ArtAssets.h"
 #include <algorithm>
 #include <cmath>
 #include <memory>
 
 namespace pixel {
 namespace {
+constexpr std::array RequiredMaterials{
+    uint32_t(CellTypeId::Air), uint32_t(CellTypeId::Dirt), uint32_t(CellTypeId::GroundSoil),
+    uint32_t(CellTypeId::GrassSoil), uint32_t(CellTypeId::Stone), uint32_t(CellTypeId::CoalOre),
+    uint32_t(CellTypeId::CopperOre), uint32_t(CellTypeId::IronOre), uint32_t(CellTypeId::TungstenOre),
+    uint32_t(CellTypeId::GoldOre), uint32_t(CellTypeId::Water)};
+
+CellAppearanceTable DefaultAppearances() {
+    return {{uint32_t(CellTypeId::Air), 0}, {uint32_t(CellTypeId::Dirt), 1},
+            {uint32_t(CellTypeId::GroundSoil), 1}, {uint32_t(CellTypeId::GrassSoil), {1, 2}},
+            {uint32_t(CellTypeId::Stone), 3}, {uint32_t(CellTypeId::CoalOre), 4},
+            {uint32_t(CellTypeId::CopperOre), 5}, {uint32_t(CellTypeId::IronOre), 6},
+            {uint32_t(CellTypeId::TungstenOre), 7}, {uint32_t(CellTypeId::GoldOre), 8},
+            {uint32_t(CellTypeId::Water), {9, 10, 3}}};
+}
+
 uint64_t PublicationCapacity(WorldRect region) {
     const uint64_t cells = uint64_t(region.Width) * region.Height;
     const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
@@ -25,6 +41,8 @@ WorldRect LimitPublication(WorldRect region, uint64_t budget) {
     return region;
 }
 } // namespace
+GamePresentation::GamePresentation() : Appearances(DefaultAppearances()) {}
+
 void GamePresentation::ToggleTint() { Post.Values[1] = Post.Values[1] == 1 ? .35f : 1; }
 void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
@@ -93,10 +111,33 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
 }
 GridTextureCatalog GamePresentation::MakeTextures() {
     // Terrain textures only; the character uses a separate continuous-colour draw.
-    GridTextureCatalog textures{1, 1, 2, {}};
-    for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255}})
+    GridTextureCatalog textures{1, 1, 11, {}};
+    for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255},
+                            std::array{102, 143, 58, 255}, std::array{111, 113, 114, 255},
+                            std::array{49, 48, 47, 255}, std::array{167, 104, 57, 255},
+                            std::array{171, 146, 125, 255}, std::array{89, 106, 115, 255},
+                            std::array{207, 166, 48, 255}, std::array{38, 102, 166, 180},
+                            std::array{92, 167, 196, 210}})
         for (int channel : color)
             textures.Pixels.push_back(std::byte(channel));
+    return textures;
+}
+
+GridTextureCatalog GamePresentation::LoadTextures(ArtAssetStore &assets, std::string_view manifest) {
+    const auto terrain = assets.LoadTerrain(manifest, RequiredMaterials);
+    const auto &first = *terrain->Images.front().Image;
+    GridTextureCatalog textures{first.Width, first.Height, uint32_t(terrain->Images.size() + 1), {}};
+    textures.CellsPerTile = terrain->CellsPerTile;
+    const size_t layerBytes = first.Pixels.size();
+    textures.Pixels.resize(layerBytes * textures.Layers); // transparent layer zero
+    for (const auto &entry : terrain->Images)
+        std::copy(entry.Image->Pixels.begin(), entry.Image->Pixels.end(), textures.Pixels.begin() + entry.Layer * layerBytes);
+
+    CellAppearanceTable appearances;
+    for (const auto &material : terrain->Materials)
+        appearances.emplace(material.TypeId, CellAppearance{material.Layer, material.SurfaceLayer, material.SurfaceStrip});
+    ValidateGridTextureCatalog(textures);
+    Appearances = std::move(appearances);
     return textures;
 }
 } // namespace pixel

@@ -138,7 +138,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check(sets == 21 && images == 27 && samplers == 12, "descriptor pool is not sized from actual slots");
+        Check(sets == 21 && images == 30 && samplers == 12, "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -448,7 +448,7 @@ void DebugFrameIsolation() {
     Check(policy.PublishedFrame().Cells.front() == 0x80FF80, "Draw read an unpublished force direction");
     uint32_t uploaded = 0, shaderMode = 0;
     std::memcpy(&uploaded, rhi.Commands.Copies[1].second.data(), sizeof(uploaded));
-    Check(rhi.Commands.Constants.size() == 2 && rhi.Commands.Constants[0].size() == 64, "unexpected world/post constant layout");
+    Check(rhi.Commands.Constants.size() == 2 && rhi.Commands.Constants[0].size() == 96, "unexpected world/post constant layout");
     std::memcpy(&shaderMode, rhi.Commands.Constants[0].data() + 48, sizeof(shaderMode));
     Check(uploaded == 0x80FF80 && shaderMode == 1, "uploaded debug data and shader mode are inconsistent");
     policy.FrameBegin();
@@ -527,6 +527,35 @@ void RegionUploadCaching() {
     policy.Clear();
 }
 
+void TerrainTexturePhases() {
+    MockRHI rhi;
+    auto textures = Catalog();
+    textures.CellsPerTile = 64;
+    std::array<int64_t, 2> origin{(int64_t{1} << 55) + 19, -(int64_t{1} << 55) - 7};
+    PixelRender policy(rhi, textures, [&](WorldGridFrame &output) {
+        output.SetRegion(origin, 64, 64);
+        output.View.WorldOriginCells = origin;
+        std::fill(output.Cells().begin(), output.Cells().end(), 0);
+        output.Cells().front() = Grid2D::SurfaceCellFlag | (3u << Grid2D::SurfaceStripShift) | 1u;
+    });
+    policy.Initialize();
+    const auto check = [&] {
+        policy.FrameBegin();
+        policy.Draw();
+        std::array<uint32_t, 3> tiling;
+        Check(rhi.Commands.Constants[0].size() == 96, "terrain tiling changed the shader layout");
+        std::memcpy(tiling.data(), rhi.Commands.Constants[0].data() + 52, sizeof(tiling));
+        const auto phase = [](int64_t cell) { return uint32_t((cell % 64 + 64) % 64); };
+        Check(tiling == std::array<uint32_t, 3>{64, phase(origin[0]), phase(origin[1])},
+              "negative or distant terrain UV phase lost integer precision");
+    };
+    check();
+    origin[0] += 13;
+    origin[1] -= 29;
+    check();
+    policy.Clear();
+}
+
 void DistantRegionProjection() {
     WorldGridFrame output;
     constexpr int64_t distant = int64_t{1} << 60;
@@ -548,7 +577,10 @@ void DistantRegionProjection() {
     const pixel::CellCoord chunk{int64_t{1} << 45, -(int64_t{1} << 45)};
     camera.SetWorldPosition({chunk, {512.125, 510.0625}});
     const auto view = MakeCameraView(camera, {1600, 1200}, {});
-    Check(view.OriginPixels == std::array<int32_t, 2>{7394, 7561} && view.WorldOriginCells == std::array<int64_t, 2>{chunk.X * pixel::storage::ChunkEdge, chunk.Y * pixel::storage::ChunkEdge},
+    const auto normalized = camera.GetWorldPosition();
+    const std::array<int32_t, 2> expectedOrigin{int32_t(std::round(normalized.Local[0] * 16 - 800)),
+                                                int32_t(std::round(normalized.Local[1] * 16 - 600))};
+    Check(view.OriginPixels == expectedOrigin && view.WorldOriginCells == std::array<int64_t, 2>{normalized.Chunk.X * pixel::storage::ChunkEdge, normalized.Chunk.Y * pixel::storage::ChunkEdge},
           "distant camera discarded its fractional position before GPU projection");
     pixel::Character player;
     player.OriginChunk = chunk;
@@ -574,6 +606,39 @@ void UnalignedRegionPublication() {
     Check(frame.Cells().back() == 1, "render tile ignored a change in an overlapping quadtree leaf");
     world.RemoveDirt(64, 64);
     Check(frame.Cells().back() == 1, "unaligned snapshot retained mutable world storage");
+}
+void BackgroundCaching() {
+    MockRHI rhi;
+    auto image = std::make_shared<pixel::ArtImage>();
+    image->Width = image->Height = 1;
+    image->Pixels.assign(4, std::byte{255});
+    auto assets = std::make_shared<pixel::BackgroundAssets>();
+    assets->Layers.push_back({image, 4096});
+    bool field = false;
+    PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &frame) {
+        frame.SetRegion({0, 0}, 64, 64);
+        std::fill(frame.Cells().begin(), frame.Cells().end(), 0);
+        frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
+    }, "Pixel2DPostProcess.fs", assets);
+    policy.Initialize();
+    for (uint32_t index = 0; index < 6; ++index) {
+        rhi.Commands.Token.Slot = index % 3;
+        policy.FrameBegin(); policy.Draw();
+        Check(rhi.Commands.Copies.size() == (index == 0 ? 3 : 1), "immutable art was not uploaded exactly once across frame slots");
+        float count = 0;
+        std::memcpy(&count, rhi.Commands.Constants[0].data() + 92, sizeof(count));
+        Check(count == 1, "art layer count was not sent to shader");
+    }
+    ResizePresentation(rhi, policy, {201, 121});
+    policy.FrameBegin(); policy.Draw();
+    Check(rhi.Commands.Copies.size() == 1, "resize uploaded cached background again");
+    field = true;
+    policy.FrameBegin(); policy.Draw();
+    float count = 1;
+    std::memcpy(&count, rhi.Commands.Constants[0].data() + 92, sizeof(count));
+    Check(count == 0, "art was enabled in diagnostic view");
+    policy.Clear();
+    Check(assets->Layers.front().Image == image, "render cleanup invalidated cached CPU art");
 }
 } // namespace
 // This test checks policy orchestration without shader/device dependencies. Real
@@ -603,7 +668,9 @@ int main(int argc, char **argv) {
         DebugFrameIsolation();
         RegionUploadCaching();
         DistantRegionProjection();
+        TerrainTexturePhases();
         UnalignedRegionPublication();
+        BackgroundCaching();
         std::cout << "Pixel2D input and frame orchestration passed\n";
         return 0;
     } catch (const std::exception &error) {

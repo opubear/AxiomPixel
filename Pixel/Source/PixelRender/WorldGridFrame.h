@@ -15,6 +15,12 @@ namespace Grid2D {
 inline constexpr uint32_t RegionSize = pixel::storage::RegionEdge;
 inline constexpr uint32_t WindHalo = 32;
 inline constexpr uint32_t MissingCell = UINT32_MAX;
+// Material frames may request the exposed top strip of a surface image.
+// Force-field packed colours and MissingCell are interpreted before this flag.
+inline constexpr uint32_t SurfaceCellFlag = 0x80000000u;
+inline constexpr uint32_t SurfaceStripShift = 28;
+inline constexpr uint32_t SurfaceStripMask = 0x70000000u;
+inline constexpr uint32_t MaterialLayerMask = 0x0fffffffu;
 inline constexpr uint32_t Width = 1024;
 inline constexpr uint32_t Height = 1024;
 inline constexpr uint32_t PageHeight = 256;
@@ -52,7 +58,7 @@ struct CharacterDraw {
 };
 static_assert(sizeof(CharacterDraw) == 64);
 struct WorldGridFrameView {
-    // Material layer IDs, or packed linear RGB8 (R in bits 0..7) in ForceField mode.
+    // Material layer IDs plus surface/strip bits, or packed linear RGB8 in ForceField mode.
     std::span<const uint32_t> Cells;
     GridView2D View;
     PostProcessParameters Post;
@@ -138,6 +144,7 @@ struct GridTextureCatalog {
     uint32_t Height = 0;
     uint32_t Layers = 0;
     std::vector<std::byte> Pixels;
+    uint32_t CellsPerTile = 1; // one complete body texture per N world cells, in [1,4096]
 };
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog);
 std::array<int32_t, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame);

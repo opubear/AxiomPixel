@@ -3,11 +3,14 @@
 #include "Gameplay/GameSession.h"
 #include "PixelWorldPresentation.h"
 #include <functional>
+#include <string_view>
 
 namespace pixel {
+class ArtAssetStore;
 class GamePresentation {
   public:
-    CellAppearanceTable Appearances{{static_cast<uint32_t>(CellTypeId::Dirt), 1}};
+    GamePresentation();
+    CellAppearanceTable Appearances;
     PostProcessParameters Post;
     WindVisualSettings WindVisual;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
@@ -17,5 +20,7 @@ class GamePresentation {
     // alive when invoked; releasing the callback never accesses them. Never called from Draw.
     std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera) const;
     static GridTextureCatalog MakeTextures();
+    // Loads Content textures and atomically replaces the corresponding material mapping.
+    GridTextureCatalog LoadTextures(ArtAssetStore &assets, std::string_view manifest = "ArtAssets.json");
 };
 } // namespace pixel

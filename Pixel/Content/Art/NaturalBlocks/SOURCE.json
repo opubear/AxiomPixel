@@ -1,0 +1,62 @@
+{
+    "CopiedWithoutModification": true,
+    "SourceRecord": "ArtRaw/Materials/NaturalBlocks/SOURCE.json",
+    "Resources": [
+        {
+            "Path": "01_soil.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/01_soil.png",
+            "SHA256": "cbda8906ee61aeffd32db73cd9de182ac74467edc8d47d662eaa2806f31753b2",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "03_stone.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/03_stone.png",
+            "SHA256": "8a8644bec4fdb109d866f5ac3ae4c5e561d60d4fc12728b102074e9b88b89475",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "07_grass_soil_surface.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/07_grass_soil_surface.png",
+            "SHA256": "cbecd1b0fca4b06fc9f589e00613b59d94c77d0e409cf91ff8a359318520d99b",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "08_coal_ore.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/08_coal_ore.png",
+            "SHA256": "a1cfee191e6ab5c051a5e6dbf4b6b6868e6d460edeac86fd0181f745a42b440e",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "09_copper_ore.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/09_copper_ore.png",
+            "SHA256": "2c8066601488747a075aec3c35f990fc328406b0758e55b5334cb9f5c2bdf1d7",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "10_iron_ore.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/10_iron_ore.png",
+            "SHA256": "e410bc2c95ff6bb1fa60b2c26f331b39059bbf8f7d634152115b1f6e6ff9c472",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "11_tungsten_ore.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/11_tungsten_ore.png",
+            "SHA256": "fb43eec8157b354c13c7195a7214904a75df9d94666c7d1ab92db87ce1d77f15",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "12_gold_ore.png",
+            "Source": "ArtRaw/Materials/NaturalBlocks/Textures64/12_gold_ore.png",
+            "SHA256": "2212a1512a1bacee7c21a9abb80e3bf37f4bbaf1913f9a2b79f437c872f62762",
+            "Width": 64,
+            "Height": 64
+        }
+    ]
+}

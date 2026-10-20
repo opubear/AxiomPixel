@@ -9,7 +9,15 @@
 
 // This sample-specific presentation boundary is the only place where gameplay
 // type identities are interpreted as visual assets. Empty space always maps to 0.
-using CellAppearanceTable = std::unordered_map<uint32_t, uint32_t>;
+struct CellAppearance {
+    uint32_t Layer = 0;
+    uint32_t SurfaceLayer = 0;
+    uint32_t SurfaceStrip = 0;
+    // Preserve the convenient {gameplayId, layer} form used by CPU fixtures.
+    constexpr CellAppearance(uint32_t layer = 0, uint32_t surfaceLayer = 0, uint32_t surfaceStrip = 0)
+        : Layer(layer), SurfaceLayer(surfaceLayer), SurfaceStrip(surfaceStrip) {}
+};
+using CellAppearanceTable = std::unordered_map<uint32_t, CellAppearance>;
 void BuildWorldGridFrame(pixel::WorldMapView world, const CellAppearanceTable &appearances, WorldGridFrame &output);
 uint64_t GridSourceRegionVersion(pixel::WorldMapView world, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 

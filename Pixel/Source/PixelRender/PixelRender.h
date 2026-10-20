@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HAL/RenderHardwareInterface/RenderHardwareInterface.h"
+#include "Assets/ArtAssets.h"
 #include "PixelRender/WorldGridFrame.h"
 #include "Render/RenderPolicy/RenderPolicyInterface.h"
 #include <functional>
@@ -14,7 +15,8 @@ class PixelRender final : public RenderPolicyInterface {
   public:
     PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,
                 std::function<void(WorldGridFrame &)> input,
-                std::string postShader = "Pixel2DPostProcess.fs");
+                std::string postShader = "Pixel2DPostProcess.fs",
+                std::shared_ptr<const pixel::BackgroundAssets> background = {});
     ~PixelRender() override;
     void Initialize() override;
     void FrameBegin() override;
@@ -54,6 +56,9 @@ class PixelRender final : public RenderPolicyInterface {
     std::unique_ptr<RHISampler> Sampler;
     std::unique_ptr<RHITexture> Materials;
     std::unique_ptr<RHIUploadBuffer> MaterialUpload;
+    std::shared_ptr<const pixel::BackgroundAssets> Background;
+    std::unique_ptr<RHITexture> BackgroundTexture;
+    std::unique_ptr<RHIUploadBuffer> BackgroundUpload;
     std::unique_ptr<RHIPipeline> WorldPipeline, WindPipeline, CharacterPipeline, PostPipeline;
     std::unique_ptr<RHIDescriptorPool> Pool;
     std::vector<FrameResources> Frames;

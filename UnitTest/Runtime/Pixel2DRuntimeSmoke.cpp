@@ -5,6 +5,9 @@
 #include "HAL/Vulkan/VulkanRasterResources.h"
 #include "InputManager.h"
 #include "Application/PixelGame.h"
+#include "Asset/Loaders/AssetLoader.h"
+#include "Assets/ArtAssets.h"
+#include "PixelRender/BackgroundView.h"
 #include "PixelRender/PixelRender.h"
 #include "SystemEnum.h"
 #include <algorithm>
@@ -95,8 +98,15 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = float((id >> (8 * c)) & 255) / 255;
                 } else if (id) {
-                    const size_t tx = size_t((double(qx % cw) + .5) * catalog.Width / cw), ty = size_t((double(qy % ch) + .5) * catalog.Height / ch);
-                    const size_t texel = ((id * catalog.Height + ty) * catalog.Width + tx) * 4;
+                    const auto phase = [&](int64_t cell) { return (cell % catalog.CellsPerTile + catalog.CellsPerTile) % catalog.CellsPerTile; };
+                    const double fx = (double(qx % cw) + .5) / cw, fy = (double(qy % ch) + .5) / ch;
+                    const double u = (double((qx / cw % catalog.CellsPerTile + phase(frame.CellOrigin[0])) % catalog.CellsPerTile) + fx) / catalog.CellsPerTile;
+                    double v = (double((qy / ch % catalog.CellsPerTile + phase(frame.CellOrigin[1])) % catalog.CellsPerTile) + fy) / catalog.CellsPerTile;
+                    if (id & Grid2D::SurfaceCellFlag)
+                        v = (double((id & Grid2D::SurfaceStripMask) >> Grid2D::SurfaceStripShift) + fy) / 8;
+                    const size_t tx = std::min<size_t>(catalog.Width - 1, size_t(u * catalog.Width));
+                    const size_t ty = std::min<size_t>(catalog.Height - 1, size_t(v * catalog.Height));
+                    const size_t texel = (((id & Grid2D::MaterialLayerMask) * catalog.Height + ty) * catalog.Width + tx) * 4;
                     const float alpha = float(std::to_integer<uint8_t>(catalog.Pixels[texel + 3])) / 255;
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = Linear(std::to_integer<uint8_t>(catalog.Pixels[texel + c])) * alpha + expected[c] * (1 - alpha);
@@ -143,8 +153,11 @@ void CheckPublishedRegion(WorldGridFrameView published, std::span<const uint32_t
             continue;
         }
         for (size_t channel = 0; channel < 3; ++channel)
-            Require(std::abs(int((region[i] >> (channel * 8)) & 255) - int((published.Cells[i] >> (channel * 8)) & 255)) <= tolerance,
-                    "published region differs from the independent world fixture");
+            if (std::abs(int((region[i] >> (channel * 8)) & 255) - int((published.Cells[i] >> (channel * 8)) & 255)) > tolerance)
+                throw std::runtime_error("published region differs from the independent world fixture at (" +
+                    std::to_string(published.CellOrigin[0] + int64_t(i % published.Width)) + "," +
+                    std::to_string(published.CellOrigin[1] + int64_t(i / published.Width)) + "): expected=" +
+                    std::to_string(region[i]) + " actual=" + std::to_string(published.Cells[i]));
     }
 }
 void VerifyPublishedColor(WorldGridFrameView oracle, WorldGridFrameView published, const RHITexture &texture,
@@ -431,7 +444,6 @@ void Lifecycle(int iteration) {
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
     input->GetWorld().GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
-    input->GetPresentation().Appearances = {{10, 1}, {20, 2}, {30, 3}};
     PixelRender *policy = nullptr;
     uint64_t publications = 0;
     // Independent fixture oracle: never derive expected pixels from the renderer's
@@ -456,6 +468,9 @@ void Lifecycle(int iteration) {
         return result;
     };
     PixelSmokeApplication app(std::move(game));
+    // Application configuration loads the production JSON appearances. Install
+    // this fixture's independent mapping with its matching test texture catalog.
+    input->GetPresentation().Appearances = {{10, 1}, {20, 2}, {30, 3}};
     app.Engine->SetRender(std::move(setup));
     auto &engine = *app.Engine;
     app.Initialize();
@@ -1156,14 +1171,198 @@ void ForceFieldDebugGameplay() {
 
     std::cout << "Force-field debug GPU view passed: signed/zero directions, pages, F1/tint, reset, dynamic wind, dirt patch and narrow stack\n";
 }
+
+void TerrainMaterialsGpu() {
+    pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
+    pixel::GamePresentation presentation;
+    const auto catalog = presentation.LoadTextures(store);
+    pixel::World world(64, 64);
+    constexpr std::array types{pixel::CellTypeId::Dirt, pixel::CellTypeId::GroundSoil,
+        pixel::CellTypeId::GrassSoil, pixel::CellTypeId::Stone, pixel::CellTypeId::CoalOre,
+        pixel::CellTypeId::CopperOre, pixel::CellTypeId::IronOre, pixel::CellTypeId::TungstenOre,
+        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water};
+    for (uint32_t i = 0; i < types.size(); ++i)
+        world.FillRegion({0, 2 + i * 4, 64, 3}, {types[i]});
+    std::array<int64_t, 2> origin{};
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto render = std::make_unique<PixelRender>(rhi, catalog, [&](WorldGridFrame &frame) {
+            BuildWorldGridFrame(world.ReadState(), presentation.Appearances, frame);
+            const std::vector<uint32_t> cells(frame.Cells().begin(), frame.Cells().end());
+            frame.SetRegion(origin, 64, 64);
+            std::copy(cells.begin(), cells.end(), frame.Cells().begin());
+            frame.View.WorldOriginCells = origin;
+            frame.View.CellSizePixels = {8, 8};
+            frame.View.Background = {.15f, .25f, .35f, 1};
+        });
+        policy = render.get();
+        return render;
+    };
+    PixelSmokeApplication app(std::make_unique<PixelGame>(false));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    for (int i = 0; i < 6; ++i) {
+        if (i == 3) origin = {(int64_t{1} << 55) + 19, -(int64_t{1} << 55) - 7};
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        VerifyColor(policy->PublishedFrame(), policy->WorldColor(token.Slot), catalog);
+    }
+    app.Shutdown();
+    std::cout << "Terrain GPU passed: Content PNGs, all materials, water alpha/surface strips, frame slots and distant UV phases\n";
+}
+
+void ArtBackgroundGpu(bool exactMirrorEdge = false) {
+    pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
+    auto assets = std::make_shared<pixel::BackgroundAssets>(*store.LoadBackground("ArtAssets.json"));
+    GridView2D view;
+    view.Background = {.25f, .55f, .85f, 1};
+    bool field = false, terrain = false;
+    PixelRender *policy = nullptr;
+
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto render = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), [&](WorldGridFrame &frame) {
+            frame.SetRegion({0, 0}, 128, 128);
+            frame.View = view;
+            frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
+            const auto extent = GAxiom->Engine->GetRHI()->GetPresentationExtent();
+            const auto ground = uint32_t(extent.Height * .56f) / view.CellSizePixels[1];
+            for (uint32_t y = 0; y < 128; ++y)
+                for (uint32_t x = 0; x < 128; ++x)
+                    frame.Cells()[size_t(y) * 128 + x] = field ? 0x8080FF : (terrain && y >= ground ? 1 : 0);
+        }, "Pixel2DPostProcess.fs", assets);
+        policy = render.get();
+        return render;
+    };
+
+    auto game = std::make_unique<PixelGame>(false);
+    auto *gamePointer = game.get();
+    const auto cached = game->GetArtAssets().LoadBackground("ArtAssets.json");
+    PixelSmokeApplication app(std::move(game));
+    Require(gamePointer->GetArtAssets().LoadBackground("ArtAssets.json") == cached, "temporary render setup discarded the game asset cache");
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    auto &rhi = *app.Engine->GetRHI();
+
+    if (exactMirrorEdge) {
+        const auto extent = rhi.GetPresentationExtent();
+        // Change only test-owned presentation settings before first publication.
+        // The RHI extent is valid now; the factory runs before window creation.
+        const uint32_t edgeX = (extent.Width * 3 / 4 / 7) * 7 + 3;
+        const float displayedWidth = 2.f * (edgeX - extent.Width / 2) + 1;
+        assets->HeightFraction = displayedWidth * assets->Layers[0].Image->Height / assets->Layers[0].Image->Width / extent.Height;
+        view.OriginPixels[0] = -int32_t(extent.Width / 2);
+    }
+
+    auto capture = [&] {
+        const auto token = Draw(app);
+        rhi.WaitIdle();
+        return ReadColor(policy->WorldColor(token.Slot));
+    };
+
+    const auto first = capture();
+    const auto extent = rhi.GetPresentationExtent();
+    const auto &image = *assets->Layers.front().Image;
+    const float height = extent.Height * assets->HeightFraction;
+    const float width = height * image.Width / image.Height;
+    const auto phases = pixel::BackgroundPhases(*assets, view, extent.Width);
+    size_t verified = 0;
+    for (uint32_t y = 3; y < extent.Height; y += 7) {
+        for (uint32_t x = 3; x < extent.Width; x += 7) {
+            std::array<float, 3> expected{.25f, .55f, .85f};
+            bool boundary = false;
+            for (size_t layer = 0; layer < assets->Layers.size(); ++layer) {
+                float u = (x + .5f - extent.Width * .5f) / width + .5f + phases[layer];
+                u = 1 - std::abs((u * .5f - std::floor(u * .5f)) * 2 - 1);
+                const float v = std::clamp((y + .5f) / height, 0.f, 1.f);
+                const float sx = std::clamp(u * image.Width, .5f, image.Width - .5f);
+                const float sy = std::clamp(v * image.Height, .5f, image.Height - .5f);
+                // Floating point differences at exact nearest-sample boundaries
+                // can legitimately choose either adjacent source texel.
+                boundary |= std::abs(sx - std::round(sx)) < .01f || std::abs(sy - std::round(sy)) < .01f;
+                const auto tx = std::min(uint32_t(sx), image.Width - 1);
+                const auto ty = std::min(uint32_t(sy), image.Height - 1);
+                const auto &pixels = assets->Layers[layer].Image->Pixels;
+                const size_t offset = (size_t(ty) * image.Width + tx) * 4;
+                const float alpha = std::to_integer<uint8_t>(pixels[offset + 3]) / 255.f;
+                for (size_t c = 0; c < 3; ++c)
+                    expected[c] = Linear(std::to_integer<uint8_t>(pixels[offset + c])) * alpha + expected[c] * (1 - alpha);
+            }
+            if (policy->PublishedFrame().Cells[size_t(y / 16) * 128 + x / 16] == 1)
+                expected = {Linear(151), Linear(104), Linear(65)};
+            if (boundary) continue;
+            for (size_t c = 0; c < 3; ++c)
+                Require(std::abs(int(first[(size_t(y) * extent.Width + x) * 4 + c]) - int(std::lround(expected[c] * 255))) <= 2,
+                        "art GPU pixels differ from decoded PNG / straight-alpha sRGB oracle");
+            ++verified;
+        }
+    }
+    Require(verified > 1000, "insufficient art GPU coverage");
+
+    terrain = true;
+    const auto terrainScene = capture();
+    for (uint32_t y = extent.Height * 3 / 4; y < extent.Height; y += 13)
+        for (uint32_t x = uint32_t(std::max(0, -view.OriginPixels[0])); x < extent.Width; x += 13)
+            for (size_t c = 0; c < 3; ++c) {
+                const std::array<uint8_t, 3> soil{151, 104, 65};
+                Require(std::abs(int(terrainScene[(size_t(y) * extent.Width + x) * 4 + c]) - int(std::lround(Linear(soil[c]) * 255))) <= 1,
+                        "terrain did not occlude art background");
+            }
+
+    if (const char *path = std::getenv("PIXEL_ART_CAPTURE"); path && !exactMirrorEdge) {
+        std::ofstream file(path, std::ios::binary);
+        file << "P6\n" << extent.Width << ' ' << extent.Height << "\n255\n";
+        for (size_t i = 0; i < terrainScene.size(); i += 4)
+            for (size_t c = 0; c < 3; ++c) {
+                const float linear = terrainScene[i + c] / 255.f;
+                file.put(char(uint8_t(std::lround(255 * (linear <= .0031308f ? 12.92f * linear : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f)))));
+            }
+    }
+
+    terrain = false;
+    for (int i = 0; i < 4; ++i)
+        Require(capture() == first, "cached art changed between frame slots");
+    view.OriginPixels[0] += 512;
+    Require(capture() != first, "camera motion did not move the parallax layers");
+
+    view.OriginPixels[0] = 0;
+    field = true;
+    const auto diagnostic = capture();
+    for (size_t i = 0; i < diagnostic.size(); i += 4)
+        Require(diagnostic[i] == 255 && diagnostic[i + 1] == 128 && diagnostic[i + 2] == 128,
+                "background changed F1 diagnostic pixels");
+    app.Shutdown();
+    std::cout << "Art GPU passed: " << verified << " PNG pixel samples, sRGB/alpha, air below image, mirror edge=" << exactMirrorEdge
+              << ", terrain, frame slots, camera and F1\n";
+}
 } // namespace
 void RunPixelDebugUISmoke();
 int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--art-only") {
+            ArtBackgroundGpu();
+            ArtBackgroundGpu(true);
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--terrain-only") {
+            TerrainMaterialsGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--debug-ui-only") {
             RunPixelDebugUISmoke();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--lifecycle-only") {
+            Lifecycle(1);
+            Lifecycle(2);
+            return 0;
+        }
+        TerrainMaterialsGpu();
+        ArtBackgroundGpu();
+        ArtBackgroundGpu(true);
         WindVisualizationGpu();
         BasicWorldGameplay();
         ForceFieldDebugGameplay();

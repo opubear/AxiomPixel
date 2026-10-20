@@ -30,17 +30,29 @@ void BuildWorldGridFrame(pixel::WorldMapView world, const CellAppearanceTable &a
     output.DisplayMode = GridDisplayMode::Materials;
     // Order-independent signature: callers can edit the public appearance table.
     uint64_t signature = 0x6d6174657269616cULL ^ world.Identity() * 0xd6e8feb86659fd93ULL;
-    for (const auto &[type, layer] : appearances)
-        signature ^= (uint64_t(type) << 32 | layer) * 0x9e3779b97f4a7c15ULL;
+    bool hasSurfaces = false;
+    for (const auto &[type, appearance] : appearances) {
+        if (appearance.Layer > Grid2D::MaterialLayerMask || appearance.SurfaceLayer > Grid2D::MaterialLayerMask ||
+            appearance.SurfaceStrip > 7 || (!appearance.SurfaceLayer && appearance.SurfaceStrip))
+            throw std::invalid_argument("invalid material appearance layer or surface strip");
+        signature ^= (uint64_t(type) << 32 | appearance.Layer) * 0x9e3779b97f4a7c15ULL +
+                     (uint64_t(appearance.SurfaceLayer) << 3 | appearance.SurfaceStrip) * 0xd6e8feb86659fd93ULL;
+        hasSurfaces |= appearance.SurfaceLayer != 0;
+    }
     const bool invalidate = output.PrepareRegionVersions(signature);
     const auto cells = output.Cells();
     for (uint32_t ry = 0; ry < output.RegionRows(); ++ry) {
         for (uint32_t rx = 0; rx < output.RegionColumns(); ++rx) {
             const size_t region = size_t(ry) * output.RegionColumns() + rx;
             const uint32_t beginX = rx * Grid2D::RegionSize, beginY = ry * Grid2D::RegionSize;
-            const uint64_t version = GridSourceRegionVersion(world, beginX, beginY,
-                                                             std::min(Grid2D::RegionSize, world.Width - beginX),
-                                                             std::min(Grid2D::RegionSize, world.Height - beginY));
+            const auto width = std::min(Grid2D::RegionSize, world.Width - beginX);
+            uint64_t version = GridSourceRegionVersion(world, beginX, beginY, width,
+                                                       std::min(Grid2D::RegionSize, world.Height - beginY));
+            // Top-edge materials depend on the preceding published row. Fold
+            // both corner region versions in, including unaligned view origins.
+            if (hasSurfaces && beginY > 0)
+                for (const uint32_t x : {beginX, beginX + width - 1})
+                    version = (version ^ world.RegionVersion(world.Origin.X + x, world.Origin.Y + beginY - 1)) * 1099511628211ULL;
             if (!invalidate && output.SourceRegionVersion(region) == version)
                 continue;
             bool changed = false;
@@ -56,7 +68,13 @@ void BuildWorldGridFrame(pixel::WorldMapView world, const CellAppearanceTable &a
                             const auto appearance = appearances.find(type);
                             if (appearance == appearances.end())
                                 throw std::invalid_argument("gameplay cell type has no appearance mapping");
-                            value = appearance->second;
+                            value = appearance->second.Layer;
+                            if (appearance->second.SurfaceLayer && y > 0) {
+                                const auto above = world.TryAtLocal(x, y - 1);
+                                if (above && above->Type == pixel::CellTypeId::Air)
+                                    value = appearance->second.SurfaceLayer | Grid2D::SurfaceCellFlag |
+                                            (appearance->second.SurfaceStrip << Grid2D::SurfaceStripShift);
+                            }
                         }
                     }
                     changed |= cells[index] != value;

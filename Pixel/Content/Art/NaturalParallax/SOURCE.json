@@ -1,0 +1,132 @@
+{
+  "title": "舒适山林四层视差背景试作",
+  "created_at": "2026-10-20",
+  "source_type": "AI-generated",
+  "generator": "Codex built-in image_gen",
+  "model": "not exposed by tool",
+  "requested_size": [
+    2560,
+    1440
+  ],
+  "original_actual_size": [
+    1672,
+    941
+  ],
+  "originals": [
+    {
+      "filename": "00_far.png",
+      "generation_output": "exec-5c1c66d0-d5a0-46e4-83ea-ce7757ae852d.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 1306945,
+      "sha256": "164276a8b38a12f19e05b44d95c9d473f28d39fd90ea97358b23627885fcfaf0"
+    },
+    {
+      "filename": "01_mid_far.png",
+      "generation_output": "exec-9b6e0f91-513d-431a-9fc0-c8095828abeb.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGBA",
+      "bytes": 821041,
+      "sha256": "f53b2378e2d6471c52228cd67c7c09de27f960ce87e5b751879c5dbd1747f96d"
+    },
+    {
+      "filename": "02_mid.png",
+      "generation_output": "exec-9c2bdb9a-e4e4-46c3-b16c-20c430120205.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGBA",
+      "bytes": 791138,
+      "sha256": "59d0aeb409a30407e51176cb775c329f841ab2149759c97fa13ef68bc2155995"
+    },
+    {
+      "filename": "03_near.png",
+      "generation_output": "exec-42a5ef9c-90fd-4032-b8af-aa312367c39f.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGBA",
+      "bytes": 507287,
+      "sha256": "f8349014513a287e2dad8a3fd05310a7dc9836d685137f16cece6e35eb8781a8"
+    }
+  ],
+  "prompts": "prompts.json",
+  "terms_url": "https://openai.com/policies/row-terms-of-use/",
+  "terms_checked_at": "2026-10-20",
+  "material_purchase_cost": 0,
+  "generation_service_cost": "Not separately available; account usage may apply",
+  "notes": [
+    "No third-party asset images used as image inputs.",
+    "Originals contain chroma-key spill and are not verified seamless.",
+    "Near-layer tool defringe attempt did not resolve spill and was not selected."
+  ],
+  "prepared_exports": [
+    {
+      "filename": "Layers2K/00_far.png",
+      "width": 2560,
+      "height": 1440,
+      "mode": "RGBA",
+      "alpha_bbox": [
+        0,
+        0,
+        2560,
+        1440
+      ],
+      "bytes": 1954263,
+      "sha256": "0feac88d7899f40144e9927e4a20a1ec84879ad9f9c77ebf38a24b1691b4b4d9"
+    },
+    {
+      "filename": "Layers2K/01_mid_far.png",
+      "width": 2560,
+      "height": 1440,
+      "mode": "RGBA",
+      "alpha_bbox": [
+        0,
+        846,
+        2560,
+        1440
+      ],
+      "bytes": 1265859,
+      "sha256": "1d4b940438fc6476ea459a6e12cfe19ef84668d66df87e69af684e2f421bda86"
+    },
+    {
+      "filename": "Layers2K/02_mid.png",
+      "width": 2560,
+      "height": 1440,
+      "mode": "RGBA",
+      "alpha_bbox": [
+        0,
+        925,
+        2560,
+        1440
+      ],
+      "bytes": 1290852,
+      "sha256": "36921df75dd2d1ca9b34baafb21078a26113c87f3dab4609e2124f8fa9cfe1c4"
+    },
+    {
+      "filename": "Layers2K/03_near.png",
+      "width": 2560,
+      "height": 1440,
+      "mode": "RGBA",
+      "alpha_bbox": [
+        0,
+        1080,
+        2560,
+        1440
+      ],
+      "bytes": 830984,
+      "sha256": "ac9eef93178d731b99f174e69a114c7af7a4b68644ca0c0e4dc5a41d445d1141"
+    }
+  ],
+  "processing": {
+    "user_authorized": "2026-10-20: 允许，清理并输出 2K 试用版",
+    "script": "prepare_assets.py",
+    "size": [
+      2560,
+      1440
+    ],
+    "method": "alpha noise removal <=24; nearby opaque edge color within 3px; alpha remap 24..240; premultiplied Lanczos resample; remove residual low-alpha neon spill",
+    "native_2k": false,
+    "seamless_repeat": false
+  }
+}

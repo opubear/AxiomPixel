@@ -96,7 +96,7 @@ pixel::performance::MemoryUsage WorldGridFrame::GetMemoryUsage() const {
 
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
     const auto maximum = std::numeric_limits<size_t>::max();
-    if (!catalog.Width || !catalog.Height || !catalog.Layers || size_t(catalog.Width) > maximum / 4 / catalog.Height / catalog.Layers || catalog.Pixels.size() != size_t(catalog.Width) * catalog.Height * catalog.Layers * 4)
+    if (!catalog.Width || !catalog.Height || !catalog.Layers || !catalog.CellsPerTile || catalog.CellsPerTile > 4096 || size_t(catalog.Width) > maximum / 4 / catalog.Height / catalog.Layers || catalog.Pixels.size() != size_t(catalog.Width) * catalog.Height * catalog.Layers * 4)
         throw std::invalid_argument("texture catalog requires equal-sized, tightly packed RGBA8 layers");
 }
 std::array<int32_t, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame) {
@@ -149,7 +149,11 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     }
     switch (frame.DisplayMode) {
     case GridDisplayMode::Materials:
-        if (std::any_of(frame.Cells.begin(), frame.Cells.end(), [layers](uint32_t id) { return id != Grid2D::MissingCell && id >= layers; }))
+        if (std::any_of(frame.Cells.begin(), frame.Cells.end(), [layers](uint32_t id) {
+                const auto layer = id & Grid2D::MaterialLayerMask;
+                return id != Grid2D::MissingCell && (layer >= layers || ((id & Grid2D::SurfaceCellFlag) && !layer) ||
+                       ((id & Grid2D::SurfaceStripMask) && !(id & Grid2D::SurfaceCellFlag)));
+            }))
             throw std::invalid_argument("grid TextureId exceeds the texture catalog");
         break;
     case GridDisplayMode::ForceField:

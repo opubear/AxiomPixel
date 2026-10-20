@@ -1,0 +1,118 @@
+{
+    "Version": 1,
+    "Background": {
+        "HeightFraction": 0.65,
+        "Layers": [
+            {
+                "Path": "Art/NaturalParallax/00_far.png",
+                "RepeatCells": 65536
+            },
+            {
+                "Path": "Art/NaturalParallax/01_mid_far.png",
+                "RepeatCells": 16384
+            },
+            {
+                "Path": "Art/NaturalParallax/02_mid.png",
+                "RepeatCells": 8192
+            },
+            {
+                "Path": "Art/NaturalParallax/03_near.png",
+                "RepeatCells": 4096
+            }
+        ]
+    },
+    "Terrain": {
+        "CellsPerTile": 64,
+        "Images": [
+            {
+                "Layer": 1,
+                "Path": "Art/NaturalBlocks/01_soil.png"
+            },
+            {
+                "Layer": 2,
+                "Path": "Art/NaturalBlocks/07_grass_soil_surface.png"
+            },
+            {
+                "Layer": 3,
+                "Path": "Art/NaturalBlocks/03_stone.png"
+            },
+            {
+                "Layer": 4,
+                "Path": "Art/NaturalBlocks/08_coal_ore.png"
+            },
+            {
+                "Layer": 5,
+                "Path": "Art/NaturalBlocks/09_copper_ore.png"
+            },
+            {
+                "Layer": 6,
+                "Path": "Art/NaturalBlocks/10_iron_ore.png"
+            },
+            {
+                "Layer": 7,
+                "Path": "Art/NaturalBlocks/11_tungsten_ore.png"
+            },
+            {
+                "Layer": 8,
+                "Path": "Art/NaturalBlocks/12_gold_ore.png"
+            },
+            {
+                "Layer": 9,
+                "Path": "Art/Elements/01_water_body.png"
+            },
+            {
+                "Layer": 10,
+                "Path": "Art/Elements/02_water_surface.png"
+            }
+        ],
+        "Materials": [
+            {
+                "TypeId": 0,
+                "Layer": 0
+            },
+            {
+                "TypeId": 10,
+                "Layer": 1
+            },
+            {
+                "TypeId": 20,
+                "Layer": 1
+            },
+            {
+                "TypeId": 21,
+                "Layer": 1,
+                "SurfaceLayer": 2
+            },
+            {
+                "TypeId": 30,
+                "Layer": 3
+            },
+            {
+                "TypeId": 40,
+                "Layer": 4
+            },
+            {
+                "TypeId": 41,
+                "Layer": 5
+            },
+            {
+                "TypeId": 42,
+                "Layer": 6
+            },
+            {
+                "TypeId": 43,
+                "Layer": 7
+            },
+            {
+                "TypeId": 44,
+                "Layer": 8
+            },
+            {
+                "TypeId": 50,
+                "Layer": 9,
+                "SurfaceLayer": 10,
+                "SurfaceStrip": 3
+            }
+        ]
+    }
+}
