@@ -175,6 +175,16 @@ CellEditResult World::TryRemoveDirt(int64_t x, int64_t y) {
     return CellEditResult::Applied;
 }
 
+CellEditResult World::TryRemoveMaterial(int64_t x, int64_t y) {
+    const auto cell = TryGetCell(x, y);
+    if (!cell)
+        return CellEditResult::NotReady;
+    if (!IsMineable(cell->Type))
+        return CellEditResult::Blocked;
+    Map.SetMaterial({x, y}, CellTypes::Empty);
+    return CellEditResult::Applied;
+}
+
 void World::PublishState(WorldSnapshot &destination) const {
     const auto view = destination.Read();
     const auto bounds = GetSimulationBounds();
@@ -210,18 +220,23 @@ void World::SetPlayerInput(int horizontal, bool jump) {
     PlayerJump = jump;
 }
 
-void World::EnableStreaming(WorldStreamSettings settings) {
-    if (Streamer)
-        Save();
+void World::DiscardStreaming() {
     Streamer.reset();
     Map.ResetInfinite();
     Environment = pixel::Environment(Map);
     ScratchReservation = 0;
-    SimulationBounds = {0, 0, settings.WindowEdge, settings.WindowEdge};
     VisibleBounds = {};
     Player.reset();
     WindEnabled = false;
+}
+
+void World::EnableStreaming(WorldStreamSettings settings, WorldRect initialBounds) {
+    if (Streamer)
+        Save();
+    DiscardStreaming();
+    SimulationBounds = initialBounds.Empty() ? WorldRect{0, 0, settings.WindowEdge, settings.WindowEdge} : initialBounds;
     Streamer = std::make_unique<WorldStreamer>(Map, std::move(settings));
+    Streamer->SetExternalBytes(PublicationBytes);
     Streamer->LoadNow(SimulationBounds);
 }
 

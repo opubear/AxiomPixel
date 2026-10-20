@@ -20,11 +20,28 @@ bool Character::Collides(WorldMapView world, double x, double y) const {
             if (vx < 0 || vy < 0 || vx >= world.Width || vy >= world.Height)
                 return true;
             const auto material = world.TryAtLocal(uint32_t(vx), uint32_t(vy));
-            if (!material || material->Type != CellTypes::Empty)
+            if (!material || BlocksCharacter(material->Type))
                 return true;
         }
     }
     return false;
+}
+
+double Character::Submersion(WorldMapView world) const {
+    const auto origin = CellOrigin();
+    double area = 0;
+    for (int64_t y = int64_t(std::floor(Y)); y < int64_t(std::ceil(Y + Height)); ++y)
+        for (int64_t x = int64_t(std::floor(X)); x < int64_t(std::ceil(X + Width)); ++x) {
+            const CellCoord cell{origin.X + x, origin.Y + y};
+            const int64_t vx = cell.X - world.Origin.X, vy = cell.Y - world.Origin.Y;
+            if (vx < 0 || vy < 0 || vx >= world.Width || vy >= world.Height)
+                continue;
+            const auto state = world.TryAtLocal(uint32_t(vx), uint32_t(vy));
+            if (state && state->Type == CellTypeId::Water)
+                area += std::max(0.0, std::min(X + Width, double(x + 1)) - std::max(X, double(x)))
+                    * std::max(0.0, std::min(Y + Height, double(y + 1)) - std::max(Y, double(y)));
+        }
+    return area / (Width * Height);
 }
 
 void Character::MoveAxis(WorldMapView world, double distance, bool vertical) {
@@ -68,13 +85,14 @@ void Character::Tick(float duration, WorldMapView world, int horizontal, bool ju
         VerticalSpeed = 0;
     }
     Grounded = Collides(world, X, Y + .01);
-    if (jump && Grounded)
+    if (jump && (Grounded || Submersion(world) > 0))
         VerticalSpeed = -32;
     double remaining = std::min(double(duration), .25);
     while (remaining > 0) {
         const double dt = std::min(remaining, 1.0 / 120);
-        MoveAxis(world, std::clamp(horizontal, -1, 1) * 16.0 * dt, false);
-        VerticalSpeed = std::min(VerticalSpeed + 90 * dt, 80.0);
+        const double submerged = Submersion(world);
+        MoveAxis(world, std::clamp(horizontal, -1, 1) * 16.0 * (1 - .4 * submerged) * dt, false);
+        VerticalSpeed = std::min((VerticalSpeed + 90 * (1 - 1.2 * submerged) * dt) * std::exp(-3 * submerged * dt), 80.0);
         MoveAxis(world, VerticalSpeed * dt, true);
         remaining -= dt;
     }

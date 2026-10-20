@@ -281,6 +281,12 @@ void WorldMap::SetForce(CellCoord coordinate, ForceVector force) {
 void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves) {
     if (moves.empty())
         return;
+    // Validate against the same step-start state before any source is cleared.
+    for (const auto &move : moves) {
+        const auto source = TryGet(move.Source), target = TryGet(move.Destination);
+        if (!source || !target || source->Type != move.Type || target->Type != CellTypeId::Air)
+            throw std::logic_error("material commit requires matching sources and empty resident targets");
+    }
     const auto revision = ++Version;
     WorldChunk *sourceChunk = nullptr, *destinationChunk = nullptr;
     CellCoord sourceKey, destinationKey;
@@ -297,7 +303,7 @@ void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves) {
         if (!sourceChunk || !destinationChunk)
             throw std::logic_error("material commit requires pinned resident chunks");
         sourceChunk->Data().Materials[Index(move.Source)] = CellTypes::Empty;
-        destinationChunk->Data().Materials[Index(move.Destination)] = CellTypes::Dirt;
+        destinationChunk->Data().Materials[Index(move.Destination)] = move.Type;
         --sourceChunk->MaterialCounts[RegionIndex(move.Source)];
         ++destinationChunk->MaterialCounts[RegionIndex(move.Destination)];
         sourceChunk->RegionVersions[RegionIndex(move.Source)] = revision;

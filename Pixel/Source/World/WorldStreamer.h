@@ -1,6 +1,7 @@
 #pragma once
 
 #include "WorldMap.h"
+#include "Generation/WorldGenerator.h"
 #include <condition_variable>
 #include <filesystem>
 #include <mutex>
@@ -20,6 +21,7 @@ struct WorldStreamSettings {
     uint64_t BudgetBytes = storage::DefaultBudget;
     uint32_t WindowEdge = storage::DefaultWindowEdge;
     int64_t SurfaceY = 512;
+    WorldGenerationSettings Generation;
 };
 
 enum class ChunkResidency { Missing,
@@ -56,6 +58,7 @@ class WorldStreamer {
     const WorldStreamSettings &Settings() const { return Configuration; }
     static void WriteChunk(const std::filesystem::path &directory, const WorldChunk &chunk);
     static std::unique_ptr<WorldChunk> ReadChunk(const std::filesystem::path &directory, CellCoord coordinate, int64_t surface);
+    static std::unique_ptr<WorldChunk> ReadChunk(const std::filesystem::path &directory, CellCoord coordinate, const IWorldGenerator &generator);
 
   private:
     enum class Operation { Load,
@@ -66,9 +69,11 @@ class WorldStreamer {
         std::unique_ptr<WorldChunk> Chunk;
         std::string Error;
         bool Retain = false;
+        uint64_t Reservation = 0;
     };
     WorldMap &Map;
     WorldStreamSettings Configuration;
+    std::unique_ptr<IWorldGenerator> Generator;
     mutable std::mutex Mutex;
     std::condition_variable Changed;
     axiom::Array<Work> Queue, Completed;
@@ -78,6 +83,7 @@ class WorldStreamer {
     bool Stopping = false;
     uint64_t InFlightBytes = 0, ExternalBytes = 0;
     std::string Error;
+    uint64_t LoadReservation() const;
     void Run();
     void Enqueue(Work work);
     bool MakeRoom(uint64_t bytes, const axiom::Map<CellCoord, uint8_t, CellCoordLess> &wanted);

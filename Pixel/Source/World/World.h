@@ -67,6 +67,7 @@ class World {
     bool RemoveDirt(int64_t x, int64_t y);
     CellEditResult TryPlaceDirt(int64_t x, int64_t y);
     CellEditResult TryRemoveDirt(int64_t x, int64_t y);
+    CellEditResult TryRemoveMaterial(int64_t x, int64_t y);
     void RetryStreaming() {
         if (Streamer)
             Streamer->RetryFailures();
@@ -83,7 +84,9 @@ class World {
     void PublishState(WorldSnapshot &destination) const;
     void PublishSnapshot(WorldRect bounds, WorldSnapshot &destination) const;
 
-    void EnableStreaming(WorldStreamSettings settings);
+    void EnableStreaming(WorldStreamSettings settings, WorldRect initialBounds = {});
+    // Only after a failed candidate world; its contents must never overwrite the old world.
+    void DiscardStreaming();
     void RequestVisibleRegion(WorldRect bounds);
     void UpdateStreaming();
     void Save();

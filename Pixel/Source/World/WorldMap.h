@@ -36,6 +36,7 @@ struct PackedDirection {
 
 struct MaterialMove {
     CellCoord Source, Destination;
+    CellTypeId Type = CellTypeId::Dirt;
 };
 
 // One allocation, with material scans independent of direction and force storage.

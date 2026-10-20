@@ -29,11 +29,16 @@ void Read(std::istream &input, T &value) {
 
 WorldStreamer::WorldStreamer(WorldMap &map, WorldStreamSettings settings)
     : Map(map), Configuration(std::move(settings)) {
-    if (Map.IsFinite() || Configuration.Directory.empty() || Configuration.BudgetBytes < 2 * ChunkReservation || Configuration.WindowEdge < storage::RegionEdge || Configuration.WindowEdge % storage::RegionEdge)
+    if (Configuration.Generation.Kind == WorldGeneratorKind::Flat)
+        Configuration.Generation.SurfaceY = Configuration.SurfaceY;
+    Generator = CreateWorldGenerator(Configuration.Generation);
+    if (Map.IsFinite() || Configuration.Directory.empty() || Configuration.BudgetBytes < 2 * LoadReservation() || Configuration.WindowEdge < storage::RegionEdge || Configuration.WindowEdge % storage::RegionEdge)
         throw std::invalid_argument("invalid streaming world configuration");
     std::filesystem::create_directories(Configuration.Directory / "chunks");
     Worker = std::jthread([this] { Run(); });
 }
+
+uint64_t WorldStreamer::LoadReservation() const { return ChunkReservation + Generator->WorkingBytes(); }
 
 WorldStreamer::~WorldStreamer() {
     // Owning session explicitly saves, so destructor only joins outstanding I/O.
@@ -77,7 +82,8 @@ ChunkResidency WorldStreamer::GetState(CellCoord coordinate) const {
 
 void WorldStreamer::Enqueue(Work work) {
     Pending.emplace(work.Coordinate, work.Kind);
-    InFlightBytes += ChunkReservation;
+    work.Reservation = work.Kind == Operation::Load ? LoadReservation() : ChunkReservation;
+    InFlightBytes += work.Reservation;
     {
         std::lock_guard lock(Mutex);
         Queue.push_back(std::move(work));
@@ -98,7 +104,7 @@ void WorldStreamer::Run() {
         }
         try {
             if (work.Kind == Operation::Load)
-                work.Chunk = ReadChunk(Configuration.Directory, work.Coordinate, Configuration.SurfaceY);
+                work.Chunk = ReadChunk(Configuration.Directory, work.Coordinate, *Generator);
             else {
                 WriteChunk(Configuration.Directory, *work.Chunk);
                 work.Chunk->Dirty = false;
@@ -133,7 +139,7 @@ void WorldStreamer::Poll(bool acceptLoads) {
     }
     for (auto &work : completed) {
         Pending.erase(work.Coordinate);
-        InFlightBytes -= ChunkReservation;
+        InFlightBytes -= work.Reservation;
         if (!work.Error.empty()) {
             Error = work.Error;
             Failures[work.Coordinate] = work.Error;
@@ -175,7 +181,7 @@ void WorldStreamer::Update(WorldRect simulation, WorldRect visible) {
     for (const auto coordinate : requests) {
         if (Map.FindChunk(coordinate) || Pending.contains(coordinate) || Failures.contains(coordinate))
             continue;
-        if (Pending.size() >= 2 || !MakeRoom(ChunkReservation, wanted))
+        if (Pending.size() >= 2 || !MakeRoom(LoadReservation(), wanted))
             break;
         Enqueue({Operation::Load, coordinate, {}, {}});
     }
@@ -186,7 +192,7 @@ void WorldStreamer::Update(WorldRect simulation, WorldRect visible) {
         for (int64_t y = first.Y - 1; y <= last.Y + 1 && Pending.size() < 2; ++y)
             for (int64_t x = first.X - 1; x <= last.X + 1 && Pending.size() < 2; ++x) {
                 const CellCoord coordinate{x, y};
-                if (!Map.FindChunk(coordinate) && !Pending.contains(coordinate) && !Failures.contains(coordinate) && RetainedBytes() + ChunkReservation <= Configuration.BudgetBytes)
+                if (!Map.FindChunk(coordinate) && !Pending.contains(coordinate) && !Failures.contains(coordinate) && RetainedBytes() + LoadReservation() <= Configuration.BudgetBytes)
                     Enqueue({Operation::Load, coordinate, {}, {}});
             }
     }
@@ -201,9 +207,9 @@ void WorldStreamer::LoadNow(WorldRect bounds) {
     for (const auto coordinate : coordinates) {
         if (Map.FindChunk(coordinate))
             continue;
-        if (!MakeRoom(ChunkReservation, wanted)) {
+        if (!MakeRoom(LoadReservation(), wanted)) {
             Wait();
-            if (!MakeRoom(ChunkReservation, wanted))
+            if (!MakeRoom(LoadReservation(), wanted))
                 throw std::runtime_error("world budget cannot fit required region");
         }
         Enqueue({Operation::Load, coordinate, {}, {}});
@@ -256,7 +262,7 @@ void WorldStreamer::CancelOptionalLoads(const axiom::Map<CellCoord, uint8_t, Cel
         for (auto it = items.begin(); it != items.end();) {
             if (it->Kind == Operation::Load && !required.contains(it->Coordinate)) {
                 Pending.erase(it->Coordinate);
-                InFlightBytes -= ChunkReservation;
+                InFlightBytes -= it->Reservation;
                 it = items.erase(it);
             } else {
                 ++it;
@@ -289,7 +295,9 @@ bool WorldStreamer::ReserveExternalBytes(uint64_t bytes, WorldRect simulation, b
 void WorldStreamer::WriteChunk(const std::filesystem::path &directory, const WorldChunk &chunk) {
     static_assert(std::endian::native == std::endian::little, "chunk format currently requires little endian");
     std::filesystem::create_directories(directory / "chunks");
-    std::ofstream output(ChunkFile(directory, chunk.Coordinate), std::ios::binary | std::ios::trunc);
+    const auto destination = ChunkFile(directory, chunk.Coordinate);
+    const auto temporary = std::filesystem::path(destination.string() + ".tmp");
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
     output.exceptions(std::ios::failbit | std::ios::badbit);
     Write(output, FileMagic);
     Write(output, FileVersion);
@@ -301,15 +309,20 @@ void WorldStreamer::WriteChunk(const std::filesystem::path &directory, const Wor
     output.write(reinterpret_cast<const char *>(data.Directions.data()), data.Directions.size() * sizeof(PackedDirection));
     output.write(reinterpret_cast<const char *>(data.BaseForces.data()), data.BaseForces.size() * sizeof(ForceVector));
     output.close();
+    std::filesystem::rename(temporary, destination);
 }
 
 std::unique_ptr<WorldChunk> WorldStreamer::ReadChunk(const std::filesystem::path &directory, CellCoord coordinate, int64_t surface) {
+    WorldGenerationSettings settings;
+    settings.SurfaceY = surface;
+    return ReadChunk(directory, coordinate, *CreateWorldGenerator(settings));
+}
+
+std::unique_ptr<WorldChunk> WorldStreamer::ReadChunk(const std::filesystem::path &directory, CellCoord coordinate, const IWorldGenerator &generator) {
     const auto path = ChunkFile(directory, coordinate);
+    if (!std::filesystem::exists(path))
+        return generator.GenerateChunk(coordinate);
     auto chunk = std::make_unique<WorldChunk>(coordinate);
-    if (!std::filesystem::exists(path)) {
-        chunk->Initialize(surface);
-        return chunk;
-    }
     std::ifstream input(path, std::ios::binary);
     input.exceptions(std::ios::failbit | std::ios::badbit);
     uint32_t magic, version, edge;
@@ -328,7 +341,7 @@ std::unique_ptr<WorldChunk> WorldStreamer::ReadChunk(const std::filesystem::path
     for (size_t i = 0; i < storage::ChunkCells; ++i) {
         const auto direction = data.Directions[i];
         const auto force = data.BaseForces[i];
-        if (direction.X < -1 || direction.X > 1 || direction.Y < -1 || direction.Y > 1 || !std::isfinite(force.X) || !std::isfinite(force.Y))
+        if (!IsKnownCellType(data.Materials[i]) || direction.X < -1 || direction.X > 1 || direction.Y < -1 || direction.Y > 1 || !std::isfinite(force.X) || !std::isfinite(force.Y))
             throw std::runtime_error("invalid chunk cell data: " + path.string());
     }
     chunk->Recount();

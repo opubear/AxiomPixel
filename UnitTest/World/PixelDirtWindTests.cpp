@@ -183,12 +183,19 @@ void EditsAndCouplingScope() {
     withoutDirt.Step(Step);
     world.Tick(Step);
     Check(Samples(world.GetWind(), 64, 64) == Samples(withoutDirt, 64, 64), "DirtDrag=0 did not disable feedback");
-    world.Fill({static_cast<pixel::CellTypeId>(20)}); // Non-dirt material is outside this coupling contract.
+    world.Fill({pixel::CellTypeId::GroundSoil});
     world.ConfigureWind(64, Uniform({20, 0}));
     withoutDirt = world.GetWind();
     withoutDirt.Step(Step);
     world.Tick(Step);
-    Check(Samples(world.GetWind(), 64, 64) == Samples(withoutDirt, 64, 64), "non-dirt material unexpectedly entered the drag mask");
+    Check(Samples(world.GetWind(), 64, 64) != Samples(withoutDirt, 64, 64), "fixed ground did not obstruct coarse wind");
+    Check(world.GetCell(10, 10).Type == pixel::CellTypeId::GroundSoil, "static wind obstacle entered material motion");
+    world.Fill({pixel::CellTypeId::Water});
+    world.ConfigureWind(64, Uniform({20, 0}));
+    withoutDirt = world.GetWind();
+    withoutDirt.Step(Step);
+    world.Tick(Step);
+    Check(Samples(world.GetWind(), 64, 64) != Samples(withoutDirt, 64, 64), "water did not obstruct coarse wind independently of character collision");
 }
 
 void FeedbackValidation() {

@@ -11,10 +11,18 @@ class GameSession {
     static constexpr uint32_t TerrainHeight = 512;
     static constexpr uint32_t DefaultWindStartHeight = 600;
     // CPU fixtures remain finite; the application explicitly enables persistence.
-    explicit GameSession(bool persistent = false);
+    explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
+    static WorldGenerationSettings DefaultGeneration();
     World &GetWorld() { return GameWorld; }
     const World &GetWorld() const { return GameWorld; }
     void Reset();
+    bool TryReset();
+    bool TryRecover();
+    bool IsReady() const { return Ready; }
+    const WorldGenerationSettings &GetGenerationSettings() const { return StreamConfiguration.Generation; }
+    const WorldGenerationSettings &GetNextGenerationSettings() const { return NextGeneration; }
+    void SetNextGenerator(WorldGeneratorKind kind) { NextGeneration.Kind = kind; }
+    void SetNextWorldSeed(uint64_t seed) { NextGeneration.Seed = seed; }
     void Save();
     bool TrySave();
     const std::string &GetSaveError() const { return SaveError; }
@@ -38,9 +46,12 @@ class GameSession {
     WindStrategyKind WindKind = WindStrategyKind::Empty;
     std::filesystem::path SaveRoot, SaveDirectory;
     WorldStreamSettings StreamConfiguration;
+    WorldGenerationSettings NextGeneration;
+    bool Ready = true;
     std::string SaveError;
     void InitializeScene();
     bool Load();
+    void LoadDirectory(const std::filesystem::path &directory);
     void WriteMetadata();
 };
 } // namespace pixel

@@ -27,6 +27,31 @@ void AppendScratch(axiom::Array<T> &values, T value, World &world, const Environ
     }
     values.push_back(value);
 }
+
+std::optional<CellCoord> WaterDestination(const WorldMap &map, WorldRect bounds, CellCoord source) {
+    const auto is = [&](CellCoord cell, CellTypeId type) {
+        const auto value = bounds.Contains(cell) ? map.TryGet(cell) : std::nullopt;
+        return value && value->Type == type;
+    };
+    const CellCoord below{source.X, source.Y + 1};
+    if (is(below, CellTypeId::Air))
+        return below;
+    // A side step must lead downhill, or have a second water cell providing
+    // head above the source. A lone surface cell cannot oscillate sideways.
+    const bool hasHead = is({source.X, source.Y - 1}, CellTypeId::Water);
+    const int first = (uint64_t(source.X) ^ uint64_t(source.Y)) & 1 ? -1 : 1;
+    for (const int dx : {first, -first}) {
+        const CellCoord side{source.X + dx, source.Y};
+        const bool dropsFromSide = is({side.X, side.Y + 1}, CellTypeId::Air);
+        // Do not follow a supporting water cell into its lateral vacancy in
+        // the same synchronous step. That translates whole columns forever.
+        if (dropsFromSide && is(below, CellTypeId::Water))
+            continue;
+        if (is(side, CellTypeId::Air) && (hasHead || dropsFromSide))
+            return side;
+    }
+    return std::nullopt;
+}
 } // namespace
 performance::MemoryUsage Environment::GetMemoryUsage() const {
     auto usage = performance::MeasureObject(*this, Proposals, DirtMovements, Winners, WinnerEpochs);
@@ -91,10 +116,18 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
         const CellCoord begin{region.X, region.Y + row};
         const auto materials = map.MaterialRow(begin, region.Width);
         for (uint32_t column = 0; column < region.Width; ++column) {
-            if (materials[column] != CellTypes::Dirt)
+            const auto type = materials[column];
+            if (type != CellTypeId::Dirt && type != CellTypeId::Water)
                 continue;
             const CellCoord source{begin.X + column, begin.Y};
-            const auto direction = FieldResponse::MovementDirection(world.GetFieldVelocity(source.X, source.Y));
+            ForceDirection direction{0, 0};
+            if (type == CellTypeId::Water) {
+                const auto destination = WaterDestination(map, bounds, source);
+                if (destination)
+                    direction = {int32_t(destination->X - source.X), int32_t(destination->Y - source.Y)};
+            } else {
+                direction = FieldResponse::MovementDirection(world.GetFieldVelocity(source.X, source.Y));
+            }
             if (direction.X == 0 && direction.Y == 0)
                 continue;
             const CellCoord destination{source.X + direction.X, source.Y + direction.Y};
@@ -106,7 +139,7 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
                     ProposalDirection = direction;
                 else if (ProposalDirection != direction)
                     SharedProposalDirection = false;
-                AppendScratch(Proposals, MaterialMove{source, destination}, world, *this);
+                AppendScratch(Proposals, MaterialMove{source, destination, type}, world, *this);
             }
         }
     }
@@ -136,7 +169,7 @@ void Environment::StepMaterials(World &world) {
         });
     const auto windOrigin = world.GetWindView().Origin;
     for (const auto &move : Proposals) {
-        if (Wind.NeedsMaterialMotion() && world.GetWindBounds().Contains(move.Destination)) {
+        if (move.Type == CellTypeId::Dirt && Wind.NeedsMaterialMotion() && world.GetWindBounds().Contains(move.Destination)) {
             AppendScratch(DirtMovements, DirtMotion{uint32_t(move.Destination.X - windOrigin.X), uint32_t(move.Destination.Y - windOrigin.Y), {float(move.Destination.X - move.Source.X) * FieldResponse::StepsPerSecond, float(move.Destination.Y - move.Source.Y) * FieldResponse::StepsPerSecond}}, world, *this);
         }
     }

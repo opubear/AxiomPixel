@@ -47,11 +47,16 @@ void GameInput::ResetView() {
     Presentation.Post = {};
 }
 void GameInput::ResetGame() {
-    Session.Reset();
+    if (!Session.TryReset()) {
+        ClearInputState();
+        return;
+    }
     ClearInputState();
     ResetView();
 }
 void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int, const MousePointerState &pointer) {
+    if (!Session.IsReady())
+        return;
     if (action != ButtonAction::ACTION_PRESS || (button != MouseButton::MOUSE_BUTTON_LEFT && button != MouseButton::MOUSE_BUTTON_RIGHT))
         return;
     const auto cell = Camera.PickCell(pointer);
@@ -60,7 +65,7 @@ void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int,
     if (button == MouseButton::MOUSE_BUTTON_LEFT)
         Session.GetWorld().PlaceDirt((*cell)[0], (*cell)[1]);
     else
-        Session.GetWorld().RemoveDirt((*cell)[0], (*cell)[1]);
+        Session.GetWorld().TryRemoveMaterial((*cell)[0], (*cell)[1]);
 }
 void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     const std::array keys{Key::KEY_W, Key::KEY_A, Key::KEY_S, Key::KEY_D};
@@ -95,6 +100,6 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     }
 }
 const char *GameInput::ControlsDescription() {
-    return "Pixel: left click place dirt; right click remove dirt; A/D move; Space jump; F3 debug camera (WASD pan); +/- zoom; F1 toggle force-field view; F2 toggle Debug UI; T toggle tint; PageDown next region; R reset world; Escape quit";
+    return "Pixel: left click place dirt; right click mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; T tint; PageDown next region; R new world with selected generator; Escape quit";
 }
 } // namespace pixel

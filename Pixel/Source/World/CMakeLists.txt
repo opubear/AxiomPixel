@@ -5,6 +5,7 @@ if(NOT PIXEL_CHUNK_EDGE MATCHES "^[0-9]+$")
 endif()
 add_library(PixelWorld STATIC
     World.cpp Character.cpp WorldMap.cpp WorldStreamer.cpp
+    Generation/WorldGenerator.cpp Generation/GenerationNoise.cpp
     Environment/Environment.cpp
     Environment/Wind/PixelWindField.cpp
     Environment/Wind/WindSimulation.cpp

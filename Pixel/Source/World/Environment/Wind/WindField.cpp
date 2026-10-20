@@ -280,7 +280,7 @@ void WindField::CoupleDirt(WorldMapView world, std::span<const DirtMotion> motio
     bool occupied = false;
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < world.Width; ++x)
-            if (world.AtIndex(size_t(y) * world.Width + x).Type == CellTypes::Dirt) {
+            if (BlocksWind(world.AtIndex(size_t(y) * world.Width + x).Type)) {
                 AccumulateDirt(x, y, 1, {});
                 occupied = true;
             }

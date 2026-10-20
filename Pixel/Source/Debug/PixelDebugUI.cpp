@@ -7,9 +7,30 @@
 
 namespace pixel {
 namespace {
+void DrawGeneration(GameSession &session) {
+    if (!ImGui::CollapsingHeader("World generation", ImGuiTreeNodeFlags_DefaultOpen))
+        return;
+    const auto &current = session.GetGenerationSettings();
+    ImGui::Text("Current: %s; seed %llu", GeneratorName(current.Kind), static_cast<unsigned long long>(current.Seed));
+    int selected = int(session.GetNextGenerationSettings().Kind);
+    if (ImGui::Combo("Next world", &selected, "Superflat (debug)\0Natural\0"))
+        session.SetNextGenerator(WorldGeneratorKind(selected));
+    auto seed = session.GetNextGenerationSettings().Seed;
+    if (ImGui::InputScalar("World seed", ImGuiDataType_U64, &seed))
+        session.SetNextWorldSeed(seed);
+    ImGui::TextDisabled("Press R to save and create the selected world.");
+    if (!session.IsReady()) {
+        ImGui::TextWrapped("World recovery failed. Simulation and saving are disabled.");
+        ImGui::TextWrapped("%s", session.GetSaveError().c_str());
+        if (ImGui::Button("Retry world recovery"))
+            session.TryRecover();
+    }
+}
+
 void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
     auto &World = session.GetWorld();
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::BeginDisabled(!session.IsReady());
         int64_t boundary = World.GetWindBoundary();
         ImGui::TextUnformatted("Wind blows above the world Y boundary.");
         ImGui::SetNextItemWidth(190);
@@ -19,8 +40,11 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
             ImGui::SetTooltip("Enter the world Y coordinate; wind covers cells above this boundary.");
         ImGui::Text("Wind coverage: %u rows in the player window", World.GetWindEndRow());
         ImGui::TextDisabled("Changing height restarts the wind simulation.");
-        if (ImGui::Button("Default boundary (Y = 424)"))
-            session.SetWindStartHeight(GameSession::DefaultWindStartHeight);
+        const auto &generation = session.GetGenerationSettings();
+        const auto defaultBoundary = generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88);
+        const auto boundaryLabel = "Default boundary (Y = " + std::to_string(defaultBoundary) + ")";
+        if (ImGui::Button(boundaryLabel.c_str()))
+            session.SetWindBoundary(defaultBoundary);
         int selected = int(session.GetSelectedWindStrategy());
         if (ImGui::Combo("Wind strategy", &selected, "Coarse NS\0Pixel reference (1:1)\0Procedural + obstacles\0Coarse NS + local model\0Adaptive NS (CPU prototype)\0LBM D2Q9 (CPU prototype)\0Empty (no wind)\0")) {
             session.SelectWindStrategy(WindStrategyKind(selected));
@@ -66,6 +90,7 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
         bool fieldView = presentation.DisplayMode == GridDisplayMode::ForceField;
         if (ImGui::Checkbox("Field direction view (F1)", &fieldView))
             presentation.DisplayMode = fieldView ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
+        ImGui::EndDisabled();
     }
 }
 void DrawWindAppearance(GamePresentation &presentation) {
@@ -91,6 +116,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
     ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        DrawGeneration(session);
         DrawEnvironment(session, presentation);
         DrawWindAppearance(presentation);
         bool debugCamera = mode == ControlMode::DebugCamera;

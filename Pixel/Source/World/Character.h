@@ -17,6 +17,7 @@ class Character {
   private:
     double VerticalSpeed = 0;
     bool Collides(WorldMapView world, double x, double y) const;
+    double Submersion(WorldMapView world) const;
     void MoveAxis(WorldMapView world, double distance, bool vertical);
 };
 } // namespace pixel
