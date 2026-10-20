@@ -2,7 +2,7 @@
 
 正式领域名称为“构式（Formula）”，替代早期“法术”称呼。代码已统一为 `Pixel/Formula`、C++ `Formula` 类型、`pixel::formula` 命名空间、`.formula` 示例文件和 `PixelFormula` 构建目标；`cast` 仍表示激活构式，语义保持不变。整体设计见 [AWT 构式系统](../../.awtcontext/GlobalDoc/FormulaSystem.md)，实际架构与历史提案差异见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
 
-这是 Pixel 内可独立构建的 C++20 子系统，用来验证“构式描述经过修改器或装饰器之后，仍然是构式描述”的玩法基础。它提供文本语言、不可变描述、独立 CPU 模拟器、命令行演示和行为测试。目前不接入游戏中的 World、角色、碰撞或渲染。
+这是 Pixel 内可独立构建的 C++20 子系统，用来表达“构式描述经过修改器或装饰器之后，仍然是构式描述”的玩法基础。它提供文本语言、不可变描述、独立 CPU 模拟器、命令行演示和行为测试。游戏已通过 `Pixel/Source/Gameplay/FormulaRuntime` 接入真实World、碰撞与黄色球表现，并提供独立DebugUI树形编辑器；使用方法见 [工程README](../../README.md)。本模块本身继续不依赖World、窗口或GPU。
 
 ## 快速运行
 

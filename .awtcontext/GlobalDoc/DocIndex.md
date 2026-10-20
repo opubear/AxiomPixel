@@ -8,9 +8,9 @@
 | 世界方块更新性能调查 | `workspace:Docs/MaterialUpdatePerformance.md` | 旧移动链性能基线与方案来源；现行同步规则和收益见WorldRepresentation文档 | 调查完成；生产优化未实施 |
 | 世界与力场内存统计 | `workspace:Docs/MemoryProfiling.md` | 帧末所有权计量、size/capacity、七风策略、窗口峰值与默认/暂停实测；排除RSS、临时分配及渲染资源 | 已实现并实测 |
 | 风场可视化双模式 | `workspace:Docs/WindVisualizationSystemDesign.docx` | 纯风速GPU纹理、短轨迹/柔和折光、人物前合成、参数与验证 | 首版实现并独立审查通过 |
-| 构式系统（Formula System） | `FormulaSystem.md` | 正式命名、核心玩法、封闭组合、载体与子构式、世界接入方案、实现状态及后续路线 | 当前系统设计入口；区分已实现与提案 |
-| 构式语言架构（Formula DSL） | `FormulaLanguageArchitecture.md` | 语言/描述/执行/效果四层、不可变结构、调度、作用域、历史提案差异及验证依据 | 当前原型架构；未接游戏世界 |
-| 构式语言原型使用说明 | `workspace:Pixel/Formula/README.md` | 语法、参数、CLI、示例和构建测试入口；代码名已统一为 Formula | 原型已实现，未接游戏世界 |
+| 构式系统（Formula System） | `context:GlobalDoc/FormulaSystem.md` | 核心玩法、封闭组合、作用域、已实现的游戏基础版及后续边界 | 当前系统入口；基础版游戏已实现 |
+| 构式语言架构（Formula DSL） | `context:GlobalDoc/FormulaLanguageArchitecture.md` | 独立语言四层、不可变访问、调度与作用域，以及游戏接入的职责边界 | 独立模块架构；游戏接入见基础版实现 |
+| 构式语言原型使用说明 | `workspace:Pixel/Formula/README.md` | 独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
 | 早期法术编程系统设计（历史提案） | `workspace:Docs/SpellProgrammingSystemDesign.docx` | 2026-10-12 原始完整设计；当前名称为构式，现行状态与规则见上方两份工程知识 | 保留 v0.1 历史依据，不作为实现完成声明 |
 | Astra 独立全代码审查（2026-10-05） | `CodeReview-Astra-2026-10-05.md` | 干净上下文 xhigh 审查 Pixel 与本地 Axiom，P2 Cross、P3 Quaternion；覆盖清单与独立验证证据 | 两项已修复，原 Astra 复核通过 |
 | 当前 Pixel 代码审查（2026-10-04） | `CodeReview-2026-10-04.md` | 全部 Pixel 代码与引擎集成审查，3 项 P2 缺陷、复现材料及修复验证 | F1–F3 已修复 |
@@ -23,5 +23,17 @@
 | 逐像素力场与风场基准（2026-10-12） | `PixelWindBaseline.md` | 连续基础力场、1:1 MAC硬边界基准、误差/成本实验、代码审查与使用边界 | 已实现，验证记录见正文 |
 | 世界分块与流式接口 | `workspace:Docs/WorldRepresentation.md` | 现行分块、四叉树、同步规则、预算、存档、移动风域及区域发布契约 | |
 | 世界改造验证与性能 | `workspace:Docs/WorldRepresentationValidation.md` | 同步参考、三轮Release原始数据、CPU及GPU最终结果与独立审查结论 | |
+| 初版自然世界素材候选 | `context:GlobalDoc/NaturalWorldAssetResearch-2026-10-20.md` | 免费试用的舒适自然横版像素素材、推荐组合、配套资源及替换边界 | |
+| ArtRaw素材原件与来源 | `workspace:ArtRaw/README.md` | 19组下载与3组生成素材的入口、来源记录、运行时复制及完整性说明 | |
+| 构式攻击特效素材与用途 | `workspace:ArtRaw/Effects/README.md` | 新增11组免费攻击特效、实际文件、构式阶段映射和图集适配边界 | |
+| 素材来源价格与商用许可总索引 | `workspace:ArtRaw/RESOURCE_INDEX.md` | 19组下载与3组生成素材的逐包来源、价格、署名、商用条件及AI来源记录 | |
+| 舒适山林四层视差背景试作 | `workspace:ArtRaw/Environment/NaturalParallax2K/README.md` | 四张2560x1440透明分层贴图、原件与生成提示词、视差预览及镜像重复用法 | |
+| 游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | Content复制件、自定义JSON、PNG共享缓存、GPU一次上传、视差及验证范围 | |
+| 自然方块材质纹理试作 | `workspace:ArtRaw/Materials/NaturalBlocks/README.md` | 12项自然方块与矿石纹理、64和256像素版本、五种矿石辨识预览及铺贴用法 | |
+| 分块程序化世界生成方案 | `context:GlobalDoc/WorldGenerationDesign.md` | 已评审设计基线；实现与当前接口、材质JSON和验证入口见WorldGenerationImplementation | |
+| 火焰水体与水汽静态纹理 | `workspace:ArtRaw/Materials/Elements/README.md` | 六项64和256像素静态材质与透明效果、密度图、重复方向及已有动画入口 | |
+| 世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | Natural/Flat策略选择、种子版本及旧档、有限水体、Content纹理JSON和验证入口 | |
+| 构式基础版游戏接入设计与实施计划 | `context:GlobalDoc/FormulaGameplayV1Design.md` | 已评审实施基线与验收计划；当前快捷键调整及实现见基础版实现说明 | |
+| 构式基础版游戏接入实现 | `context:GlobalDoc/FormulaGameplayV1Implementation.md` | 操作入口、F2/F4独立窗口、模块职责、固定步与v4兼容、额度及验证边界 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

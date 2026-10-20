@@ -11,17 +11,19 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 
 核心组合玩法正式命名为“构式（Formula）”，替代早期“法术”称呼（用户于 2026-10-13 确认）。构式是不可变、可嵌套的行为描述，修改器与装饰器的输出仍可作为下一节点输入；运行中弹体和效果指令属于独立执行状态。
 
-`Pixel/Formula` 已实现可独立构建的 C++20 文本 DSL、不可变 `Formula` 描述、60 Hz CPU 模拟器、CLI 与行为测试。架构为“文本解析 → 不可变描述 → 独立模拟执行 → 效果指令/事件日志”；支持命名复用、管道修改、顺序组合、延迟、重复、散射与命中子构式。外层修改器只进入命中载体，不进入 payload。当前命中由宿主显式注入，尚未接入实际 World、碰撞、伤害与渲染，也没有费用或执行预算。
+`Pixel/Formula` 提供可独立构建的 C++20 文本 DSL、不可变 `Formula` 描述、60 Hz CPU 模拟器、CLI 与行为测试；支持命名复用、管道修改、顺序组合、延迟、重复、散射与命中子构式。外层修改器只进入命中载体，不进入 payload。2026-10-20 已接入游戏：右键从人物前方朝鼠标激活；独立 Formula Editor 修改树形草稿并 Apply；Gameplay 适配扫掠碰撞、开采与受限 Coarse 风脉冲，渲染黄色球。Environment、角色与构式按成功固定步推进，预算重试冻结待提交风域，v4 元数据兼容 v2/v3。游戏层校验结构及后代工作量，World 与引擎不依赖 Formula；尚无伤害结算、费用和配方/运行实例保存。
 
-系统设计入口为 [构式系统](GlobalDoc/FormulaSystem.md)，当前实现契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，运行方法见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
+系统设计入口为 [构式系统](GlobalDoc/FormulaSystem.md)，语言契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证见 [基础版实现](GlobalDoc/FormulaGameplayV1Implementation.md)，操作见 [工程 README](../README.md)，独立运行见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
 
 ## 世界与现有玩法
 
-世界现为可用正负坐标的流式平坦地形，y<512空气、其他泥土。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。
+世界现支持策略化Natural与Superflat：游戏新建默认自然土岩、洞穴、五矿种、湖泊/地下积水和干燥草皮；调试Flat保留y<512空气、其他泥土。旧v2存档映射到Flat，当前metadata v4持久化生成器/种子/版本及可重试固定步时钟（兼容v2/v3），不重涂已有块。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。自然生成额外scratch单独预留。
+
+F2的World generation选择下一世界生成器与seed，R保存旧世界后创建；应用也支持PIXEL_WORLD_GENERATOR/PIXEL_WORLD_SEED。固定地层可开采而不坍塌，旧Dirt保持动态；Water按四邻接有限水量与Dirt同步提交，角色可入水与上浮，风将水视为边界。ArtRaw所需材质原样复制到Content，由ArtAssets.json的Terrain配置路径、映射与表面条带。具体合同见GlobalDoc/WorldGenerationImplementation.md及源码Generation/Version1.md。
 
 材料采用同步60 Hz：只申请步首空气，按源(y,x)裁决后批量提交，长链空位逐步传递；空间力不随材料移动。无风静止区域休眠，编辑、力变化、加载和移动唤醒邻域。未驻留区域阻挡角色/材料并显示占位，编辑返回NotReady。存档为Saves/<world-id>，R保存后创建新世界且保留旧文件。
 
-风域跟随玩家并截取世界y<424，保留地表上方88格无风带。七后端迁移重叠状态，游戏使用环境流入/流出开放边界；周期模式仅显式数值测试使用。默认Empty且暂停，可单步/切换策略。材料、F1和风效使用可见区域快照，frame slot独立缓存并只上传变化区域，Draw不读取实时World。
+风域跟随玩家并截取世界水平Y边界（Flat默认424，Natural默认360），最高可能地表上方保留88格无风带，不贴合山坡。七后端迁移重叠状态，游戏使用环境流入/流出开放边界；周期模式仅显式数值测试使用。默认Empty且暂停，可单步/切换策略。材料、F1和风效使用可见区域快照，frame slot独立缓存并只上传变化区域，Draw不读取实时World。
 
 现行接口、算法、预算与失败处理见 [世界表示约定](../Docs/WorldRepresentation.md)，实测、验证和审查证据见 [验证报告](../Docs/WorldRepresentationValidation.md)。早期世界/风场文档中整图数组、移动链、四张纹理与周期游戏边界已被替代。
 
@@ -30,7 +32,7 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 本目录为 AWT Project 根，真实工程为其父目录。
 构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。
 
-Pixel默认显示ImGui Pixel Debug面板，Environment使用世界坐标Wind boundary Y（默认424），F2显隐；可查看驻留/排队、预算、I/O重试与手动保存。F1切换合成方向视图，暂停冻结模拟但允许加载/相机移动；UI输入经ImGui捕获过滤。
+Pixel默认显示ImGui Pixel Debug面板，Environment使用世界坐标Wind boundary Y（默认424），F2显隐；Formula Editor由F4独立显隐；可查看驻留/排队、预算、I/O重试与手动保存。F1切换合成方向视图，暂停冻结模拟但允许加载/相机移动；UI输入经ImGui捕获过滤。
 
 玩家默认标准模式：A/D移动、Space跳跃、相机跟随；F3切换自由调试相机（WASD平移、PageDown切区域），切换清空输入。角色使用纯色2×4格头身矩形，以连续屏幕坐标独立快照在世界Pass之后合成，不写地图材料或地图数据纹理；F1仍是纯力场诊断。碰撞和限制见README的角色操作说明。
 
