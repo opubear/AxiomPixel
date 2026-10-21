@@ -15,7 +15,7 @@
 ## 2. 依据和当前代码基线
 
 - 当前父仓库 HEAD：`a748ef8d25b7270117ebd99cef12b14321df3c0a`；本地 Axiom gitlink/HEAD：`150ea98077aa9f0fb857229220917ebb98baa775`。main 工作区已有世界生成、美术和玩法修改，当前文件内容是设计基线，不能用 HEAD 中旧文件替代。
-- 当前设计依据：[构式系统](FormulaSystem.md)、[构式语言架构](FormulaLanguageArchitecture.md)、[Formula README](../../Pixel/Formula/README.md)。早期 DOCX 仅是历史方案。
+- 当前设计依据：[构式系统](../../Docs/GameDesign/FormulaSystem.md)、[构式语言架构](FormulaLanguageArchitecture.md)、[Formula README](../../Pixel/Formula/README.md)。早期 DOCX 仅是历史方案。
 - `Pixel/Formula` 已有不可变描述、封闭组合、CPU Simulator、60 Hz tick、CLI 和测试；`Node.h` 是私有结构。没有游戏运行时、自动碰撞或结构编辑器。
 - `GameInput::OnMouseButtonEvent` 当前左键放 Dirt、右键开采；用事件携带的 `MousePointerState` 取尺寸，不重新读取光标。引擎 `InputManager::Dispatch` 已按本帧 ImGui capture 过滤。
 - `GameSession::Tick` 调 `World::Tick`；Environment 自有固定步累加器和预算重试状态，角色目前按传入帧 duration 更新，Session 时间也按 duration 增加。不能简单给构式再加一个逐帧累加器。

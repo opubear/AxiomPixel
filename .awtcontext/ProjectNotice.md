@@ -8,4 +8,4 @@
 - 保留帧首发布、按区域版本复制、Skip 不推进游戏、Draw 不读取实时游戏状态的契约。
 - 不修改第三方源码或锁定版本。准备依赖可初始化本地引擎的锁定子模块。
 - 测试区分 CPU/mock、编译、GPU 与视觉；未执行项不能据历史记录宣称通过。
-- 核心组合玩法及代码统一为“构式（Formula）”，模块为 Pixel/Formula，类型/目标为 Formula/PixelFormula，示例扩展名为 .formula；cast 仍表示激活构式。设计与实现边界见 GlobalDoc/FormulaSystem.md 和 FormulaLanguageArchitecture.md。历史提案中的费用、预算与世界接入尚未实现。
+- 核心组合玩法及代码统一为“构式（Formula）”，模块为 Pixel/Formula，类型/目标为 Formula/PixelFormula，示例扩展名为 .formula；cast 仍表示激活构式。设计与实现边界见 [构式系统](../Docs/GameDesign/FormulaSystem.md) 和 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)。历史提案中的费用、预算与世界接入尚未实现。

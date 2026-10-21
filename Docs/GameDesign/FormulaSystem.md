@@ -1,8 +1,8 @@
 # 构式系统（Formula System）
 
-更新日期：2026-10-20。本文是 AWT 下的系统设计入口，汇总最初的封闭组合想法、整体玩法方案、语言原型和已确认命名。具体语言与实现边界见 [构式语言架构](FormulaLanguageArchitecture.md)，语法及运行命令见 [原型说明](../../Pixel/Formula/README.md)。
+更新日期：2026-10-20。本文是 AWT 下的系统设计入口，汇总最初的封闭组合想法、整体玩法方案、语言原型和已确认命名。具体语言与实现边界见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)，语法及运行命令见 [原型说明](../../Pixel/Formula/README.md)。
 
-2026-10-20 已按[独立评审通过的计划](FormulaGameplayV1Design.md)完成游戏基础版：人物前方朝鼠标激活基础 Bolt 描述、独立树形 DebugUI、成功固定步、扫掠碰撞及受控世界效果。小球是完整描述求值后的结果，不要求预先显示输入实体。操作、代码职责、额度及验证见[基础版实现](FormulaGameplayV1Implementation.md)。
+2026-10-20 已按[独立评审通过的计划](../../.awtcontext/GlobalDoc/FormulaGameplayV1Design.md)完成游戏基础版：人物前方朝鼠标激活基础 Bolt 描述、独立树形 DebugUI、成功固定步、扫掠碰撞及受控世界效果。小球是完整描述求值后的结果，不要求预先显示输入实体。操作、代码职责、额度及验证见[基础版实现](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md)。
 
 ## 1. 名称与概念
 
@@ -113,7 +113,7 @@ Pixel 玩法层消费指令并回传事件，World 保持纯 CPU 领域模型：
 - Environment 保留固定步累加器，角色和构式只在成功提交步内更新。单步优先消耗既有积压；预算失败保留同一预推进风场，等待时冻结模拟窗口/风域但继续存储轮询。
 - 实际世界替换提升 Epoch 并清空根与队列；Apply仅影响后续激活。v4允许完整非deferred积压并兼容v2/v3，配方与运行实例不保存。
 
-详细数值、边界与失败路径以[基础版实现](FormulaGameplayV1Implementation.md)及代码/回归为准，不沿用历史提案的三时钟或未接入状态。
+详细数值、边界与失败路径以[基础版实现](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md)及代码/回归为准，不沿用历史提案的三时钟或未接入状态。
 
 ## 8. 费用、执行预算与保存
 
@@ -154,16 +154,16 @@ Pixel 玩法层消费指令并回传事件，World 保持纯 CPU 领域模型：
 | 2026-10-13 | 正式名称采用“构式（Formula）” | 用户在命名选项中的明确选择 |
 | 2026-10-13 | 将系统设计与实际语言架构整理为 GlobalDoc | 任务 `构式系统工程知识整理` |
 | 2026-10-14 | 代码类型、命名空间、路径、构建目标及示例文件统一为 Formula | 任务 `构式代码命名迁移与提交` |
-| 2026-10-20 | 完成已评审的游戏基础版、独立代码审查修订及CPU/GPU/UI验证 | 任务 `实现构式基础版游戏与编辑器`；[基础版实现](FormulaGameplayV1Implementation.md) |
+| 2026-10-20 | 完成已评审的游戏基础版、独立代码审查修订及CPU/GPU/UI验证 | 任务 `实现构式基础版游戏与编辑器`；[基础版实现](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md) |
 
-原始 [系统设计 DOCX](../../Docs/SpellProgrammingSystemDesign.docx) 保留为 2026-10-12 历史提案。本文负责维护当前设计状态，[语言架构](FormulaLanguageArchitecture.md) 负责解释已实现语义，[模块 README](../../Pixel/Formula/README.md) 提供实际运行入口。出现差异时先核对当前代码和已接受决策，不从历史文档推定能力已实现。
+原始 [系统设计 DOCX](SpellProgrammingSystemDesign.docx) 保留为 2026-10-12 历史提案。本文负责维护当前设计状态，[语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md) 负责解释已实现语义，[模块 README](../../Pixel/Formula/README.md) 提供实际运行入口。出现差异时先核对当前代码和已接受决策，不从历史文档推定能力已实现。
 
 通过 AWT CLI 查询历史任务与当前整理任务，状态以 CLI 返回为准。后续进入构式工作时可显式装入两个设计文档：
 
 ```sh
 ../AIWorkTask/awt task list --project .awtcontext
 ../AIWorkTask/awt context build 构式系统工程知识整理 --project .awtcontext \
-  --docs context:GlobalDoc/FormulaSystem.md,context:GlobalDoc/FormulaLanguageArchitecture.md
+  --docs workspace:Docs/GameDesign/FormulaSystem.md,context:GlobalDoc/FormulaLanguageArchitecture.md
 ```
 
 新功能以相应任务维护需求、验收和实际证据；不要修改历史验收来表示新版本已通过。工程知识保持本文、语言架构和索引同步，执行状态通过 AWT CLI 维护。

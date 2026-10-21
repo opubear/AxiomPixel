@@ -1,6 +1,6 @@
 # 构式语言原型（Formula DSL）
 
-正式领域名称为“构式（Formula）”，替代早期“法术”称呼。代码已统一为 `Pixel/Formula`、C++ `Formula` 类型、`pixel::formula` 命名空间、`.formula` 示例文件和 `PixelFormula` 构建目标；`cast` 仍表示激活构式，语义保持不变。整体设计见 [AWT 构式系统](../../.awtcontext/GlobalDoc/FormulaSystem.md)，实际架构与历史提案差异见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
+正式领域名称为“构式（Formula）”，替代早期“法术”称呼。代码已统一为 `Pixel/Formula`、C++ `Formula` 类型、`pixel::formula` 命名空间、`.formula` 示例文件和 `PixelFormula` 构建目标；`cast` 仍表示激活构式，语义保持不变。整体设计见 [构式系统](../../Docs/GameDesign/FormulaSystem.md)，实际架构与历史提案差异见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
 
 这是 Pixel 内可独立构建的 C++20 子系统，用来表达“构式描述经过修改器或装饰器之后，仍然是构式描述”的玩法基础。它提供文本语言、不可变描述、独立 CPU 模拟器、命令行演示和行为测试。游戏已通过 `Pixel/Source/Gameplay/FormulaRuntime` 接入真实World、碰撞与黄色球表现，并提供独立DebugUI树形编辑器；使用方法见 [工程README](../../README.md)。本模块本身继续不依赖World、窗口或GPU。
 
@@ -150,4 +150,4 @@ CTest 的 `Pixel.Formula` 覆盖：共享描述不变性、管道顺序、规范
 2. “当前载体”作为修改作用域是否符合直觉；对不适用属性，现在的“保持效果并诊断”是否要改成编辑期提示或严格错误。
 3. 先把 `WindImpulse`、`DigArea` 接到 CPU World，还是先加入真实弹体碰撞。接入时应由 Pixel 玩法层消费指令并回传命中，明确与 Environment 的固定步顺序；World 和引擎不需要反向依赖解析器。
 
-早期完整设计保留在仓库 `Docs/SpellProgrammingSystemDesign.docx`，其中仍使用旧称；提案中的预算、费用、生产调度与引擎集成并非本原型已经实现的功能。当前设计状态由上述 AWT 工程知识维护。
+早期完整设计保留在仓库 `Docs/GameDesign/SpellProgrammingSystemDesign.docx`，其中仍使用旧称；提案中的预算、费用、生产调度与引擎集成并非本原型已经实现的功能。当前设计状态由上述 AWT 工程知识维护。

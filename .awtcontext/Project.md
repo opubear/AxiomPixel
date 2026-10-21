@@ -1,5 +1,17 @@
 # AxiomPixel
 
+## 游戏设计总纲
+
+> 在一个会回应你的世界里，理解规律、创造构式，把陌生之地逐渐变成自己愿意生活的地方。
+
+Pixel 的高层设计以探索、构式创造、环境改造与家园生活为核心，轻量自动化支持长期积累，世界意志参与祈祷回应、环境干预及后期自主权的争取。后续玩法与系统设计参照[游戏设计总纲](../Docs/GameDesign/GameDesignVision.md)中的体验目标、隐性流程和取舍原则；具体实现状态见下文及各实现文档。
+
+游戏设计与策划资料统一维护在 [Docs/GameDesign](../Docs/GameDesign/README.md)，AWT 索引通过 `workspace:` 地址引用正文。
+
+总纲另包含构式作为世界底层运行原理之一的设计设想：在基础物理与角色活动等系统之上，优先用构式组织世界现象、设备行为和玩家能力。其覆盖范围及长期运行方式仍待验证，现有 Formula 语义与代码依赖保持原契约。
+
+## 工程现状
+
 AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
 `PixelWorld` 管理纯 CPU 世界，WorldMap 持有分块材料/基础力，Environment 负责合成受力与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景、暂停及单步策略。
 `PixelInput` 的 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，直接调用游戏会话、表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
@@ -13,7 +25,7 @@ AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位
 
 `Pixel/Formula` 提供可独立构建的 C++20 文本 DSL、不可变 `Formula` 描述、60 Hz CPU 模拟器、CLI 与行为测试；支持命名复用、管道修改、顺序组合、延迟、重复、散射与命中子构式。外层修改器只进入命中载体，不进入 payload。2026-10-20 已接入游戏：右键从人物前方朝鼠标激活；独立 Formula Editor 修改树形草稿并 Apply；Gameplay 适配扫掠碰撞、开采与受限 Coarse 风脉冲，渲染黄色球。Environment、角色与构式按成功固定步推进，预算重试冻结待提交风域，v4 元数据兼容 v2/v3。游戏层校验结构及后代工作量，World 与引擎不依赖 Formula；尚无伤害结算、费用和配方/运行实例保存。
 
-系统设计入口为 [构式系统](GlobalDoc/FormulaSystem.md)，语言契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证见 [基础版实现](GlobalDoc/FormulaGameplayV1Implementation.md)，操作见 [工程 README](../README.md)，独立运行见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
+系统设计入口为 [构式系统](../Docs/GameDesign/FormulaSystem.md)，语言契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证见 [基础版实现](GlobalDoc/FormulaGameplayV1Implementation.md)，操作见 [工程 README](../README.md)，独立运行见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
 
 ## 世界与现有玩法
 
