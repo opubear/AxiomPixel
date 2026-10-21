@@ -65,7 +65,7 @@ world.FillBaseForceRegion({-64, 0, 64, 64}, {0, 3600});
 
 ## 文件约定
 
-`current.txt` 指向当前world-id。`world.meta` 当前使用版本3文本，在原版本2的块边长、窗口/预算、人物、时钟/延期、暂停及风设置之外保存生成器Kind/Version、种子、SurfaceY、水开关及指纹；旧v2可读取并映射到Flat/version1。`chunks/<chunk-x>_<chunk-y>.bin` 仍为版本1小端二进制，后接材料/方向/基础力三列；尺寸、长度、注册材料ID、方向和非有限基础力均校验。
+`current.txt` 指向当前world-id。`world.meta` 当前使用版本4文本，继续读取v2/v3；v3在原v2的块边长、窗口/预算、人物、时钟/延期、暂停及风设置之外保存生成器Kind/Version、种子、SurfaceY、水开关及指纹，v4允许没有延期步时仍保留完整固定步余量。旧v2映射到Flat/version1。格式解析、临时文件替换、世界目录与current指针由 [SessionStore](../Pixel/Source/Persistence/SessionStore.h) 处理，[SessionSaveData](../Pixel/Source/Persistence/SessionSaveData.h) 不包含运行中的构式实例；GameSession决定保存/恢复时机，仍按块→元数据→新世界指针的顺序写入。`chunks/<chunk-x>_<chunk-y>.bin` 仍为版本1小端二进制，后接材料/方向/基础力三列；尺寸、长度、注册材料ID、方向和非有限基础力均校验。
 
 未存在块由世界描述指定的IWorldGenerator生成：Superflat保留y<512空气、其余Dirt；Natural生成土岩、洞穴、矿物、有限水体与干燥草皮。基础力均向下。已有块直接恢复文件，不补水、补矿或重新覆草。卸载、手动保存和正常退出写文件；远处不补算时间。动态风不写盘，重建为所选背景状态；程序风使用世界坐标和持久物理时钟保持相位。生成器、材料纹理与液体接入的现行细节见 [世界生成与自然材质](../.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
 

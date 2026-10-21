@@ -6,6 +6,8 @@
 
 后续技术演进见[面向游戏愿景的架构规划](Docs/Architecture/GameplayArchitecturePlan.md)：按独立子系统考虑构式语言、LLMView 与游戏领域，给出引擎边界及分阶段迁移方案；它是规划提案，以下仍描述当前实现。
 
+首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；该文档是后续实施规格，统一入口与 LLMView 尚未实现。
+
 基于 Axiom 的早期像素游戏，从引擎 `2DRender` 的 `5c8af21` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
 
 世界现按需加载1024×1024物理块，由稀疏四叉树组织64×64区域，采用同步材料更新、文件存档和跟随玩家的开放风域。现行接口、存储布局和失败处理见 [世界表示约定](Docs/WorldRepresentation.md)，本轮实测及验证限制见 [验证与性能报告](Docs/WorldRepresentationValidation.md)。早期文档中的整图连续数组、移动链和四张固定世界纹理已被替代。
@@ -15,7 +17,8 @@
 | 路径 | 职责 |
 |---|---|
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
-| `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，管理固定步、存档、暂停和效果适配 |
+| `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，编排固定步、保存/恢复时机、暂停和效果适配 |
+| `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore处理v2/v3/v4元数据、世界目录与current.txt |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译与运行上界分析 |
 | `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树、流式与角色；Environment管理材料及风 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
@@ -58,6 +61,8 @@ git submodule update --init --recursive
 ```
 
 窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告异常，本版没有跨文件崩溃恢复。
+
+`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World；GameSession 先保存块、再写 v4 元数据，新世界首存成功后才替换 `current.txt`。继续读取 v2/v3，保留 v4 的延期步标记和完整时间余量；更改延期保存策略与多领域检查点属于后续阶段。`Pixel.SessionStore` 验证格式兼容及文件边界，现有 Persistence/GenerationSession 回归覆盖恢复与失败重试。
 
 ## 世界与操作
 

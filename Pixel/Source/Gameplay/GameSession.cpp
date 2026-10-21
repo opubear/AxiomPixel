@@ -1,15 +1,11 @@
 #include "GameSession.h"
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdlib>
-#include <fstream>
-#include <iomanip>
+#include <exception>
 #include <limits>
 #include <random>
-#include <exception>
-#include <functional>
 #include <stdexcept>
 
 namespace pixel {
@@ -24,87 +20,13 @@ uint64_t RuntimeNumber(const char *name, uint64_t fallback) {
         throw std::invalid_argument(std::string("invalid world setting: ") + name);
     return number;
 }
-template <class Settings>
-void WriteFlow(std::ostream &out, const Settings &settings) {
-    out << int(settings.Boundary) << ' ' << settings.Ambient.X << ' ' << settings.Ambient.Y << ' '
-        << settings.GustSpeed << ' ' << settings.Viscosity << ' ' << settings.Relaxation << ' ' << settings.Seed << '\n';
-}
-template <class Settings>
-void ReadFlow(std::istream &in, Settings &settings) {
-    int boundary;
-    in >> boundary >> settings.Ambient.X >> settings.Ambient.Y >> settings.GustSpeed
-        >> settings.Viscosity >> settings.Relaxation >> settings.Seed;
-    if (boundary < int(WindBoundaryMode::Open) || boundary > int(WindBoundaryMode::Periodic))
-        throw std::runtime_error("invalid saved wind boundary mode");
-    settings.Boundary = WindBoundaryMode(boundary);
-}
-void WriteSettings(std::ostream &out, const WindStrategySettings &settings) {
-    out << int(settings.Kind) << '\n';
-    WriteFlow(out, settings.Coarse);
-    out << settings.Coarse.Columns << ' ' << settings.Coarse.Rows << ' ' << settings.Coarse.DirtDrag << '\n';
-    WriteFlow(out, settings.Reference);
-    out << settings.Reference.DivergenceTolerance << ' ' << settings.Reference.MaxPressureIterations << '\n';
-    out << settings.Local.Radius << ' ' << settings.Local.Deflection << ' ' << settings.Local.WakeStrength << '\n';
-    WriteFlow(out, settings.Adaptive.Flow);
-    out << settings.Adaptive.Flow.DivergenceTolerance << ' ' << settings.Adaptive.Flow.MaxPressureIterations << ' '
-        << settings.Adaptive.BlockSize << '\n';
-    WriteFlow(out, settings.Lbm);
-    out << settings.Lbm.LatticeSeconds << '\n';
-}
-WindStrategySettings ReadSettings(std::istream &in) {
-    WindStrategySettings settings;
-    int kind;
-    in >> kind;
-    if (kind < int(WindStrategyKind::Coarse) || kind > int(WindStrategyKind::Empty))
-        throw std::runtime_error("invalid saved wind strategy");
-    settings.Kind = WindStrategyKind(kind);
-    ReadFlow(in, settings.Coarse);
-    in >> settings.Coarse.Columns >> settings.Coarse.Rows >> settings.Coarse.DirtDrag;
-    ReadFlow(in, settings.Reference);
-    in >> settings.Reference.DivergenceTolerance >> settings.Reference.MaxPressureIterations;
-    in >> settings.Local.Radius >> settings.Local.Deflection >> settings.Local.WakeStrength;
-    ReadFlow(in, settings.Adaptive.Flow);
-    in >> settings.Adaptive.Flow.DivergenceTolerance >> settings.Adaptive.Flow.MaxPressureIterations >> settings.Adaptive.BlockSize;
-    ReadFlow(in, settings.Lbm);
-    in >> settings.Lbm.LatticeSeconds;
-    return settings;
-}
-} // namespace
 
-namespace {
 WorldRect InitialWindow(WorldPosition player, uint32_t edge) {
     const auto cell = player.Cell();
     const auto align = [&](int64_t value) {
         return FloorDivide(value - edge / 2 + storage::RegionEdge / 2, storage::RegionEdge) * storage::RegionEdge;
     };
     return {align(cell.X), align(cell.Y), edge, edge};
-}
-
-void CommitTextFile(const std::filesystem::path &path, const std::function<void(std::ostream &)> &write) {
-    const auto temporary = std::filesystem::path(path.string() + ".tmp");
-    std::ofstream output(temporary, std::ios::trunc);
-    output.exceptions(std::ios::failbit | std::ios::badbit);
-    output << std::setprecision(std::numeric_limits<double>::max_digits10);
-    write(output);
-    output.close();
-    std::filesystem::rename(temporary, path);
-}
-
-void WriteGeneration(std::ostream &out, const WorldGenerationSettings &generation) {
-    out << uint32_t(generation.Kind) << ' ' << generation.Version << ' ' << generation.Seed << ' '
-        << generation.SurfaceY << ' ' << generation.WaterEnabled << ' ' << GenerationFingerprint(generation) << '\n';
-}
-
-WorldGenerationSettings ReadGeneration(std::istream &in) {
-    WorldGenerationSettings generation;
-    uint32_t kind;
-    uint64_t fingerprint;
-    in >> kind >> generation.Version >> generation.Seed >> generation.SurfaceY >> generation.WaterEnabled >> fingerprint;
-    generation.Kind = WorldGeneratorKind(kind);
-    ValidateGenerationSettings(generation);
-    if (GenerationFingerprint(generation) != fingerprint)
-        throw std::runtime_error("world generation descriptor fingerprint mismatch");
-    return generation;
 }
 } // namespace
 
@@ -126,9 +48,9 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
 }
 
 GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
-    : Persistent(persistent), NextGeneration(generation) {
+    : NextGeneration(generation) {
     ValidateGenerationSettings(generation);
-    if (Persistent) {
+    if (persistent) {
         const auto edge = RuntimeNumber("PIXEL_SIMULATION_WINDOW", storage::DefaultWindowEdge);
         if (edge > 2048)
             throw std::invalid_argument("simulation window must not exceed 2048 cells");
@@ -137,9 +59,7 @@ GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
         if (budget > UINT64_MAX / (1024 * 1024))
             throw std::invalid_argument("world budget exceeds supported range");
         StreamConfiguration.BudgetBytes = budget * 1024 * 1024;
-        const auto *root = std::getenv("PIXEL_SAVE_ROOT");
-        SaveRoot = root && *root ? root : "Saves";
-        std::filesystem::create_directories(SaveRoot);
+        Store.emplace();
         if (Load())
             return;
     }
@@ -148,7 +68,7 @@ GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
 
 void GameSession::InitializeScene() {
     const auto &generation = StreamConfiguration.Generation;
-    const auto surface = Persistent ? CreateWorldGenerator(generation)->SurfaceHeight(512) : int64_t(512);
+    const auto surface = Store ? CreateWorldGenerator(generation)->SurfaceHeight(512) : int64_t(512);
     GameWorld.SpawnPlayer(511, double(surface - int64_t(Character::Height)));
     GameWorld.LoadSimulationNow();
     const auto feet = GameWorld.GetPlayer()->GetWorldPosition().Cell();
@@ -174,7 +94,7 @@ void GameSession::InitializeScene() {
 
 void GameSession::Reset() {
     ValidateGenerationSettings(NextGeneration);
-    if (!Persistent) {
+    if (!Store) {
         // Finite fixtures retain their original flat layout and dimensions.
         StreamConfiguration.Generation = {};
         ReplacingWorld();
@@ -187,12 +107,7 @@ void GameSession::Reset() {
     const auto previous = SaveDirectory;
     if (!previous.empty())
         Save();
-    const auto id = std::chrono::system_clock::now().time_since_epoch().count();
-    auto candidate = SaveRoot / ("world-" + std::to_string(id));
-    while (std::filesystem::exists(candidate)) candidate += "-new";
-    std::filesystem::create_directories(candidate);
-    // Persist the immutable recipe before the first generated chunk can exist.
-    CommitTextFile(candidate / "generation.pending", [&](auto &out) { WriteGeneration(out, NextGeneration); });
+    const auto candidate = Store->CreateWorldDirectory(NextGeneration);
     Ready = false;
     try {
         SaveDirectory = candidate;
@@ -206,8 +121,8 @@ void GameSession::Reset() {
         GameWorld.EnableStreaming(stream, InitialWindow(position, stream.WindowEdge));
         InitializeScene();
         GameWorld.Save();
-        WriteMetadata();
-        CommitTextFile(SaveRoot / "current.txt", [&](auto &out) { out << candidate.filename().string() << '\n'; });
+        Store->WriteMetadata(SaveDirectory, CaptureSaveData());
+        Store->SelectWorld(candidate);
         Ready = true;
         SaveError.clear();
     } catch (...) {
@@ -239,7 +154,7 @@ bool GameSession::TryReset() {
 
 bool GameSession::TryRecover() {
     if (Ready) return true;
-    if (!Persistent || SaveDirectory.empty()) return false;
+    if (!Store || SaveDirectory.empty()) return false;
     try {
         ReplacingWorld();
         GameWorld.DiscardStreaming();
@@ -256,83 +171,59 @@ bool GameSession::TryRecover() {
 }
 
 bool GameSession::Load() {
-    std::ifstream current(SaveRoot / "current.txt");
-    if (!current) {
-        if (std::filesystem::exists(SaveRoot / "current.txt"))
-            throw std::runtime_error("cannot read current world pointer");
+    const auto directory = Store->CurrentDirectory();
+    if (!directory)
         return false;
-    }
-    std::string id;
-    current >> id;
-    if (id.empty() || std::filesystem::path(id).filename() != id || id == "." || id == "..")
-        throw std::runtime_error("invalid current world name");
-    LoadDirectory(SaveRoot / id);
+    LoadDirectory(*directory);
     return true;
 }
 
 void GameSession::LoadDirectory(const std::filesystem::path &directory) {
-    std::ifstream input(directory / "world.meta");
-    input.exceptions(std::ios::failbit | std::ios::badbit);
-    std::string magic;
-    uint32_t version, edge, window;
-    uint64_t budget;
-    WorldPosition player;
-    int64_t boundary;
-    bool enabled, deferredStep, paused;
-    double physicsTime, remainder, simulationTime;
-    input >> magic >> version >> edge >> window >> budget;
-    if (magic != "AxiomPixelWorld" || (version != 2 && version != 3 && version != 4) || edge != storage::ChunkEdge)
-        throw std::runtime_error("incompatible world metadata");
-    const auto generation = version >= 3 ? ReadGeneration(input) : WorldGenerationSettings{};
-    input >> player.Chunk.X >> player.Chunk.Y >> player.Local[0] >> player.Local[1]
-        >> simulationTime >> physicsTime >> remainder >> deferredStep >> boundary >> enabled >> paused;
-    if (!std::isfinite(simulationTime) || simulationTime < 0)
-        throw std::runtime_error("invalid saved simulation time");
-    if (version < 4 && !deferredStep && remainder >= 1.0 / 60)
-        throw std::runtime_error("invalid legacy fixed simulation clock");
-    player.Normalize();
-    const auto wind = ReadSettings(input);
+    const auto data = Store->ReadMetadata(directory);
     auto stream = StreamConfiguration;
-    if (!std::getenv("PIXEL_SIMULATION_WINDOW")) stream.WindowEdge = window;
-    if (!std::getenv("PIXEL_WORLD_BUDGET_MIB")) stream.BudgetBytes = budget;
-    stream.Generation = generation;
-    stream.SurfaceY = generation.SurfaceY;
+    if (!std::getenv("PIXEL_SIMULATION_WINDOW")) stream.WindowEdge = data.WindowEdge;
+    if (!std::getenv("PIXEL_WORLD_BUDGET_MIB")) stream.BudgetBytes = data.BudgetBytes;
+    stream.Generation = data.Generation;
+    stream.SurfaceY = data.Generation.SurfaceY;
     stream.Directory = directory;
     Ready = false;
     ReplacingWorld();
-    GameWorld.EnableStreaming(stream, InitialWindow(player, stream.WindowEdge));
-    GameWorld.RestorePlayer(player);
+    GameWorld.EnableStreaming(stream, InitialWindow(data.Player, stream.WindowEdge));
+    GameWorld.RestorePlayer(data.Player);
     GameWorld.LoadSimulationNow();
-    GameWorld.ConfigureWindDomain(boundary, wind, enabled);
-    GameWorld.RestoreSimulationClock(physicsTime, remainder, deferredStep);
+    GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
+    GameWorld.RestoreSimulationClock(data.PhysicsTime, data.TimeRemainder, data.DeferredStep);
     SaveDirectory = directory;
     StreamConfiguration = stream;
-    SimulationTime = simulationTime;
-    Paused = paused;
-    WindKind = wind.Kind;
+    SimulationTime = data.SimulationTime;
+    Paused = data.Paused;
+    WindKind = data.Wind.Kind;
     StepRequested = false;
     Ready = true;
 }
 
-void GameSession::WriteMetadata() {
-    CommitTextFile(SaveDirectory / "world.meta", [&](auto &out) {
-        out << "AxiomPixelWorld 4 " << storage::ChunkEdge << ' ' << StreamConfiguration.WindowEdge << ' '
-            << StreamConfiguration.BudgetBytes << '\n';
-        WriteGeneration(out, StreamConfiguration.Generation);
-        const auto position = GameWorld.GetPlayer() ? GameWorld.GetPlayer()->GetWorldPosition() : WorldPosition{};
-        out << position.Chunk.X << ' ' << position.Chunk.Y << ' ' << position.Local[0] << ' ' << position.Local[1] << '\n'
-            << SimulationTime << ' ' << GameWorld.GetEnvironment().GetSimulationTime() << ' '
-            << GameWorld.GetEnvironment().GetTimeRemainder() << ' ' << GameWorld.GetEnvironment().IsWaitingForBudget() << ' ' << GameWorld.GetWindBoundary() << ' '
-            << GameWorld.IsWindEnabled() << ' ' << Paused << '\n';
-        WriteSettings(out, GameWorld.GetWindSettings());
-    });
+SessionSaveData GameSession::CaptureSaveData() const {
+    SessionSaveData data;
+    data.WindowEdge = StreamConfiguration.WindowEdge;
+    data.BudgetBytes = StreamConfiguration.BudgetBytes;
+    data.Generation = StreamConfiguration.Generation;
+    data.Player = GameWorld.GetPlayer() ? GameWorld.GetPlayer()->GetWorldPosition() : WorldPosition{};
+    data.SimulationTime = SimulationTime;
+    data.PhysicsTime = GameWorld.GetEnvironment().GetSimulationTime();
+    data.TimeRemainder = GameWorld.GetEnvironment().GetTimeRemainder();
+    data.DeferredStep = GameWorld.GetEnvironment().IsWaitingForBudget();
+    data.WindBoundary = GameWorld.GetWindBoundary();
+    data.WindEnabled = GameWorld.IsWindEnabled();
+    data.Paused = Paused;
+    data.Wind = GameWorld.GetWindSettings();
+    return data;
 }
 
 void GameSession::Save() {
-    if (!Persistent) return;
+    if (!Store) return;
     if (!Ready) throw std::runtime_error("cannot save an incomplete world session");
     GameWorld.Save();
-    WriteMetadata();
+    Store->WriteMetadata(SaveDirectory, CaptureSaveData());
     SaveError.clear();
 }
 

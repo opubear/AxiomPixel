@@ -1,7 +1,9 @@
 #pragma once
 #include "PlayerInput.h"
 #include "FormulaRuntime.h"
+#include "Persistence/SessionStore.h"
 #include "World/World.h"
+#include <optional>
 #include <string>
 
 namespace pixel {
@@ -48,12 +50,12 @@ class GameSession {
     FormulaRuntime Formulas;
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;
-    bool Persistent = false;
+    std::optional<SessionStore> Store;
     bool Paused = true;
     bool StepRequested = false;
     double SimulationTime = 0;
     WindStrategyKind WindKind = WindStrategyKind::Empty;
-    std::filesystem::path SaveRoot, SaveDirectory;
+    std::filesystem::path SaveDirectory;
     WorldStreamSettings StreamConfiguration;
     WorldGenerationSettings NextGeneration;
     bool Ready = true;
@@ -61,7 +63,7 @@ class GameSession {
     void InitializeScene();
     bool Load();
     void LoadDirectory(const std::filesystem::path &directory);
-    void WriteMetadata();
+    SessionSaveData CaptureSaveData() const;
     void ReplacingWorld();
 };
 } // namespace pixel

@@ -25,7 +25,7 @@
 | [构式基础版](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md) 当前不保存配方或运行实例；metadata 已为 v4 | 持久玩法必须补独立程序版本、运行状态与一致的存档边界 |
 | [引擎运行接口](../../Axiom/Source/Engine.h)、[事件工具](../../Axiom/Source/Core/Events/EventDispatcher.h) 已存在 | 不另建全局服务框架；同步事件分发不是跨线程队列或模拟调度器 |
 
-历史 [模块化设计](../../Docs/Architecture/PixelModularDesign.docx) 可解释拆分来源；其中移动链、旧世界所有权等细节按现行代码判断。[世界表示文档](../../Docs/WorldRepresentation.md) 文件格式段仍写 metadata v3，此处以 `GameSession::WriteMetadata` 和较新的构式实现记录中的 v4 为准。本轮不顺带改写历史材料。
+历史 [模块化设计](../../Docs/Architecture/PixelModularDesign.docx) 可解释拆分来源；其中移动链、旧世界所有权等细节按现行代码判断。metadata 当前为 v4；M1.2 已将格式实现从 GameSession 提取到 [SessionStore](../../Pixel/Source/Persistence/SessionStore.cpp)，现行存储说明见 [世界表示文档](../../Docs/WorldRepresentation.md)。本规划中的其余现状表保留规划时基线，实施状态以代码与 AWT 为准。
 
 ## 2 先固定的边界与暂缓的决定
 
@@ -125,6 +125,8 @@ Actors、Items 等先以 Session 下的小领域模块开始，不为每个名�
 首批构建约束是去掉 `PixelGameplay → PixelFormulaEditing` 的运行依赖、增加无窗口的查询/宿主测试入口，保留 `PixelWorld`、`PixelFormula`、`PixelPresentation` 和 Runtime 的隔离。简单的动作处理和 SessionStore 可以暂与 Gameplay 同目标编译。无需为了目录图一次性改所有目标名。
 
 ## 4 GameAPI 与领域动作
+
+首个观测、开采与构式激活场景的值语义、当前调用链、迁移边界和验收输入见 [首个贯穿场景与 GameAPI 契约](FirstGameplaySliceContract.md)。该契约按 M1/M2/M3 分阶段实施，不表示统一入口或只读观测已经实现。
 
 GameAPI 是游戏定义的契约，包含查询、动作请求与动作结果；领域内部继续直接调用类型化 C++ 方法。统一入口主要服务 UI、玩家离散操作、设备启动、构式宿主以及 LLM，不要求全部内核工作绕一次消息总线。
 

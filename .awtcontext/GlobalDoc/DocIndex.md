@@ -40,5 +40,6 @@
 | Gemini 游戏设计讨论原文 | `workspace:Docs/GameDesign/Pixel项目像素沙盒游戏设计探讨 - Google Gemini.pdf` | 流程与玩法参考：祈祷、自主成长、世界意志、环境改造与家园；术语和技术假设需辨别 | |
 | 架构规划AWT原始副本 | `context:GlobalDoc/GameplayArchitecturePlan.md` | 复制前的保留副本；任务执行与后续维护以Docs/Architecture中的架构文档为准 | |
 | Pixel面向游戏愿景的架构规划 | `workspace:Docs/Architecture/GameplayArchitecturePlan.md` | 执行前必读；独立构式语言、领域模块、LLMView、引擎职责和分阶段迁移方案 | |
+| 首个贯穿场景与GameAPI契约 | `workspace:Docs/Architecture/FirstGameplaySliceContract.md` | M1.1执行规格：观测与开采/激活场景、身份单位、动作效果事实、提交查询及验收映射 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。
