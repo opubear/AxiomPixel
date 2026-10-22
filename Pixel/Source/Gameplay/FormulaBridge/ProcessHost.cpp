@@ -379,4 +379,13 @@ ProcessHostStats ProcessHost::Stats() const {
         result.RetainedBytes += sizeof(FormulaRuntimeDiagnostic) + diagnostic.Message.capacity() + 1;
     return result;
 }
+
+std::vector<ProcessInspection> ProcessHost::Inspect() const {
+    std::vector<ProcessInspection> result;
+    result.reserve(Data->Roots.size());
+    for (const auto &root : Data->Roots)
+        result.push_back({root->Instance->Program().Identity(), root->Instance->State(), root->Version,
+            root->Carrier.Kind, root->Carrier.Subject, root->Carrier.Credits});
+    return result;
+}
 } // namespace pixel

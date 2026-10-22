@@ -1,5 +1,6 @@
 #pragma once
 #include "Formula/Process/Program.h"
+#include "Formula/Process/Value.h"
 #include <array>
 #include <span>
 
@@ -19,6 +20,21 @@ struct InstanceState {
     Outcome LastOutcome = Outcome::None;
     Position Origin;
     std::optional<Subscription> WakeSubscription;
+};
+// Export only at Sleeping/Awaiting, after the host commits the returned slice.
+// Host-owned carriers, queued events and committed world facts are separate.
+// v1 has no random operation/state. Adding one requires a new schema/semantics.
+struct InstanceSnapshot {
+    std::uint32_t SchemaVersion = 1;
+    ProgramIdentity Program;
+    InstanceState State;
+    ExecutionLimits Limits;
+    std::array<std::optional<Value>, 16> Locals;
+    Boundary LastBoundary = 0;
+    std::uint64_t EventSequence = 0, SubscriptionSequence = 0;
+    AwaitKind WaitingFor = AwaitKind::Result;
+    std::optional<HostEvent> Receipt, Impact, Wake;
+    bool ReceiptSeen = false, ImpactSeen = false;
 };
 struct StepResult {
     std::array<EffectRequest, 64> Requests;
@@ -42,6 +58,11 @@ class Instance {
 
     const ProgramArtifact &Program() const;
     const InstanceState &State() const;
+    // The owner must stop/destroy the source instance before restoring it.
+    // Resume uses the same host boundary space; the next Step must be later.
+    InstanceSnapshot ExportState() const;
+    static std::variant<std::unique_ptr<Instance>, Diagnostic> Restore(
+        ProgramArtifact program, const InstanceSnapshot &snapshot, Capabilities granted = AllCapabilities);
     // At most 32 delivered events, committed before view.At, ordered by sequence.
     // Invalid host contracts throw; language faults return a terminal diagnostic.
     StepResult Step(const HostView &view, std::span<const HostEvent> events = {});

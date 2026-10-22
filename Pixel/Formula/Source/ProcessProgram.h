@@ -1,13 +1,10 @@
 #pragma once
 #include "Formula/Process/Program.h"
+#include "Formula/Process/Value.h"
 #include <array>
 #include <vector>
 
 namespace pixel::formula::process {
-struct Cells { double Value = 0; };
-struct Speed { double Value = 0; };
-struct Duration { std::uint64_t Value = 0; };
-using Value = std::variant<bool, std::int64_t, double, Cells, Speed, Duration, Effect, Outcome>;
 enum class Type { Bool, Integer, Number, Cells, Speed, Duration, Effect, Outcome };
 enum class ExpressionKind {
     Literal, Local, Inventory, Outcome, Add, Less, Equal, Not, Negate,
@@ -27,6 +24,7 @@ struct Instruction {
     SourceSpan Source;
     std::size_t Expression = 0, Target = 0, Slot = 0;
     AwaitKind Await = AwaitKind::Result;
+    std::uint16_t LiveLocals = 0;
 };
 struct ArtifactData {
     ProgramIdentity Identity;
@@ -34,6 +32,7 @@ struct ArtifactData {
     std::string Source;
     std::vector<Expression> Expressions;
     std::vector<Instruction> Instructions;
+    std::vector<Type> LocalTypes;
 };
 std::string ContentSha256(std::string_view text);
 } // namespace pixel::formula::process

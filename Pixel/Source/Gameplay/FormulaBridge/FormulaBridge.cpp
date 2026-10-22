@@ -248,6 +248,8 @@ void FormulaBridge::CancelCarrier(ProcessCarrierKind kind, uint64_t subject) {
 }
 void FormulaBridge::WakeCarrier(ProcessCarrierKind kind, uint64_t subject) { Data->Processes.WakeCarrier(kind, subject); }
 ProcessHostStats FormulaBridge::ProcessStats() const { return Data->Processes.Stats(); }
+std::vector<ProcessInspection> FormulaBridge::InspectProcesses() const { return Data->Processes.Inspect(); }
+const std::optional<formula::process::ProgramArtifact> &FormulaBridge::ActiveProcess() const { return Data->ActiveProcess; }
 const std::deque<ProcessReceipt> &FormulaBridge::ProcessReceipts() const { return Data->Processes.Receipts(); }
 const std::deque<FormulaRuntimeDiagnostic> &FormulaBridge::ProcessDiagnostics() const { return Data->Processes.Diagnostics(); }
 

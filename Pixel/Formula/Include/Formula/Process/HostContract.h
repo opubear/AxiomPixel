@@ -80,5 +80,9 @@ struct Termination {
 // On termination the host first commits this slice's requests, then removes all
 // owned carriers, persistent effects, subscriptions and pending work. Applied
 // one-shot facts survive. Faulted slices contain no requests. Cancel must also
-// be called when an active instance is removed; destroying C++ state is not cleanup.
+// be called when an active instance is removed, unless ownership is explicitly
+// transferred to a suspension capsule. Destroying C++ state is not cleanup.
+// Suspension stores owned effects and undelivered events alongside the language
+// snapshot after commit. World-owned entities and one-shot facts stay with the
+// world; restore must not reissue their original requests.
 } // namespace pixel::formula::process

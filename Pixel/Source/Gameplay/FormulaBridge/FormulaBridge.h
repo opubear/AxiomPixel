@@ -29,6 +29,8 @@ class FormulaBridge {
     void CancelCarrier(ProcessCarrierKind kind, uint64_t subject);
     void WakeCarrier(ProcessCarrierKind kind, uint64_t subject);
     ProcessHostStats ProcessStats() const;
+    std::vector<ProcessInspection> InspectProcesses() const;
+    const std::optional<formula::process::ProgramArtifact> &ActiveProcess() const;
     const std::deque<ProcessReceipt> &ProcessReceipts() const;
     const std::deque<FormulaRuntimeDiagnostic> &ProcessDiagnostics() const;
     const formula::Formula &ActiveFormula() const;

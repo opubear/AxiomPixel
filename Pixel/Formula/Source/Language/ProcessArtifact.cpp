@@ -11,6 +11,21 @@ Capabilities ProgramArtifact::RequiredCapabilities() const { return Data->Requir
 std::string_view ProgramArtifact::Source() const { return Data->Source; }
 std::size_t ProgramArtifact::InstructionCount() const { return Data->Instructions.size(); }
 
+ProgramRecord ProgramArtifact::Export() const { return {1, Identity(), std::string(Source())}; }
+
+CompileResult ImportProgram(const ProgramRecord &record, Capabilities available) {
+    const auto refuse = [&](const char *message) -> CompileResult {
+        return Diagnostic{record.Identity.Resource, {}, message};
+    };
+    if (record.SchemaVersion != 1 || record.Identity.SemanticsVersion != 1 || record.Identity.HostContractVersion != 1)
+        return refuse("unsupported program record, language or host contract version");
+
+    auto result = Compile(record.Identity.Resource, record.Source, available);
+    if (const auto *program = std::get_if<ProgramArtifact>(&result); program && program->Identity() != record.Identity)
+        return refuse("program content identity does not match its source");
+    return result;
+}
+
 // SHA-256 is an identity checksum, not an authorization mechanism. The compiler
 // bounds source size before calling this; execution never hashes or parses text.
 std::string ContentSha256(std::string_view text) {

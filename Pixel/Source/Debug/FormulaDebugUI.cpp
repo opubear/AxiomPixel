@@ -89,7 +89,7 @@ void FormulaDebugUI::SelectOperation(NodeId selection) {
 void FormulaDebugUI::DrawToolbar(GameSession &session) {
     const auto &runtime = session.GetFormulaRuntime();
     ImGui::Text("Applied version %llu | %s", static_cast<unsigned long long>(runtime.Version()),
-        runtime.AppliedProgram().ResourceId == 2 ? "process example active; tree Apply switches back" : Dirty ? "draft modified" : "draft matches applied");
+        runtime.AppliedProgram().ResourceId == 2 ? "process active; tree Apply switches back" : Dirty ? "draft modified" : "draft matches applied");
     ImGui::BeginDisabled(!Compiled);
     if (ImGui::Button("Apply")) {
         const auto result = session.ApplyProgram(NativeCaller::Debug, *Compiled.Description);
@@ -134,12 +134,40 @@ void FormulaDebugUI::DrawToolbar(GameSession &session) {
         ImGui::TextWrapped("%s", Status.c_str());
 }
 
+void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
+    if (!ImGui::CollapsingHeader("Process source")) return;
+    const auto load = [&](std::string_view source) {
+        ProcessText.fill(0);
+        std::copy(source.begin(), source.end(), ProcessText.begin());
+        ProcessDraft.SetSource(std::string(source));
+    };
+    if (ImGui::Button("Load three-pulse draft")) load(CarrierExample().Source());
+    ImGui::SameLine();
+    const auto &active = session.GetFormulaRuntime().ActiveProcess();
+    ImGui::BeginDisabled(!active);
+    if (ImGui::Button("Load applied process")) load(active->Source());
+    ImGui::EndDisabled();
+    if (ImGui::InputTextMultiline("Process text", ProcessText.data(), ProcessText.size(), {-1, 160}))
+        ProcessDraft.SetSource(ProcessText.data());
+    if (ImGui::Button("Compile process")) ProcessDraft.Build();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!ProcessDraft.Program());
+    if (ImGui::Button("Apply process")) {
+        const auto result = session.ApplyProcess(NativeCaller::Debug, *ProcessDraft.Program());
+        Status = result ? "Process published. Existing instances retain their version; right-click starts the new version." : result.Message;
+    }
+    ImGui::EndDisabled();
+    if (const auto &error = ProcessDraft.Error())
+        ImGui::TextWrapped("%s:%zu:%zu: %s", error->Resource.c_str(), error->Source.Line, error->Source.Column, error->Message.c_str());
+    if (const auto &program = ProcessDraft.Program())
+        ImGui::Text("Compiled %.12s | %zu instructions", program->Identity().ContentSha256.c_str(), program->InstructionCount());
+    if (active) ImGui::Text("Applied v%llu | %.12s", static_cast<unsigned long long>(session.AppliedProgram().Version),
+        active->Identity().ContentSha256.c_str());
+    ImGui::TextDisabled("Compile then Apply. Runtime instances and drafts are not saved to disk yet.");
+}
+
 void FormulaDebugUI::DrawProcessExample(GameSession &session) {
     if (!ImGui::CollapsingHeader("Process: three carriers")) return;
-    if (ImGui::Button("Apply three-pulse process")) {
-        const auto result = session.ApplyProcess(NativeCaller::Debug, CarrierExample());
-        Status = result ? "Right-click uses the process. Old instances retain their program." : result.Message;
-    }
     ImGui::TextWrapped("Each pulse launches a ball and digs on hit. Natural source, fixed fixture and right-click use the same program. Unpause or Step to advance.");
     const auto &player = session.GetWorld().GetPlayer();
     ImGui::BeginDisabled(!player || session.AppliedProgram().ResourceId != 2);
@@ -166,6 +194,15 @@ void FormulaDebugUI::DrawProcessExample(GameSession &session) {
         stats.Instances, stats.PendingEvents, static_cast<unsigned long long>(stats.Work),
         static_cast<unsigned long long>(stats.Accepted), static_cast<unsigned long long>(stats.Rejected));
     for (const auto &diagnostic : bridge.ProcessDiagnostics()) ImGui::TextWrapped("%s", diagnostic.Message.c_str());
+    for (const auto &instance : bridge.InspectProcesses()) {
+        const auto &state = instance.State;
+        const char *phase = state.Status == formula::process::Phase::Sleeping ? "wait" : "await";
+        ImGui::Text("#%llu v%llu %.12s | %s PC %zu | active %llu remaining %llu | credits %lld",
+            static_cast<unsigned long long>(state.Id), static_cast<unsigned long long>(instance.Version),
+            instance.Program.ContentSha256.c_str(), phase, state.Instruction,
+            static_cast<unsigned long long>(state.ActiveSteps), static_cast<unsigned long long>(state.Remaining),
+            static_cast<long long>(instance.Credits));
+    }
 }
 
 void FormulaDebugUI::DrawTree(const formula::editing::DraftNode &node, const char *slot) {
@@ -262,6 +299,8 @@ void FormulaDebugUI::Draw(GameSession &session) {
         return;
     if (!Initialized) {
         LoadApplied(session);
+        ProcessDraft.SetSource(std::string(CarrierExample().Source()));
+        std::copy(ProcessDraft.Source().begin(), ProcessDraft.Source().end(), ProcessText.begin());
         Initialized = true;
     }
     const auto display = ImGui::GetIO().DisplaySize;
@@ -271,6 +310,7 @@ void FormulaDebugUI::Draw(GameSession &session) {
     ImGui::SetNextWindowSize(initialSize, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Formula Editor", &Visible, ImGuiWindowFlags_NoSavedSettings)) {
         DrawToolbar(session);
+        DrawProcessEditor(session);
         DrawProcessExample(session);
         if (ImGui::BeginTable("Formula structure", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
             ImGui::TableNextColumn();

@@ -131,6 +131,8 @@ class Compiler {
     }
     std::size_t AddInstruction(Instruction instruction) {
         if (Data->Instructions.size() >= 512) Fail(instruction.Source, "instruction limit exceeded");
+        if (instruction.Kind == InstructionKind::Wait || instruction.Kind == InstructionKind::Await)
+            for (const auto &binding : Bindings) instruction.LiveLocals |= std::uint16_t(1u << binding.Slot);
         Data->Instructions.push_back(instruction);
         return Data->Instructions.size() - 1;
     }
@@ -162,6 +164,7 @@ class Compiler {
         const auto value = ParseExpression();
         Expect(";");
         Bindings.push_back({name.Text, Data->Expressions[value].Result, NextSlot, mutableBinding});
+        Data->LocalTypes.push_back(Data->Expressions[value].Result);
         AddInstruction({InstructionKind::Assign, source, value, 0, NextSlot++});
     }
     void Conditional(SourceSpan source, bool loop) {

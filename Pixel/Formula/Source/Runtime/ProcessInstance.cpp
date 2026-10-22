@@ -12,6 +12,31 @@ bool ValidPosition(const Position &position) {
     return std::isfinite(position.OffsetX) && std::isfinite(position.OffsetY)
         && position.OffsetX >= 0 && position.OffsetX < 1 && position.OffsetY >= 0 && position.OffsetY < 1;
 }
+bool ValidLimits(ExecutionLimits limits) {
+    return limits.Work > 0 && limits.Work <= 4096 && limits.Queries <= 32 && limits.Outputs <= 64;
+}
+bool ValidOutcome(Outcome outcome) { return outcome >= Outcome::None && outcome <= Outcome::Timeout; }
+bool ValidValue(const Value &value) {
+    const auto nonnegative = [](double number) { return std::isfinite(number) && number >= 0; };
+    const auto duration = [](std::uint64_t ticks) { return ticks > 0 && ticks <= std::uint64_t(INT64_MAX); };
+    switch (value.index()) {
+    case 0: case 1: return true;
+    case 2: return std::isfinite(std::get<double>(value));
+    case 3: return nonnegative(std::get<Cells>(value).Value);
+    case 4: return std::isfinite(std::get<Speed>(value).Value);
+    case 5: return duration(std::get<Duration>(value).Value);
+    case 6: {
+        const auto &effect = std::get<Effect>(value);
+        if (const auto *dig = std::get_if<Dig>(&effect)) return nonnegative(dig->Radius);
+        if (const auto *wind = std::get_if<Wind>(&effect))
+            return nonnegative(wind->Radius) && std::isfinite(wind->VelocityX) && std::isfinite(wind->VelocityY);
+        const auto &bolt = std::get<Bolt>(effect);
+        return nonnegative(bolt.Damage) && std::isfinite(bolt.VelocityX) && duration(bolt.Lifetime);
+    }
+    case 7: return ValidOutcome(std::get<Outcome>(value));
+    }
+    return false;
+}
 double Number(const Value &value) {
     if (const auto *integer = std::get_if<std::int64_t>(&value)) return static_cast<double>(*integer);
     return std::get<double>(value);
@@ -44,6 +69,62 @@ struct Instance::Execution {
     AwaitKind WaitingFor = AwaitKind::Result;
     std::optional<HostEvent> Receipt, Impact, Wake;
     bool ReceiptSeen = false, ImpactSeen = false;
+
+    std::string ValidateSnapshot(const InstanceSnapshot &snapshot) const {
+        if (snapshot.SchemaVersion != 1) return "unsupported instance state version";
+        if (snapshot.Program != Program.Identity()) return "instance state requires its exact program identity";
+        const auto &state = snapshot.State;
+        if (state.Id == 0 || !ValidLimits(snapshot.Limits) || !ValidPosition(state.Origin)
+            || !ValidOutcome(state.LastOutcome) || state.ActiveSteps == 0
+            || state.Remaining == 0 || state.Remaining > std::uint64_t(INT64_MAX))
+            return "invalid instance state values";
+        if ((state.Status != Phase::Sleeping && state.Status != Phase::Awaiting)
+            || state.Instruction == 0 || state.Instruction >= Program.InstructionCount())
+            return "instance state is not at a suspension point";
+        const auto &yield = Program.Data->Instructions[state.Instruction - 1];
+        if ((state.Status == Phase::Sleeping && yield.Kind != InstructionKind::Wait)
+            || (state.Status == Phase::Awaiting && (yield.Kind != InstructionKind::Await || snapshot.WaitingFor != yield.Await)))
+            return "instance continuation does not match its suspension point";
+        for (std::size_t slot = 0; slot < snapshot.Locals.size(); ++slot) {
+            const auto &value = snapshot.Locals[slot];
+            const bool live = (yield.LiveLocals & (1u << slot)) != 0;
+            if (live != value.has_value() || (value && (slot >= Program.Data->LocalTypes.size()
+                || value->index() != std::size_t(Program.Data->LocalTypes[slot]) || !ValidValue(*value))))
+                return "instance local values do not match the compiled continuation";
+        }
+
+        const auto request = state.LastRequest;
+        if (request.Instance != (request.Sequence ? state.Id : 0)
+            || (state.Status == Phase::Awaiting && snapshot.WaitingFor != AwaitKind::Wake && request.Sequence == 0))
+            return "invalid request identity in instance state";
+        const bool awaitingWake = state.Status == Phase::Awaiting && snapshot.WaitingFor == AwaitKind::Wake;
+        if (awaitingWake != state.WakeSubscription.has_value()
+            || (state.WakeSubscription && (state.WakeSubscription->Instance != state.Id
+                || state.WakeSubscription->Sequence == 0 || state.WakeSubscription->Sequence != snapshot.SubscriptionSequence)))
+            return "invalid wake subscription in instance state";
+        const auto validEvent = [&](const HostEvent &event) {
+            return event.Target == state.Id && event.Sequence > 0 && event.Sequence <= snapshot.EventSequence
+                && event.CommittedAt < snapshot.LastBoundary && ValidPosition(event.HitPosition);
+        };
+        const auto receipt = [](Outcome result) {
+            return result == Outcome::Applied || result == Outcome::Rejected || result == Outcome::Cancelled;
+        };
+        const auto impact = [](Outcome result) {
+            return result == Outcome::Hit || result == Outcome::Expired || result == Outcome::Rejected || result == Outcome::Cancelled;
+        };
+        if (snapshot.Receipt && (!snapshot.ReceiptSeen || !validEvent(*snapshot.Receipt) || request.Sequence == 0
+            || snapshot.Receipt->Request != request || !receipt(snapshot.Receipt->Result)))
+            return "invalid cached receipt";
+        if (snapshot.Impact && (!snapshot.ImpactSeen || !validEvent(*snapshot.Impact) || request.Sequence == 0
+            || snapshot.Impact->Request != request || !impact(snapshot.Impact->Result)))
+            return "invalid cached impact";
+        if (snapshot.Wake && (!validEvent(*snapshot.Wake) || !state.WakeSubscription
+            || snapshot.Wake->WakeSubscription != *state.WakeSubscription
+            || (snapshot.Wake->Result != Outcome::Wake && snapshot.Wake->Result != Outcome::Rejected
+                && snapshot.Wake->Result != Outcome::Cancelled)))
+            return "invalid cached wake";
+        return {};
+    }
 
     SourceSpan CurrentSource() const { return Program.Data->Instructions.at(State.Instruction).Source; }
     void Charge(StepResult &result, SourceSpan source) const {
@@ -231,9 +312,55 @@ Instance::~Instance() = default;
 const ProgramArtifact &Instance::Program() const { return Run->Program; }
 const InstanceState &Instance::State() const { return Run->State; }
 
+InstanceSnapshot Instance::ExportState() const {
+    const auto &state = Run->State;
+    if (state.Status != Phase::Sleeping && state.Status != Phase::Awaiting)
+        throw std::logic_error("export requires a yielded process and a committed host slice");
+    InstanceSnapshot snapshot;
+    snapshot.Program = Run->Program.Identity();
+    snapshot.State = state;
+    snapshot.Limits = Run->Limits;
+    const auto live = Run->Program.Data->Instructions.at(state.Instruction - 1).LiveLocals;
+    for (std::size_t slot = 0; slot < Run->Locals.size(); ++slot)
+        if (live & (1u << slot)) snapshot.Locals[slot] = Run->Locals[slot];
+    snapshot.LastBoundary = Run->LastBoundary.value();
+    snapshot.EventSequence = Run->EventSequence;
+    snapshot.SubscriptionSequence = Run->SubscriptionSequence;
+    snapshot.WaitingFor = Run->WaitingFor;
+    snapshot.Receipt = Run->Receipt;
+    snapshot.Impact = Run->Impact;
+    snapshot.Wake = Run->Wake;
+    snapshot.ReceiptSeen = Run->ReceiptSeen;
+    snapshot.ImpactSeen = Run->ImpactSeen;
+    return snapshot;
+}
+
+std::variant<std::unique_ptr<Instance>, Diagnostic> Instance::Restore(
+    ProgramArtifact program, const InstanceSnapshot &snapshot, Capabilities granted) {
+    auto execution = std::make_unique<Execution>(std::move(program), snapshot.Limits);
+    if (const auto error = execution->ValidateSnapshot(snapshot); !error.empty())
+        return Diagnostic{execution->Program.Identity().Resource, {}, error};
+    if ((execution->Program.RequiredCapabilities() & granted) != execution->Program.RequiredCapabilities())
+        return Diagnostic{execution->Program.Identity().Resource, {}, "host refused required capabilities on restore"};
+
+    execution->State = snapshot.State;
+    for (std::size_t slot = 0; slot < snapshot.Locals.size(); ++slot)
+        if (snapshot.Locals[slot]) execution->Locals[slot] = *snapshot.Locals[slot];
+    execution->LastBoundary = snapshot.LastBoundary;
+    execution->EventSequence = snapshot.EventSequence;
+    execution->SubscriptionSequence = snapshot.SubscriptionSequence;
+    execution->WaitingFor = snapshot.WaitingFor;
+    execution->Receipt = snapshot.Receipt;
+    execution->Impact = snapshot.Impact;
+    execution->Wake = snapshot.Wake;
+    execution->ReceiptSeen = snapshot.ReceiptSeen;
+    execution->ImpactSeen = snapshot.ImpactSeen;
+    return std::unique_ptr<Instance>(new Instance(std::move(execution)));
+}
+
 std::variant<std::unique_ptr<Instance>, Diagnostic> Instance::Start(
     ProgramArtifact program, InstanceId id, Capabilities granted, ExecutionLimits limits, Position origin) {
-    if (id == 0 || limits.Work == 0 || limits.Work > 4096 || limits.Queries > 32 || limits.Outputs > 64 || !ValidPosition(origin))
+    if (id == 0 || !ValidLimits(limits) || !ValidPosition(origin))
         throw std::invalid_argument("invalid process instance configuration");
     if ((program.RequiredCapabilities() & granted) != program.RequiredCapabilities())
         return Diagnostic{program.Identity().Resource, {}, "host refused required capabilities"};

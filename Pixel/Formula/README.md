@@ -2,11 +2,13 @@
 
 正式领域名称为“构式（Formula）”，替代早期“法术”称呼。代码已统一为 `Pixel/Formula`、C++ `Formula` 类型、`pixel::formula` 命名空间、`.formula` 示例文件和 `PixelFormula` 构建目标；`cast` 仍表示激活构式，语义保持不变。整体设计见 [构式系统](../../Docs/GameDesign/FormulaSystem.md)，实际架构与历史提案差异见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)。
 
-这是 Pixel 内可独立构建的 C++20 子系统，用来表达“构式描述经过修改器或装饰器之后，仍然是构式描述”的玩法基础。它提供文本语言、不可变描述、独立 CPU 模拟器、命令行演示和行为测试。游戏已通过 `Pixel/Source/Gameplay/FormulaRuntime` 接入真实World、碰撞与黄色球表现，并提供独立DebugUI树形编辑器；使用方法见 [工程README](../../README.md)。本模块本身继续不依赖World、窗口或GPU。
+这是 Pixel 内可独立构建的 C++20 子系统，用来表达“构式描述经过修改器或装饰器之后，仍然是构式描述”的玩法基础。它提供文本语言、不可变描述、独立 CPU 模拟器、命令行演示和行为测试。游戏已通过 `Pixel/Source/Gameplay/FormulaBridge` 接入真实World、碰撞与黄色球表现，并提供独立DebugUI编辑器；使用方法见 [工程README](../../README.md)。本模块本身继续不依赖World、窗口或GPU。
 
-M3.1 的[语言语义对照实验](../../.awtcontext/GlobalDoc/FormulaSemanticsExperiment.md)位于 `Experiments/Semantics`，默认不构建。它用五个场景比较当前 DSL 与纯值/显式过程原型，选定后续语言方向；游戏仍使用本文下述旧 DSL。独立配置时加 `-DPIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT=ON` 可运行 `Pixel.Formula.Semantics`，实验不依赖 Axiom/World，也未提供新文本语法或生产存档格式。
+M3.1 的[语言语义对照实验](../../.awtcontext/GlobalDoc/FormulaSemanticsExperiment.md)位于 `Experiments/Semantics`，默认不构建。它用五个场景比较旧 DSL 与纯值/显式过程原型，选定后续语言方向。独立配置时加 `-DPIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT=ON` 可运行 `Pixel.Formula.Semantics`，实验不依赖 Axiom/World，也未提供新文本语法或生产存档格式；后续语言实现见下文 M3.2–M3.4。
 
 M3.2 已新增独立 `process 1;` 文本入口、`ProgramArtifact`、绑定实例、有界片段执行和 fake host。新目标为 `PixelFormulaProcess` / `PixelFormulaProcessDemo`，与旧 `cast` 入口并存；类型、等待终态、清理与破坏式语义差异见[过程语言 v1 合同](../../.awtcontext/GlobalDoc/FormulaProcessRuntime.md)。下文旧 DSL 的组合器和 Simulator 规则不适用于新入口。
+
+M3.3 已通过 FormulaBridge 接入游戏；M3.4 增加 `ProgramRecord`、`InstanceSnapshot`、`ImportProgram` / `Instance::Restore` 和独立 `editing::Draft`，并接入 F4 过程源码 Compile/Apply。挂起点、活动时间、宿主效果所有权和版本拒绝见[状态与编辑合同](../../.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。`Pixel.Formula.Process.State` 可在无引擎环境验证；游戏磁盘保存仍留待 M4。
 
 ## 快速运行
 

@@ -16,7 +16,7 @@
 
 `Compile(resource, source, availableCapabilities)` 返回不可变 `ProgramArtifact` 或带资源名、字节 offset/length、1-based 行列的 `Diagnostic`。身份由资源标识、源文本 SHA-256、语义版本 1、宿主合同版本 1 组成。空白/注释改变也形成新内容版本。哈希用于内容识别，不用于授权。产物保留源码，运行阶段只读编译好的指令/表达式，不解析、哈希或按资源名查找新版本。
 
-`Instance::Start(artifact, id, grants, limits, origin)` 返回实例或能力拒绝。实例持有自己的产物引用；同名资源重新编译不会改变旧实例及其 continuation。`InstanceState` 只通过 const 视图检查，不能把别的程序与裸 PC 拼接后执行。当前没有二进制产物格式、状态反序列化或跨版本恢复 API；M3.4 再定义保存/恢复合同。
+`Instance::Start(artifact, id, grants, limits, origin)` 返回实例或能力拒绝。实例持有自己的产物引用；同名资源重新编译不会改变旧实例及其 continuation。`InstanceState` 只通过 const 视图检查。M3.4 已增加程序记录与运行状态 DTO、严格按原产物恢复、fake host 挂起及源码编辑入口，见[状态与编辑合同](FormulaStateAndEditing.md)；尚无磁盘编码或跨版本迁移。
 
 ## 文本与值
 

@@ -209,7 +209,9 @@ ctest --test-dir build-formula --output-on-failure
 
 M3.2 的 `PixelFormulaProcessDemo` 使用新的 `process 1;` 入口，包含不可变编译产物、片段预算、终态等待和独立 fake host。可执行 `./build-formula/PixelFormulaProcessDemo Pixel/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3`；M3.3 已通过 FormulaBridge 接入游戏，树形编辑器保留旧入口。新合同与明确的兼容范围见[过程语言 v1](.awtcontext/GlobalDoc/FormulaProcessRuntime.md)。
 
-M3.3 的 F4 编辑器可展开 `Process: three carriers`，点击 `Apply three-pulse process` 后右键使用新过程；`Start natural source` 和 `Start fixed fixture` 从玩家附近启动同一程序。三者都会发球、命中挖掘并延时重复，需取消暂停或单步推进。固定装置只是有限夹具；示例额度每次激活独立，天然源6、固定装置4、玩家64，每个成功效果扣1。`Clear running` 统一清理，树形 `Apply` 切回旧程序，既有实例保留旧版本。过程、承载者不保存；领域效果、边界与验证见 [FormulaBridge](.awtcontext/GlobalDoc/FormulaBridge.md)。新增 `Pixel.FormulaBridge` 覆盖三承载者、回执、范围和额度、混合批次碰撞、远坐标与会话接入。
+F4 编辑器展开 `Process source`，载入三脉冲草稿或直接编辑源码，依次点击 `Compile process` 和 `Apply process` 后右键使用新过程。编辑会撤销旧编译结果，错误显示行列；Apply 只影响新实例。展开 `Process: three carriers`，`Start natural source` 和 `Start fixed fixture` 从玩家附近启动同一程序，并查看各实例的版本、PC、活动计时与剩余等待。三脉冲示例会发球、命中挖掘并延时重复，需取消暂停或单步推进。固定装置只是有限夹具；示例额度每次激活独立，天然源6、固定装置4、玩家64，每个成功效果扣1。`Clear running` 统一清理，树形 `Apply` 切回旧程序，既有实例保留旧版本。领域效果与边界见 [FormulaBridge](.awtcontext/GlobalDoc/FormulaBridge.md)。
+
+M3.4 已实现独立程序与实例状态 DTO，在 fake host 验证挂起后重建解释器、剩余延迟/事件/效果寿命接续及不重放已提交请求。具体见[状态与编辑合同](.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。游戏区域离开仍取消，过程、草稿和承载者尚不保存到磁盘；跨领域 checkpoint 属于 M4。
 
 CPU行为测试包括 `Pixel.FormulaValidation`、`Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。前者只链接共享验证和独立Formula，FormulaGameplay也不链接编辑器或ImGui。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
 

@@ -4,9 +4,9 @@
 
 ## 使用与范围
 
-F4 的 Formula Editor 展开 **Process: three carriers**，点击 **Apply three-pulse process**。随后右键由玩家发射；**Start natural source / Start fixed fixture** 在玩家附近装配另外两种承载者。三者使用 `ProcessExample.h` 的同一个不可变产物：发球、等待命中、命中后挖掘、等待30活动步，重复三次。取消暂停或单步推进，Clear running 统一清理。两种固定承载者仅为 M3 CPU 夹具与调试样例，没有实体外观、放置占用、设备网络或真实物品库存。
+F4 的 Formula Editor 展开 **Process source**，点击 **Load three-pulse draft → Compile process → Apply process**。随后右键由玩家发射；展开 **Process: three carriers**，**Start natural source / Start fixed fixture** 在玩家附近装配另外两种承载者。三者使用同一个不可变产物：发球、等待命中、命中后挖掘、等待30活动步，重复三次。取消暂停或单步推进，Clear running 统一清理。两种固定承载者仅为 M3 CPU 夹具与调试样例，没有实体外观、放置占用、设备网络或真实物品库存。
 
-旧树形编辑器的 Apply 切回旧语言。两种语言可以短期并存，已运行实例保留各自原程序及版本；Revert to applied 仍只恢复最近的旧树形描述，过程程序生效时工具栏明确说明。新过程的编辑/保存/恢复合同由 M3.4 处理，完整设备及持久化由 M4 处理。
+旧树形编辑器的 Apply 切回旧语言。两种语言可以短期并存，已运行实例保留各自原程序及版本；Revert to applied 仍只恢复最近的旧树形描述，过程程序生效时工具栏明确说明。新过程的源码编辑与状态 DTO 见[M3.4 合同](FormulaStateAndEditing.md)，完整设备及持久化由 M4 处理。
 
 `GameSession::ApplyProcess` 安装独立编译产物；已有 `ActivateProgram` 动作负责玩家激活、请求去重、发射起点和来源事实。`StartProcessFixture`、`CancelProcessCarrier`、`WakeProcessCarrier` 是仅供原生 Debug/Driver 装配使用的安全边界入口；玩家输入和外部语言不能提交自报的权限、主体或资源配置。预算等待期间以上修改均被拒绝。过程有自己的资源编号2，旧树编号1；会话版本递增，投影、弹体及事实不再把新过程标为旧树。完整源码身份仍由实例保留的 ProgramArtifact 管理，LLMView 不开放配方源码。
 
@@ -32,7 +32,7 @@ Credits 是每次激活独有的演示额度：每个成功接受的 dig、wind 
 
 桥接边界编号只用于通知因果，不等于游戏Tick。暂停激活仅执行新实例的初片段，不推进其他实例或载体；预算等待和Skip不调用Step。Wake只通知当前订阅，重复Wake合并，不唤醒未来订阅。仅最近request保留可观察回执，旧载体仍按正常寿命存在，直到实例结束。
 
-stop/EOF先提交最后片段输出，再移除所属载体、通知及订阅；fault丢弃当前片段输出，之前已提交的世界事实保留。Clear、来源撤销和世界替换调用Cancel并清理所有归属。M3.3在承载者原点离开活动域或失去驻留时直接取消，**尚不支持挂起恢复或跨区域补算**；该策略为下一任务提供明确的迁移边界。
+stop/EOF先提交最后片段输出，再移除所属载体、通知及订阅；fault丢弃当前片段输出，之前已提交的世界事实保留。Clear、来源撤销和世界替换调用Cancel并清理所有归属。游戏在承载者原点离开活动域或失去驻留时直接取消，**尚不支持游戏区域挂起恢复或跨区域补算**；M3.4 的独立语言/fake host 状态合同为 M4 的持久化与区域接入提供基础。
 
 ## 上限和观测
 

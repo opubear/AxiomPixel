@@ -40,6 +40,15 @@ void FakeHost::Apply(const StepResult &result) {
     }
 }
 StepResult FakeHost::Advance() {
+    for (auto entity = Independent.begin(); entity != Independent.end();) {
+        if (--entity->Remaining == 0) entity = Independent.erase(entity);
+        else ++entity;
+    }
+    if (!Running) {
+        if (At == std::numeric_limits<Boundary>::max()) throw std::logic_error("fake boundary exhausted");
+        ++At;
+        return {};
+    }
     // Freeze first; delivery and execution cannot observe effects applied below.
     const HostView view{At, Inventory};
     std::size_t delivered = 0;
@@ -70,14 +79,61 @@ void FakeHost::Skip(std::uint64_t boundaries) {
     At += boundaries;
 }
 void FakeHost::Hit(Position position) {
+    Process(); // External contact cannot mutate a frozen process region.
     for (const auto &carrier : Carriers) Queue(Outcome::Hit, carrier.Request.Id, {}, position);
     Carriers.clear();
 }
 void FakeHost::Wake(Outcome outcome) {
     if (outcome != Outcome::Wake && outcome != Outcome::Rejected && outcome != Outcome::Cancelled)
         throw std::invalid_argument("invalid wake terminal outcome");
-    if (const auto subscription = Running->State().WakeSubscription)
+    if (const auto subscription = Process().State().WakeSubscription)
         Queue(outcome, {}, *subscription);
 }
-void FakeHost::Cancel() { Apply(Running->Cancel()); }
+void FakeHost::Cancel() {
+    if (Running) Apply(Running->Cancel());
+    else if (Suspended) { Suspended.reset(); ++Cleanups; }
+}
+
+const Instance &FakeHost::Process() const {
+    if (!Running) throw std::logic_error("fake process is not active");
+    return *Running;
+}
+
+const SuspendedProcess &FakeHost::Suspension() const {
+    if (!Suspended) throw std::logic_error("fake process is not suspended");
+    return *Suspended;
+}
+
+void FakeHost::Suspend() {
+    const auto &instance = Process();
+    SuspendedProcess capsule{instance.Program().Export(), instance.ExportState(), NextEvent};
+    capsule.Events = std::move(Events);
+    capsule.Carriers = std::move(Carriers);
+    Suspended = std::move(capsule);
+    Running.reset();
+}
+
+std::optional<Diagnostic> FakeHost::Resume(Capabilities granted) {
+    const auto &capsule = Suspension();
+    auto imported = ImportProgram(capsule.Program, granted);
+    if (const auto *error = std::get_if<Diagnostic>(&imported)) return *error;
+    auto restored = Instance::Restore(std::get<ProgramArtifact>(std::move(imported)), capsule.Runtime, granted);
+    if (const auto *error = std::get_if<Diagnostic>(&restored)) return *error;
+    Running = std::get<std::unique_ptr<Instance>>(std::move(restored));
+    Events = std::move(Suspended->Events);
+    Carriers = std::move(Suspended->Carriers);
+    NextEvent = capsule.NextEvent;
+    Suspended.reset();
+    return std::nullopt;
+}
+
+void FakeHost::ReleaseCarrier(RequestId request) {
+    Process();
+    const auto carrier = std::find_if(Carriers.begin(), Carriers.end(), [&](const auto &value) { return value.Request.Id == request; });
+    if (carrier == Carriers.end()) throw std::logic_error("ownership transfer requires a live carrier");
+    if (Independent.size() == 32) throw std::logic_error("fake world entity capacity exhausted");
+    Independent.push_back(*carrier);
+    Carriers.erase(carrier);
+    // The admission receipt is still valid; future hit/expiry callbacks retire.
+}
 } // namespace pixel::formula::process::testing

@@ -22,6 +22,12 @@ struct ProgramIdentity {
     std::uint32_t HostContractVersion = 1;
     bool operator==(const ProgramIdentity &) const = default;
 };
+// Portable source record, not a dump of compiler memory or executable bytecode.
+struct ProgramRecord {
+    std::uint32_t SchemaVersion = 1;
+    ProgramIdentity Identity;
+    std::string Source;
+};
 struct ArtifactData;
 class Compiler;
 class Instance;
@@ -34,6 +40,7 @@ class ProgramArtifact {
     Capabilities RequiredCapabilities() const;
     std::string_view Source() const;
     std::size_t InstructionCount() const;
+    ProgramRecord Export() const;
 
   private:
     explicit ProgramArtifact(std::shared_ptr<const ArtifactData> data);
@@ -44,4 +51,5 @@ class ProgramArtifact {
 using CompileResult = std::variant<ProgramArtifact, Diagnostic>;
 CompileResult Compile(std::string_view resource, std::string_view source,
                       Capabilities available = AllCapabilities);
+CompileResult ImportProgram(const ProgramRecord &record, Capabilities available = AllCapabilities);
 } // namespace pixel::formula::process

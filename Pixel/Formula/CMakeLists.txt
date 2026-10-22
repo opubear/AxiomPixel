@@ -13,6 +13,7 @@ set_target_properties(PixelFormula PROPERTIES CXX_EXTENSIONS OFF)
 add_library(PixelFormulaProcess STATIC
     Source/Language/ProcessArtifact.cpp
     Source/Language/ProcessCompiler.cpp
+    Source/Language/ProcessEditing.cpp
     Source/Runtime/ProcessInstance.cpp)
 target_include_directories(PixelFormulaProcess PUBLIC Include)
 target_compile_features(PixelFormulaProcess PUBLIC cxx_std_20)

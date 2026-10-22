@@ -366,10 +366,57 @@ void RunPixelFormulaUISmoke() {
             "deleting the root did not produce Empty or mutated old instances");
     Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
     Require(runtime.Projectiles().empty() && runtime.Stats().Pending == 0, "Clear running retained active or delayed work");
+
+    editor->StateStorage.SetInt(editor->GetID("Process source"), 1);
+    Draw(app, 2);
+    const auto enterProcess = [&](const char *source) {
+        Click(app, ControlPoint(app, "Process text", "Formula Editor"));
+        const bool mac = ImGui::GetIO().ConfigMacOSXBehaviors;
+        const int modifier = mac ? GLFW_KEY_LEFT_SUPER : GLFW_KEY_LEFT_CONTROL;
+        const int mask = mac ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL;
+        SendKey(app, modifier, true, mask);
+        SendKey(app, GLFW_KEY_A, true, mask);
+        SendKey(app, GLFW_KEY_A, false, mask);
+        SendKey(app, modifier, false);
+        for (const char *character = source; *character; ++character)
+            app.Engine->GetPlatform()->OnCharacterCallback(unsigned(*character));
+        Draw(app, 2);
+    };
+    enterProcess("process 1; emit bolt(3, speed(0), ticks(100)); wait ticks(100);");
+    const auto previousVersion = runtime.Version();
+    Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
+    Require(runtime.Version() == previousVersion, "Compile published a draft before Apply");
+    Click(app, ControlPoint(app, "Apply process", "Formula Editor"));
+    Require(runtime.AppliedProgram().ResourceId == 2 && runtime.Version() == previousVersion + 1,
+        "process editor did not publish its compiled source");
+    const auto activateProcess = [&] {
+        // Hide the editor before the world click: its window covers this target.
+        SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
+        Require(!editor->Active, "F4 did not release the world click target");
+        ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_RIGHT);
+        SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
+        Require(editor->Active, "F4 did not restore the process editor");
+    };
+    activateProcess();
+    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 3, "right-click did not use edited process");
+    const auto oldProcessVersion = runtime.Projectiles()[0].Version;
+    enterProcess("process 1; wait ticks(false);");
+    Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
+    Require(runtime.Version() == oldProcessVersion && runtime.ActiveProcess()->Source().find("bolt(3") != std::string_view::npos,
+        "invalid draft changed the published process");
+    enterProcess("process 1; emit bolt(9, speed(0), ticks(100)); wait ticks(100);");
+    Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
+    Click(app, ControlPoint(app, "Apply process", "Formula Editor"));
+    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Version == oldProcessVersion,
+        "process Apply replaced an existing instance");
+    activateProcess();
+    Require(runtime.Projectiles().size() == 2 && runtime.Projectiles()[0].Damage == 3 && runtime.Projectiles()[1].Damage == 9,
+        "process Apply did not isolate old and new activations");
+    Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
     editor = ImGui::FindWindowByName("Formula Editor");
     editor->Collapsed = true;
     Draw(app, 2);
     Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI structure editing changed world cells");
     app.Shutdown();
-    std::cout << "Formula ImGui passed: preset/Apply, tree wrap/delete, version isolation, right capture, independent F2/F4 and clear\n";
+    std::cout << "Formula ImGui passed: tree edits, process source/compile/Apply, invalid draft, version isolation, right capture, independent F2/F4 and clear\n";
 }

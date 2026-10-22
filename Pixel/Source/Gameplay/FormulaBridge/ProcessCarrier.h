@@ -36,4 +36,12 @@ struct ProcessHostStats {
     uint64_t Work = 0, Queries = 0, Requests = 0, Accepted = 0, Rejected = 0;
     uint64_t RetainedBytes = 0;
 };
+struct ProcessInspection {
+    formula::process::ProgramIdentity Program;
+    formula::process::InstanceState State;
+    uint64_t Version = 0;
+    ProcessCarrierKind Carrier;
+    uint64_t Subject = 0;
+    int64_t Credits = 0;
+};
 } // namespace pixel

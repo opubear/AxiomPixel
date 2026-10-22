@@ -1,4 +1,5 @@
 #include "Gameplay/FormulaBridge/FormulaBridge.h"
+#include "Formula/Process/Editing.h"
 #include "Gameplay/FormulaBridge/ProcessExample.h"
 #include "Gameplay/GameSession.h"
 #include "ProcessFakeHost.h"
@@ -280,6 +281,36 @@ void InvalidHostCoordinates() {
         "large finite angle overflowed rotation");
     bridge.Step(world);
 }
+
+void ProcessEditingAndInspection() {
+    World world(64, 64);
+    FormulaBridge bridge;
+    formula::process::editing::Draft draft("editor.process");
+    draft.SetSource("process 1; wait ticks(2); emit bolt(1, speed(0), ticks(10)); wait ticks(10);");
+    Check(draft.Build(), "editor process compile failed");
+    bridge.ApplyProcess(*draft.Program());
+    const auto oldVersion = bridge.Version();
+    const auto oldIdentity = bridge.ActiveProcess()->Identity();
+    Check(bridge.CastCarrier(world, Carrier()), "old draft activation failed");
+    auto inspection = bridge.InspectProcesses();
+    Check(inspection.size() == 1 && inspection[0].Version == oldVersion
+        && inspection[0].State.ActiveSteps == 1 && inspection[0].State.Remaining == 2,
+        "debug view did not expose the committed continuation");
+    draft.SetSource("process 1; emit bolt(9, speed(0), ticks(10)); wait ticks(10);");
+    Check(draft.Build(), "replacement draft compile failed");
+    bridge.ApplyProcess(*draft.Program());
+    Check(bridge.ActiveProcess()->Identity() == draft.Program()->Identity() && bridge.Version() == oldVersion + 1,
+        "Apply did not publish a new version");
+    Check(bridge.CastCarrier(world, Carrier()), "replacement activation failed");
+    inspection = bridge.InspectProcesses();
+    Check(inspection.size() == 2 && inspection[0].Program == oldIdentity && inspection[1].Program == draft.Program()->Identity()
+        && inspection[0].State.ActiveSteps == 1, "Apply or new activation advanced/rebound the old process");
+    bridge.Step(world); bridge.Step(world);
+    Check(bridge.Projectiles().size() == 2 && bridge.Projectiles()[0].Damage == 9 && bridge.Projectiles()[1].Damage == 1,
+        "editing changed the existing continuation's effects");
+    bridge.Clear();
+    Check(bridge.InspectProcesses().empty(), "debug view retained cancelled processes");
+}
 } // namespace
 int main() {
     try {
@@ -291,6 +322,7 @@ int main() {
         WindAndFarCoordinates();
         SessionIntegration();
         InvalidHostCoordinates();
+        ProcessEditingAndInspection();
         std::cout << "FormulaBridge contracts passed\n";
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

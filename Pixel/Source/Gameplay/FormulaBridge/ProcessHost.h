@@ -28,6 +28,7 @@ class ProcessHost {
     const std::deque<ProcessReceipt> &Receipts() const;
     const std::deque<FormulaRuntimeDiagnostic> &Diagnostics() const;
     ProcessHostStats Stats() const;
+    std::vector<ProcessInspection> Inspect() const;
 
   private:
     struct State;
