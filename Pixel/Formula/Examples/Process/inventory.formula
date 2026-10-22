@@ -1,0 +1,5 @@
+process 1;
+while inventory() < 3 {
+    emit dig(cells(1));
+    wait ticks(1);
+}

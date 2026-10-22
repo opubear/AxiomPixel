@@ -1,0 +1,5 @@
+process 1;
+await wake within ticks(30);
+if outcome() == wake {
+    emit wind(cells(2), speed(4), speed(0));
+}

@@ -6,6 +6,8 @@
 
 M3.1 的[语言语义对照实验](../../.awtcontext/GlobalDoc/FormulaSemanticsExperiment.md)位于 `Experiments/Semantics`，默认不构建。它用五个场景比较当前 DSL 与纯值/显式过程原型，选定后续语言方向；游戏仍使用本文下述旧 DSL。独立配置时加 `-DPIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT=ON` 可运行 `Pixel.Formula.Semantics`，实验不依赖 Axiom/World，也未提供新文本语法或生产存档格式。
 
+M3.2 已新增独立 `process 1;` 文本入口、`ProgramArtifact`、绑定实例、有界片段执行和 fake host。新目标为 `PixelFormulaProcess` / `PixelFormulaProcessDemo`，与旧 `cast` 入口并存；类型、等待终态、清理与破坏式语义差异见[过程语言 v1 合同](../../.awtcontext/GlobalDoc/FormulaProcessRuntime.md)。下文旧 DSL 的组合器和 Simulator 规则不适用于新入口。
+
 ## 快速运行
 
 在仓库根目录执行。独立构建只依赖 CMake 3.23+、C++20 编译器与标准库，不需要 `Axiom/`、Slang、窗口或 GPU。
@@ -18,6 +20,7 @@ ctest --test-dir build-formula --output-on-failure
 ./build-formula/PixelFormulaDemo Pixel/Formula/Examples/order.formula --ticks 0
 ./build-formula/PixelFormulaDemo Pixel/Formula/Examples/rhythm.formula --ticks 40
 ./build-formula/PixelFormulaDemo Pixel/Formula/Examples/impact_burst.formula --ticks 30 --hit-at 6
+./build-formula/PixelFormulaProcessDemo Pixel/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3
 ```
 
 以上为单配置生成器的路径；多配置生成器加 `--config Debug`，可执行文件在 `build-formula/Debug/`。根项目也注册 `PixelFormula`、`PixelFormulaDemo` 和 `PixelFormulaTests`；根项目的可执行文件遵循原有 `build-cpu/bin/Debug/` 布局。

@@ -1,0 +1,6 @@
+process 1;
+emit bolt(10, speed(60), ticks(20));
+await hit within ticks(30);
+if outcome() == hit {
+    emit dig(cells(1));
+}

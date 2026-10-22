@@ -9,6 +9,21 @@ target_include_directories(PixelFormula PUBLIC Include)
 target_compile_features(PixelFormula PUBLIC cxx_std_20)
 set_target_properties(PixelFormula PROPERTIES CXX_EXTENSIONS OFF)
 
+# Process v1 is a separate, standard-library-only language/runtime boundary.
+add_library(PixelFormulaProcess STATIC
+    Source/Language/ProcessArtifact.cpp
+    Source/Language/ProcessCompiler.cpp
+    Source/Runtime/ProcessInstance.cpp)
+target_include_directories(PixelFormulaProcess PUBLIC Include)
+target_compile_features(PixelFormulaProcess PUBLIC cxx_std_20)
+set_target_properties(PixelFormulaProcess PROPERTIES CXX_EXTENSIONS OFF)
+
+add_library(PixelFormulaFakeHost STATIC Tools/ProcessFakeHost.cpp)
+target_include_directories(PixelFormulaFakeHost PUBLIC Tools)
+target_link_libraries(PixelFormulaFakeHost PUBLIC PixelFormulaProcess)
+add_executable(PixelFormulaProcessDemo Tools/ProcessMain.cpp)
+target_link_libraries(PixelFormulaProcessDemo PRIVATE PixelFormulaFakeHost)
+
 option(PIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT "Build the isolated M3 language comparison" OFF)
 if(PIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT)
     add_subdirectory(Experiments/Semantics)

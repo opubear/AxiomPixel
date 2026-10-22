@@ -1,0 +1,16 @@
+process 1;
+let base = bolt(10, speed(60), ticks(3));
+emit damage_mul(damage_add(base, 5), 2);
+await result within ticks(3);
+if outcome() == applied {
+    await hit within ticks(10);
+    if outcome() == hit {
+        emit dig(cells(1));
+    } else {
+        // Expiry/cancellation/timeout is a normal terminal result.
+        emit wind(cells(2), speed(1), speed(0));
+    }
+} else {
+    // Host resource/authority refusal does not leave a success-only wait.
+    stop;
+}

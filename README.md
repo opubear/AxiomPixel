@@ -207,6 +207,8 @@ ctest --test-dir build-formula --output-on-failure
 
 `--hit-at`是显式命中注入。语法见 [Formula README](Pixel/Formula/README.md)，独立语言架构见 [构式语言架构](.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证范围见 [基础版实现](.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md)。
 
+M3.2 的 `PixelFormulaProcessDemo` 使用新的 `process 1;` 入口，包含不可变编译产物、片段预算、终态等待和独立 fake host。可执行 `./build-formula/PixelFormulaProcessDemo Pixel/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3`；游戏和树形编辑器继续使用旧入口。新合同与明确的兼容范围见[过程语言 v1](.awtcontext/GlobalDoc/FormulaProcessRuntime.md)。
+
 CPU行为测试包括 `Pixel.FormulaValidation`、`Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。前者只链接共享验证和独立Formula，FormulaGameplay也不链接编辑器或ImGui。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
 
 ```sh

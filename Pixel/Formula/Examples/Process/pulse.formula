@@ -1,0 +1,5 @@
+process 1;
+while true {
+    emit wind(cells(2), speed(4), speed(0));
+    wait ticks(2);
+}

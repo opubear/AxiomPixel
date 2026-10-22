@@ -4,6 +4,8 @@
 
 “构式（Formula）”已同时用于领域与代码：类型 `Formula`、命名空间 `pixel::formula`、示例扩展名 `.formula` 和 `PixelFormula` 构建目标。2026-10-14 的迁移只统一名称；`cast` 语法及现有执行契约保持不变，迁移对照见系统文档。
 
+2026-10-22 M3.2 已建立单独的 `process 1` 编译产物和有界过程运行时；公开入口为 `Formula/Process/{Program,Runtime,HostContract}.h`，具体模块、预算、终态及新旧语义差异见[过程语言 v1 合同](FormulaProcessRuntime.md)。它仅接独立 fake host，游戏仍使用旧 `FormulaRuntime`。本文以下章节继续描述旧 `cast` 系统，不代表新入口仍采用递归预展开、无配额或无片段事务。
+
 ## 1. 四层职责
 
 ```mermaid
