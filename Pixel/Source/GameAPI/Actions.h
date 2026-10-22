@@ -1,4 +1,5 @@
 #pragma once
+#include "CommitStamp.h"
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -57,12 +58,13 @@ struct ActivationResult {
 };
 struct WindResult { WindKind Kind; int64_t BoundaryY; };
 using ActionResult = std::variant<std::monostate, MaterialResult, ActivationResult, WindResult>;
-// M1 internal result: no fabricated Tick/Revision or fact IDs. M2 adds stamps.
+// Synchronous terminal result at a complete committed state; facts follow in M2.4.
 struct ActionReceipt {
     RequestKey Key;
     ActionStatus Status = ActionStatus::Rejected;
     Reason Rejection = Reason::None;
     ActionResult Result;
+    CommitStamp ResolvedAt;
     std::string Message;
     bool Applied() const { return Status == ActionStatus::Applied; }
 };

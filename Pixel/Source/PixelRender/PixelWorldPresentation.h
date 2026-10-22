@@ -23,12 +23,14 @@ uint64_t GridSourceRegionVersion(pixel::WorldMapView world, uint32_t x, uint32_t
 
 namespace pixel {
 class World;
+class CommittedWorldView;
 }
 // Unit direction [-1,1] -> linear RGB [0,1]; zero is neutral grey.
 std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity);
 // Called at publication only. Copies colours into render-owned storage; no
 // World/Wind references survive into Draw, and empty cells also display the field.
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output);
+void BuildForceFieldFrame(const pixel::CommittedWorldView &world, WorldGridFrame &output);
 
 // Publish continuous geometry independently from material cells, using the exact camera centre.
 void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2D &camera,

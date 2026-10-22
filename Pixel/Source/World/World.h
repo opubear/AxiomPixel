@@ -77,7 +77,8 @@ class World {
         if (Streamer)
             Streamer->RetryFailures();
     }
-    uint32_t Tick(float duration, const std::function<void()> &onStep = {}, bool singleStep = false);
+    bool StepEnvironment(double committedSeconds) { return Environment.TryStep(*this, committedSeconds); }
+    void StepPlayer();
     void SpawnPlayer(double x, double y);
     void RestorePlayer(WorldPosition position);
     const std::optional<Character> &GetPlayer() const { return Player; }
@@ -100,8 +101,7 @@ class World {
         if (Streamer)
             Streamer->LoadNow(GetSimulationBounds());
     }
-    void RestoreSimulationClock(double seconds, double remainder, bool deferredStep = false) { Environment.RestoreClock(seconds, remainder, deferredStep); }
-    void SetWindSimulationTime(double seconds) { Environment.RestoreClock(seconds, 0); }
+    void RestorePendingEnvironmentStep(double seconds, bool deferredStep) { Environment.RestorePendingStep(seconds, deferredStep); }
     void SetPublicationBytes(uint64_t bytes);
     bool ReservePublicationBytes(const void *owner, uint64_t bytes);
     void SetPublicationBytes(const void *owner, uint64_t bytes);

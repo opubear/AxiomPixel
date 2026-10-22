@@ -1,6 +1,6 @@
 # 游戏动作与会话控制入口
 
-M1.4 的实现入口是 `GameAPI/Actions.h`、`Gameplay/Actions/GameActions.cpp` 和 `GameSession`。公共动作值只依赖标准库，不依赖 World、Formula、ImGui 或 RHI。当前同步执行，不提供队列、提交版本、事实流或只读 view；这些属于 M2。
+M1.4 的实现入口是 `GameAPI/Actions.h`、`Gameplay/Actions/GameActions.cpp` 和 `GameSession`。公共动作值只依赖标准库，不依赖 World、Formula、ImGui 或 RHI。当前同步执行，M2.1已补充`ActionReceipt.ResolvedAt`提交版本和供呈现使用的完整读副本；[固定步与提交](SimulationCommits.md)说明实现。队列、事实流和冻结查询view尚未实现。
 
 ## 调用与身份
 
@@ -30,7 +30,7 @@ const auto result = session.Execute(pixel::NativeCaller::Driver,
 
 ## 会话与界面
 
-`Control` 提供暂停、单步、保存、重置、流式重试、恢复、下一世界生成器/seed及ClearRunning，返回 Applied/Saved/Replaced/Failed/Rejected 和原因。保存、重置、恢复继续使用v4存储与错误报告语义，包括已有deferred存档行为；M2才增加Deferred和可协商退出。Control不属于离散动作去重协议，调用者显式重复控制会重新执行。
+`Control` 提供暂停、单步、保存、重置、流式重试、恢复、下一世界生成器/seed及ClearRunning，返回 Applied/Saved/Replaced/Failed/Rejected 和原因。保存、重置、恢复继续使用v4存储与错误报告语义，包括已有deferred存档行为；M2.2已提供引擎关闭钩子，M2.3再接入Deferred与游戏保存退出策略。Control不属于离散动作去重协议，调用者显式重复控制会重新执行。
 
 `ApplyProgram` 是依赖Formula的游戏适配入口，返回新ProgramRef或分析诊断，不依赖编辑草稿。Apply/Clear在预算等待期间拒绝，保留当前运行状态；Clear不触发后代，也不退还本帧已退休风额度。现存实例及延迟/命中后代保留原程序版本。
 
@@ -42,7 +42,7 @@ M1.5已移除Session与PixelGame的可变World访问器、Session的可变Runtim
 
 FormulaRuntime的Apply先分析外部程序，参数/结构/工作量不符合宿主规则时返回诊断，保留原版本。预算等待、激活/根/效果/风额度不足仍是可预期拒绝。分析后执行、碰撞解析、效果提交、快照生成中发生的内部异常直接传播；不再标记Failed、清掉该根后继续游戏。已经提交的早先效果不回滚，发生内部错误后宿主不能继续使用该会话。PendingStep期间非法调用Runtime::Step、碰撞引用已退休弹体及身份耗尽使用发布构建仍生效的检查，不能依赖assert。
 
-保存、恢复与后台块I/O只处理文件系统错误、流I/O错误和明确的WorldStorageError（损坏存档或加载必需存储不足）。磁盘数据的非法配置在读取/恢复边界转换为存储诊断。生成器不变量、分配失败和运行器错误不再被宽泛std::exception捕获转换成StorageFailure；Reset中的清理与恢复保护仍会重新抛出原故障。应用生命周期通过Session::BeginFrame重置本帧额度，End沿用最终保存策略；M2仍负责可协商关闭和Deferred。
+保存、恢复与后台块I/O只处理文件系统错误、流I/O错误和明确的WorldStorageError（损坏存档或加载必需存储不足）。磁盘数据的非法配置在读取/恢复边界转换为存储诊断。生成器不变量、分配失败和运行器错误不再被宽泛std::exception捕获转换成StorageFailure；Reset中的清理与恢复保护仍会重新抛出原故障。应用生命周期通过Session::BeginFrame重置本帧额度，End沿用最终保存策略；M2.2已提供可协商关闭钩子；游戏保存决定与Deferred由M2.3迁移。
 
 ## 验证入口
 

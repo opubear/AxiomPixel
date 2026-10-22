@@ -1,4 +1,4 @@
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 using namespace pixel;
 constexpr std::array Kinds{WindStrategyKind::Coarse, WindStrategyKind::Reference, WindStrategyKind::Procedural,
                            WindStrategyKind::Hybrid, WindStrategyKind::Adaptive, WindStrategyKind::Lbm};

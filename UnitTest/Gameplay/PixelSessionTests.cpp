@@ -123,11 +123,11 @@ void FixedClockAndLatchedJump() {
     }
 
     pixel::GameSession session;
-    pixel::testing::SessionAccess::World(session).RestoreSimulationClock(0, .1, false);
+    pixel::testing::SessionAccess::RestoreClock(session, 0, .1, false);
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(.2f, {});
     Require(std::abs(session.GetSimulationTime() - 1.0 / 60) < 1e-10
-                && std::abs(pixel::testing::SessionAccess::World(session).GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+                && std::abs(session.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
             "single step must consume one backlog step without adding or draining other time");
 }
 } // namespace

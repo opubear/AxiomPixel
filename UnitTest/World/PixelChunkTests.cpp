@@ -1,5 +1,5 @@
 #include "World/Environment/FieldResponse.h"
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 using namespace pixel;
 void Require(bool value, const char *message) {
     if (!value)
@@ -205,11 +206,11 @@ void BudgetDefersAndResumesSimulation() {
         world.SetCell(x, 0, {CellTypes::Dirt, {0, 1}});
     world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
     world.Tick(1.f / 60);
-    Require(world.GetEnvironment().IsWaitingForBudget() && world.GetEnvironment().GetSimulationTime() == 0 && world.GetCell(0, 0).Type == CellTypes::Dirt,
+    Require(world.GetEnvironment().IsWaitingForBudget() && world.SimulationTime() == 0 && world.GetCell(0, 0).Type == CellTypes::Dirt,
             "scratch exhaustion must defer an uncommitted fixed step");
     world.SetPublicationBytes(0);
     world.Tick(1.f / 60);
-    Require(!world.GetEnvironment().IsWaitingForBudget() && world.GetCell(0, 1).Type == CellTypes::Dirt && std::abs(world.GetEnvironment().GetSimulationTime() - 1.0 / 60) < 1e-10,
+    Require(!world.GetEnvironment().IsWaitingForBudget() && world.GetCell(0, 1).Type == CellTypes::Dirt && std::abs(world.SimulationTime() - 1.0 / 60) < 1e-10,
             "deferred fixed step did not resume exactly once");
 }
 } // namespace

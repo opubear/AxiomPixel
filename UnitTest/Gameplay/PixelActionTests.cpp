@@ -120,7 +120,7 @@ void ProgramAndControls() {
 void WaitingAndFarCoordinates() {
     GameSession session;
     auto &world = pixel::testing::SessionAccess::World(session);
-    world.RestoreSimulationClock(0, 1.0 / 60, true);
+    pixel::testing::SessionAccess::RestoreClock(session, 0, 1.0 / 60, true);
     for (const auto caller : {NativeCaller::Input, NativeCaller::Debug, NativeCaller::Driver}) {
         Require(session.Execute(caller, MineRegion{{520, 512}, {}}).Rejection == Reason::WaitingForBudget,
             "waiting did not refuse terrain edits");
@@ -131,7 +131,7 @@ void WaitingAndFarCoordinates() {
             "waiting did not refuse program mutation");
     Require(session.Control(NativeCaller::Debug, ClearRunning{}).Rejection == Reason::WaitingForBudget,
             "waiting did not refuse clearing running state");
-    world.RestoreSimulationClock(0, 0);
+    pixel::testing::SessionAccess::RestoreClock(session, 0, 0);
     const CellCoord far{(int64_t{1} << 45) + 17, -(int64_t{1} << 45) - 17};
     WorldPosition point{ChunkOf(far), {17.125, 33.875}};
     point.Normalize();

@@ -13,7 +13,7 @@ Pixel 的高层设计以探索、构式创造、环境改造与家园生活为�
 ## 工程现状
 
 AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
-`PixelWorld` 管理纯 CPU 世界，WorldMap 持有分块材料/基础力，Environment 负责合成受力与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景、暂停及单步策略。
+`PixelWorld` 管理纯 CPU 世界，WorldMap 持有分块材料/基础力，Environment 负责合成受力与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景，SimulationCoordinator管理固定步时钟、暂停/单步与提交版本，CommittedWorldView为呈现保留完整提交副本。
 `PixelInput` 的 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，将玩法修改转换为游戏会话的类型化动作和控制请求，直接调用表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
 `PixelPresentation` 管理相机、外观与帧首快照转换；`PixelRender` 消费快照完成上传、世界与角色及风效合成、后处理。PixelInput链接CPU表现模块，不链接运行时或ImGui。
 `Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 创建策略，`PixelApplication` 创建游戏，应用所有的 DebugUI 通过引擎 overlay 回调叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。
@@ -39,7 +39,7 @@ F2的World generation选择下一世界生成器与seed，R保存旧世界后创
 
 现行接口、算法、预算与失败处理见 [世界表示约定](../Docs/WorldRepresentation.md)，实测、验证和审查证据见 [验证报告](../Docs/WorldRepresentationValidation.md)。早期世界/风场文档中整图数组、移动链、四张纹理与周期游戏边界已被替代。
 
-`Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定到 `150ea98`，准确提交见 `AxiomVersion.json`。该提交包含通用纹理区域上传、鼠标事件快照、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
+`Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定，准确提交见 `AxiomVersion.json`。锁定版本包含通用纹理区域上传、鼠标事件快照、可接受/拒绝的应用关闭请求、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
 通用 RHI、Forward 渲染和 AET 留在引擎；相邻 `../Axiom` 仅供只读历史参考。
 本目录为 AWT Project 根，真实工程为其父目录。
 构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。

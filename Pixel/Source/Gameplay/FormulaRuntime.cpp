@@ -8,7 +8,7 @@
 
 namespace pixel {
 namespace {
-constexpr size_t MaxRoots = 16, MaxEffects = 256, MaxWind = 64, MaxActivations = 8, MaxDiagnostics = 256;
+constexpr size_t MaxRoots = 16, MaxEffects = FormulaRuntime::MaximumEffects, MaxWind = 64, MaxActivations = 8, MaxDiagnostics = 256;
 struct Root {
     uint64_t Id, Version;
     WorldPosition Anchor;

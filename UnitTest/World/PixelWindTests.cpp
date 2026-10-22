@@ -1,4 +1,4 @@
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -6,6 +6,7 @@
 #include <vector>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 void Check(bool condition, const char *message) {
     if (!condition)
         throw std::runtime_error(message);
@@ -208,7 +209,7 @@ void AdvectionTransportsShear() {
 }
 
 void WorldWindCoupling() {
-    pixel::World world(16, 16);
+    pixel::testing::SimulatedWorld world(16, 16);
     world.GenerateTerrain(12);
     world.ConfigureWind(8, Uniform({60, 0}));
     world.PlaceDirt(4, 4);
@@ -257,7 +258,7 @@ void WorldWindCoupling() {
 }
 
 void WorldWindTimingAndConservation() {
-    pixel::World fast(64, 64), slow(64, 64);
+    pixel::testing::SimulatedWorld fast(64, 64), slow(64, 64);
     for (auto *world : {&fast, &slow}) {
         world->GenerateTerrain(56);
         world->ConfigureWind(48);
@@ -266,7 +267,7 @@ void WorldWindTimingAndConservation() {
                 world->PlaceDirt(x, y);
         world->AddWindImpulse(20, 20, 10, {-100, -100});
     }
-    auto count = [](const pixel::World &world) {
+    auto count = [](const pixel::testing::SimulatedWorld &world) {
         size_t count = 0;
         const auto view = world.ReadState();
         for (size_t i = 0; i < view.CellCount(); ++i)
@@ -288,7 +289,7 @@ void WorldWindTimingAndConservation() {
 }
 
 void WindDirectionAndDeadZone() {
-    pixel::World world(8, 8);
+    pixel::testing::SimulatedWorld world(8, 8);
     world.ConfigureWind(8, Uniform({0, -120}));
     world.PlaceDirt(3, 3);
     world.Tick(1.f / 60);

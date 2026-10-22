@@ -1,5 +1,5 @@
 #include "PixelRender/PixelWorldPresentation.h"
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 void Check(bool condition, const char *message) {
     if (!condition)
         throw std::runtime_error(message);
@@ -53,7 +54,7 @@ void DirectionColors() {
 }
 
 void CombinedFieldSampling() {
-    pixel::World world(4, 4);
+    pixel::testing::SimulatedWorld world(4, 4);
     Check(world.GetFieldVelocity(1, 1) == pixel::WindVelocity{0, 60}, "base force sampling has incorrect units");
     pixel::WindSettings wind;
     wind.Ambient = {60, -120};
@@ -71,7 +72,7 @@ void CombinedFieldSampling() {
 }
 
 void FieldFramePublication() {
-    pixel::World world(Grid2D::Width, Grid2D::Height);
+    pixel::testing::SimulatedWorld world(Grid2D::Width, Grid2D::Height);
     world.FillForceDirection({0, 0});
     // Repeat the sign/zero cases across every texture page, on air and material.
     constexpr std::array<pixel::ForceDirection, 9> directions{{{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {-1, -1}, {1, 1}, {-1, 1}, {1, -1}}};
@@ -109,7 +110,7 @@ void FieldFramePublication() {
     BuildWorldGridFrame(world.ReadState(), {{static_cast<uint32_t>(pixel::CellTypeId::Dirt), 1}}, output);
     Check(output.DisplayMode == GridDisplayMode::Materials && output.Cells()[1] == 1 && output.Cells().back() == 0, "material view retained encoded debug colours");
     ValidateWorldGridFrame(output.Read(), 2, 800, 600);
-    pixel::World small(4, 4);
+    pixel::testing::SimulatedWorld small(4, 4);
     output.SetRegion({0, 0}, 4, 4);
     BuildForceFieldFrame(small, output);
     Check(output.Cells().size() == 16 && output.Cells().back() == 0x80FF80,

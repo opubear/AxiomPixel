@@ -1,5 +1,7 @@
 #pragma once
 #include "PlayerInput.h"
+#include "SimulationCoordinator.h"
+#include "CommittedWorldView.h"
 #include "Actions/ActionValues.h"
 #include "FormulaRuntime.h"
 #include "Persistence/SessionStore.h"
@@ -40,7 +42,10 @@ class GameSession {
     void BeginFrame() { Formulas.BeginFrame(); }
     // Final lifecycle save propagates storage failure; normal UI saves use Control.
     void End() { Save(); }
-    void ClearPlayerInput() { GameWorld.ClearPlayerInput(); }
+    void ClearPlayerInput() {
+        Simulation.ClearInput();
+        if (!Simulation.HasPendingStep()) GameWorld.ClearPlayerInput();
+    }
     const World &GetWorld() const { return GameWorld; }
     bool IsReady() const { return Ready; }
     bool CanEditWorld() const { return Ready && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
@@ -50,8 +55,13 @@ class GameSession {
     const WorldGenerationSettings &GetNextGenerationSettings() const { return NextGeneration; }
     const std::string &GetSaveError() const { return SaveError; }
     void Tick(float duration, PlayerInput input);
-    bool IsPaused() const { return Paused; }
-    double GetSimulationTime() const { return SimulationTime; }
+    bool IsPaused() const { return Simulation.IsPaused(); }
+    double GetSimulationTime() const { return Simulation.Time(); }
+    double GetTimeRemainder() const { return Simulation.Remainder(); }
+    api::CommitStamp CurrentCommit() const;
+    // Internal consumers track a bounded live projection, never a prepared step.
+    std::shared_ptr<CommittedWorldView> CreateReadView();
+    void RefreshReadView(CommittedWorldView &view, WorldRect bounds);
     WindStrategyKind GetSelectedWindStrategy() const { return WindKind; }
     const std::filesystem::path &GetSaveDirectory() const { return SaveDirectory; }
 
@@ -83,9 +93,13 @@ class GameSession {
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;
     std::optional<SessionStore> Store;
-    bool Paused = true;
-    bool StepRequested = false;
-    double SimulationTime = 0;
+    SimulationCoordinator Simulation;
+    std::vector<std::weak_ptr<CommittedWorldView>> ReadViews;
+    uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0;
+    void PublishCommit();
+    void CommitChange();
+    void ServiceStreaming();
+    void SynchronizeReadViews();
     WindStrategyKind WindKind = WindStrategyKind::Empty;
     std::filesystem::path SaveDirectory;
     WorldStreamSettings StreamConfiguration;

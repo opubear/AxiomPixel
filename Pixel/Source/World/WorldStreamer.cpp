@@ -244,13 +244,14 @@ void WorldStreamer::WaitForSaves() {
     }
 }
 
-void WorldStreamer::Save() {
-    Wait();
+void WorldStreamer::Save(bool acceptLoads) {
+    if (acceptLoads) Wait();
+    else WaitForSaves();
     for (const auto coordinate : Map.ChunkCoordinates()) {
         if (!Map.FindChunk(coordinate)->Dirty)
             continue;
         Enqueue({Operation::Save, coordinate, Map.Remove(coordinate), {}, true});
-        Wait();
+        WaitForSaves();
         if (Map.FindChunk(coordinate)->Dirty)
             throw WorldStorageError(Error.empty() ? "world save failed" : Error);
     }

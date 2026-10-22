@@ -1,4 +1,4 @@
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -6,6 +6,7 @@
 #include <vector>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 constexpr float Step = 1.f / 60;
 void Check(bool value, const char *message) {
     if (!value)
@@ -30,7 +31,7 @@ void CoverageAndDrag() {
     // Uniform full coverage has the analytic solution u(t)=u(0)*exp(-drag*t).
     // Include anisotropic cells and a wind grid finer than the material pixels.
     for (auto extent : {std::pair{64u, 32u}, {7u, 11u}, {1u, 1u}}) {
-        pixel::World world(extent.first, extent.second);
+        pixel::testing::SimulatedWorld world(extent.first, extent.second);
         world.Fill({pixel::CellTypes::Dirt});
         auto settings = Uniform({20, -10});
         settings.Columns = 13;
@@ -44,7 +45,7 @@ void CoverageAndDrag() {
                   "full dirt coverage depends on grid resolution or fails to damp wind");
         Check(wind.RmsDivergence() < 0.001f, "uniform dirt feedback introduced divergence");
     }
-    pixel::World half(16, 16);
+    pixel::testing::SimulatedWorld half(16, 16);
     for (uint32_t y = 0; y < 16; ++y)
         for (uint32_t x = 0; x < 16; x += 2)
             half.PlaceDirt(x, y);
@@ -73,7 +74,7 @@ void NarrowStackInProductionWorld() {
     // The reported case: a supported, one-pixel-wide stack rises from terrain
     // into the default wind region. Keep the wind below the movement threshold
     // to isolate airflow around the stack rather than erosion of its shape.
-    pixel::World pile(1024, 1024), empty(1024, 1024);
+    pixel::testing::SimulatedWorld pile(1024, 1024), empty(1024, 1024);
     pile.GenerateTerrain(512);
     empty.GenerateTerrain(512);
     for (uint32_t y = 344; y < 512; ++y)
@@ -103,7 +104,7 @@ void NarrowStackInProductionWorld() {
 }
 
 void StaticDirtDeflectsAir() {
-    pixel::World obstacle(64, 64);
+    pixel::testing::SimulatedWorld obstacle(64, 64);
     for (uint32_t y = 24; y < 40; ++y)
         for (uint32_t x = 24; x < 40; ++x)
             obstacle.PlaceDirt(x, y);
@@ -123,7 +124,7 @@ void StaticDirtDeflectsAir() {
 }
 
 void ActualMovementFeedback() {
-    pixel::World falling(32, 32), blocked(32, 32), empty(32, 32);
+    pixel::testing::SimulatedWorld falling(32, 32), blocked(32, 32), empty(32, 32);
     for (auto *world : {&falling, &blocked, &empty})
         world->ConfigureWind(32, Uniform());
     falling.PlaceDirt(16, 10);
@@ -138,7 +139,7 @@ void ActualMovementFeedback() {
     Check(Samples(blocked.GetWind(), 32, 32) == Samples(empty.GetWind(), 32, 32), "blocked dirt used intended rather than actual velocity");
     Check(snapshot.Read().AtLocal(16, 10).Type == pixel::CellTypes::Dirt, "feedback changed the published snapshot");
 
-    pixel::World pushed(32, 32), free(32, 32);
+    pixel::testing::SimulatedWorld pushed(32, 32), free(32, 32);
     for (auto *world : {&pushed, &free})
         world->ConfigureWind(32, Uniform({120, 0}));
     pushed.PlaceDirt(8, 8);
@@ -152,7 +153,7 @@ void ActualMovementFeedback() {
 }
 
 void EditsAndCouplingScope() {
-    pixel::World world(64, 64);
+    pixel::testing::SimulatedWorld world(64, 64);
     world.FillForceDirection({0, 0});
     world.ConfigureWind(32, Uniform({20, 0}));
     world.PlaceDirt(20, 10);
@@ -199,7 +200,7 @@ void EditsAndCouplingScope() {
 }
 
 void FeedbackValidation() {
-    pixel::World world(8, 8);
+    pixel::testing::SimulatedWorld world(8, 8);
     world.PlaceDirt(3, 3);
     pixel::WindField wind;
     wind.Reset(8, 8, Uniform({20, 0}));

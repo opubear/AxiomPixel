@@ -1,6 +1,6 @@
 #include "../Support/WorldAccess.h"
 #include "World/Environment/FieldResponse.h"
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 using namespace pixel;
 using Clock = std::chrono::steady_clock;
 constexpr uint32_t Edge = 1024;

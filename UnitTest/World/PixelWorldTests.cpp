@@ -1,5 +1,5 @@
 #include "PixelRender/PixelWorldPresentation.h"
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 std::vector<pixel::CellState> CopyCells(pixel::WorldMapView view) {
     std::vector<pixel::CellState> cells;
     cells.reserve(view.CellCount());
@@ -54,10 +55,10 @@ void CellInformation() {
     Reject<std::invalid_argument>([] { GetCellInfo(static_cast<CellTypeId>(99)); });
 }
 void WorldOperations() {
-    Reject<std::invalid_argument>([] { pixel::World world(0, 4); });
-    Reject<std::invalid_argument>([] { pixel::World world(4, 0); });
-    Reject<std::invalid_argument>([] { pixel::World world(UINT32_MAX, UINT32_MAX); });
-    pixel::World world(3, 2);
+    Reject<std::invalid_argument>([] { pixel::testing::SimulatedWorld world(0, 4); });
+    Reject<std::invalid_argument>([] { pixel::testing::SimulatedWorld world(4, 0); });
+    Reject<std::invalid_argument>([] { pixel::testing::SimulatedWorld world(UINT32_MAX, UINT32_MAX); });
+    pixel::testing::SimulatedWorld world(3, 2);
     Check(world.ReadState().CellCount() == 6, "incorrect world extent");
     for (auto cell : CopyCells(world.ReadState()))
         Check(cell.Type == pixel::CellTypeId::Air, "world not initially empty");
@@ -74,7 +75,7 @@ void WorldOperations() {
     Check(world.GetCell(2, 1).Type == pixel::CellTypeId::Air, "world clearing failed");
 }
 void WorldPublication() {
-    pixel::World world(3, 2);
+    pixel::testing::SimulatedWorld world(3, 2);
     pixel::WorldSnapshot snapshot(3, 2);
     world.SetCell(0, 0, {pixel::CellTypeId::Dirt});
     world.PublishState(snapshot);
@@ -98,7 +99,7 @@ void WorldPublication() {
     Check(CopyCells(world.ReadState()) == before, "rejected publication modified world");
 }
 void PresentationMapping() {
-    pixel::World world(3, 2);
+    pixel::testing::SimulatedWorld world(3, 2);
     pixel::WorldSnapshot snapshot(3, 2);
     WorldGridFrame output;
     CellAppearanceTable appearances{{10, 2}, {20, 2}};
@@ -132,7 +133,7 @@ void PresentationMapping() {
 }
 void TerrainAndGravity() {
     constexpr pixel::CellState dirt{pixel::CellTypes::Dirt};
-    pixel::World terrain(4, 1024);
+    pixel::testing::SimulatedWorld terrain(4, 1024);
     terrain.GenerateTerrain(512);
     for (uint32_t y = 0; y < 1024; ++y)
         for (uint32_t x = 0; x < 4; ++x)
@@ -152,7 +153,7 @@ void TerrainAndGravity() {
     Reject<std::out_of_range>([&] { terrain.GenerateTerrain(1025); });
     Check(terrain.GetCell(1, 511).Type == pixel::CellTypes::Empty && terrain.GetCell(1, 512) == dirt, "reset did not restore terrain");
 
-    pixel::World world(3, 6);
+    pixel::testing::SimulatedWorld world(3, 6);
     world.PlaceDirt(0, 0);
     world.PlaceDirt(0, 1);
     world.PlaceDirt(2, 5);
@@ -168,13 +169,13 @@ void TerrainAndGravity() {
     Check(snapshot.Read().AtIndex(0) == dirt && snapshot.Read().AtIndex(3) == dirt, "simulation mutated a published snapshot");
     world.PublishState(snapshot);
     Check(snapshot.Read().AtIndex(12) == dirt && snapshot.Read().AtIndex(15) == dirt, "publication lost settled blocks");
-    pixel::World singleRow(1, 1);
+    pixel::testing::SimulatedWorld singleRow(1, 1);
     singleRow.PlaceDirt(0, 0);
     singleRow.Tick(1);
     Check(singleRow.GetCell(0, 0) == dirt, "single-row world lost its bottom block");
 }
 void GravityTiming() {
-    pixel::World fast(1, 100), slow(1, 100);
+    pixel::testing::SimulatedWorld fast(1, 100), slow(1, 100);
     fast.PlaceDirt(0, 0);
     slow.PlaceDirt(0, 0);
     fast.Tick(0);

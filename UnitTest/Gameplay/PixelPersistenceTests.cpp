@@ -64,8 +64,8 @@ void SessionRoundTrip() {
         session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{450});
         session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
         savedWind = world.SampleWind(100.5, 100.5);
-        savedPhysicsTime = world.GetEnvironment().GetSimulationTime();
-        savedRemainder = world.GetEnvironment().GetTimeRemainder();
+        savedPhysicsTime = session.GetSimulationTime();
+        savedRemainder = session.GetTimeRemainder();
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         original = session.GetSaveDirectory();
     }
@@ -80,7 +80,7 @@ void SessionRoundTrip() {
         Require(world.GetWindBoundary() == 450 && restored.GetSelectedWindStrategy() == pixel::WindStrategyKind::Procedural,
                 "world environment settings did not round trip");
         const auto restoredWind = world.SampleWind(100.5, 100.5);
-        Require(std::abs(restoredWind.X - savedWind.X) < 1e-5 && std::abs(restoredWind.Y - savedWind.Y) < 1e-5 && world.GetEnvironment().GetSimulationTime() == savedPhysicsTime && world.GetEnvironment().GetTimeRemainder() == savedRemainder,
+        Require(std::abs(restoredWind.X - savedWind.X) < 1e-5 && std::abs(restoredWind.Y - savedWind.Y) < 1e-5 && restored.GetSimulationTime() == savedPhysicsTime && restored.GetTimeRemainder() == savedRemainder,
                 "saved procedural wind phase and fixed-step remainder diverged");
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
         Require(restored.GetSaveDirectory() != original && std::filesystem::exists(original / "world.meta"),
@@ -137,7 +137,8 @@ void DeferredStepSurvivesSave() {
             if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
                 pixel::testing::WorldAccess::Map(world).Remove(coordinate);
         world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
-        world.Tick(1.f / 60);
+        session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+        session.Tick(1.f / 60, {});
         Require(world.GetEnvironment().IsWaitingForBudget(), "test did not exhaust material scratch budget");
         savedWind = world.SampleWind(100.5, 100.5);
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
@@ -147,8 +148,9 @@ void DeferredStepSurvivesSave() {
     const auto loadedWind = world.SampleWind(100.5, 100.5);
     Require(world.GetEnvironment().IsWaitingForBudget() && std::hypot(savedWind.X - loadedWind.X, savedWind.Y - loadedWind.Y) < 1e-5,
             "deferred step or advanced procedural phase was lost during save");
-    world.Tick(1.f / 60);
-    Require(!world.GetEnvironment().IsWaitingForBudget() && std::abs(world.GetEnvironment().GetSimulationTime() - 1.0 / 60) < 1e-10,
+    restored.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    restored.Tick(1.f / 60, {});
+    Require(!world.GetEnvironment().IsWaitingForBudget() && std::abs(restored.GetSimulationTime() - 1.0 / 60) < 1e-10,
             "saved deferred step advanced twice or did not resume");
 }
 
@@ -164,6 +166,31 @@ void ManualSaveFailureCanRetry() {
             "manual save failure escaped the session or lost resident data");
     std::filesystem::remove_all(metadata);
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded() && session.GetSaveError().empty(), "manual save did not recover after I/O was repaired");
+}
+
+void SavePublishesAcceptedLoads() {
+    for (const bool failChunkWrite : {false, true}) {
+        SaveRoot root;
+        pixel::GameSession session(true);
+        auto &world = pixel::testing::SessionAccess::World(session);
+        world.WaitForStreaming();
+        world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
+        const auto failedWrite = session.GetSaveDirectory() / "chunks" / "0_0.bin.tmp";
+        if (failChunkWrite) std::filesystem::create_directory(failedWrite);
+        auto view = session.CreateReadView();
+        constexpr int64_t distantX = 100 * pixel::storage::ChunkEdge;
+        session.RefreshReadView(*view, {distantX, 0, 64, 64});
+        Require(!view->TryGetCell(distantX, 0), "save fixture must start with an unloaded view");
+        const auto before = session.CurrentCommit();
+        const auto result = session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{});
+        Require(result.Succeeded() != failChunkWrite, "save fixture did not produce the expected storage result");
+        Require(world.TryGetCell(distantX, 0) && view->TryGetCell(distantX, 0)
+                    && view->Stamp() == session.CurrentCommit()
+                    && session.CurrentCommit().Revision > before.Revision
+                    && session.CurrentCommit().Tick == before.Tick,
+                "save accepted a load without publishing its service revision");
+        if (failChunkWrite) std::filesystem::remove(failedWrite);
+    }
 }
 
 void DistantCameraAndCollision() {
@@ -220,15 +247,13 @@ void DeferredStepKeepsStreamingDomain() {
                 pixel::testing::WorldAccess::Map(world).Remove(coordinate);
     };
     discardOptional();
-    world.SetPlayerInput(1, false);
-    const auto steps = world.Tick(2.f / 60, [&] {
-        world.SetCell(10, 10, {pixel::CellTypeId::Dirt, {0, 1}});
-        discardOptional();
-        world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
-    });
-    Require(steps == 1 && world.GetEnvironment().IsWaitingForBudget()
-                && world.GetPlayer()->GetWorldPosition().Cell().X >= 192,
-            "partial-step fixture did not cross the streaming threshold before waiting");
+    world.SetCell(10, 10, {pixel::CellTypeId::Dirt, {0, 1}});
+    world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    session.Tick(1.f / 60, {1, false});
+    Require(world.GetEnvironment().IsWaitingForBudget()
+                && world.GetPlayer()->GetWorldPosition().Cell().X == 191,
+            "pending step moved the player before environment commit");
     const auto bounds = world.GetSimulationBounds();
     const auto domain = world.GetEnvironment().GetWindSimulation().GetDomain();
     const auto revision = world.GetEnvironment().GetWindSimulation().GetRevision();
@@ -239,10 +264,12 @@ void DeferredStepKeepsStreamingDomain() {
                 && world.GetEnvironment().GetWindSimulation().GetRevision() == revision && world.SampleWind(190.5, 128.5) == sample,
             "streaming/publication remapped preadvanced wind while a material step was waiting");
     world.SetPublicationBytes(0);
-    world.ClearPlayerInput();
-    Require(world.Tick(1.f / 60, {}, true) == 1 && !world.GetEnvironment().IsWaitingForBudget()
-                && std::abs(world.GetEnvironment().GetSimulationTime() - 2.0 / 60) < 1e-10,
-            "deferred material step did not finish exactly once");
+    session.ClearPlayerInput();
+    session.Tick(1.f / 60, {});
+    Require(!world.GetEnvironment().IsWaitingForBudget()
+                && std::abs(session.GetSimulationTime() - 1.0 / 60) < 1e-10
+                && world.GetPlayer()->GetWorldPosition().Cell().X >= 192,
+            "pending step lost its frozen input or did not finish exactly once");
     world.UpdateStreaming();
     Require(world.GetSimulationBounds().X == 64 && world.GetEnvironment().GetWindSimulation().GetDomain().Origin.X == 64,
             "streaming did not recenter after successful retry");
@@ -254,14 +281,14 @@ void SuccessfulSingleStepBacklogRoundTrip() {
         pixel::GameSession session(true);
         Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "backlog fixture failed to cast");
         auto &world = pixel::testing::SessionAccess::World(session);
-        world.RestoreSimulationClock(0, .1, true);
+        pixel::testing::SessionAccess::RestoreClock(session, 0, .1, true);
         Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{500}).Applied() && !session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse}).Applied(),
                 "waiting step permits wind backend replacement");
         Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "waiting step accepted a new cast");
         session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
         session.Tick(.2f, {});
         Require(!world.GetEnvironment().IsWaitingForBudget()
-                    && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+                    && std::abs(session.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
                 "single-step did not preserve unadvanced backlog");
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
@@ -269,12 +296,12 @@ void SuccessfulSingleStepBacklogRoundTrip() {
     auto &world = pixel::testing::SessionAccess::World(loaded);
     Require(loaded.GetFormulaRuntime().Projectiles().empty(), "live formula instances entered a world save");
     Require(!world.GetEnvironment().IsWaitingForBudget()
-                && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+                && std::abs(loaded.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
             "v4 failed to restore complete backlog without preadvanced wind");
     loaded.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     loaded.Tick(.2f, {});
-    Require(std::abs(world.GetEnvironment().GetSimulationTime() - 2.0 / 60) < 1e-10
-                && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 2.0 / 60)) < 1e-10,
+    Require(std::abs(loaded.GetSimulationTime() - 2.0 / 60) < 1e-10
+                && std::abs(loaded.GetTimeRemainder() - (.1 - 2.0 / 60)) < 1e-10,
             "restored backlog advanced wind twice or drained more than one step");
 }
 } // namespace
@@ -286,6 +313,7 @@ int main() {
         PublicationBudgetAndOwnership();
         DeferredStepSurvivesSave();
         ManualSaveFailureCanRetry();
+        SavePublishesAcceptedLoads();
         SuccessfulSingleStepBacklogRoundTrip();
         DeferredStepKeepsStreamingDomain();
         std::cout << "Persistent session and distant coordinate tests passed\n";

@@ -1,4 +1,4 @@
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 void Check(bool value, const char *reason) {
     if (!value)
         throw std::runtime_error(reason);
@@ -20,7 +21,7 @@ pixel::PixelWindSettings Uniform(pixel::WindVelocity velocity = {8, 0}) {
     return settings;
 }
 void ForceSources() {
-    pixel::World world(8, 8);
+    pixel::testing::SimulatedWorld world(8, 8);
     world.FillBaseForce({0, 0});
     world.SetBaseForce(2, 2, {3000, 0});
     world.AddBaseForce(2, 2, {600, 0});
@@ -75,7 +76,7 @@ void UniformAndProjection() {
     Check(!wind.GetReport().Converged, "iteration exhaustion falsely reported convergence");
 }
 void ThinWallsAndPockets() {
-    pixel::World geometry(32, 24);
+    pixel::testing::SimulatedWorld geometry(32, 24);
     geometry.Fill({pixel::CellTypes::Empty, {0, 0}});
     // A fully closed 1-pixel wall loop, then a 1-pixel opening.
     for (uint32_t y = 5; y <= 18; ++y) {
@@ -117,7 +118,7 @@ void ThinWallsAndPockets() {
     Check(wind.Sample(4.5f, 4.5f) == pixel::WindVelocity{}, "isolated air pixel generated velocity");
 }
 void WorldReferenceIntegration() {
-    pixel::World a(12, 10), b(12, 10);
+    pixel::testing::SimulatedWorld a(12, 10), b(12, 10);
     for (auto *world : {&a, &b}) {
         world->Fill({pixel::CellTypes::Empty, {0, 0}});
         world->SetBaseForce(1, 1, {100, 200});
@@ -140,7 +141,7 @@ void WorldReferenceIntegration() {
     Check(a.GetBaseForceField().Get(1, 1) == pixel::ForceVector{100, 200}, "solver switching changed base force");
 }
 void BackendConfigurationIsTransactional() {
-    pixel::World world(12, 10);
+    pixel::testing::SimulatedWorld world(12, 10);
     world.Fill({pixel::CellTypes::Empty, {0, 0}});
     world.ConfigurePixelWind(8, Uniform({8, 2}));
     const auto referenceForce = world.GetForce(3, 3);

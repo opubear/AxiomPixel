@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     } else if (mode == "pending-step") {
         World world(64, 64);
         FormulaRuntime runtime;
-        world.RestoreSimulationClock(0, 1.0 / 60, true);
+        world.RestorePendingEnvironmentStep(0, true);
         runtime.Step(world);
     } else if (mode == "invalid-session-state") {
         GameSession session;

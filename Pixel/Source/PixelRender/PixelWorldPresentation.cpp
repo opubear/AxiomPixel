@@ -1,6 +1,7 @@
 #include "Performance/FrameProfiler.h"
 #include "PixelWorldPresentation.h"
 #include "World/World.h"
+#include "Gameplay/CommittedWorldView.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -95,15 +96,21 @@ std::array<float, 3> FieldDirectionColor(pixel::WindVelocity velocity) {
     return {float(0.5 + 0.5 * velocity.X / length), float(0.5 + 0.5 * velocity.Y / length), 0.5f};
 }
 
-void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
+namespace {
+pixel::WorldMapView ReadSource(const pixel::World &world, pixel::WorldRect bounds) { return world.GetMap().View(bounds); }
+pixel::WorldMapView ReadSource(const pixel::CommittedWorldView &world, pixel::WorldRect) { return world.ReadState(); }
+uint64_t WindRevision(const pixel::World &world) { return world.GetEnvironment().GetWindSimulation().GetRevision(); }
+uint64_t WindRevision(const pixel::CommittedWorldView &world) { return world.WindRevision(); }
+template <class ReadWorld>
+void BuildForceFieldFrameImpl(const ReadWorld &world, WorldGridFrame &output) {
     PIXEL_PROFILE_SCOPE(ForceColors);
     output.Character.reset();
     output.HasWind = false;
     auto cells = output.Cells();
     const auto origin = output.GetCellOrigin();
-    const auto source = world.GetMap().View({origin[0], origin[1], output.GetWidth(), output.GetHeight()});
-    const uint64_t windRevision = world.GetEnvironment().GetWindSimulation().GetRevision();
-    const bool invalidate = output.PrepareRegionVersions(0x666f726365ULL ^ windRevision * 0x9e3779b97f4a7c15ULL ^ world.GetMap().GetIdentity() * 0xd6e8feb86659fd93ULL);
+    const auto source = ReadSource(world, {origin[0], origin[1], output.GetWidth(), output.GetHeight()});
+    const uint64_t windRevision = WindRevision(world);
+    const bool invalidate = output.PrepareRegionVersions(0x666f726365ULL ^ windRevision * 0x9e3779b97f4a7c15ULL ^ source.Identity() * 0xd6e8feb86659fd93ULL);
     for (uint32_t ry = 0; ry < output.RegionRows(); ++ry) {
         for (uint32_t rx = 0; rx < output.RegionColumns(); ++rx) {
             const size_t region = size_t(ry) * output.RegionColumns() + rx;
@@ -137,6 +144,10 @@ void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) {
     // Debug colours must not inherit gameplay tint; switching back restores it.
     output.Post = {};
 }
+
+} // namespace
+void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) { BuildForceFieldFrameImpl(world, output); }
+void BuildForceFieldFrame(const pixel::CommittedWorldView &world, WorldGridFrame &output) { BuildForceFieldFrameImpl(world, output); }
 
 void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2D &camera,
                          std::array<int, 2> framebufferSize, WorldGridFrame &output) {

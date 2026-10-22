@@ -4,6 +4,7 @@
 
 namespace pixel {
 class World;
+class CommittedWorldView;
 }
 class WorldGridFrame;
 
@@ -24,4 +25,6 @@ inline constexpr float WindVelocityLimit = 32767.f / WindVelocityScale;
 uint32_t PackWindVelocity(float x, float y);
 std::array<float, 2> UnpackWindVelocity(uint32_t packed);
 void BuildWindVisualFrame(const pixel::World &world, const WindVisualSettings &settings,
+                          float timeSeconds, WorldGridFrame &output);
+void BuildWindVisualFrame(const pixel::CommittedWorldView &world, const WindVisualSettings &settings,
                           float timeSeconds, WorldGridFrame &output);

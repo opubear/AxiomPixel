@@ -114,6 +114,7 @@ class WorldMap {
     axiom::Array<CellCoord> ChunkCoordinates() const;
     size_t ChunkCount() const { return Chunks.size(); }
     uint64_t GetIdentity() const { return Identity; }
+    uint64_t GetVersion() const { return Version; }
     performance::MemoryUsage GetMemoryUsage() const;
     performance::MemoryUsage GetForceMemoryUsage() const;
 

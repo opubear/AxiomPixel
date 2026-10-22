@@ -29,9 +29,10 @@ struct FormulaRuntimeStats {
 };
 
 // Owns one independent local-coordinate Simulator per activation. Only the host's
-// successful fixed-step callback calls Step; paused casts flush their tick zero.
+// successful environment stage permits Step; paused casts flush their tick zero.
 class FormulaRuntime {
   public:
+    static constexpr size_t MaximumEffects = 256;
     FormulaRuntime();
     ~FormulaRuntime();
     FormulaRuntime(const FormulaRuntime &) = delete;

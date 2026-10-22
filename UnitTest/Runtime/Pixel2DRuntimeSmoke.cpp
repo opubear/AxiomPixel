@@ -1,4 +1,5 @@
 #include "../Support/TestAccess.h"
+#include "../Support/SimulatedWorld.h"
 #include "PixelSmokeApplication.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
@@ -23,6 +24,7 @@
 #include <thread>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 void Require(bool value, const char *message) {
     if (!value)
         throw std::runtime_error(message);
@@ -1135,7 +1137,7 @@ void ForceFieldDebugGameplay() {
     press(Key::KEY_R);
     world.ConfigureWind(424);
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
-    pixel::World clearSky(Grid2D::Width, Grid2D::Height);
+    pixel::testing::SimulatedWorld clearSky(Grid2D::Width, Grid2D::Height);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     for (uint32_t y = 160; y < 192; ++y)
@@ -1238,7 +1240,7 @@ void TerrainMaterialsGpu() {
     pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
     pixel::GamePresentation presentation;
     const auto catalog = presentation.LoadTextures(store);
-    pixel::World world(64, 64);
+    pixel::testing::SimulatedWorld world(64, 64);
     constexpr std::array types{pixel::CellTypeId::Dirt, pixel::CellTypeId::GroundSoil,
         pixel::CellTypeId::GrassSoil, pixel::CellTypeId::Stone, pixel::CellTypeId::CoalOre,
         pixel::CellTypeId::CopperOre, pixel::CellTypeId::IronOre, pixel::CellTypeId::TungstenOre,

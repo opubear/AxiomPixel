@@ -63,62 +63,39 @@ ForceVector Environment::SampleForce(CellCoord cell) const {
     return FieldResponse::AddWind(BaseForces.Get(cell.X, cell.Y), Wind.SampleForMaterial(cell));
 }
 
-void Environment::RestoreClock(double seconds, double remainder, bool deferredStep) {
-    if (!std::isfinite(seconds) || seconds < 0 || !std::isfinite(remainder) || remainder < 0 || remainder > .25
-        || (deferredStep && remainder < FieldResponse::StepSeconds))
-        throw std::invalid_argument("invalid fixed simulation clock");
-    SimulationSeconds = seconds;
-    TimeRemainder = remainder;
+void Environment::RestorePendingStep(double seconds, bool deferredStep) {
     Wind.SetSimulationTime(seconds + (deferredStep ? FieldResponse::StepSeconds : 0));
+    PendingSeconds = seconds;
     WindAdvancedForStep = deferredStep;
     WaitingForBudget = deferredStep;
 }
 
-uint32_t Environment::Tick(float duration, World &world, const std::function<void()> &onStep, bool singleStep) {
+bool Environment::TryStep(World &world, double committedSeconds) {
     PIXEL_PROFILE_SCOPE(Environment);
-    if (!std::isfinite(duration) || duration <= 0)
-        return 0;
     constexpr double stepSeconds = FieldResponse::StepSeconds;
-    if (singleStep) {
-        if (TimeRemainder < stepSeconds)
-            TimeRemainder += stepSeconds;
-    } else if (!WaitingForBudget) {
-        TimeRemainder = std::min(TimeRemainder + double(duration), 0.25);
-    }
-    uint32_t completed = 0;
     VisitedCells = 0;
     ActiveRegions = 0;
-    while (TimeRemainder >= stepSeconds) {
-        if (!WindAdvancedForStep) {
-            Wind.SetSimulationTime(SimulationSeconds);
-            Wind.AdvanceBeforeMaterials(world.GetWindView(), float(stepSeconds));
-            Wind.SetSimulationTime(SimulationSeconds + stepSeconds);
-            WindAdvancedForStep = true;
-        }
-        try {
-            StepMaterials(world);
-        } catch (const WorldBudgetUnavailable &) {
-            // Nothing has committed. Retry against the same advanced wind on
-            // the next tick, after storage can be released at a safe boundary.
-            world.GetMutableMap().Wake(world.GetSimulationBounds());
-            TimeRemainder = std::min(TimeRemainder, .25);
-            WaitingForBudget = true;
-            return completed;
-        }
-        Wind.UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
-        TimeRemainder -= stepSeconds;
-        SimulationSeconds += stepSeconds;
-        Wind.SetSimulationTime(SimulationSeconds);
-        WindAdvancedForStep = false;
-        WaitingForBudget = false;
-        performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
-        ++completed;
-        if (onStep)
-            onStep();
-        if (singleStep)
-            break;
+    if (!WindAdvancedForStep) {
+        PendingSeconds = committedSeconds;
+        Wind.SetSimulationTime(committedSeconds);
+        Wind.AdvanceBeforeMaterials(world.GetWindView(), float(stepSeconds));
+        Wind.SetSimulationTime(committedSeconds + stepSeconds);
+        WindAdvancedForStep = true;
+    } else if (PendingSeconds != committedSeconds) {
+        throw std::logic_error("pending environment step changed its clock");
     }
-    return completed;
+    try {
+        StepMaterials(world);
+    } catch (const WorldBudgetUnavailable &) {
+        world.GetMutableMap().Wake(world.GetSimulationBounds());
+        WaitingForBudget = true;
+        return false;
+    }
+    Wind.UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
+    WindAdvancedForStep = false;
+    WaitingForBudget = false;
+    performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
+    return true;
 }
 
 void Environment::ProposeRegion(World &world, WorldRect region) {

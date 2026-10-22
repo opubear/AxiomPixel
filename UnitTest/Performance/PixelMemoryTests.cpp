@@ -1,7 +1,7 @@
 #include "Performance/MemoryUsage.h"
 #include "World/Environment/Wind/LocalWindGeometry.h"
 #include "World/Environment/Wind/ProceduralWindField.h"
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include "World/WorldMap.h"
 #include <iostream>
 #include <stdexcept>
@@ -10,6 +10,7 @@ using namespace pixel;
 using namespace pixel::performance;
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 void Require(bool value, const char *message) {
     if (!value)
         throw std::runtime_error(message);

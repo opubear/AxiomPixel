@@ -85,9 +85,7 @@ void GameSession::InitializeScene() {
             throw std::logic_error("generated spawn has no solid support");
     }
     WindKind = WindStrategyKind::Empty;
-    Paused = true;
-    StepRequested = false;
-    SimulationTime = 0;
+    Simulation = {};
     WindStrategySettings wind;
     wind.Kind = WindKind;
     GameWorld.ConfigureWindDomain(generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88), wind);
@@ -101,6 +99,7 @@ void GameSession::Reset() {
         ReplacingWorld();
         GameWorld.GenerateTerrain(512);
         InitializeScene();
+        PublishCommit();
         return;
     }
     if (!Ready)
@@ -126,6 +125,7 @@ void GameSession::Reset() {
         Store->SelectWorld(candidate);
         Ready = true;
         SaveError.clear();
+        PublishCommit();
     } catch (...) {
         const auto failure = std::current_exception();
         GameWorld.DiscardStreaming();
@@ -137,7 +137,7 @@ void GameSession::Reset() {
                 SaveError = "world recovery failed: " + *recovery;
             }
         }
-        if (!Ready) Paused = true;
+        if (!Ready) Simulation.SetPaused(true);
         std::rethrow_exception(failure);
     }
 }
@@ -163,7 +163,7 @@ bool GameSession::TryRecover() {
     if (failure) {
         GameWorld.DiscardStreaming();
         Ready = false;
-        Paused = true;
+        Simulation.SetPaused(true);
         SaveError = "world recovery failed: " + *failure;
         return false;
     }
@@ -195,7 +195,8 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
         GameWorld.RestorePlayer(data.Player);
         GameWorld.LoadSimulationNow();
         GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
-        GameWorld.RestoreSimulationClock(data.PhysicsTime, data.TimeRemainder, data.DeferredStep);
+        Simulation.Restore(data.PhysicsTime, data.TimeRemainder, data.DeferredStep);
+        GameWorld.RestorePendingEnvironmentStep(Simulation.Time(), data.DeferredStep);
     } catch (const std::invalid_argument &error) {
         throw WorldStorageError(error.what());
     } catch (const std::out_of_range &error) {
@@ -203,11 +204,10 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     }
     SaveDirectory = directory;
     StreamConfiguration = stream;
-    SimulationTime = data.SimulationTime;
-    Paused = data.Paused;
+    Simulation.SetPaused(data.Paused);
     WindKind = data.Wind.Kind;
-    StepRequested = false;
     Ready = true;
+    if (!data.DeferredStep) PublishCommit();
 }
 
 SessionSaveData GameSession::CaptureSaveData() const {
@@ -216,13 +216,13 @@ SessionSaveData GameSession::CaptureSaveData() const {
     data.BudgetBytes = StreamConfiguration.BudgetBytes;
     data.Generation = StreamConfiguration.Generation;
     data.Player = GameWorld.GetPlayer() ? GameWorld.GetPlayer()->GetWorldPosition() : WorldPosition{};
-    data.SimulationTime = SimulationTime;
-    data.PhysicsTime = GameWorld.GetEnvironment().GetSimulationTime();
-    data.TimeRemainder = GameWorld.GetEnvironment().GetTimeRemainder();
+    data.SimulationTime = Simulation.Time();
+    data.PhysicsTime = Simulation.Time();
+    data.TimeRemainder = Simulation.Remainder();
     data.DeferredStep = GameWorld.GetEnvironment().IsWaitingForBudget();
     data.WindBoundary = GameWorld.GetWindBoundary();
     data.WindEnabled = GameWorld.IsWindEnabled();
-    data.Paused = Paused;
+    data.Paused = Simulation.IsPaused();
     data.Wind = GameWorld.GetWindSettings();
     return data;
 }
@@ -230,7 +230,15 @@ SessionSaveData GameSession::CaptureSaveData() const {
 void GameSession::Save() {
     if (!Store) return;
     if (!Ready) throw std::logic_error("cannot save an incomplete world session");
-    GameWorld.Save();
+    try {
+        GameWorld.Save();
+    } catch (const WorldStorageError &) {
+        // Loading may have completed before a chunk write failed. Publish that
+        // service boundary even when persistence returns a recoverable failure.
+        SynchronizeReadViews();
+        throw;
+    }
+    SynchronizeReadViews();
     Store->WriteMetadata(SaveDirectory, CaptureSaveData());
     SaveError.clear();
 }
@@ -245,19 +253,23 @@ bool GameSession::TrySave() {
 
 void GameSession::Tick(float duration, PlayerInput input) {
     if (!Ready) return;
-    GameWorld.UpdateStreaming();
-    if (!std::isfinite(duration) || duration <= 0) return;
+    ServiceStreaming();
+    if (!Simulation.BeginFrame(duration, input)) return;
     performance::FrameProfiler::Count(performance::Counter::SimulationInputMicroseconds,
                                      uint64_t(std::min(duration, .25f) * 1e6));
-    GameWorld.SetPlayerInput(input.Horizontal, input.Jump);
-    if (Paused && !StepRequested)
-        return;
-    const auto completed = GameWorld.Tick(std::min(duration, .25f), [this] {
-        SimulationTime += 1.0 / 60;
+    while (Simulation.HasStep()) {
+        const auto stepInput = Simulation.BeginStep();
+        // Reapplying the same frozen intent is safe; Clear/input during a wait
+        // affect only the next step, including a jump arriving during the wait.
+        GameWorld.ClearPlayerInput();
+        GameWorld.SetPlayerInput(stepInput.Horizontal, stepInput.Jump);
+        if (!GameWorld.StepEnvironment(Simulation.Time())) break;
+        GameWorld.StepPlayer();
         Formulas.Step(GameWorld);
-    }, StepRequested);
-    if (completed)
-        StepRequested = false;
+        const bool singleStep = Simulation.CommitStep();
+        PublishCommit();
+        if (singleStep) break;
+    }
 }
 
 bool GameSession::SetWindBoundary(int64_t y) {
@@ -275,13 +287,17 @@ bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
     GameWorld.ConfigureWindDomain(GameWorld.GetWindBoundary(), settings, GameWorld.IsWindEnabled());
     WindKind = kind;
     if (kind == WindStrategyKind::Reference || kind == WindStrategyKind::Adaptive || kind == WindStrategyKind::Lbm)
-        Paused = true;
-    StepRequested = false;
+        Simulation.SetPaused(true);
+    Simulation.CancelStepRequest();
     return true;
 }
 
 void GameSession::ReplacingWorld() {
     RenewActionSessions();
+    Simulation = {};
+    PublishedMapVersion = PublishedWindVersion = 0;
+    for (const auto &weak : ReadViews)
+        if (auto view = weak.lock()) view->CommittedAt = {};
     Formulas.OnWorldReplaced();
     LastAim = {1, 0};
     FormulaError.clear();

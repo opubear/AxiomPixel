@@ -2,6 +2,7 @@
 #include "Performance/FrameProfiler.h"
 #include "PixelWorldPresentation.h"
 #include "World/World.h"
+#include "Gameplay/CommittedWorldView.h"
 #include "WorldGridFrame.h"
 #include <algorithm>
 #include <cmath>
@@ -22,7 +23,13 @@ std::array<float, 2> UnpackWindVelocity(uint32_t packed) {
     };
     return {decode(packed), decode(packed >> 16)};
 }
-void BuildWindVisualFrame(const pixel::World &world, const WindVisualSettings &settings,
+namespace {
+pixel::WorldMapView ReadSource(const pixel::World &world, pixel::WorldRect bounds) { return world.GetMap().View(bounds); }
+pixel::WorldMapView ReadSource(const pixel::CommittedWorldView &world, pixel::WorldRect) { return world.ReadState(); }
+uint64_t WindRevision(const pixel::World &world) { return world.GetEnvironment().GetWindSimulation().GetRevision(); }
+uint64_t WindRevision(const pixel::CommittedWorldView &world) { return world.WindRevision(); }
+template <class ReadWorld>
+void BuildWindVisualFrameImpl(const ReadWorld &world, const WindVisualSettings &settings,
                           float timeSeconds, WorldGridFrame &output) {
     PIXEL_PROFILE_SCOPE(WindVisual);
     output.Wind = settings;
@@ -32,8 +39,8 @@ void BuildWindVisualFrame(const pixel::World &world, const WindVisualSettings &s
         return;
     auto texels = output.WindCells();
     const auto origin = output.GetCellOrigin();
-    const auto source = world.GetMap().View({origin[0], origin[1], output.GetWidth(), output.GetHeight()});
-    const uint64_t revision = world.GetEnvironment().GetWindSimulation().GetRevision() ^ world.GetMap().GetIdentity() * 0xd6e8feb86659fd93ULL;
+    const auto source = ReadSource(world, {origin[0], origin[1], output.GetWidth(), output.GetHeight()});
+    const uint64_t revision = WindRevision(world) ^ source.Identity() * 0xd6e8feb86659fd93ULL;
     const bool invalidate = output.PrepareWindRegionVersions(revision);
     for (uint32_t ry = 0; ry < output.RegionRows(); ++ry) {
         for (uint32_t rx = 0; rx < output.RegionColumns(); ++rx) {
@@ -70,3 +77,8 @@ void BuildWindVisualFrame(const pixel::World &world, const WindVisualSettings &s
         }
     }
 }
+} // namespace
+void BuildWindVisualFrame(const pixel::World &world, const WindVisualSettings &settings,
+                          float timeSeconds, WorldGridFrame &output) { BuildWindVisualFrameImpl(world, settings, timeSeconds, output); }
+void BuildWindVisualFrame(const pixel::CommittedWorldView &world, const WindVisualSettings &settings,
+                          float timeSeconds, WorldGridFrame &output) { BuildWindVisualFrameImpl(world, settings, timeSeconds, output); }

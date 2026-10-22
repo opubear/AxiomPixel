@@ -2,7 +2,7 @@
 
 #include "ForceField.h"
 #include "Wind/WindSimulation.h"
-#include <functional>
+
 
 namespace pixel {
 class World;
@@ -12,21 +12,18 @@ class Environment {
     explicit Environment(WorldMap &map) : BaseForces(map) {}
     performance::MemoryUsage GetMemoryUsage() const;
     const ForceField &GetBaseForceField() const { return BaseForces; }
-    // Notifications run only after a complete material/wind step commits.
-    uint32_t Tick(float duration, World &world, const std::function<void()> &onStep = {}, bool singleStep = false);
+    // A retry preserves the already advanced wind and all material inputs.
+    bool TryStep(World &world, double committedSeconds);
     ForceVector SampleForce(CellCoord cell) const;
     WindSimulation &GetWindSimulation() { return Wind; }
     const WindSimulation &GetWindSimulation() const { return Wind; }
     uint64_t LastVisitedCells() const { return VisitedCells; }
     uint64_t LastActiveRegions() const { return ActiveRegions; }
     bool IsWaitingForBudget() const { return WaitingForBudget; }
-    double GetSimulationTime() const { return SimulationSeconds; }
-    double GetTimeRemainder() const { return TimeRemainder; }
-    void RestoreClock(double seconds, double remainder, bool deferredStep = false);
+    void RestorePendingStep(double seconds, bool deferredStep);
 
   private:
-    double TimeRemainder = 0;
-    double SimulationSeconds = 0;
+    double PendingSeconds = 0;
     ForceField BaseForces;
     WindSimulation Wind;
     axiom::Array<MaterialMove> Proposals;

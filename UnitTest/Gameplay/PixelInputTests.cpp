@@ -63,7 +63,8 @@ void HeldInputAndModes() {
     const auto playerX = world.GetPlayer()->X;
     world.SetPlayerInput(1, true);
     f.Input.ClearInputState();
-    world.Tick(1.f / 60);
+    world.StepEnvironment(0);
+    world.StepPlayer();
     Require(world.GetPlayer()->X == playerX && world.GetPlayer()->Y >= 508,
             "clear must also remove input already applied to world");
 }

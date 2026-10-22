@@ -1,5 +1,5 @@
 #include "ProbeMetrics.h"
-#include "World/World.h"
+#include "../../Support/SimulatedWorld.h"
 #include "World/Environment/FieldResponse.h"
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
@@ -9,7 +9,7 @@
 #include <string>
 #include <stdexcept>
 
-using pixel::World;
+using World = pixel::testing::SimulatedWorld;
 using Clock = std::chrono::steady_clock;
 constexpr float Step = 1.f / 60;
 

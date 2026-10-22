@@ -125,6 +125,7 @@ api::ActionReceipt GameSession::Execute(NativeCaller caller, api::Action action)
 api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::ActionRequest &request) {
     api::ActionReceipt receipt;
     receipt.Key = {request.WorldEpoch, caller, request.Sequence};
+    receipt.ResolvedAt = CurrentCommit();
     const auto reject = [&](api::Reason reason) {
         receipt.Rejection = reason;
         receipt.Message = api::ReasonName(reason);
@@ -151,6 +152,8 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
     } else {
         receipt = Dispatch(request.Payload);
         receipt.Key = {request.WorldEpoch, caller, request.Sequence};
+        if (receipt.Applied()) CommitChange();
+        receipt.ResolvedAt = CurrentCommit();
     }
     // Terminal refusals also consume sequence numbers. Storage stays bounded.
     state->HighWatermark = std::max(state->HighWatermark, request.Sequence);
@@ -228,7 +231,9 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
         if constexpr (std::is_same_v<T, api::ClearRunning>) {
             const auto reason = WriteRejection();
             if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
+            const bool changed = Formulas.Stats().Roots != 0;
             Formulas.Clear();
+            if (changed) CommitChange();
         } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld> || std::is_same_v<T, api::RecoverWorld>) {
             if constexpr (!std::is_same_v<T, api::RecoverWorld>)
                 if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
@@ -248,8 +253,14 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             NextGeneration.Seed = value.Seed;
         } else {
             if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
-            if constexpr (std::is_same_v<T, api::SetPaused>) Paused = value.Paused;
-            else if constexpr (std::is_same_v<T, api::StepSimulation>) StepRequested = true;
+            if constexpr (std::is_same_v<T, api::SetPaused>) {
+                if (value.Paused != Simulation.IsPaused()) {
+                    const auto reason = WriteRejection();
+                    if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
+                    Simulation.SetPaused(value.Paused);
+                    CommitChange();
+                }
+            } else if constexpr (std::is_same_v<T, api::StepSimulation>) Simulation.RequestStep();
             else if constexpr (std::is_same_v<T, api::RetryStreaming>) GameWorld.RetryStreaming();
         }
         return {api::ControlStatus::Applied};
@@ -262,6 +273,7 @@ ApplyProgramResult GameSession::ApplyProgram(api::CallerSessionId caller, const 
         !state->Debug ? api::Reason::PermissionDenied : WriteRejection();
     if (reason != api::Reason::None) return {reason, {}, api::ReasonName(reason)};
     if (!Formulas.Apply(description)) return {api::Reason::InvalidProgram, {}, Formulas.LastError()};
+    CommitChange();
     return {api::Reason::None, AppliedProgram(), {}};
 }
 } // namespace pixel

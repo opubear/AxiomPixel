@@ -107,8 +107,9 @@ void World::ConfigureWindDomain(int64_t boundaryY, const WindStrategySettings &s
     auto view = ReadState();
     view.Height = !enabled || boundaryY <= view.Origin.Y ? 0 : boundaryY >= view.Origin.Y + view.Height ? view.Height
                                                                                                         : uint32_t(boundaryY - view.Origin.Y);
+    const double time = Environment.GetWindSimulation().GetSimulationTime();
     Environment.GetWindSimulation().Configure(view, view.Height, settings);
-    Environment.GetWindSimulation().SetSimulationTime(Environment.GetSimulationTime());
+    Environment.GetWindSimulation().SetSimulationTime(time);
     WindSettings = settings;
     WindBoundaryY = boundaryY;
     WindEnabled = enabled;
@@ -262,6 +263,10 @@ void World::UpdateStreaming() {
             Map.Wake(SimulationBounds);
         }
     }
+    if (deferred) {
+        Streamer->Poll(false);
+        return;
+    }
     Streamer->Update(SimulationBounds, VisibleBounds);
     if (WindEnabled && !deferred) {
         const auto view = GetWindView();
@@ -271,12 +276,13 @@ void World::UpdateStreaming() {
 
 void World::Save() {
     if (Streamer)
-        Streamer->Save();
+        Streamer->Save(!Environment.IsWaitingForBudget());
 }
 
 void World::WaitForStreaming() {
-    if (Streamer)
-        Streamer->Wait();
+    if (!Streamer) return;
+    if (Environment.IsWaitingForBudget()) Streamer->WaitForSaves();
+    else Streamer->Wait();
 }
 
 void World::SetPublicationBytes(uint64_t bytes) {
@@ -288,7 +294,7 @@ bool World::ReservePublicationBytes(const void *owner, uint64_t bytes) {
     const auto previous = found == PublicationOwners.end() ? 0 : found->second;
     const uint64_t total = PublicationBytes - previous + bytes;
     const auto scratch = std::max(ScratchReservation, Environment.GetMemoryUsage().ReservedHeapBytes - Environment.GetWindSimulation().GetMemoryUsage().ReservedHeapBytes);
-    if (Streamer && !Streamer->ReserveExternalBytes(total + scratch, GetSimulationBounds()))
+    if (Streamer && !Streamer->ReserveExternalBytes(total + scratch, GetSimulationBounds(), !Environment.IsWaitingForBudget()))
         return false;
     PublicationOwners[owner] = bytes;
     PublicationBytes = total;
@@ -298,7 +304,7 @@ bool World::ReservePublicationBytes(const void *owner, uint64_t bytes) {
 void World::SetPublicationBytes(const void *owner, uint64_t bytes) {
     if (!ReservePublicationBytes(owner, bytes)) {
         if (Streamer)
-            Streamer->Wait();
+            Streamer->WaitForSaves();
         if (!ReservePublicationBytes(owner, bytes))
             throw std::runtime_error("world budget cannot fit publication storage");
     }
@@ -327,16 +333,13 @@ void World::ReserveSimulationBytes(uint64_t bytes) {
     ScratchReservation = bytes;
 }
 
-uint32_t World::Tick(float duration, const std::function<void()> &onStep, bool singleStep) {
-    UpdateStreaming();
-    return Environment.Tick(duration, *this, [&] {
-        if (Player) {
-            PIXEL_PROFILE_SCOPE(Character);
-            Player->Tick(1.f / 60, ReadState(), PlayerHorizontal, PlayerJump);
-        }
-        PlayerJump = false;
-        if (onStep)
-            onStep();
-    }, singleStep);
+void World::StepPlayer() {
+    if (Environment.IsWaitingForBudget())
+        throw std::logic_error("character advanced before environment commit");
+    if (Player) {
+        PIXEL_PROFILE_SCOPE(Character);
+        Player->Tick(1.f / 60, ReadState(), PlayerHorizontal, PlayerJump);
+    }
+    PlayerJump = false;
 }
 } // namespace pixel

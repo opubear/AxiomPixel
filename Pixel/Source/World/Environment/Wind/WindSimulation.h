@@ -23,6 +23,7 @@ class WindSimulation {
     const WindDomain &GetDomain() const { return Domain; }
     uint64_t GetRevision() const { return Revision; }
     void SetSimulationTime(double seconds);
+    double GetSimulationTime() const { return SimulationTime; }
     WindStrategyKind GetKind() const { return Configured ? Settings.Kind : WindStrategyKind::Empty; }
     bool UsesReference() const { return GetKind() == WindStrategyKind::Reference; }
     bool NeedsMaterialMotion() const { return Backend && Backend->NeedsMaterialMotion(); }

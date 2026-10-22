@@ -41,7 +41,7 @@ class WorldStreamer {
     void Update(WorldRect simulation, WorldRect visible);
     void Poll(bool acceptLoads = true);
     void LoadNow(WorldRect bounds);
-    void Save();
+    void Save(bool acceptLoads = true);
     void Wait();
     void WaitForSaves();
     void SetExternalBytes(uint64_t bytes) { ExternalBytes = bytes; }

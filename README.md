@@ -6,7 +6,7 @@
 
 后续技术演进见[面向游戏愿景的架构规划](Docs/Architecture/GameplayArchitecturePlan.md)：按独立子系统考虑构式语言、LLMView 与游戏领域，给出引擎边界及分阶段迁移方案；它是规划提案，以下仍描述当前实现。
 
-首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；动作入口的M1部分已实现，提交版本、事实和LLMView仍待M2；当前用法见[游戏动作入口](Docs/Architecture/GameActions.md)。
+首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；动作入口及M2.1固定步协调/提交版本已实现，事实和LLMView仍待后续M2任务；当前用法见[游戏动作入口](Docs/Architecture/GameActions.md)。
 
 基于 Axiom 的早期像素游戏，从引擎 `2DRender` 的 `5c8af21` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
 
@@ -54,6 +54,8 @@ git submodule update --init --recursive
 
 手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
 
+M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。Pixel 当前仍默认接受；保存失败/Deferred 时保留会话的退出策略由 M2.3 接入。
+
 游戏默认从运行目录的 `Saves/current.txt` 恢复当前世界；首次生成新世界。每块文件位于 `Saves/<world-id>/chunks/`，正常退出和面板 `Save world` 写盘；R先保存再创建新世界，旧目录保留。存档已加入忽略规则。可在启动前覆盖：
 
 ```sh
@@ -87,6 +89,8 @@ git submodule update --init --recursive
 Input、Debug和CPU driver的开采、放置与激活共用Session动作入口，返回明确结果；调用者token与epoch在世界替换时失效，每调用者保留最近64条回执用于同步去重。F2的 `Game actions` 可输入格坐标执行同类操作并查看Input/Debug回执。风设置、会话控制及Formula工具栏也经Session端口；Session对外只提供World/Runtime的const引用；内部运行错误直接传播，存档I/O与领域拒绝保留明确结果。公开契约、权限与M1/M2边界见[动作实现说明](Docs/Architecture/GameActions.md)。
 
 启动和R后默认暂停。Environment的 `Pause simulation` 和 `Step 1/60 second` 控制运行；暂停冻结材料、风和动画，相机/加载仍工作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
+
+固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式一步才增加Tick，暂停编辑只增加CommitRevision，动作回执携带CommitStamp。预算等待期间呈现继续读取最后完整副本，流式加载与步首输入保持冻结；细节及后续边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
 
 材料采用60 Hz同步规则：只向步首为空的邻格申请；同目标按源坐标(y,x)裁决；统一提交后反馈风场。长链空位通过多个步传播，规则不依赖四叉树遍历顺序。静止无风区域休眠；编辑、材料成功移动、基础力变化和加载唤醒邻域。方块不保存速度/惯性，空间力不随材料搬迁。
 
@@ -144,13 +148,15 @@ ctest --test-dir build-chunk64 -R '^Pixel\.(Generation|Liquids|GenerationSession
 
 # 需要窗口服务与Vulkan驱动；不注册到默认CTest
 cmake -S . -B build -DPIXEL_BUILD_SMOKE=ON -DAXIOM_BUILD_LIFECYCLE_SMOKE=ON
-cmake --build build --target Pixel Axiom PixelRuntimeSmoke AxiomLifecycleSmoke -j4
+cmake --build build --target Pixel Axiom PixelRuntimeSmoke AxiomLifecycleSmoke AxiomCloseRequestSmoke AxiomApplicationCloseTest -j4
+ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-failure
 (cd Pixel && ../build/tests/PixelRuntimeSmoke)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
 # 只验证本轮背景PNG、sRGB/alpha、视差与F1（可选输出PPM截图）
 (cd Pixel && PIXEL_ART_CAPTURE=/private/tmp/pixel-art.ppm ../build/tests/PixelRuntimeSmoke --art-only)
 (cd Axiom && ../build/tests/AxiomLifecycleSmoke --skip-minimize)
+(cd Axiom && ../build/tests/AxiomCloseRequestSmoke)
 
 # AET仍可单独构建
 cmake -S Axiom -B build-engine -DAXIOM_BUILD_FEATURE_SHOW=OFF

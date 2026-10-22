@@ -1,4 +1,4 @@
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include "PixelRender/PixelWorldPresentation.h"
 #include <cmath>
 #include <algorithm>
@@ -11,7 +11,7 @@ void Require(bool condition, const char *message) {
 }
 int main() {
     try {
-        pixel::World world(64, 64);
+        pixel::testing::SimulatedWorld world(64, 64);
         world.GenerateTerrain(40);
         world.SpawnPlayer(20, 10);
         for (int i = 0; i < 120; ++i)
@@ -34,7 +34,7 @@ int main() {
             world.Tick(1.f / 60);
         Require(std::abs(world.GetPlayer()->Y - 44) < 0.001f, "removed support must cause falling");
 
-        pixel::World thin(64, 64);
+        pixel::testing::SimulatedWorld thin(64, 64);
         thin.Fill({pixel::CellTypes::Empty, {0, 0}});
         for (uint32_t x = 0; x < 64; ++x)
             thin.SetCell(x, 40, {pixel::CellTypes::Dirt, {0, 0}});

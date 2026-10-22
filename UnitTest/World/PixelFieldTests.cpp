@@ -1,4 +1,4 @@
-#include "World/World.h"
+#include "../Support/SimulatedWorld.h"
 #include <algorithm>
 #include <array>
 #include <random>
@@ -6,6 +6,7 @@
 #include <vector>
 
 namespace {
+using World = pixel::testing::SimulatedWorld;
 std::vector<pixel::CellState> CopyCells(pixel::WorldMapView view) {
     std::vector<pixel::CellState> cells;
     cells.reserve(view.CellCount());
@@ -20,10 +21,10 @@ void Check(bool value, const char *reason) {
     if (!value)
         throw std::runtime_error(reason);
 }
-bool IsDirt(const pixel::World &world, uint32_t x, uint32_t y) {
+bool IsDirt(const pixel::testing::SimulatedWorld &world, uint32_t x, uint32_t y) {
     return world.GetCell(x, y).Type == pixel::CellTypes::Dirt;
 }
-size_t DirtCount(const pixel::World &world) {
+size_t DirtCount(const pixel::testing::SimulatedWorld &world) {
     const auto cells = CopyCells(world.ReadState());
     return std::count_if(cells.begin(), cells.end(), [](auto cell) { return cell.Type == pixel::CellTypes::Dirt; });
 }
@@ -31,7 +32,7 @@ constexpr std::array<pixel::ForceDirection, 8> Directions{{{0, -1}, {1, -1}, {1,
 
 void MovementDirections() {
     for (const auto direction : Directions) {
-        pixel::World world(7, 7);
+        pixel::testing::SimulatedWorld world(7, 7);
         world.FillForceDirection(direction);
         world.PlaceDirt(3, 3);
         world.Tick(1.f / 60);
@@ -46,7 +47,7 @@ void MovementDirections() {
         for (const auto cell : CopyCells(world.ReadState()))
             Check(cell.Force == direction, "movement transported or cleared the spatial field");
     }
-    pixel::World still(3, 3);
+    pixel::testing::SimulatedWorld still(3, 3);
     still.SetForceDirection(1, 1, {0, 0});
     still.PlaceDirt(1, 1);
     still.Tick(0.25f);
@@ -54,7 +55,7 @@ void MovementDirections() {
 }
 
 void SpatialFieldAndPublication() {
-    pixel::World world(4, 4);
+    pixel::testing::SimulatedWorld world(4, 4);
     world.SetForceDirection(1, 1, {1, 0});
     world.SetForceDirection(2, 1, {0, 1});
     world.SetForceDirection(2, 2, {-1, 0});
@@ -90,7 +91,7 @@ void SpatialFieldAndPublication() {
 
 void ChainsAndObstacles() {
     for (const auto direction : Directions) {
-        pixel::World world(7, 7);
+        pixel::testing::SimulatedWorld world(7, 7);
         world.FillForceDirection(direction);
         for (int distance = 0; distance < 3; ++distance)
             world.PlaceDirt(3 - distance * direction.X, 3 - distance * direction.Y);
@@ -100,7 +101,7 @@ void ChainsAndObstacles() {
               "a block moved into a destination occupied at step start");
         Check(DirtCount(world) == 3, "moving a directional stack changed its block count");
     }
-    pixel::World blocked(5, 3);
+    pixel::testing::SimulatedWorld blocked(5, 3);
     blocked.FillForceDirection({1, 0});
     blocked.PlaceDirt(1, 1);
     blocked.PlaceDirt(2, 1);
@@ -108,7 +109,7 @@ void ChainsAndObstacles() {
     blocked.Tick(1.f / 60);
     Check(IsDirt(blocked, 1, 1) && IsDirt(blocked, 2, 1) && blocked.GetCell(3, 1).Type == static_cast<pixel::CellTypeId>(20), "force overwrote an immovable obstacle");
 
-    pixel::World bent(4, 4);
+    pixel::testing::SimulatedWorld bent(4, 4);
     bent.SetForceDirection(1, 1, {1, 0});
     bent.SetForceDirection(2, 1, {0, 1});
     bent.SetForceDirection(2, 2, {1, 0});
@@ -119,7 +120,7 @@ void ChainsAndObstacles() {
     Check(IsDirt(bent, 1, 1) && IsDirt(bent, 2, 1) && !IsDirt(bent, 2, 2) && IsDirt(bent, 3, 2),
           "bent chain must move only the block whose destination was empty at step start");
 
-    pixel::World longChain(1, pixel::storage::RegionEdge);
+    pixel::testing::SimulatedWorld longChain(1, pixel::storage::RegionEdge);
     longChain.Fill({pixel::CellTypes::Dirt});
     longChain.RemoveDirt(0, pixel::storage::RegionEdge - 1);
     longChain.Tick(1.f / 60);
@@ -128,7 +129,7 @@ void ChainsAndObstacles() {
 }
 
 void ContentionAndCycles() {
-    pixel::World contest(5, 5);
+    pixel::testing::SimulatedWorld contest(5, 5);
     contest.FillForceDirection({0, 0});
     contest.SetForceDirection(2, 1, {0, 1});
     contest.SetForceDirection(1, 2, {1, 0});
@@ -140,7 +141,7 @@ void ContentionAndCycles() {
     Check(!IsDirt(contest, 2, 1) && IsDirt(contest, 2, 2) && IsDirt(contest, 1, 2) && IsDirt(contest, 3, 2),
           "contention must choose the row-major first source and leave losing sources in place");
     Check(DirtCount(contest) == 3, "destination contention lost a block");
-    pixel::World cycle(4, 4);
+    pixel::testing::SimulatedWorld cycle(4, 4);
     cycle.SetCell(1, 1, {pixel::CellTypes::Dirt, {1, 0}});
     cycle.SetCell(2, 1, {pixel::CellTypes::Dirt, {0, 1}});
     cycle.SetCell(2, 2, {pixel::CellTypes::Dirt, {-1, 0}});
@@ -156,7 +157,7 @@ void ContentionAndCycles() {
 }
 
 void FieldValidationAndConservation() {
-    pixel::World world(13, 11);
+    pixel::testing::SimulatedWorld world(13, 11);
     auto reject = [](auto action) {
         try {
             action();
@@ -195,7 +196,7 @@ void FieldValidationAndConservation() {
     }
 }
 void RandomUpperField() {
-    pixel::World world(32, 1024), sameSeed(32, 1024);
+    pixel::testing::SimulatedWorld world(32, 1024), sameSeed(32, 1024);
     world.GenerateTerrain(512);
     sameSeed.GenerateTerrain(512);
     world.RandomizeForceDirections(1024 - 600, 20261004);
