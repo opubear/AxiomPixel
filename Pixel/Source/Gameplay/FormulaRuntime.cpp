@@ -1,5 +1,5 @@
 #include "FormulaRuntime.h"
-#include "FormulaEditing/FormulaDraft.h"
+#include "FormulaValidation/FormulaAnalysis.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -12,7 +12,7 @@ constexpr size_t MaxRoots = 16, MaxEffects = 256, MaxWind = 64, MaxActivations =
 struct Root {
     uint64_t Id, Version;
     WorldPosition Anchor;
-    formula::editing::Analysis Budget;
+    formula::validation::Analysis Budget;
     formula::Simulator Simulator;
     std::vector<formula::TraceEntry> Batch;
     bool Failed = false;
@@ -26,7 +26,7 @@ struct Collision {
 
 struct FormulaRuntime::State {
     formula::Formula Active = formula::Formula::Bolt();
-    formula::editing::Analysis ActiveBudget;
+    formula::validation::Analysis ActiveBudget;
     uint64_t Version = 1, Epoch = 1, NextCast = 1;
     uint64_t RetiredWind = 0, Accepted = 0, Rejected = 0, WindCalls = 0;
     std::string Error;
@@ -35,7 +35,7 @@ struct FormulaRuntime::State {
     std::deque<FormulaRuntimeDiagnostic> Diagnostics;
 
     State() {
-        const auto analysis = formula::editing::Analyze(Active);
+        const auto analysis = formula::validation::Analyze(Active);
         if (!analysis)
             throw std::logic_error("default bolt failed gameplay analysis");
         ActiveBudget = analysis.Budget;
@@ -201,7 +201,7 @@ FormulaRuntime::~FormulaRuntime() = default;
 
 bool FormulaRuntime::Apply(const formula::Formula &description) {
     try {
-        const auto result = formula::editing::Analyze(description);
+        const auto result = formula::validation::Analyze(description);
         if (!result) {
             Data->Error = result.Errors.empty() ? "formula analysis failed" : result.Errors.front().Field + ": " + result.Errors.front().Message;
             return false;

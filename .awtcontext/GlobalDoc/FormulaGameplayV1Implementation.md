@@ -16,7 +16,8 @@
 | 模块/文件 | 实际责任 |
 |---|---|
 | `Pixel/Formula` | 不可变描述的Kind/Values/Child只读接口；Simulator保留原语义并新增DrainTrace、PendingCount、IsIdle和无触发DiscardProjectile |
-| `FormulaEditing/FormulaDraft.*` | 稳定ID可变树、结构操作、参数/形状校验、构造不可变Formula及所有命中后代工作量分析；纯CPU域库 |
+| `FormulaValidation/FormulaAnalysis.*` | 不可变Formula的游戏参数/结构额度校验及所有命中后代工作量分析；只依赖Formula，诊断以子节点路径定位 |
+| `FormulaEditing/FormulaDraft.*` | 稳定ID可变树、结构操作、ID/槽位校验、构造不可变Formula；共用验证组件并将诊断映射回编辑节点 |
 | `Gameplay/FormulaRuntime.*` | 每根独立Simulator、局部Anchor、Epoch/Cast/Projectile身份、旧版本保留、统一碰撞后效果提交、增量事件和跨帧额度 |
 | `Gameplay/FormulaWorldAdapter.*` | 扫掠圆的格面/格角精确判定、未知域退场、Mineable圆形挖掘、受控Coarse风脉冲 |
 | `Gameplay/GameSession.*` | 已应用构式访问、前方瞄准与堵枪口判断、成功固定步接线、世界替换清理和v4存档 |
@@ -26,7 +27,7 @@
 | `PixelRender.cpp`、`Pixel2DFormula.Frag.slang` | world→wind→formula→character→post→UI；一个pass复制底图后小viewport/scissor绘圆；frame-slot私有目标和descriptor |
 | `Debug/FormulaDebugUI.*` | 独立树形窗口、预设、Apply、结构参数错误和运行诊断；不直接改Simulator |
 
-依赖为 `PixelGameplay → PixelWorld + PixelFormulaEditing → PixelFormula`。其中Editing包含纯CPU分析，不含UI；World不依赖Formula或渲染。Axiom子模块和AxiomVersion没有本轮修改，相邻 `../Axiom` 未写入或构建。
+当前依赖为 `PixelGameplay → PixelWorld + PixelFormulaValidation → PixelFormula`；`PixelFormulaEditing → PixelFormulaValidation`，不再由Gameplay链接Editing。M1.3已将运行分析从草稿中分离，宿主规则共享而编辑身份留在Editing；独立Formula继续不采用这些游戏额度。World不依赖Formula或渲染。Axiom子模块和AxiomVersion没有本轮修改，相邻 `../Axiom` 未写入或构建。
 
 ## 时钟、存档和边界
 

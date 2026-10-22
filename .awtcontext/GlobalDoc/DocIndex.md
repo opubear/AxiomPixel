@@ -34,7 +34,7 @@
 | 火焰水体与水汽静态纹理 | `workspace:ArtRaw/Materials/Elements/README.md` | 六项64和256像素静态材质与透明效果、密度图、重复方向及已有动画入口 | |
 | 世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | Natural/Flat策略选择、种子版本及旧档、有限水体、Content纹理JSON和验证入口 | |
 | 构式基础版游戏接入设计与实施计划 | `context:GlobalDoc/FormulaGameplayV1Design.md` | 已评审实施基线与验收计划；当前快捷键调整及实现见基础版实现说明 | |
-| 构式基础版游戏接入实现 | `context:GlobalDoc/FormulaGameplayV1Implementation.md` | 操作入口、F2/F4独立窗口、模块职责、固定步与v4兼容、额度及验证边界 | |
+| 构式基础版游戏接入实现 | `context:GlobalDoc/FormulaGameplayV1Implementation.md` | 操作入口、模块职责、共享宿主校验与编辑依赖隔离、固定步额度及验证边界 | |
 | Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 核心愿景、隐性流程、构式作为世界运行原理的设想、家园与世界意志及设计取舍 | |
 | 游戏设计与策划文档目录 | `workspace:Docs/GameDesign/README.md` | 游戏总纲、构式设计与参考资料的阅读入口，以及相关工程文档和维护约定 | |
 | Gemini 游戏设计讨论原文 | `workspace:Docs/GameDesign/Pixel项目像素沙盒游戏设计探讨 - Google Gemini.pdf` | 流程与玩法参考：祈祷、自主成长、世界意志、环境改造与家园；术语和技术假设需辨别 | |

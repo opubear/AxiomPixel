@@ -77,7 +77,7 @@ flowchart TD
     Commands --> Presentation["渲染拥有的帧快照"]
 ```
 
-`Pixel/Formula` 仍可在没有 Axiom 引擎、窗口和 GPU 的条件下独立构建。游戏依赖为 `PixelGameplay → PixelWorld + PixelFormulaEditing → PixelFormula`；World 和引擎不依赖 Formula，编辑库为纯 CPU 域库，ImGui 位于 Debug 层。Gameplay 提交世界效果，表现层发布独立圆形数组，Draw 不读取实时模拟状态。
+`Pixel/Formula` 仍可在没有 Axiom 引擎、窗口和 GPU 的条件下独立构建。游戏依赖为 `PixelGameplay → PixelWorld + PixelFormulaValidation → PixelFormula`；编辑器也使用共享的宿主校验，但Gameplay不链接编辑器。World 和引擎不依赖 Formula，游戏参数/额度留在纯CPU验证组件，ImGui 位于 Debug 层。Gameplay 提交世界效果，表现层发布独立圆形数组，Draw 不读取实时模拟状态。
 
 后续编译器可以在描述与运行时之间产生规范化执行计划、能力信息、费用和上界；当前没有独立字节码、计划缓存、`PlanId` 或成本编译阶段。优化应以原型测量为依据，不因长期架构预先引入完整框架。
 

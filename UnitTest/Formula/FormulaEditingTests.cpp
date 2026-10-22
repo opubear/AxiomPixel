@@ -101,30 +101,6 @@ void RoundTripAndScope() {
     Require(payloadFound, "compiled nested trigger retains payload");
 }
 
-void BudgetBounds() {
-    const auto chain = Formula::Bolt(1, 0, 2).OnHit(Formula::Bolt(1, 0, 3).OnHit(Formula::Wind(0, 0)));
-    auto result = Analyze(chain.Repeated(4, 5).Spread(4, 10));
-    Require(static_cast<bool>(result), "legal descendant budget accepted");
-    Require(result.Budget.Effects == 48 && result.Budget.WindEffects == 16 && result.Budget.EndTick == 20,
-            "effect, wind and time budget cover complete descendants");
-    result = Analyze(chain.Repeated(4, 5).Spread(6, 10));
-    Require(!result && result.Errors[0].Field == "effects", "payload descendants cannot escape effect bound");
-    result = Analyze(Formula{}.Repeated(16, 0).Repeated(16, 0).Repeated(16, 0));
-    Require(!result && result.Errors[0].Field == "nodeVisits", "empty expansion still consumes evaluator work");
-    result = Analyze(Formula::Bolt().After(600).Repeated(7, 600));
-    Require(!result && result.Errors[0].Field == "endTick", "delayed descendants must end within 3600 ticks");
-    result = Analyze(Formula::Bolt().Repeated(0, 600));
-    Require(result && result.Budget.Effects == 0 && result.Budget.EndTick == 0, "zero repeat remains empty without phantom lifetime");
-    result = Analyze(Formula::Dig(1).OnHit(Formula::Wind(1, 2).Repeated(16, 0)));
-    Require(result && result.Budget.Effects == 1 && result.Budget.WindEffects == 0, "noncarrier does not fire payloads");
-    result = Analyze(Formula::Wind(0, 0).Repeated(16, 0).Repeated(4, 0));
-    Require(result && result.Budget.Effects == 64 && result.Budget.WindEffects == 64,
-            "zero-radius or zero-impulse wind still reserves full potential budget");
-    const auto multiple = Formula::Bolt().OnHit(Formula::Bolt().Spread(4, 2)).OnHit(Formula::Wind(1, 2).Repeated(4, 0));
-    result = Analyze(multiple.Spread(8, 2));
-    Require(!result && result.Errors[0].Field == "effects", "multiple OnHit bindings each count for every carrier");
-}
-
 void ParameterAndStructureErrors() {
     Draft draft;
     const auto id = draft.Root().Id;
@@ -167,7 +143,35 @@ void ParameterAndStructureErrors() {
         root.Children.push_back(std::move(previous));
     }
     Require(!Compile(draft), "directly corrupted tree still receives independent compile depth error");
-    Require(!Analyze(Formula::Sequence(std::vector<Formula>(65))), "node limit checked before recursive import");
+}
+
+void SharedAnalysisDiagnostics() {
+    Draft draft;
+    draft.FromFormula(Formula::Sequence({Formula{}, Formula::Bolt(1, 601, 1).After(1)}));
+    const auto &bolt = *draft.Root().Children[1]->Children[0];
+    const auto invalid = Compile(draft);
+    Require(!invalid && invalid.Errors.front().Node == bolt.Id && invalid.Errors.front().Field == "speed",
+            "shared workload diagnostic must map back to the original editor ID");
+    draft.FromFormula(Formula::Bolt(std::numeric_limits<double>::max(), 0, 1).MultiplyDamage(2));
+    const auto overflow = Compile(draft);
+    Require(!overflow && overflow.Errors.front().Node == draft.Root().Id && overflow.Errors.front().Field == "value",
+            "modifier arithmetic diagnostic must retain its editor identity");
+
+    const auto shared = Formula::Bolt(1, 0, 601);
+    draft.FromFormula(Formula::Sequence({shared, shared}));
+    const auto repeated = Compile(draft);
+    Require(repeated.Errors.size() == 2 && repeated.Errors[0].Node == draft.Root().Children[0]->Id
+                && repeated.Errors[1].Node == draft.Root().Children[1]->Id,
+            "shared formula occurrences must map to distinct editor nodes");
+
+    const auto description = Formula::Bolt(10, 30, 3).OnHit(Formula::Wind(1, 2).After(2)).Repeated(3, 5);
+    draft.FromFormula(description);
+    const auto compiled = Compiled(draft);
+    const auto analyzed = validation::Analyze(description);
+    Require(analyzed && compiled.Budget.Nodes == analyzed.Budget.Nodes && compiled.Budget.Depth == analyzed.Budget.Depth
+                && compiled.Budget.Effects == analyzed.Budget.Effects && compiled.Budget.WindEffects == analyzed.Budget.WindEffects
+                && compiled.Budget.NodeVisits == analyzed.Budget.NodeVisits && compiled.Budget.EndTick == analyzed.Budget.EndTick,
+            "editor compilation and direct runtime analysis must share the same workload rules");
 }
 
 void EditingGrowthBounds() {
@@ -272,7 +276,8 @@ int main() {
     try {
         for (const auto &[name, test] : std::vector<std::pair<const char *, std::function<void()>>>{
                  {"structure editing", StructuralEditing}, {"round trip and scope", RoundTripAndScope},
-                 {"complete descendant budgets", BudgetBounds}, {"parameter and structure errors", ParameterAndStructureErrors},
+                 {"parameter and structure errors", ParameterAndStructureErrors},
+                 {"shared analysis diagnostics", SharedAnalysisDiagnostics},
                  {"bounded editor growth", EditingGrowthBounds},
                  {"incremental trace and cancellation", SimulatorDrainAndDiscard}}) {
             test();

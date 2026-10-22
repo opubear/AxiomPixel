@@ -124,6 +124,8 @@ Actors、Items 等先以 Session 下的小领域模块开始，不为每个名�
 
 首批构建约束是去掉 `PixelGameplay → PixelFormulaEditing` 的运行依赖、增加无窗口的查询/宿主测试入口，保留 `PixelWorld`、`PixelFormula`、`PixelPresentation` 和 Runtime 的隔离。简单的动作处理和 SessionStore 可以暂与 Gameplay 同目标编译。无需为了目录图一次性改所有目标名。
 
+M1.3 已将当前游戏宿主校验提取为 `PixelFormulaValidation`，仅链接 `PixelFormula`；Gameplay 与 Editing 分别调用同一套参数/工作量规则。运行分析直接读取不可变描述，诊断使用子节点路径，编辑器再映射为自身节点 ID。当前游戏额度仍在游戏侧，M3 的语言语义归属与重设计方向保持待验证。
+
 ## 4 GameAPI 与领域动作
 
 首个观测、开采与构式激活场景的值语义、当前调用链、迁移边界和验收输入见 [首个贯穿场景与 GameAPI 契约](FirstGameplaySliceContract.md)。该契约按 M1/M2/M3 分阶段实施，不表示统一入口或只读观测已经实现。

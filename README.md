@@ -19,7 +19,8 @@
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
 | `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，编排固定步、保存/恢复时机、暂停和效果适配 |
 | `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore处理v2/v3/v4元数据、世界目录与current.txt |
-| `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译与运行上界分析 |
+| `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
+| `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
 | `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树、流式与角色；Environment管理材料及风 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
 | `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
@@ -33,7 +34,7 @@
 | `UnitTest/` | CPU/mock、Gameplay、Rendering、Runtime、Formula及显式离线基准 |
 | `Axiom/` | 引擎、RHI、AET及引擎测试 |
 
-核心依赖为 `PixelGameplay → PixelWorld + PixelFormulaEditing → PixelFormula`，World链接 `PixelPerformance` 和 `Axiom::Core` 使用容器及对齐allocator，不依赖Formula、窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
+核心依赖为 `PixelGameplay → PixelWorld + PixelFormulaValidation → PixelFormula`；`PixelFormulaEditing` 也使用共享的 `PixelFormulaValidation`，Gameplay不链接编辑器。World链接 `PixelPerformance` 和 `Axiom::Core` 使用容器及对齐allocator，不依赖Formula、窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
 
 ## 构建和运行
 
@@ -172,7 +173,7 @@ F2只控制Pixel Debug，F4独立控制 `Formula Editor`，主面板的 `Formula
 
 基础版支持既有全部节点：序列、伤害/速度修改、延迟、重复、散射、命中载荷，以及挖掘和风脉冲。伤害目前是元数据。风效果仅适配启用的Coarse后端且网格至多1024 cells；其他策略、域外、零/极小半径有明确诊断并跳过风，不取消同根其他效果。草稿至多64节点/16层，每根至多64个效果、会话至多16根/256个预留效果，窗口显示拒绝原因及运行日志。黄色球独立于地图材料，F1隐藏实体表现但不改变执行。
 
-实现入口是 `Pixel/Source/Gameplay/FormulaRuntime.*`、`FormulaWorldAdapter.*`、`FormulaEditing/FormulaDraft.*` 和 `Debug/FormulaDebugUI.*`。`Pixel/Formula` 继续提供独立DSL、不可变组合、CPU模拟器及CLI：
+实现入口是 `Pixel/Source/Gameplay/FormulaRuntime.*`、`FormulaWorldAdapter.*`、`FormulaValidation/FormulaAnalysis.*`、`FormulaEditing/FormulaDraft.*` 和 `Debug/FormulaDebugUI.*`。运行分析直接读取不可变Formula，保留64节点/16层及所有后代额度；这些是游戏宿主策略，不进入独立语言。编辑器保留ID/空槽等草稿检查，共用参数和运行分析规则。`Pixel/Formula` 继续提供独立DSL、不可变组合、CPU模拟器及CLI：
 
 ```sh
 cmake -S Pixel/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
@@ -183,7 +184,7 @@ ctest --test-dir build-formula --output-on-failure
 
 `--hit-at`是显式命中注入。语法见 [Formula README](Pixel/Formula/README.md)，独立语言架构见 [构式语言架构](.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证范围见 [基础版实现](.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md)。
 
-CPU行为测试新增 `Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
+CPU行为测试包括 `Pixel.FormulaValidation`、`Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。前者只链接共享验证和独立Formula，FormulaGameplay也不链接编辑器或ImGui。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
 
 ```sh
 cmake --build build --target PixelRuntimeSmoke -j4

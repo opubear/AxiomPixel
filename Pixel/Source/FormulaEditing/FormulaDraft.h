@@ -1,5 +1,5 @@
 #pragma once
-#include "Formula/Formula.h"
+#include "FormulaValidation/FormulaAnalysis.h"
 #include <memory>
 #include <optional>
 
@@ -44,15 +44,6 @@ class Draft {
     std::unique_ptr<DraftNode> Import(const Formula &formula);
 };
 
-struct Analysis {
-    std::size_t Nodes = 0;
-    std::size_t Depth = 0;
-    std::size_t Effects = 0;
-    std::size_t WindEffects = 0;
-    std::size_t NodeVisits = 0;
-    Tick EndTick = 0;
-};
-
 struct CompileError {
     NodeId Node = 0;
     std::string Field;
@@ -61,12 +52,11 @@ struct CompileError {
 
 struct CompileResult {
     std::optional<Formula> Description;
-    Analysis Budget;
+    validation::Analysis Budget;
     std::vector<CompileError> Errors;
     explicit operator bool() const { return Description.has_value() && Errors.empty(); }
 };
 
-// Limits are gameplay constraints; Formula's standalone language stays general.
+// Validates editor structure, then uses the shared game-host analysis rules.
 CompileResult Compile(const Draft &draft);
-CompileResult Analyze(const Formula &formula);
 } // namespace pixel::formula::editing
