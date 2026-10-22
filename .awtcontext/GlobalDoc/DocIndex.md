@@ -49,5 +49,7 @@
 | 领域观测Release基准原始数据 | `context:GlobalDoc/ObservationBenchmark-2026-10-22.csv` | M2.4三轮128帧静态与动态风有无投影的P50/P95、导出字节及容量 | |
 | LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | M2.5授权与交付、冻结分页、租约、JSON协议、离线样例和最终验证性能 | |
 | LLMView Release基准原始数据 | `context:GlobalDoc/LLMViewBenchmark-2026-10-22.csv` | M2.5三轮128帧、三个观察者完整分页和JSON序列化耗时与保留字节 | |
+| 构式语言最小语义选择与可执行对照 | `context:GlobalDoc/FormulaSemanticsExperiment.md` | M3.1五场景原型、过程语义、成本测量及M3.2边界；未替换游戏运行时 | |
+| 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

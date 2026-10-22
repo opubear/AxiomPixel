@@ -4,6 +4,8 @@
 
 这是 Pixel 内可独立构建的 C++20 子系统，用来表达“构式描述经过修改器或装饰器之后，仍然是构式描述”的玩法基础。它提供文本语言、不可变描述、独立 CPU 模拟器、命令行演示和行为测试。游戏已通过 `Pixel/Source/Gameplay/FormulaRuntime` 接入真实World、碰撞与黄色球表现，并提供独立DebugUI树形编辑器；使用方法见 [工程README](../../README.md)。本模块本身继续不依赖World、窗口或GPU。
 
+M3.1 的[语言语义对照实验](../../.awtcontext/GlobalDoc/FormulaSemanticsExperiment.md)位于 `Experiments/Semantics`，默认不构建。它用五个场景比较当前 DSL 与纯值/显式过程原型，选定后续语言方向；游戏仍使用本文下述旧 DSL。独立配置时加 `-DPIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT=ON` 可运行 `Pixel.Formula.Semantics`，实验不依赖 Axiom/World，也未提供新文本语法或生产存档格式。
+
 ## 快速运行
 
 在仓库根目录执行。独立构建只依赖 CMake 3.23+、C++20 编译器与标准库，不需要 `Axiom/`、Slang、窗口或 GPU。

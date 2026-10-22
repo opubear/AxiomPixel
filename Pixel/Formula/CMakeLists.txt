@@ -9,6 +9,11 @@ target_include_directories(PixelFormula PUBLIC Include)
 target_compile_features(PixelFormula PUBLIC cxx_std_20)
 set_target_properties(PixelFormula PROPERTIES CXX_EXTENSIONS OFF)
 
+option(PIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT "Build the isolated M3 language comparison" OFF)
+if(PIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT)
+    add_subdirectory(Experiments/Semantics)
+endif()
+
 add_executable(PixelFormulaDemo Source/Main.cpp)
 target_link_libraries(PixelFormulaDemo PRIVATE PixelFormula)
 

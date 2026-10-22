@@ -1,0 +1,10 @@
+add_library(PixelFormulaProcessExperiment STATIC Process.cpp)
+target_include_directories(PixelFormulaProcessExperiment PUBLIC .)
+target_compile_features(PixelFormulaProcessExperiment PUBLIC cxx_std_20)
+set_target_properties(PixelFormulaProcessExperiment PROPERTIES CXX_EXTENSIONS OFF)
+
+add_executable(PixelFormulaSemantics Main.cpp Scenarios.cpp)
+target_link_libraries(PixelFormulaSemantics PRIVATE PixelFormulaProcessExperiment PixelFormula)
+if(BUILD_TESTING)
+    add_test(NAME Pixel.Formula.Semantics COMMAND PixelFormulaSemantics)
+endif()
