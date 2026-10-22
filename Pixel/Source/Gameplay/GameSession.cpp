@@ -278,6 +278,7 @@ bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
 }
 
 void GameSession::ReplacingWorld() {
+    RenewActionSessions();
     Formulas.OnWorldReplaced();
     LastAim = {1, 0};
     FormulaError.clear();
@@ -285,10 +286,16 @@ void GameSession::ReplacingWorld() {
 }
 
 bool GameSession::CastFormulaAt(WorldPosition target) {
+    const auto receipt = Execute(NativeCaller::Driver, api::ActivateProgram{AppliedProgram(), ActionPosition(target)});
+    FormulaError = receipt.Message;
+    return receipt.Applied();
+}
+
+api::Reason GameSession::ActivateAt(WorldPosition target) {
     FormulaError.clear();
     if (!CanEditWorld() || !GameWorld.GetPlayer()) {
         FormulaError = "World unavailable or waiting for storage budget";
-        return false;
+        return api::Reason::SessionUnavailable;
     }
     auto centre = GameWorld.GetPlayer()->GetWorldPosition();
     centre.Local[0] += Character::Width / 2.0;
@@ -300,25 +307,25 @@ bool GameSession::CastFormulaAt(WorldPosition target) {
     const auto player = centre.RelativeTo(reference);
     const double dx = mouse[0] - player[0], dy = mouse[1] - player[1];
     const double length = std::hypot(dx, dy);
-    if (length > 1e-9)
-        LastAim = {dx / length, dy / length};
+    const auto aim = length > 1e-9 ? std::array<double, 2>{dx / length, dy / length} : LastAim;
 
     constexpr double radius = FormulaWorldAdapter::BoltRadius;
-    const double horizontal = LastAim[0] == 0 ? std::numeric_limits<double>::infinity()
-        : (Character::Width / 2.0 + radius) / std::abs(LastAim[0]);
-    const double vertical = LastAim[1] == 0 ? std::numeric_limits<double>::infinity()
-        : (Character::Height / 2.0 + radius) / std::abs(LastAim[1]);
+    const double horizontal = aim[0] == 0 ? std::numeric_limits<double>::infinity()
+        : (Character::Width / 2.0 + radius) / std::abs(aim[0]);
+    const double vertical = aim[1] == 0 ? std::numeric_limits<double>::infinity()
+        : (Character::Height / 2.0 + radius) / std::abs(aim[1]);
     const double distance = std::min(horizontal, vertical) + .25;
-    const auto origin = FormulaWorldAdapter::Offset(centre, {LastAim[0] * distance, LastAim[1] * distance});
+    const auto origin = FormulaWorldAdapter::Offset(centre, {aim[0] * distance, aim[1] * distance});
     if (FormulaWorldAdapter::Sweep(GameWorld, centre, origin).Kind != FormulaContactKind::None) {
         FormulaError = "Launch path is blocked";
-        return false;
+        return api::Reason::LaunchBlocked;
     }
-    const double angle = std::atan2(LastAim[1], LastAim[0]) * 180 / std::acos(-1.0);
+    const double angle = std::atan2(aim[1], aim[0]) * 180 / std::acos(-1.0);
     if (!Formulas.Cast(GameWorld, origin, angle)) {
         FormulaError = Formulas.LastError();
-        return false;
+        return api::Reason::LimitExceeded;
     }
-    return true;
+    LastAim = aim;
+    return api::Reason::None;
 }
 } // namespace pixel

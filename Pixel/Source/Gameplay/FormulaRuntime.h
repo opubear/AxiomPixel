@@ -39,6 +39,7 @@ class FormulaRuntime {
     bool Apply(const formula::Formula &description);
     const formula::Formula &ActiveFormula() const;
     uint64_t Version() const;
+    uint64_t LastActivationId() const;
     const std::string &LastError() const;
     void BeginFrame();
     bool Cast(World &world, WorldPosition anchor, double angleDegrees);

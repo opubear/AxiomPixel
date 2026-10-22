@@ -200,6 +200,8 @@ FormulaRuntime::FormulaRuntime() : Data(std::make_unique<State>()) {}
 FormulaRuntime::~FormulaRuntime() = default;
 
 bool FormulaRuntime::Apply(const formula::Formula &description) {
+    if (Data->Version == UINT64_MAX)
+        throw std::overflow_error("formula program version exhausted");
     try {
         const auto result = formula::validation::Analyze(description);
         if (!result) {
@@ -219,6 +221,7 @@ bool FormulaRuntime::Apply(const formula::Formula &description) {
 
 const formula::Formula &FormulaRuntime::ActiveFormula() const { return Data->Active; }
 uint64_t FormulaRuntime::Version() const { return Data->Version; }
+uint64_t FormulaRuntime::LastActivationId() const { return Data->NextCast - 1; }
 const std::string &FormulaRuntime::LastError() const { return Data->Error; }
 uint64_t FormulaRuntime::WorldEpoch() const { return Data->Epoch; }
 
@@ -242,6 +245,8 @@ bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegree
     if (stats.ReservedWind + stats.RetiredWind + Data->ActiveBudget.WindEffects > MaxWind)
         return Data->Reject("WindLimit: frame reservation exceeds 64");
 
+    if (Data->NextCast == UINT64_MAX)
+        throw std::overflow_error("formula activation identity exhausted");
     try {
         anchor.Normalize();
         auto root = std::make_unique<Root>();

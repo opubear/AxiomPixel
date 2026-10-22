@@ -6,7 +6,7 @@
 
 后续技术演进见[面向游戏愿景的架构规划](Docs/Architecture/GameplayArchitecturePlan.md)：按独立子系统考虑构式语言、LLMView 与游戏领域，给出引擎边界及分阶段迁移方案；它是规划提案，以下仍描述当前实现。
 
-首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；该文档是后续实施规格，统一入口与 LLMView 尚未实现。
+首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；动作入口的M1部分已实现，提交版本、事实和LLMView仍待M2；当前用法见[游戏动作入口](Docs/Architecture/GameActions.md)。
 
 基于 Axiom 的早期像素游戏，从引擎 `2DRender` 的 `5c8af21` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
 
@@ -17,7 +17,8 @@
 | 路径 | 职责 |
 |---|---|
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
-| `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，编排固定步、保存/恢复时机、暂停和效果适配 |
+| `Pixel/Source/GameAPI/` | 仅依赖标准库的类型化动作、回执与会话控制值 |
+| `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，统一动作入口、同步去重，编排固定步与会话控制 |
 | `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore处理v2/v3/v4元数据、世界目录与current.txt |
 | `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
@@ -82,6 +83,8 @@ git submodule update --init --recursive
 | F2 | 显示或隐藏Pixel Debug |
 | F4 | 独立显示或隐藏Formula Editor |
 | R | 保存当前世界，创建新世界，重置视角；保留显示/控制模式 |
+
+Input、Debug和CPU driver的开采、放置与激活共用Session动作入口，返回明确结果；调用者token与epoch在世界替换时失效，每调用者保留最近64条回执用于同步去重。F2的 `Game actions` 可输入格坐标执行同类操作并查看Input/Debug回执。风设置、会话控制及Formula工具栏也经Session端口；公开契约、权限与M1/M2边界见[动作实现说明](Docs/Architecture/GameActions.md)。
 
 启动和R后默认暂停。Environment的 `Pause simulation` 和 `Step 1/60 second` 控制运行；暂停冻结材料、风和动画，相机/加载仍工作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
 

@@ -258,6 +258,26 @@ void RunPixelDebugUISmoke() {
                 && world.GetCell(0, 511).Type == pixel::CellTypes::Empty
                 && world.GetCell(0, 512).Type == pixel::CellTypes::Dirt,
             "R did not restore default wind and terrain");
+    // Submit through the real Debug buttons, then compare the same material
+    // result exposed by the CPU and mouse entry points.
+    auto *debugWindow = ImGui::FindWindowByName("Pixel Debug");
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("World generation"), 0);
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("Environment"), 0);
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("Wind appearance"), 0);
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("Game actions"), 1);
+    Draw(app, 2);
+    Click(app, ControlPoint(app, "Mine cell"));
+    const auto *mined = pixel->GetSession().LastAction(pixel::NativeCaller::Debug);
+    Require(mined && mined->Applied() && std::get<pixel::api::MaterialResult>(mined->Result).Changed == 1 &&
+                world.GetCell(520, 512).Type == pixel::CellTypeId::Air,
+            "production Debug mining did not use the action port");
+    Click(app, ControlPoint(app, "Place dirt"));
+    Require(pixel->GetSession().LastAction(pixel::NativeCaller::Debug)->Applied() &&
+                world.GetCell(520, 512).Type == pixel::CellTypeId::Dirt,
+            "production Debug placement did not use the action port");
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("Game actions"), 0);
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("Environment"), 1);
+    Draw(app, 2);
     const auto oldGeneration = engine.GetRHI()->GetSwapchainGeneration();
     glfwSetWindowSize(platform->GetWindows(), 720, 540);
     // Window resize notifications are asynchronous; wait for the condition, not

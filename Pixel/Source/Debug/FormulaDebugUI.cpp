@@ -86,15 +86,16 @@ void FormulaDebugUI::SelectOperation(NodeId selection) {
 }
 
 void FormulaDebugUI::DrawToolbar(GameSession &session) {
-    auto &runtime = session.GetFormulaRuntime();
+    const auto &runtime = session.GetFormulaRuntime();
     ImGui::Text("Applied version %llu | %s", static_cast<unsigned long long>(runtime.Version()), Dirty ? "draft modified" : "draft matches applied");
     ImGui::BeginDisabled(!Compiled);
     if (ImGui::Button("Apply")) {
-        if (runtime.Apply(*Compiled.Description)) {
+        const auto result = session.ApplyProgram(NativeCaller::Debug, *Compiled.Description);
+        if (result) {
             Dirty = false;
             Status = "Applied. Existing instances keep their previous description.";
         } else {
-            Status = runtime.LastError();
+            Status = result.Message;
         }
     }
     ImGui::EndDisabled();
@@ -107,8 +108,10 @@ void FormulaDebugUI::DrawToolbar(GameSession &session) {
         SelectOperation(Draft.Root().Id);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Clear running"))
-        runtime.Clear();
+    if (ImGui::Button("Clear running")) {
+        const auto result = session.Control(NativeCaller::Debug, api::ClearRunning{});
+        Status = result.Succeeded() ? "Cleared running instances." : result.Message;
+    }
 
     static constexpr const char *presets[]{"Single bolt", "Three-way fan", "Delayed triple", "On hit: dig", "On hit: wind"};
     if (ImGui::BeginCombo("Preset (draft only)", "Choose preset")) {

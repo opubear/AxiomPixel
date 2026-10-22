@@ -126,6 +126,8 @@ Actors、Items 等先以 Session 下的小领域模块开始，不为每个名�
 
 M1.3 已将当前游戏宿主校验提取为 `PixelFormulaValidation`，仅链接 `PixelFormula`；Gameplay 与 Editing 分别调用同一套参数/工作量规则。运行分析直接读取不可变描述，诊断使用子节点路径，编辑器再映射为自身节点 ID。当前游戏额度仍在游戏侧，M3 的语言语义归属与重设计方向保持待验证。
 
+M1.4 已增加标准库值合同 `GameAPI/Actions.h`、同步动作去重、会话控制及Input/Debug迁移。实现与边界见[游戏动作入口](GameActions.md)；M1.5旧可变接口与Runtime错误分类、M2提交与观测仍待实施。
+
 ## 4 GameAPI 与领域动作
 
 首个观测、开采与构式激活场景的值语义、当前调用链、迁移边界和验收输入见 [首个贯穿场景与 GameAPI 契约](FirstGameplaySliceContract.md)。该契约按 M1/M2/M3 分阶段实施，不表示统一入口或只读观测已经实现。

@@ -1,0 +1,45 @@
+# 游戏动作与会话控制入口
+
+M1.4 的实现入口是 `GameAPI/Actions.h`、`Gameplay/Actions/GameActions.cpp` 和 `GameSession`。公共动作值只依赖标准库，不依赖 World、Formula、ImGui 或 RHI。当前同步执行，不提供队列、提交版本、事实流或只读 view；这些属于 M2。
+
+## 调用与身份
+
+宿主固定装配 Input、Debug、Driver 三个原生调用者。`CallerSession` 返回它们当前的会话 token，`Submit(token, request)` 接收带 epoch、递增 sequence 和类型化 payload 的请求。Input 只获得普通开采、放置、激活和重置能力；Debug/CPU Driver 额外拥有风设置、程序应用和会话控制能力。`NativeCaller` 与 `Execute` 是可信本地装配的便利入口，不是外部协议字段；未来模型适配器只能持有宿主授予的 token，不能把自报来源转换为 Debug 身份。
+
+`Execute` 为原生调用分配下一个序号，再进入同一个 Submit。每个调用者保存高水位及最近64条终态回执。拒绝也消耗合法的新序号；重复返回原回执，已淘汰返回 DuplicateExpired，永不重放。调用者和 epoch 在去重前核验。重置、加载与恢复更新 epoch 和全部调用者 token；进程内不同 GameSession 不复用这些身份。计数器耗尽致命失败，不回绕。此机制不跨进程持久化。
+
+示例（可信 CPU driver）：
+
+```cpp
+const auto result = session.Execute(pixel::NativeCaller::Driver,
+    pixel::api::MineRegion{{520, 512}, uint32_t(pixel::CellTypeId::Dirt)});
+```
+
+外部请求必须保留第一次的 token、epoch、sequence 和 payload 才能重试；修改参数使用新序号。`LastAction` 是 UI 读取最近原生回执的短期借用，下一次调用或世界替换后须重新获取。
+
+## 领域动作
+
+- MineRegion 首版开采一格，提供可选期望材料，返回实际前后材料及 changed/blocked/notReady 计数。缺失格先返回 NotReady，再比较已知材料前置条件；水和空气不可开采。
+- PlaceMaterial 只支持 Dirt，复用 World 的空气/玩家占用规则，不覆盖水，不新增距离或模拟窗口限制。已驻留的可视区域仍可编辑。
+- ActivateProgram 核验当前 ProgramRef、连续目标、会话阶段、发射路径和既有额度；返回本次激活身份和当前运行数量。Empty/延迟程序成功时可以没有球。拒绝发射不会改变上次成功瞄准方向。
+- SelectWindStrategy、SetWindBoundary 需要 Debug 能力。保留原有七策略及高成本后端自动暂停行为；没有通用属性写入接口。
+
+坐标使用 int64 cell 和 [0,1) double offset，转换先保留整数格再处理局部小数，不经过绝对 double。边界拒绝非有限值、非法offset、不受支持的材料/枚举及超出当前 WorldPosition 能力的坐标；极端chunk预留给内部邻域和发射偏移。M1没有JSON适配或完整schema序列化。
+
+所有新世界动作都在 Ready 且没有预算延期步时执行；验证顺序为调用者/epoch、去重、payload合法性、可写阶段、能力、局部前置条件和实际领域操作。开采、放置规则仍由 World 拥有；构式效果继续经现有 FormulaWorldAdapter 调用相同领域规则，同批先碰撞查询再提交的顺序保持。
+
+## 会话与界面
+
+`Control` 提供暂停、单步、保存、重置、流式重试、恢复、下一世界生成器/seed及ClearRunning，返回 Applied/Saved/Replaced/Failed/Rejected 和原因。保存、重置、恢复继续使用v4存储与错误报告语义，包括已有deferred存档行为；M2才增加Deferred和可协商退出。Control不属于离散动作去重协议，调用者显式重复控制会重新执行。
+
+`ApplyProgram` 是依赖Formula的游戏适配入口，返回新ProgramRef或分析诊断，不依赖编辑草稿。Apply/Clear在预算等待期间拒绝，保留当前运行状态；Clear不触发后代，也不退还本帧已退休风额度。现存实例及延迟/命中后代保留原程序版本。
+
+GameInput只负责事件筛选、按事件尺寸选格和请求转换，持续玩家意图仍按固定步采样，清理已施加输入经Session。Debug的Game actions折叠区可输入Cell X/Y后开采、放置或向格中心激活，显示Input和Debug的最近回执；风、保存、暂停、单步、生成设置和Formula工具栏均使用对应端口。相机、草稿、面板、外观继续由各自模块管理。
+
+M1.5仍需收敛旧的可变公共访问器、整理Runtime的宽泛catch及内部失败分类；当前保留旧入口供既有CPU夹具和宿主编排使用。Input/Debug生产代码不再通过World或FormulaRuntime直接修改玩法状态，也不使用GetMutableMap。World内部求解和底层测试/基准的可变访问不属于外部动作协议。
+
+## 验证入口
+
+`Pixel.Actions`覆盖三入口开采结果、玩家/水放置阻挡、缺失格优先级、材料前置条件、重复和淘汰、调用者/epoch替换、权限、非法坐标、预算等待、暂停激活、单步及旧程序隔离。既有Input、Session、FormulaGameplay、FormulaRendering与存储回归继续验证完整行为。
+
+`PixelRuntimeSmoke --debug-ui-only`使用真实生产按钮验证Debug开采和放置，并保留七风策略、int64边界、UI捕获和窗口重建；`--formula-only`验证真实Apply/Clear、版本隔离、输入捕获及GPU合成。执行结果以当前AWT任务日志为准，本文不替代测试报告。

@@ -15,7 +15,7 @@ GameInput::GameInput(GameSession &session, GameCamera &camera, GamePresentation 
 void GameInput::ClearInputState() {
     Move.fill(false);
     JumpRequested = false;
-    Session.GetWorld().ClearPlayerInput();
+    Session.ClearPlayerInput();
 }
 void GameInput::SetControlMode(ControlMode mode) {
     if (mode == Mode)
@@ -47,7 +47,7 @@ void GameInput::ResetView() {
     Presentation.Post = {};
 }
 void GameInput::ResetGame() {
-    if (!Session.TryReset()) {
+    if (!Session.Control(NativeCaller::Input, api::ResetWorld{}).Succeeded()) {
         ClearInputState();
         return;
     }
@@ -55,22 +55,20 @@ void GameInput::ResetGame() {
     ResetView();
 }
 void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) {
-    if (!Session.CanEditWorld())
-        return;
     if (action != ButtonAction::ACTION_PRESS || (button != MouseButton::MOUSE_BUTTON_LEFT && button != MouseButton::MOUSE_BUTTON_RIGHT))
         return;
     if (button == MouseButton::MOUSE_BUTTON_RIGHT && !(mods & int(Mod::MOD_SHIFT))) {
         if (const auto target = Camera.PickWorldPosition(pointer))
-            Session.CastFormulaAt(*target);
+            Session.Execute(NativeCaller::Input, api::ActivateProgram{Session.AppliedProgram(), ActionPosition(*target)});
         return;
     }
     const auto cell = Camera.PickCell(pointer);
     if (!cell)
         return;
     if (button == MouseButton::MOUSE_BUTTON_LEFT)
-        Session.GetWorld().PlaceDirt((*cell)[0], (*cell)[1]);
+        Session.Execute(NativeCaller::Input, api::PlaceMaterial{{(*cell)[0], (*cell)[1]}});
     else
-        Session.GetWorld().TryRemoveMaterial((*cell)[0], (*cell)[1]);
+        Session.Execute(NativeCaller::Input, api::MineRegion{{(*cell)[0], (*cell)[1]}, {}});
 }
 void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     const std::array keys{Key::KEY_W, Key::KEY_A, Key::KEY_S, Key::KEY_D};

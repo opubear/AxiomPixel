@@ -21,5 +21,6 @@ class PixelDebugUI {
   private:
     bool Visible = true;
     FormulaDebugUI FormulaEditor;
+    std::array<int64_t, 2> ActionCell{520, 512};
 };
 } // namespace pixel

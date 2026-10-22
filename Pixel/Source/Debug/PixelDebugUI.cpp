@@ -7,6 +7,27 @@
 
 namespace pixel {
 namespace {
+void DrawActions(GameSession &session, std::array<int64_t, 2> &cell) {
+    if (!ImGui::CollapsingHeader("Game actions"))
+        return;
+    ImGui::InputScalar("Cell X", ImGuiDataType_S64, &cell[0]);
+    ImGui::InputScalar("Cell Y", ImGuiDataType_S64, &cell[1]);
+    const api::Cell target{cell[0], cell[1]};
+    if (ImGui::Button("Mine cell"))
+        session.Execute(NativeCaller::Debug, api::MineRegion{target, {}});
+    ImGui::SameLine();
+    if (ImGui::Button("Place dirt"))
+        session.Execute(NativeCaller::Debug, api::PlaceMaterial{target});
+    if (ImGui::Button("Activate at cell centre"))
+        session.Execute(NativeCaller::Debug, api::ActivateProgram{session.AppliedProgram(), {target, {.5, .5}}});
+    for (const auto caller : {NativeCaller::Input, NativeCaller::Debug}) {
+        if (const auto *receipt = session.LastAction(caller))
+            ImGui::TextWrapped("%s #%llu: %s %s", caller == NativeCaller::Input ? "Input" : "Debug",
+                static_cast<unsigned long long>(receipt->Key.Sequence), receipt->Applied() ? "Applied" : "Rejected",
+                receipt->Message.c_str());
+    }
+}
+
 void DrawGeneration(GameSession &session) {
     if (!ImGui::CollapsingHeader("World generation", ImGuiTreeNodeFlags_DefaultOpen))
         return;
@@ -14,21 +35,21 @@ void DrawGeneration(GameSession &session) {
     ImGui::Text("Current: %s; seed %llu", GeneratorName(current.Kind), static_cast<unsigned long long>(current.Seed));
     int selected = int(session.GetNextGenerationSettings().Kind);
     if (ImGui::Combo("Next world", &selected, "Superflat (debug)\0Natural\0"))
-        session.SetNextGenerator(WorldGeneratorKind(selected));
+        session.Control(NativeCaller::Debug, api::SetNextGenerator{api::GeneratorKind(selected)});
     auto seed = session.GetNextGenerationSettings().Seed;
     if (ImGui::InputScalar("World seed", ImGuiDataType_U64, &seed))
-        session.SetNextWorldSeed(seed);
+        session.Control(NativeCaller::Debug, api::SetNextSeed{seed});
     ImGui::TextDisabled("Press R to save and create the selected world.");
     if (!session.IsReady()) {
         ImGui::TextWrapped("World recovery failed. Simulation and saving are disabled.");
         ImGui::TextWrapped("%s", session.GetSaveError().c_str());
         if (ImGui::Button("Retry world recovery"))
-            session.TryRecover();
+            session.Control(NativeCaller::Debug, api::RecoverWorld{});
     }
 }
 
 void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
-    auto &World = session.GetWorld();
+    const auto &World = session.GetWorld();
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::BeginDisabled(!session.IsReady());
         ImGui::BeginDisabled(!session.CanEditWorld());
@@ -36,7 +57,7 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
         ImGui::TextUnformatted("Wind blows above the world Y boundary.");
         ImGui::SetNextItemWidth(190);
         if (ImGui::InputScalar("Wind boundary Y", ImGuiDataType_S64, &boundary))
-            session.SetWindBoundary(boundary);
+            session.Execute(NativeCaller::Debug, api::SetWindBoundary{boundary});
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Enter the world Y coordinate; wind covers cells above this boundary.");
         ImGui::Text("Wind coverage: %u rows in the player window", World.GetWindEndRow());
@@ -45,10 +66,10 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
         const auto defaultBoundary = generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88);
         const auto boundaryLabel = "Default boundary (Y = " + std::to_string(defaultBoundary) + ")";
         if (ImGui::Button(boundaryLabel.c_str()))
-            session.SetWindBoundary(defaultBoundary);
+            session.Execute(NativeCaller::Debug, api::SetWindBoundary{defaultBoundary});
         int selected = int(session.GetSelectedWindStrategy());
         if (ImGui::Combo("Wind strategy", &selected, "Coarse NS\0Pixel reference (1:1)\0Procedural + obstacles\0Coarse NS + local model\0Adaptive NS (CPU prototype)\0LBM D2Q9 (CPU prototype)\0Empty (no wind)\0")) {
-            session.SelectWindStrategy(WindStrategyKind(selected));
+            session.Execute(NativeCaller::Debug, api::SelectWindStrategy{api::WindKind(selected)});
         }
         if (session.GetSelectedWindStrategy() == WindStrategyKind::Empty)
             ImGui::TextDisabled("No wind simulation; height is kept for comparison.");
@@ -61,18 +82,18 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
             if (!streamer->LastError().empty()) {
                 ImGui::TextWrapped("World I/O: %s", streamer->LastError().c_str());
                 if (ImGui::Button("Retry world I/O"))
-                    World.RetryStreaming();
+                    session.Control(NativeCaller::Debug, api::RetryStreaming{});
             }
             if (ImGui::Button("Save world"))
-                session.TrySave();
+                session.Control(NativeCaller::Debug, api::SaveWorld{});
             if (!session.GetSaveError().empty())
                 ImGui::TextWrapped("Save failed: %s", session.GetSaveError().c_str());
         }
         bool paused = session.IsPaused();
         if (ImGui::Checkbox("Pause simulation", &paused))
-            session.SetPaused(paused);
+            session.Control(NativeCaller::Debug, api::SetPaused{paused});
         if (paused && ImGui::Button("Step 1/60 second"))
-            session.RequestStep();
+            session.Control(NativeCaller::Debug, api::StepSimulation{});
         if (World.UsesPixelWind()) {
             const auto &report = World.GetPixelWind().GetReport();
             ImGui::Text("Divergence RMS: %.3g (%s)", report.RmsDivergence, report.Converged ? "converged" : "NOT converged");
@@ -118,6 +139,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
         ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
             DrawGeneration(session);
+            DrawActions(session, ActionCell);
             DrawEnvironment(session, presentation);
             DrawWindAppearance(presentation);
             ImGui::Checkbox("Formula editor (F4)", &FormulaEditor.Visible);

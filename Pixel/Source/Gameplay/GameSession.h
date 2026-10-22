@@ -1,5 +1,6 @@
 #pragma once
 #include "PlayerInput.h"
+#include "Actions/ActionValues.h"
 #include "FormulaRuntime.h"
 #include "Persistence/SessionStore.h"
 #include "World/World.h"
@@ -7,6 +8,9 @@
 #include <string>
 
 namespace pixel {
+// Native callers are host assembly credentials, never fields in an external payload.
+enum class NativeCaller { Input, Debug, Driver };
+
 class GameSession {
   public:
     static constexpr uint32_t WorldWidth = 1024;
@@ -16,6 +20,21 @@ class GameSession {
     // CPU fixtures remain finite; the application explicitly enables persistence.
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
     static WorldGenerationSettings DefaultGeneration();
+    uint64_t WorldEpoch() const { return Epoch; }
+    api::ProgramRef AppliedProgram() const { return {1, Formulas.Version()}; }
+    api::CallerSessionId CallerSession(NativeCaller caller) const;
+    api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request);
+    api::ActionReceipt Execute(NativeCaller caller, api::Action action);
+    const api::ActionReceipt *LastAction(NativeCaller caller) const;
+    api::ControlReceipt Control(api::CallerSessionId caller, const api::SessionControl &control);
+    api::ControlReceipt Control(NativeCaller caller, const api::SessionControl &control) {
+        return Control(CallerSession(caller), control);
+    }
+    ApplyProgramResult ApplyProgram(api::CallerSessionId caller, const formula::Formula &description);
+    ApplyProgramResult ApplyProgram(NativeCaller caller, const formula::Formula &description) {
+        return ApplyProgram(CallerSession(caller), description);
+    }
+    void ClearPlayerInput() { GameWorld.ClearPlayerInput(); }
     World &GetWorld() { return GameWorld; }
     const World &GetWorld() const { return GameWorld; }
     void Reset();
@@ -46,6 +65,19 @@ class GameSession {
     const std::filesystem::path &GetSaveDirectory() const { return SaveDirectory; }
 
   private:
+    struct CallerState {
+        api::CallerSessionId Id = 0;
+        uint64_t HighWatermark = 0;
+        bool Debug = false;
+        std::deque<api::ActionReceipt> Receipts;
+    };
+    uint64_t Epoch = 0;
+    std::array<CallerState, 3> Callers;
+    CallerState *FindCaller(api::CallerSessionId caller);
+    api::Reason WriteRejection() const;
+    api::ActionReceipt Dispatch(const api::Action &action);
+    api::Reason ActivateAt(WorldPosition target);
+    void RenewActionSessions();
     World GameWorld{WorldWidth, WorldHeight};
     FormulaRuntime Formulas;
     std::array<double, 2> LastAim{1, 0};
