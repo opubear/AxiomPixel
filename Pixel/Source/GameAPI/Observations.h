@@ -44,6 +44,7 @@ struct PlayerObservation {
     Position Location; // cell; singleton player of this snapshot's epoch.
     std::array<float, 2> SizeCells{2, 4};
     bool Grounded = false;
+    uint64_t ActorId = 0; // Stable within the world; never an in-memory slot.
 };
 struct ProjectileObservation {
     uint64_t InstanceId = 0, ProjectileId = 0; // Never array slots; epoch is in Stamp.

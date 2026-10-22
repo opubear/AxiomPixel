@@ -21,7 +21,7 @@ uint64_t CommittedWorldView::ReservedBytes() const {
         + Bolts.capacity() * sizeof(FormulaProjectile);
 }
 
-void CommittedWorldView::Update(const World &world, const FormulaBridge &formulas, api::CommitStamp stamp) {
+void CommittedWorldView::Update(const World &world, const Actors &actors, const FormulaBridge &formulas, api::CommitStamp stamp) {
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("cannot publish a prepared environment step");
     const auto count = size_t(RequestedBounds.Width) * RequestedBounds.Height;
@@ -54,7 +54,7 @@ void CommittedWorldView::Update(const World &world, const FormulaBridge &formula
             }
     });
     world.PublishSnapshot(RequestedBounds, Materials);
-    Player = world.GetPlayer();
+    Player = actors.PlayerSnapshot();
     Bolts = formulas.Projectiles();
     WindBounds = world.GetWindBounds();
     Finite = world.GetMap().IsFinite();

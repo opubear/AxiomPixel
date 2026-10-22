@@ -2,6 +2,7 @@
 #include "GameAPI/CommitStamp.h"
 #include "FormulaBridge/FormulaBridge.h"
 #include "World/World.h"
+#include "Actors/Actors.h"
 
 namespace pixel {
 // A host-owned, bounded projection refreshed only at complete commit boundaries.
@@ -18,7 +19,7 @@ class CommittedWorldView {
     WindVelocity GetFieldVelocity(int64_t x, int64_t y) const { return Materials.TryGet({x, y}) ? Field.at(Index({x, y})) : WindVelocity{}; }
     uint64_t WindRevision() const { return WindVersion; }
     uint32_t GetWindEndRow() const { return WindBounds.Height; }
-    const std::optional<Character> &GetPlayer() const { return Player; }
+    const std::optional<ActorSnapshot> &GetPlayer() const { return Player; }
     const std::vector<FormulaProjectile> &Projectiles() const { return Bolts; }
     double SimulationTime() const { return CommittedAt.Tick / 60.0; }
     bool IsFinite() const { return Finite; }
@@ -30,12 +31,12 @@ class CommittedWorldView {
     WorldRect RequestedBounds, WindBounds;
     WorldSnapshot Materials;
     std::vector<WindVelocity> Air, Field;
-    std::optional<Character> Player;
+    std::optional<ActorSnapshot> Player;
     std::vector<FormulaProjectile> Bolts;
     api::CommitStamp CommittedAt;
     uint64_t WindVersion = 0;
     bool Finite = false;
     size_t Index(CellCoord cell) const;
-    void Update(const World &world, const FormulaBridge &formulas, api::CommitStamp stamp);
+    void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, api::CommitStamp stamp);
 };
 } // namespace pixel

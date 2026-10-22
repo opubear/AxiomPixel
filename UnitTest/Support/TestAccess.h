@@ -7,6 +7,12 @@ namespace pixel::testing {
 // of Session and World's public gameplay interfaces.
 struct SessionAccess {
     static pixel::World &World(GameSession &session) { return session.GameWorld; }
+    static pixel::Actors &Actors(GameSession &session) { return session.Characters; }
+    static void SetPlayerPosition(GameSession &session, WorldPosition position) {
+        session.Characters.SetPlayerPosition(position);
+        session.GameWorld.SetSimulationFocus(position);
+        session.GameWorld.UpdateStreaming();
+    }
     static void RestoreClock(GameSession &session, double seconds, double remainder, bool deferred = false) {
         session.Simulation.Restore(seconds, remainder, deferred);
         session.GameWorld.RestorePendingEnvironmentStep(session.Simulation.Time(), deferred);

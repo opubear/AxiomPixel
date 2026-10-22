@@ -59,7 +59,7 @@ void SessionRoundTrip() {
             session.Tick(1.f / 60, {});
         session.Tick(1.f / 120, {});
         session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
-        world.RestorePlayer(position);
+        pixel::testing::SessionAccess::SetPlayerPosition(session, position);
         world.LoadSimulationNow();
         Require(world.GetSimulationBounds().X < 0 && world.TryGetCell(-24, 10), "player window did not load negative chunks");
         world.SetCell(-24, 10, {pixel::CellTypes::Dirt, {-1, 1}});
@@ -78,7 +78,7 @@ void SessionRoundTrip() {
         Require(restored.GetSaveDirectory() == original, "startup did not reopen current world");
         Require(world.GetCell(-24, 10) == pixel::CellState{pixel::CellTypes::Dirt, {-1, 1}} && world.GetBaseForceField().Get(-24, 10) == pixel::ForceVector{123.25f, -456.5f},
                 "session save lost map or base force");
-        Require(world.GetPlayer()->GetWorldPosition().Chunk == position.Chunk && world.GetPlayer()->GetWorldPosition().Local == position.Local,
+        Require(restored.GetPlayer()->GetWorldPosition().Chunk == position.Chunk && restored.GetPlayer()->GetWorldPosition().Local == position.Local,
                 "player sub-cell position did not round trip");
         Require(world.GetWindBoundary() == 450 && restored.GetSelectedWindStrategy() == pixel::WindStrategyKind::Procedural,
                 "world environment settings did not round trip");
@@ -156,7 +156,7 @@ void PendingRefusesPersistence() {
     const auto stamp = session.CurrentCommit();
     const auto remainder = session.GetTimeRemainder();
     const auto wind = world.SampleWind(100.5, 100.5);
-    const auto player = world.GetPlayer()->GetWorldPosition();
+    const auto player = session.GetPlayer()->GetWorldPosition();
     for (int retry = 0; retry < 3; ++retry) {
         for (const pixel::api::SessionControl control : {pixel::api::SessionControl{pixel::api::SaveWorld{}}, pixel::api::SessionControl{pixel::api::ResetWorld{}}}) {
             const auto result = session.Control(pixel::NativeCaller::Driver, control);
@@ -167,7 +167,7 @@ void PendingRefusesPersistence() {
         session.Tick(.2f, {});
         Require(session.IsPaused() && session.IsReady() && session.CurrentCommit() == stamp
                     && session.GetTimeRemainder() == remainder && session.GetSaveDirectory() == directory
-                    && SamePosition(world.GetPlayer()->GetWorldPosition(), player) && world.SampleWind(100.5, 100.5) == wind
+                    && SamePosition(session.GetPlayer()->GetWorldPosition(), player) && world.SampleWind(100.5, 100.5) == wind
                     && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt,
                 "deferred request or persistent budget shortage advanced/replaced the session");
         Require(ReadText(directory / "world.meta") == metadata && ReadText(root.Path / "current.txt") == pointer
@@ -195,7 +195,7 @@ void LegacyPendingImportsAtCommittedTime() {
             world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
             session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
             pixel::testing::SessionAccess::RestoreClock(session, .1, .05);
-            savedPlayer = world.GetPlayer()->GetWorldPosition();
+            savedPlayer = session.GetPlayer()->GetWorldPosition();
             savedWind = world.SampleWind(100.5, 100.5);
             Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "legacy fixture save failed");
             directory = session.GetSaveDirectory();
@@ -223,7 +223,7 @@ void LegacyPendingImportsAtCommittedTime() {
         const auto &world = restored.GetWorld();
         Require(restored.IsPaused() && !world.GetEnvironment().IsWaitingForBudget()
                     && restored.CurrentCommit().Tick == 6 && restored.GetTimeRemainder() == .05
-                    && SamePosition(world.GetPlayer()->GetWorldPosition(), savedPlayer) && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt
+                    && SamePosition(restored.GetPlayer()->GetWorldPosition(), savedPlayer) && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt
                     && world.SampleWind(100.5, 100.5) == savedWind
                     && world.GetEnvironment().GetWindSimulation().GetSimulationTime() == restored.GetSimulationTime(),
                 "legacy pending import lost committed state/backlog or restored preadvanced wind");
@@ -238,7 +238,7 @@ void LegacyPendingImportsAtCommittedTime() {
                     "legacy backlog was dropped, replayed or skipped a wind phase");
             if (step == 1)
                 Require(world.GetCell(32, 10).Type == pixel::CellTypes::Empty
-                            && !SamePosition(world.GetPlayer()->GetWorldPosition(), savedPlayer),
+                            && !SamePosition(restored.GetPlayer()->GetWorldPosition(), savedPlayer),
                         "legacy owed step did not execute both materials and player");
         }
         restored.Tick(.2f, {});
@@ -316,7 +316,7 @@ void DeferredStepKeepsStreamingDomain() {
     settings.BudgetBytes = 50ull * 1024 * 1024;
     settings.Generation.SurfaceY = 10000;
     world.EnableStreaming(settings);
-    world.SpawnPlayer(191.9, 128);
+    pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromAbsolute(191.9, 128));
     pixel::WindStrategySettings wind;
     wind.Kind = pixel::WindStrategyKind::Coarse;
     wind.Coarse.Columns = wind.Coarse.Rows = 32;
@@ -328,7 +328,7 @@ void DeferredStepKeepsStreamingDomain() {
 
     pixel::GameCamera camera;
     camera.SetFramebufferSize({256, 256});
-    camera.Reset(world);
+    camera.Reset(world.GetSimulationBounds(), session.GetPlayer());
     pixel::GamePresentation presentation;
     presentation.WindVisual.Mode = WindVisualMode::Off;
     auto publish = presentation.CreateFramePublisher(session, camera);
@@ -346,7 +346,7 @@ void DeferredStepKeepsStreamingDomain() {
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(1.f / 60, {1, false});
     Require(world.GetEnvironment().IsWaitingForBudget()
-                && world.GetPlayer()->GetWorldPosition().Cell().X == 191,
+                && session.GetPlayer()->GetWorldPosition().Cell().X == 191,
             "pending step moved the player before environment commit");
     const auto bounds = world.GetSimulationBounds();
     const auto domain = world.GetEnvironment().GetWindSimulation().GetDomain();
@@ -362,7 +362,7 @@ void DeferredStepKeepsStreamingDomain() {
     session.Tick(1.f / 60, {});
     Require(!world.GetEnvironment().IsWaitingForBudget()
                 && std::abs(session.GetSimulationTime() - 1.0 / 60) < 1e-10
-                && world.GetPlayer()->GetWorldPosition().Cell().X >= 192,
+                && session.GetPlayer()->GetWorldPosition().Cell().X >= 192,
             "pending step lost its frozen input or did not finish exactly once");
     world.UpdateStreaming();
     Require(world.GetSimulationBounds().X == 64 && world.GetEnvironment().GetWindSimulation().GetDomain().Origin.X == 64,

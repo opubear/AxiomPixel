@@ -76,7 +76,7 @@ void PendingStepRetainsCompleteProjection() {
     settings.SurfaceY = 10000;
     settings.BudgetBytes = 50ull * 1024 * 1024;
     world.EnableStreaming(settings);
-    world.SpawnPlayer(191.9, 128);
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindDomain(256, wind);
@@ -154,8 +154,8 @@ void PendingStepRetainsCompleteProjection() {
                 && view->Stamp() == session.CurrentCommit()
                 && std::abs(session.GetTimeRemainder() - (pendingRemainder - 1.0 / 60)) < 1e-10,
             "budget recovery did not commit exactly one complete step with retained backlog");
-    Require(world.GetPlayer()->GetWorldPosition().Local[0] > player.Local[0]
-                && world.GetPlayer()->GetWorldPosition().Local[1] >= player.Local[1],
+    Require(session.GetPlayer()->GetWorldPosition().Local[0] > player.Local[0]
+                && session.GetPlayer()->GetWorldPosition().Local[1] >= player.Local[1],
             "input or clear during waiting replaced frozen movement/jump intent");
     Require(std::abs(view->Projectiles().front().Position.Local[0] - bolt.Local[0] - 1) < 1e-8,
             "formula did not advance exactly once after budget recovery");

@@ -1,5 +1,5 @@
 #pragma once
-#include "PlayerInput.h"
+#include "Actors/Actors.h"
 #include "SimulationCoordinator.h"
 #include "CommittedWorldView.h"
 #include "Actions/ActionValues.h"
@@ -47,11 +47,10 @@ class GameSession : public api::ObservationSource {
     api::ControlReceipt CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
     api::ControlReceipt WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
     void BeginFrame() { Formulas.BeginFrame(); }
-    void ClearPlayerInput() {
-        Simulation.ClearInput();
-        if (!Simulation.HasPendingStep()) GameWorld.ClearPlayerInput();
-    }
+    void ClearPlayerInput() { Simulation.ClearInput(); }
     const World &GetWorld() const { return GameWorld; }
+    const Actors &GetActors() const { return Characters; }
+    const Character *GetPlayer() const { return Characters.Player(); }
     bool IsReady() const { return Ready; }
     bool CanEditWorld() const { return Ready && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
     const FormulaBridge &GetFormulaRuntime() const { return Formulas; }
@@ -109,6 +108,7 @@ class GameSession : public api::ObservationSource {
     void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
     void RecordFormulaFacts();
     World GameWorld{WorldWidth, WorldHeight};
+    Actors Characters;
     FormulaBridge Formulas;
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;
@@ -117,7 +117,7 @@ class GameSession : public api::ObservationSource {
     ObservationProjector Observations;
     DomainFactBuffer Facts;
     std::vector<std::weak_ptr<CommittedWorldView>> ReadViews;
-    uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0;
+    uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0, PublishedActorVersion = 0;
     void PublishCommit();
     void CommitChange();
     void ServiceStreaming();

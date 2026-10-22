@@ -1,5 +1,5 @@
 #pragma once
-#include "WorldMap.h"
+#include "World/WorldMap.h"
 
 namespace pixel {
 class Character {

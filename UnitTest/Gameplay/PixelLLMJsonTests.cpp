@@ -55,7 +55,7 @@ struct FixtureSource final : api::ObservationSource {
         snapshot.Wind.SolverSpacingCells = std::array<double, 2>{8, 16};
         snapshot.Wind.AdaptiveMaximumEdgeCells = 32;
         snapshot.Wind.LocalObstacleCorrection = true;
-        snapshot.Player = api::PlayerObservation{{scope.Origin, {.125, .875}}, {2, 4}, true};
+        snapshot.Player = api::PlayerObservation{{scope.Origin, {.125, .875}}, {2, 4}, true, Identity - 20};
         snapshot.Programs = {{Identity - 5, Identity - 6}, 1, 1, 2};
         snapshot.Projectiles.push_back({Identity - 7, Identity - 8, snapshot.Programs.Applied,
                                         {scope.Origin, {.25, .75}}, {12.5, -0.125}, .35});
@@ -152,7 +152,8 @@ void LargeIntegerCoordinatesAndPagination() {
     Require(fixture.Send(request)["status"] == "InvalidCursor", "maximum uint64 cursor was not parsed exactly");
 
     const auto player = fixture.Send(fixture.Query("player"))["page"]["player"];
-    Require(player["location"]["anchorCell"]["x"] == std::to_string(Far)
+    Require(player["actorId"] == std::to_string(Identity - 20)
+                && player["location"]["anchorCell"]["x"] == std::to_string(Far)
                 && player["location"]["anchorCell"]["y"] == std::to_string(-Far)
                 && player["location"]["offset"] == Json::array({.125, .875})
                 && player["sizeCells"] == Json::array({2, 4}) && player["grounded"] == true,

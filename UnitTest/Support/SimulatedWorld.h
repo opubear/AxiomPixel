@@ -23,7 +23,6 @@ class SimulatedWorld : public World {
             Coordinator.BeginStep();
             if (!StepEnvironment(Coordinator.Time()))
                 break;
-            StepPlayer();
             Coordinator.CommitStep();
             ++completed;
             if (onStep)

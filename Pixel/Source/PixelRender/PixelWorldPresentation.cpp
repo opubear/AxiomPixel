@@ -149,7 +149,7 @@ void BuildForceFieldFrameImpl(const ReadWorld &world, WorldGridFrame &output) {
 void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output) { BuildForceFieldFrameImpl(world, output); }
 void BuildForceFieldFrame(const pixel::CommittedWorldView &world, WorldGridFrame &output) { BuildForceFieldFrameImpl(world, output); }
 
-void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2D &camera,
+void BuildCharacterFrame(const pixel::ActorSnapshot &character, const pixel::Camera2D &camera,
                          std::array<int, 2> framebufferSize, WorldGridFrame &output) {
     output.Character.reset();
     if (output.DisplayMode != GridDisplayMode::Materials)

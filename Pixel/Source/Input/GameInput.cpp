@@ -37,13 +37,13 @@ void GameInput::UpdateCamera(float duration) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
     if (Mode == ControlMode::Standard)
-        Camera.FollowPlayer(Session.GetWorld(), duration);
+        Camera.FollowPlayer(Session.GetPlayer(), duration);
     else
         Camera.Pan(Movement(), duration);
 }
 void GameInput::ResetView() {
     Camera.SetFramebufferSize(Host.GetFramebufferSize());
-    Camera.Reset(Session.GetWorld());
+    Camera.Reset(Session.GetWorld().GetSimulationBounds(), Session.GetPlayer());
     Presentation.Post = {};
 }
 void GameInput::ResetGame() {

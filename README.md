@@ -18,11 +18,12 @@
 |---|---|
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
 | `Pixel/Source/GameAPI/` | 仅依赖标准库的类型化动作、回执与会话控制值 |
-| `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，统一动作入口、同步去重，编排固定步与会话控制 |
+| `Pixel/Source/Gameplay/` | GameSession持有世界、Actors与构式运行实例，统一动作入口、同步去重，编排固定步与会话控制 |
 | `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore读取v2–v5、写入v5元数据、世界目录与current.txt |
 | `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
-| `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树、流式与角色；Environment管理材料及风 |
+| `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树和流式；Environment管理材料及风 |
+| `Pixel/Source/Actors/` | 玩家/Resident状态、值身份与代次句柄、只读地形碰撞与水体响应 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
 | `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
 | `Pixel/Source/PixelRender/` | 帧首区域快照、外观映射、每frame slot缓存及GPU上传 |
@@ -35,7 +36,9 @@
 | `UnitTest/` | CPU/mock、Gameplay、Rendering、Runtime、Formula及显式离线基准 |
 | `Axiom/` | 引擎、RHI、AET及引擎测试 |
 
-核心依赖为 `PixelGameplay → PixelWorld + PixelFormulaValidation → PixelFormula`；`PixelFormulaEditing` 也使用共享的 `PixelFormulaValidation`，Gameplay不链接编辑器。World链接 `PixelPerformance` 和 `Axiom::Core` 使用容器及对齐allocator，不依赖Formula、窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
+核心依赖为 `PixelGameplay → PixelActors → PixelWorld` 以及 `PixelGameplay → PixelFormulaValidation/PixelFormulaProcess → PixelFormula`；`PixelFormulaEditing` 也使用共享的 `PixelFormulaValidation`，Gameplay不链接编辑器。World链接 `PixelPerformance` 和 `Axiom::Core` 使用容器及对齐allocator，不依赖Formula、窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
+
+角色身份与生命周期见 [Actors 合同](.awtcontext/GlobalDoc/Actors.md)：玩家已移出 World，Resident 验证第二对象的物理与生命周期；当前呈现仍仅玩家，v5 存档仍只保存既有玩家位置，多领域持久化留在 M4.6。
 
 ## 构建和运行
 

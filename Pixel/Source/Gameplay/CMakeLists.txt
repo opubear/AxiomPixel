@@ -6,4 +6,4 @@ add_library(PixelGameplay STATIC
     FormulaBridge/FormulaBridge.cpp FormulaBridge/FormulaWorldAdapter.cpp FormulaBridge/ProcessHost.cpp
     SessionObservation.cpp ../Observation/ObservationProjector.cpp
     ../Persistence/SessionStore.cpp)
-target_link_libraries(PixelGameplay PUBLIC PixelWorld PixelFormulaValidation PixelFormulaProcess PixelObservationValues)
+target_link_libraries(PixelGameplay PUBLIC PixelActors PixelFormulaValidation PixelFormulaProcess PixelObservationValues)

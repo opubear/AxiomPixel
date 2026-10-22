@@ -143,9 +143,7 @@ void World::GenerateTerrain(uint32_t surfaceRow) {
     Environment = pixel::Environment(Map);
     ScratchReservation = 0;
     WindEnabled = false;
-    Player.reset();
-    PlayerHorizontal = 0;
-    PlayerJump = false;
+    SimulationFocus.reset();
 }
 
 bool World::PlaceDirt(int64_t x, int64_t y) {
@@ -156,7 +154,7 @@ CellEditResult World::TryPlaceDirt(int64_t x, int64_t y) {
     const auto cell = TryGetCell(x, y);
     if (!cell)
         return CellEditResult::NotReady;
-    if ((Player && Player->Occupies(x, y)) || cell->Type != CellTypes::Empty)
+    if (cell->Type != CellTypes::Empty)
         return CellEditResult::Blocked;
     Map.SetMaterial({x, y}, CellTypes::Dirt);
     return CellEditResult::Applied;
@@ -199,35 +197,13 @@ void World::PublishSnapshot(WorldRect bounds, WorldSnapshot &destination) const 
     destination.Update(Map, bounds);
 }
 
-void World::RestorePlayer(WorldPosition position) {
-    position.Normalize();
-    Player = Character{};
-    Player->OriginChunk = position.Chunk;
-    Player->X = position.Local[0];
-    Player->Y = position.Local[1];
-    PlayerHorizontal = 0;
-    PlayerJump = false;
-    UpdateStreaming();
-}
-
-void World::SpawnPlayer(double x, double y) {
-    if (!std::isfinite(x) || !std::isfinite(y) || (Map.IsFinite() && (x < 0 || y < 0 || x + Character::Width > Map.Bounds().Width || y + Character::Height > Map.Bounds().Height)))
-        throw std::invalid_argument("player bounds must fit inside the world");
-    RestorePlayer(WorldPosition::FromAbsolute(x, y));
-}
-
-void World::SetPlayerInput(int horizontal, bool jump) {
-    PlayerHorizontal = std::clamp(horizontal, -1, 1);
-    PlayerJump = PlayerJump || jump;
-}
-
 void World::DiscardStreaming() {
     Streamer.reset();
     Map.ResetInfinite();
     Environment = pixel::Environment(Map);
     ScratchReservation = 0;
     VisibleBounds = {};
-    Player.reset();
+    SimulationFocus.reset();
     WindEnabled = false;
 }
 
@@ -252,8 +228,8 @@ void World::UpdateStreaming() {
     // A failed material step already advanced wind in the current domain.
     // Storage may make progress, but recentering/remapping must wait for commit.
     const bool deferred = Environment.IsWaitingForBudget();
-    if (Player && !deferred) {
-        const auto cell = Player->GetWorldPosition().Cell();
+    if (SimulationFocus && !deferred) {
+        const auto cell = *SimulationFocus;
         const auto quarter = SimulationBounds.Width / 4;
         WorldRect centre{SimulationBounds.X + quarter, SimulationBounds.Y + quarter,
                          SimulationBounds.Width / 2, SimulationBounds.Height / 2};
@@ -333,13 +309,4 @@ void World::ReserveSimulationBytes(uint64_t bytes) {
     ScratchReservation = bytes;
 }
 
-void World::StepPlayer() {
-    if (Environment.IsWaitingForBudget())
-        throw std::logic_error("character advanced before environment commit");
-    if (Player) {
-        PIXEL_PROFILE_SCOPE(Character);
-        Player->Tick(1.f / 60, ReadState(), PlayerHorizontal, PlayerJump);
-    }
-    PlayerJump = false;
-}
 } // namespace pixel

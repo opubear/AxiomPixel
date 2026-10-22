@@ -1,6 +1,7 @@
 # Dependency order: measurement -> world -> gameplay -> presentation -> runtime.
 add_subdirectory(Performance)
 add_subdirectory(World)
+add_subdirectory(Actors)
 add_subdirectory(FormulaValidation)
 add_subdirectory(FormulaEditing)
 add_subdirectory(Gameplay)

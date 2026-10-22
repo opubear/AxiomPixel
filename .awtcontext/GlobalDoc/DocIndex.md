@@ -42,10 +42,10 @@
 | Pixel面向游戏愿景的架构规划 | `workspace:Docs/Architecture/GameplayArchitecturePlan.md` | 执行前必读；独立构式语言、领域模块、LLMView、引擎职责和分阶段迁移方案 | |
 | 首个贯穿场景与GameAPI契约 | `workspace:Docs/Architecture/FirstGameplaySliceContract.md` | M1.1执行规格：观测与开采/激活场景、身份单位、动作效果事实、提交查询及验收映射 | |
 | 统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | M1动作去重、只读公开访问、内部早失败、存储错误边界与M2待办 | |
-| 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | M2.1时钟归属、等待冻结、CommitStamp、呈现读副本与后续保存/观测边界 | |
+| 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 固定步时钟、等待冻结和提交副本；M4.1由Session编排World与Actors | |
 | 正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | M2.2 Application钩子、请求消费与拒绝后继续、AET默认行为及M2.3保存接入边界 | |
 | 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | M2.3 Deferred、v5 与旧 v2-v4 导入、关闭协商和持久化验证入口 | |
-| 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2.4冻结DTO与因果事实；M2.5专用外部捕获槽释放和权限查询接入 | |
+| 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2观测DTO与因果事实、外部捕获槽；M4.1玩家ActorId与提交快照 | |
 | 领域观测Release基准原始数据 | `context:GlobalDoc/ObservationBenchmark-2026-10-22.csv` | M2.4三轮128帧静态与动态风有无投影的P50/P95、导出字节及容量 | |
 | LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | M2.5授权与交付、冻结分页、租约、JSON协议、离线样例和最终验证性能 | |
 | LLMView Release基准原始数据 | `context:GlobalDoc/LLMViewBenchmark-2026-10-22.csv` | M2.5三轮128帧、三个观察者完整分页和JSON序列化耗时与保留字节 | |
@@ -54,5 +54,6 @@
 | 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | M3.2文本编译产物、绑定实例、宿主终态与预算清理；含CLI和新旧兼容范围 | |
 | FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | M3.3宿主接线、作用范围和额度、批次碰撞、三承载样例及验证边界 | |
 | 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | M3.4程序与实例DTO、挂起恢复及效果归属、源码编译Apply和验证边界 | |
+| Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | M4.1角色集合、持久ID与代次句柄、宿主推进及观测呈现和后续保存边界 | |
 
-角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。
+角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

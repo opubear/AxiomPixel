@@ -16,7 +16,7 @@ void SessionAndPublicationContracts() {
     pixel::GameSession session;
     auto &world = pixel::testing::SessionAccess::World(session);
     Require(session.IsPaused(), "session must start paused");
-    Require(world.GetWindEndRow() == 424 && world.GetPlayer(), "default scene changed");
+    Require(world.GetWindEndRow() == 424 && session.GetPlayer(), "default scene changed");
     Require(&world.GetBaseForceField() == &world.GetEnvironment().GetBaseForceField(),
             "environment must own the world base field");
     Require(session.GetSelectedWindStrategy() == pixel::WindStrategyKind::Empty &&
@@ -54,7 +54,7 @@ void SessionAndPublicationContracts() {
 
     pixel::GameCamera camera;
     camera.SetFramebufferSize({800, 600});
-    camera.Reset(world);
+    camera.Reset(world.GetSimulationBounds(), session.GetPlayer());
     const auto centre = camera.GetCamera().GetPosition();
     camera.Zoom(true);
     camera.SetFramebufferSize({1600, 1200});
@@ -84,6 +84,7 @@ void SessionAndPublicationContracts() {
     Require(frame.DisplayMode == GridDisplayMode::ForceField && !frame.Character,
             "field publication must clear character data");
     presentation.ToggleFieldView();
+    pixel::testing::SessionAccess::Actors(session).Clear();
     world.GenerateTerrain(512);
     publish(frame);
     Require(frame.DisplayMode == GridDisplayMode::Materials && !frame.Character,
@@ -93,7 +94,7 @@ void SessionAndPublicationContracts() {
     session.Tick(1.f / 60, {});
     Require(session.GetSimulationTime() > time, "explicit resume must advance simulation");
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
-    Require(session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && world.GetPlayer(),
+    Require(session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && session.GetPlayer(),
             "reset must restore scene and simulation controls");
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty, "reset must restore empty wind");
     const auto resetForce = world.GetBaseForceField().Get(12, 12);
@@ -112,7 +113,7 @@ void FixedClockAndLatchedJump() {
             session.Tick(1.f / rate, {1, frame == 0});
         Require(std::abs(session.GetSimulationTime() - 1) < 1e-9,
                 "session clock must count committed steps at all frame rates");
-        const auto position = pixel::testing::SessionAccess::World(session).GetPlayer()->GetWorldPosition();
+        const auto position = session.GetPlayer()->GetWorldPosition();
         if (reference) {
             Require(position.Chunk == reference->Chunk && std::abs(position.Local[0] - reference->Local[0]) < 1e-8
                         && std::abs(position.Local[1] - reference->Local[1]) < 1e-8,

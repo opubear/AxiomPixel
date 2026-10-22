@@ -2,7 +2,7 @@
 #include "Camera2D.h"
 #include "Input/MousePointerState.h"
 #include "PixelRender/WorldGridFrame.h"
-#include "World/World.h"
+#include "Actors/Character.h"
 
 namespace pixel {
 // Pixel camera policy: zoom, viewport projection, player following and free pan.
@@ -16,8 +16,8 @@ class GameCamera {
     GridView2D GetView() const;
     GridView2D GetViewForFramebuffer(std::array<int, 2> size) const;
     void SetView(const GridView2D &view);
-    void Reset(const World &world);
-    void FollowPlayer(const World &world, float duration);
+    void Reset(WorldRect bounds, const Character *player);
+    void FollowPlayer(const Character *player, float duration);
     void Pan(std::array<int, 2> direction, float duration);
     void Zoom(bool in);
     void NextRegion();

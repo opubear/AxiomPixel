@@ -587,7 +587,8 @@ void DistantRegionProjection() {
     player.X = 511.03125;
     player.Y = 508;
     output.View = view;
-    BuildCharacterFrame(player, camera, {1600, 1200}, output);
+    const pixel::ActorSnapshot snapshot{pixel::ActorId{1}, pixel::ActorKind::Player, player.GetWorldPosition(), player.Grounded};
+    BuildCharacterFrame(snapshot, camera, {1600, 1200}, output);
     Check(output.Character && output.Character->Bounds == std::array<float, 4>{782.5f, 567.f, 32, 64},
           "distant character geometry lost its fractional camera-relative offset");
 }

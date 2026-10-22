@@ -108,7 +108,7 @@ void FarResidentProjectionAndChunkLifecycle() {
     const auto chunk = ChunkOf(base);
     testing::WorldAccess::Map(world).Insert(std::make_unique<WorldChunk>(chunk));
     world.SetCell(baseX + 10, baseY + 10, {CellTypeId::Dirt, {0, 1}});
-    world.RestorePlayer({chunk, {double(baseX - chunk.X * storage::ChunkEdge) + .125,
+    testing::SessionAccess::SetPlayerPosition(session, {chunk, {double(baseX - chunk.X * storage::ChunkEdge) + .125,
                                  double(baseY - chunk.Y * storage::ChunkEdge) + .125}});
     testing::SessionAccess::PublishFixtureChanges(session);
     const api::Rect scope{{baseX, baseY}, 16, 16};
@@ -156,7 +156,7 @@ void PendingStepUsesOnlyCompleteCopies() {
     settings.SurfaceY = 10000;
     settings.BudgetBytes = 50ull * 1024 * 1024;
     world.EnableStreaming(settings);
-    world.SpawnPlayer(191.9, 128);
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindDomain(256, wind);

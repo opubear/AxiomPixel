@@ -70,9 +70,11 @@ GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
 void GameSession::InitializeScene() {
     const auto &generation = StreamConfiguration.Generation;
     const auto surface = Store ? CreateWorldGenerator(generation)->SurfaceHeight(512) : int64_t(512);
-    GameWorld.SpawnPlayer(511, double(surface - int64_t(Character::Height)));
+    Characters.SetPlayerPosition(WorldPosition::FromAbsolute(511, double(surface - int64_t(Character::Height))));
+    GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
+    GameWorld.UpdateStreaming();
     GameWorld.LoadSimulationNow();
-    const auto feet = GameWorld.GetPlayer()->GetWorldPosition().Cell();
+    const auto feet = GetPlayer()->GetWorldPosition().Cell();
     for (int y = 0; y < int(Character::Height); ++y)
         for (int x = 0; x < int(Character::Width); ++x) {
             const auto cell = GameWorld.TryGetCell(feet.X + x, feet.Y + y);
@@ -192,7 +194,9 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     // These parameters came from disk; invalid settings are corrupt save data.
     try {
         GameWorld.EnableStreaming(stream, InitialWindow(data.Player, stream.WindowEdge));
-        GameWorld.RestorePlayer(data.Player);
+        Characters.SetPlayerPosition(data.Player);
+        GameWorld.SetSimulationFocus(data.Player);
+        GameWorld.UpdateStreaming();
         GameWorld.LoadSimulationNow();
         GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
         Simulation.Restore(data.CommittedTime, data.TimeRemainder);
@@ -215,7 +219,7 @@ SessionSaveData GameSession::CaptureSaveData() const {
     data.WindowEdge = StreamConfiguration.WindowEdge;
     data.BudgetBytes = StreamConfiguration.BudgetBytes;
     data.Generation = StreamConfiguration.Generation;
-    data.Player = GameWorld.GetPlayer() ? GameWorld.GetPlayer()->GetWorldPosition() : WorldPosition{};
+    data.Player = GetPlayer() ? GetPlayer()->GetWorldPosition() : WorldPosition{};
     data.CommittedTime = Simulation.Time();
     data.TimeRemainder = Simulation.Remainder();
     data.WindBoundary = GameWorld.GetWindBoundary();
@@ -258,12 +262,10 @@ void GameSession::Tick(float duration, PlayerInput input) {
                                      uint64_t(std::min(duration, .25f) * 1e6));
     while (Simulation.HasStep()) {
         const auto stepInput = Simulation.BeginStep();
-        // Reapplying the same frozen intent is safe; Clear/input during a wait
-        // affect only the next step, including a jump arriving during the wait.
-        GameWorld.ClearPlayerInput();
-        GameWorld.SetPlayerInput(stepInput.Horizontal, stepInput.Jump);
         if (!GameWorld.StepEnvironment(Simulation.Time())) break;
-        GameWorld.StepPlayer();
+        // Intent belongs to this successful step; pending retries never touch actors.
+        Characters.Step(GameWorld.ReadState(), stepInput);
+        if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
         Formulas.Step(GameWorld);
         const bool singleStep = Simulation.CommitStep();
         RecordFormulaFacts();
@@ -297,22 +299,22 @@ void GameSession::ReplacingWorld() {
     Observations.Reset();
     Facts.Reset(Epoch);
     Simulation = {};
-    PublishedMapVersion = PublishedWindVersion = 0;
+    PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = 0;
     for (const auto &weak : ReadViews)
         if (auto view = weak.lock()) view->CommittedAt = {};
     Formulas.OnWorldReplaced();
     LastAim = {1, 0};
     FormulaError.clear();
-    GameWorld.ClearPlayerInput();
+    Characters.Clear();
 }
 
 api::Reason GameSession::ActivateAt(WorldPosition target, api::RequestKey request) {
     FormulaError.clear();
-    if (!CanEditWorld() || !GameWorld.GetPlayer()) {
+    if (!CanEditWorld() || !GetPlayer()) {
         FormulaError = "World unavailable or waiting for storage budget";
         return api::Reason::SessionUnavailable;
     }
-    auto centre = GameWorld.GetPlayer()->GetWorldPosition();
+    auto centre = GetPlayer()->GetWorldPosition();
     centre.Local[0] += Character::Width / 2.0;
     centre.Local[1] += Character::Height / 2.0;
     centre.Normalize();

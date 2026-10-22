@@ -185,7 +185,7 @@ Json WindSummaryJson(const api::WindSummary &summary) {
 }
 
 Json PlayerJson(const api::PlayerObservation &player) {
-    return {{"location", PositionJson(player.Location)}, {"sizeCells", player.SizeCells}, {"grounded", player.Grounded}};
+    return {{"actorId", std::to_string(player.ActorId)}, {"location", PositionJson(player.Location)}, {"sizeCells", player.SizeCells}, {"grounded", player.Grounded}};
 }
 
 Json ProgramsJson(const api::ProgramObservation &programs) {

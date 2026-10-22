@@ -4,7 +4,7 @@ M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`GameSession.cpp`�
 
 ## 推进与等待
 
-Session 先在安全边界处理流式驻留，再由协调器累计最多 0.25 秒的待处理时间。每一步依次执行：Environment 风预推进、原有同步材料提案/裁决/提交、风反馈、World 的角色一步、FormulaRuntime 的碰撞与效果，最后增加 Tick 和 Revision 并刷新读副本。独立 World 只提供 `StepEnvironment(committedSeconds)` 和 `StepPlayer()`；旧测试与基准使用 `UnitTest/Support/SimulatedWorld.h` 的宿主夹具。
+Session 先在安全边界处理流式驻留，再由协调器累计最多 0.25 秒的待处理时间。每一步依次执行：Environment 风预推进、原有同步材料提案/裁决/提交、风反馈、Actors 的角色一步、FormulaBridge 的碰撞与效果，最后增加 Tick 和 Revision 并刷新读副本。独立 World 只提供 `StepEnvironment(committedSeconds)`；Session 随后调用 `Actors::Step(terrain, input)`。纯世界测试与基准使用 `UnitTest/Support/SimulatedWorld.h` 的宿主夹具，角色组合使用 `SimulatedActorWorld.h`。
 
 只有完整成功的一步消费余量。单步请求消费已有余量中的一步；不足一步才补足，不清空剩余时间。不同帧时长分段仍使用同一固定步。Skip 沿引擎原帧协议不调用游戏推进。
 

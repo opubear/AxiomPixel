@@ -59,6 +59,8 @@ Player 用角色锚点是否位于查询范围决定可见性；程序只返回�
 
 JsonAdapter::Handle(observer, request) 中 observer 是宿主绑定参数。JSON 不接受 observerId、权限字段或动作方法。Query/ReadFacts 在 Handle 内立即 Deliver，然后序列化；以后若接异步队列，应保留交付编号并在发送时调用 Deliver；Handle 的同步 JSON 不能充当可撤销的待发送缓存。
 
+M4.1 的 player 对象增加 `actorId`，表示世界内稳定身份，结合 view 的世界/epoch 使用。
+
 64位坐标、ID、tick、revision、sequence 和字节计量都用规范十进制字符串，uint32 范围/枚举数值保持 JSON 整数；位置使用 anchorCell + double offset。拒绝64位 numeric、前导零、负零、溢出、浮点 uint32、重复键和未知字段，不把内部异常伪装成普通查询失败。
 
 ```json

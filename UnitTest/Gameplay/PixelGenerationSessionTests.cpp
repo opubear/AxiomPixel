@@ -68,7 +68,7 @@ void NaturalPersistenceAndStrategySelection() {
         GameSession session(true, natural);
         Require(session.GetGenerationSettings() == natural && session.IsPaused(), "new world did not use natural strategy");
         auto &world = pixel::testing::SessionAccess::World(session);
-        Require(world.GetCell(511, world.GetPlayer()->GetWorldPosition().Cell().Y + 4).Type == CellTypeId::GrassSoil,
+        Require(world.GetCell(511, session.GetPlayer()->GetWorldPosition().Cell().Y + 4).Type == CellTypeId::GrassSoil,
                 "natural spawn lacks a grass platform");
         world.SetCell(32, 10, {CellTypeId::Water});
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");

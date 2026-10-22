@@ -171,7 +171,10 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                     const auto edited = [&] {
                         if constexpr (std::is_same_v<T, api::MineRegion>)
                             return GameWorld.TryRemoveMaterial(value.Target.X, value.Target.Y);
-                        else return GameWorld.TryPlaceDirt(value.Target.X, value.Target.Y);
+                        else {
+                            if (Characters.Occupies({value.Target.X, value.Target.Y})) return CellEditResult::Blocked;
+                            return GameWorld.TryPlaceDirt(value.Target.X, value.Target.Y);
+                        }
                     }();
                     if (edited == CellEditResult::Applied) {
                         result.Changed = 1;

@@ -20,6 +20,7 @@ class PixelGame final : public IGameInterface {
     void ConfigurePerformanceCapture();
     void ConfigureEngine(GameEngine &engine) override;
     pixel::GameSession &GetSession() { return Session; }
+    const pixel::GameSession &GetSession() const { return Session; }
     pixel::llm::ViewService &GetObservationViews() { return ObservationViews; }
     pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }

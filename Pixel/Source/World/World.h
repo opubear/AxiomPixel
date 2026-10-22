@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Character.h"
 #include "Environment/Environment.h"
 #include "WorldStreamer.h"
 #include <optional>
@@ -78,12 +77,6 @@ class World {
             Streamer->RetryFailures();
     }
     bool StepEnvironment(double committedSeconds) { return Environment.TryStep(*this, committedSeconds); }
-    void StepPlayer();
-    void SpawnPlayer(double x, double y);
-    void RestorePlayer(WorldPosition position);
-    const std::optional<Character> &GetPlayer() const { return Player; }
-    void SetPlayerInput(int horizontal, bool jump);
-    void ClearPlayerInput() { PlayerHorizontal = 0; PlayerJump = false; }
     const pixel::Environment &GetEnvironment() const { return Environment; }
     const WorldMap &GetMap() const { return Map; }
     WorldMapView ReadState() const { return Map.View(GetSimulationBounds()); }
@@ -94,6 +87,8 @@ class World {
     // Only after a failed candidate world; its contents must never overwrite the old world.
     void DiscardStreaming();
     void RequestVisibleRegion(WorldRect bounds);
+    // Host selects the active island; World does not own or query an actor.
+    void SetSimulationFocus(WorldPosition position) { position.Normalize(); SimulationFocus = position.Cell(); }
     void UpdateStreaming();
     void Save();
     void WaitForStreaming();
@@ -128,9 +123,7 @@ class World {
     int64_t WindBoundaryY = 424;
     bool WindEnabled = false;
     WindStrategySettings WindSettings;
-    std::optional<Character> Player;
-    int PlayerHorizontal = 0;
-    bool PlayerJump = false;
+    std::optional<CellCoord> SimulationFocus;
     uint64_t PublicationBytes = 0;
     uint64_t ScratchReservation = 0;
     axiom::Map<const void *, uint64_t> PublicationOwners;

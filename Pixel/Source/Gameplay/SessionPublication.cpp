@@ -35,23 +35,25 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
         return;
     }
     view.RequestedBounds = bounds;
+    if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.RequestVisibleRegion(bounds);
     SynchronizeReadViews();
-    view.Update(GameWorld, Formulas, CurrentCommit());
+    view.Update(GameWorld, Characters, Formulas, CurrentCommit());
     GameWorld.SetPublicationBytes(&view, std::max(reserve, view.ReservedBytes()));
 }
 
 void GameSession::PublishCommit() {
     if (Simulation.HasPendingStep()) throw std::logic_error("publication during pending step");
-    Observations.Publish(GameWorld, Formulas, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
+    Observations.Publish(GameWorld, Characters, Formulas, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
-            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Formulas, CurrentCommit());
+            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, CurrentCommit());
             ++it;
         } else {
             it = ReadViews.erase(it);
         }
     }
+    PublishedActorVersion = Characters.Revision();
     PublishedMapVersion = GameWorld.GetMap().GetVersion();
     PublishedWindVersion = GameWorld.GetEnvironment().GetWindSimulation().GetRevision();
 }
@@ -63,12 +65,14 @@ void GameSession::CommitChange() {
 
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
-    if (PublishedMapVersion != GameWorld.GetMap().GetVersion()
+    if (PublishedActorVersion != Characters.Revision()
+        || PublishedMapVersion != GameWorld.GetMap().GetVersion()
         || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision())
         CommitChange();
 }
 
 void GameSession::ServiceStreaming() {
+    if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.UpdateStreaming();
     SynchronizeReadViews();
 }

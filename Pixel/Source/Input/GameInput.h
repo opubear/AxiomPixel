@@ -1,5 +1,5 @@
 #pragma once
-#include "Gameplay/PlayerInput.h"
+#include "Actors/PlayerInput.h"
 #include "Input/MousePointerState.h"
 #include "SystemEnum.h"
 #include <array>

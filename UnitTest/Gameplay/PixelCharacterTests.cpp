@@ -1,4 +1,4 @@
-#include "../Support/SimulatedWorld.h"
+#include "../Support/SimulatedActorWorld.h"
 #include "PixelRender/PixelWorldPresentation.h"
 #include <cmath>
 #include <algorithm>
@@ -11,7 +11,7 @@ void Require(bool condition, const char *message) {
 }
 int main() {
     try {
-        pixel::testing::SimulatedWorld world(64, 64);
+        pixel::testing::SimulatedActorWorld world(64, 64);
         world.GenerateTerrain(40);
         world.SpawnPlayer(20, 10);
         for (int i = 0; i < 120; ++i)
@@ -34,7 +34,7 @@ int main() {
             world.Tick(1.f / 60);
         Require(std::abs(world.GetPlayer()->Y - 44) < 0.001f, "removed support must cause falling");
 
-        pixel::testing::SimulatedWorld thin(64, 64);
+        pixel::testing::SimulatedActorWorld thin(64, 64);
         thin.Fill({pixel::CellTypes::Empty, {0, 0}});
         for (uint32_t x = 0; x < 64; ++x)
             thin.SetCell(x, 40, {pixel::CellTypes::Dirt, {0, 0}});
@@ -73,7 +73,8 @@ int main() {
         pixel::Camera2D camera;
         camera.SetPosition({512.125, 510.0625});
         sprite.X += 0.03125f;
-        BuildCharacterFrame(sprite, camera, {1600, 1200}, frame);
+        const auto snapshot = pixel::ActorSnapshot{pixel::ActorId{1}, pixel::ActorKind::Player, sprite.GetWorldPosition(), sprite.Grounded};
+        BuildCharacterFrame(snapshot, camera, {1600, 1200}, frame);
         Require(frame.Character && frame.Character->Bounds == std::array<float, 4>{782.5f, 567.f, 32, 64},
                 "character must retain fractional position and exact camera offset");
         Require(std::all_of(frame.Cells().begin(), frame.Cells().end(), [](uint32_t cell) { return cell == 0; }),
@@ -82,7 +83,8 @@ int main() {
         camera.Translate({10, 10});
         Require(frame.Character->Bounds[0] == 782.5f, "published sprite must be independent of live character and camera");
         frame.DisplayMode = GridDisplayMode::ForceField;
-        BuildCharacterFrame(sprite, camera, {1600, 1200}, frame);
+        const auto movedSnapshot = pixel::ActorSnapshot{pixel::ActorId{1}, pixel::ActorKind::Player, sprite.GetWorldPosition(), sprite.Grounded};
+        BuildCharacterFrame(movedSnapshot, camera, {1600, 1200}, frame);
         Require(!frame.Character, "field view must clear character snapshot");
         std::cout << "Character collision, movement and snapshot tests passed\n";
     } catch (const std::exception &error) {

@@ -59,14 +59,16 @@ void HeldInputAndModes() {
     f.KeyEvent(Key::KEY_D);
     f.KeyEvent(Key::KEY_D, ButtonAction::ACTION_RELEASE);
     Require(f.Input.ConsumePlayerInput().Horizontal == 0, "release must stop movement");
-    auto &world = pixel::testing::SessionAccess::World(f.Session);
-    const auto playerX = world.GetPlayer()->X;
-    world.SetPlayerInput(1, true);
+    const auto position = f.Session.GetPlayer()->GetWorldPosition();
+    // A sub-step frame queues jump intent before any physics step can consume it.
+    f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
+    f.Session.Tick(.001f, {1, true});
     f.Input.ClearInputState();
-    world.StepEnvironment(0);
-    world.StepPlayer();
-    Require(world.GetPlayer()->X == playerX && world.GetPlayer()->Y >= 508,
-            "clear must also remove input already applied to world");
+    f.Session.Tick(1.f / 60, f.Input.ConsumePlayerInput());
+    const auto after = f.Session.GetPlayer()->GetWorldPosition().RelativeTo(position.Cell());
+    const auto before = position.RelativeTo(position.Cell());
+    Require(after[0] == before[0] && after[1] >= before[1],
+            "clear must remove intent queued in the session before the next step");
 }
 void CommandsAndReset() {
     Fixture f;

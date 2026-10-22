@@ -16,7 +16,7 @@
 
 块边长和区域边长须为二次幂且整除；游戏窗口为64的倍数，最大2048。预算至少容纳两个物理块及其工作余量；窗口跨块或复杂运动可能需要更多容量。运行时覆盖配置优先于存档设置。不同块尺寸的存档互不兼容。
 
-`World` 编排 `WorldMap`、`Environment`、角色及 `WorldStreamer`。持久材料、兼容方向与基础力属于 `WorldMap`；`Environment` 借用基础力，拥有动态风、待提交环境步及材料临时集合；Session的SimulationCoordinator拥有固定步时钟和跨领域提交顺序。World 仅链接 Axiom::Core 和 CPU 性能采样模块，没有窗口、RHI、UI 或纹理类型。
+`World` 编排 `WorldMap`、`Environment` 及 `WorldStreamer`。角色归属 Session 下的 `Actors`，通过只读地形视图推进。持久材料、兼容方向与基础力属于 `WorldMap`；`Environment` 借用基础力，拥有动态风、待提交环境步及材料临时集合；Session的SimulationCoordinator拥有固定步时钟和跨领域提交顺序。World 仅链接 Axiom::Core 和 CPU 性能采样模块，没有窗口、RHI、UI 或纹理类型。
 
 `WorldChunk` 每块拥有独立 Axiom allocator。一份连续、64 KiB 对齐的 `axiom::Array<ChunkPayload, Allocator<..., alignment>>` 分配包含三个 `axiom::StaticArray` 列：32位材料ID、两个有符号8位方向、两个float基础力。有效数据正好14字节/格，默认14 MiB/块；区域计数、活动位与版本单独保存。块销毁同时释放allocator缓存。材料移动只写材料列；方向及基础力始终属于空间位置。
 
@@ -51,7 +51,7 @@ world.FillBaseForceRegion({-64, 0, 64, 64}, {0, 3600});
 
 活动集合以64格区域维护，当前集合取出后，编辑、成功移动、力变化和加载写入下一集合；唤醒覆盖一格邻域所触及的区域。没有材料的区域不扫描，静止无依赖变化后休眠；动态风窗口中的材料区域逐步重新评估。同方向候选属于一一平移，可跳过争用表；混合方向用epoch目标表和显式坐标比较裁决，结果不依赖区域访问顺序。
 
-模拟窗口对齐64格；玩家离开中央一半范围后居中。窗口外冻结，跨边界移动阻挡。自由相机只请求显示范围。跳过的游戏帧不推进游戏；暂停仍允许流式加载与相机移动。
+Session 提供玩家所在的活动中心，World 的模拟窗口对齐64格；活动中心离开中央一半范围后居中。窗口外冻结，跨边界移动阻挡。自由相机只请求显示范围。跳过的游戏帧不推进游戏；暂停仍允许流式加载与相机移动。
 
 ## 流式加载、预算与失败
 

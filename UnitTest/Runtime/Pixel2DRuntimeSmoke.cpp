@@ -447,6 +447,7 @@ void Lifecycle(int iteration) {
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
+    pixel::testing::SessionAccess::Actors(input->GetSession()).Clear();
     pixel::testing::SessionAccess::World(input->GetSession()).GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
     PixelRender *policy = nullptr;
     uint64_t publications = 0;
@@ -644,9 +645,9 @@ void VerifyDefaultWorldField(const pixel::World &world) {
     Require(stableAirCells == size_t(600 - 512) * state.Width, "default world does not have 88 stable sky rows");
 }
 std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
-    if (!game.GetWorld().GetPlayer() || game.GetPresentation().DisplayMode != GridDisplayMode::Materials)
+    if (!game.GetSession().GetPlayer() || game.GetPresentation().DisplayMode != GridDisplayMode::Materials)
         return std::nullopt;
-    const auto &player = *game.GetWorld().GetPlayer();
+    const auto &player = *game.GetSession().GetPlayer();
     int width, height;
     GAxiom->Engine->GetPlatform()->GetFramebufferSize(width, height);
     const auto centre = game.GetCamera().GetPosition();
@@ -802,7 +803,7 @@ void BasicWorldGameplay() {
 
     const auto initialCamera = input->GetCamera().GetPosition();
     for (int quarterPixel = 1; quarterPixel <= 4; ++quarterPixel) {
-        world.SpawnPlayer(511 + quarterPixel / 64.f, 508 + quarterPixel / 64.f);
+        pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(511 + quarterPixel / 64.f, 508 + quarterPixel / 64.f));
         verify(); // Each quarter-pixel shift must produce the expected edge coverage.
         const auto sprite = policy->PublishedFrame().Character;
         Require(sprite && std::abs(sprite->Bounds[0] - ExpectedCharacter(*input)->Bounds[0]) < 1e-6,
@@ -816,33 +817,33 @@ void BasicWorldGameplay() {
         clipped.OriginPixels = {int32_t(511 * scale + 1), int32_t(508 * scale + 1)};
         clipped.WorldOriginCells = {};
         input->SetView(clipped);
-        world.SpawnPlayer(511.0625f, 508.0625f);
+        pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(511.0625f, 508.0625f));
         verify(); // Fractional rectangle clipped by the viewport, including minimum zoom.
     }
     input->SetView(unscaledView);
-    world.SpawnPlayer(511, 508);
+    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(511, 508));
 
     Require(input->GetControlMode() == PixelGame::ControlMode::Standard, "default mode must control the character");
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
-    const auto playerX = world.GetPlayer()->X;
+    const auto playerX = input->GetSession().GetPlayer()->X;
     const auto camera = input->GetView().OriginPixels;
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X > playerX && input->GetView().OriginPixels[0] > camera[0], "standard mode must move and follow player");
-    const double targetX = world.GetPlayer()->X + pixel::Character::Width / 2;
+    Require(input->GetSession().GetPlayer()->X > playerX && input->GetView().OriginPixels[0] > camera[0], "standard mode must move and follow player");
+    const double targetX = input->GetSession().GetPlayer()->X + pixel::Character::Width / 2;
     Require(input->GetCamera().GetPosition()[0] < targetX, "camera must approach player gradually instead of snapping");
     Require(std::abs(input->GetCamera().GetPosition()[0] - (playerX + 1 + (targetX - playerX - 1) * (1 - std::exp(-1.0)))) < 1e-6,
             "camera must follow distance-proportional speed");
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
-    const auto debugX = world.GetPlayer()->X;
+    const auto debugX = input->GetSession().GetPlayer()->X;
     const auto debugCamera = input->GetView().OriginPixels;
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
     engine.GetInput()->Dispatch();
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X == debugX && input->GetView().OriginPixels == debugCamera, "switch must clear held input");
+    Require(input->GetSession().GetPlayer()->X == debugX && input->GetView().OriginPixels == debugCamera, "switch must clear held input");
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X == debugX && input->GetView().OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
+    Require(input->GetSession().GetPlayer()->X == debugX && input->GetView().OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_REPEAT, Mod{});
     Require(input->GetControlMode() == PixelGame::ControlMode::DebugCamera, "F3 repeat toggled mode");
     const auto beforeReturn = input->GetCamera().GetPosition();
@@ -850,12 +851,12 @@ void BasicWorldGameplay() {
     Require(input->GetCamera().GetPosition() == beforeReturn, "return to standard must not snap camera");
     input->Tick(0.125f);
     Require(std::abs(input->GetCamera().GetPosition()[0] -
-                     (beforeReturn[0] + (world.GetPlayer()->X + 1 - beforeReturn[0]) * (1 - std::exp(-1.0)))) < 1e-6,
+                     (beforeReturn[0] + (input->GetSession().GetPlayer()->X + 1 - beforeReturn[0]) * (1 - std::exp(-1.0)))) < 1e-6,
             "return from debug must smoothly approach player from current camera position");
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
     engine.GetInput()->Dispatch();
     input->Tick(0.125f);
-    Require(world.GetPlayer()->X == debugX, "return to standard retained movement after repeat");
+    Require(input->GetSession().GetPlayer()->X == debugX, "return to standard retained movement after repeat");
     // UI capture and focus loss use this same clear hook. A held key must not
     // become a new press when repeat events resume after the clear.
     for (const auto mode : {PixelGame::ControlMode::Standard, PixelGame::ControlMode::DebugCamera}) {
@@ -864,40 +865,40 @@ void BasicWorldGameplay() {
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_PRESS, 0);
             engine.GetInput()->Dispatch();
             input->ClearInputState();
-            const auto clearedX = world.GetPlayer()->X;
+            const auto clearedX = input->GetSession().GetPlayer()->X;
             const auto clearedCamera = input->GetView().OriginPixels;
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_REPEAT, 0);
             engine.GetInput()->Dispatch();
             input->Tick(0.125f);
-            Require(world.GetPlayer()->X == clearedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == clearedCamera),
+            Require(input->GetSession().GetPlayer()->X == clearedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == clearedCamera),
                     "repeat reactivated movement after input clear");
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_RELEASE, 0);
             engine.GetInput()->Dispatch();
         }
-        const auto beforePressX = world.GetPlayer()->X;
+        const auto beforePressX = input->GetSession().GetPlayer()->X;
         const auto beforePressCamera = input->GetView().OriginPixels;
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_PRESS, 0);
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
         engine.GetInput()->Dispatch();
         input->Tick(0.125f);
-        Require(mode == PixelGame::ControlMode::Standard ? world.GetPlayer()->X > beforePressX
+        Require(mode == PixelGame::ControlMode::Standard ? input->GetSession().GetPlayer()->X > beforePressX
                                                          : input->GetView().OriginPixels[0] > beforePressCamera[0],
                 "fresh press followed by repeat must preserve movement");
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_RELEASE, 0);
         engine.GetInput()->Dispatch();
-        const auto releasedX = world.GetPlayer()->X;
+        const auto releasedX = input->GetSession().GetPlayer()->X;
         const auto releasedCamera = input->GetView().OriginPixels;
         input->Tick(0.125f);
-        Require(world.GetPlayer()->X == releasedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == releasedCamera),
+        Require(input->GetSession().GetPlayer()->X == releasedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == releasedCamera),
                 "release must stop movement");
     }
     input->SetControlMode(PixelGame::ControlMode::Standard);
     input->OnKeyEvent(Key::KEY_SPACE, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(1.f / 60);
-    Require(world.GetPlayer()->Y < 508, "standard Space must jump");
+    Require(input->GetSession().GetPlayer()->Y < 508, "standard Space must jump");
     verify();
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
-    world.SpawnPlayer(530, 508); // Leave the legacy editing fixtures unobstructed.
+    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(530, 508)); // Leave the legacy editing fixtures unobstructed.
     // Exercise the real default field: empty sky must not disturb the terrain.
     for (int i = 0; i < 5; ++i)
         input->Tick(1.f / 60);
@@ -1004,8 +1005,8 @@ void BasicWorldGameplay() {
     Require(input->GetSession().IsPaused(), "reset must pause the session");
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     VerifyDefaultWorldField(world);
-    Require(world.GetPlayer() && world.GetPlayer()->X == 511 && world.GetPlayer()->Y == 508, "R must reset player");
-    world.SpawnPlayer(530, 508);
+    Require(input->GetSession().GetPlayer() && input->GetSession().GetPlayer()->X == 511 && input->GetSession().GetPlayer()->Y == 508, "R must reset player");
+    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(530, 508));
     Require(world.GetWind().Sample(512.5f, 200.5f) == initialWind, "R reset retained wind time or impulse state");
     verify();
     // A block at height 599 must cross the entire stable sky band vertically.

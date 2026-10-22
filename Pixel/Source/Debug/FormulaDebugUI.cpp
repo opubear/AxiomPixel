@@ -169,7 +169,7 @@ void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
 void FormulaDebugUI::DrawProcessExample(GameSession &session) {
     if (!ImGui::CollapsingHeader("Process: three carriers")) return;
     ImGui::TextWrapped("Each pulse launches a ball and digs on hit. Natural source, fixed fixture and right-click use the same program. Unpause or Step to advance.");
-    const auto &player = session.GetWorld().GetPlayer();
+    const auto *player = session.GetPlayer();
     ImGui::BeginDisabled(!player || session.AppliedProgram().ResourceId != 2);
     for (const auto kind : {ProcessCarrierKind::NaturalSource, ProcessCarrierKind::FixedFixture}) {
         const bool natural = kind == ProcessCarrierKind::NaturalSource;

@@ -1,10 +1,10 @@
-#include "../Support/SimulatedWorld.h"
+#include "../Support/SimulatedActorWorld.h"
 #include <iostream>
 #include <stdexcept>
 
 using namespace pixel;
 namespace {
-using World = pixel::testing::SimulatedWorld;
+using World = pixel::testing::SimulatedActorWorld;
 void Require(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(message);
 }

@@ -2,6 +2,7 @@
 #include "Gameplay/Actions/ActionValues.h"
 #include "Gameplay/FormulaBridge/FormulaBridge.h"
 #include "World/World.h"
+#include "Actors/Actors.h"
 #include <algorithm>
 
 namespace pixel {
@@ -71,14 +72,14 @@ void SampleAir(api::ObservedCell &sample, CellCoord cell, const World &world, co
     }
 }
 
-void UpdateObjects(api::ObservationSnapshot &snapshot, const World &world, const FormulaBridge &formulas) {
+void UpdateObjects(api::ObservationSnapshot &snapshot, const Actors &actors, const FormulaBridge &formulas) {
     snapshot.Player.reset();
-    if (const auto &player = world.GetPlayer()) {
+    if (const auto player = actors.PlayerSnapshot()) {
         const auto position = player->GetWorldPosition();
         const auto local = position.RelativeTo({snapshot.Scope.Origin.X, snapshot.Scope.Origin.Y});
         if (local[0] < snapshot.Scope.Width && local[1] < snapshot.Scope.Height
             && local[0] + Character::Width > 0 && local[1] + Character::Height > 0)
-            snapshot.Player = api::PlayerObservation{ActionPosition(position), {Character::Width, Character::Height}, player->Grounded};
+            snapshot.Player = api::PlayerObservation{ActionPosition(position), {Character::Width, Character::Height}, player->Grounded, player->Id.Value};
     }
     const auto stats = formulas.Stats();
     snapshot.Programs = {formulas.AppliedProgram(), uint32_t(stats.Roots), uint32_t(stats.Projectiles), uint32_t(stats.Pending)};
@@ -96,7 +97,7 @@ void UpdateObjects(api::ObservationSnapshot &snapshot, const World &world, const
 ObservationProjector::ObservationProjector() = default;
 ObservationProjector::~ObservationProjector() = default;
 
-api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scope, const World &world,
+api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scope, const World &world, const Actors &actors,
     const FormulaBridge &formulas, const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
     uint64_t factHighWatermark) {
     const auto validation = ValidateScope(scope);
@@ -115,14 +116,14 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
             entry->Snapshot.Cells.resize(size_t(scope.Width) * scope.Height);
             entry->Snapshot.Projectiles.reserve(FormulaBridge::MaximumEffects);
         }
-        Update(*entry, world, formulas, stamp, paused, factHighWatermark);
+        Update(*entry, world, actors, formulas, stamp, paused, factHighWatermark);
     }
     auto result = api::ObservationResult{api::ObservationStatus::Available, entry->Snapshot};
     Counters.ExportedBytes += result.Snapshot->RetainedBytes();
     return result;
 }
 
-void ObservationProjector::Update(Entry &entry, const World &world, const FormulaBridge &formulas,
+void ObservationProjector::Update(Entry &entry, const World &world, const Actors &actors, const FormulaBridge &formulas,
     const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     if (world.GetEnvironment().IsWaitingForBudget()) throw std::logic_error("observation during pending step");
     auto &snapshot = entry.Snapshot;
@@ -165,15 +166,15 @@ void ObservationProjector::Update(Entry &entry, const World &world, const Formul
     snapshot.Stamp = stamp;
     snapshot.FactHighWatermark = factHighWatermark;
     snapshot.Paused = paused;
-    UpdateObjects(snapshot, world, formulas);
+    UpdateObjects(snapshot, actors, formulas);
     if (snapshot.RetainedBytes() > MaximumSnapshotBytes)
         throw std::logic_error("observation exceeded its fixed payload budget");
 }
 
-void ObservationProjector::Publish(const World &world, const FormulaBridge &formulas,
+void ObservationProjector::Publish(const World &world, const Actors &actors, const FormulaBridge &formulas,
     const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     for (auto &entry : Entries)
-        if (entry) Update(*entry, world, formulas, stamp, paused, factHighWatermark);
+        if (entry) Update(*entry, world, actors, formulas, stamp, paused, factHighWatermark);
 }
 
 void ObservationProjector::Close(size_t slot) { Entries.at(slot).reset(); }

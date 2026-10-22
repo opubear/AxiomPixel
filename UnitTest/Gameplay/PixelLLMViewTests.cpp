@@ -435,7 +435,7 @@ void PendingSessionKeepsOnlyTheFrozenExternalView() {
     settings.SurfaceY = 10000;
     settings.BudgetBytes = 50ull * 1024 * 1024;
     world.EnableStreaming(settings);
-    world.SpawnPlayer(191.9, 128);
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindDomain(256, wind);

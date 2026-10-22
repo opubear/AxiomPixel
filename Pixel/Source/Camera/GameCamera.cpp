@@ -24,22 +24,22 @@ void GameCamera::SetView(const GridView2D &view) {
     Camera.SetWorldPosition(position);
     ViewSettings = view;
 }
-void GameCamera::Reset(const World &world) {
+void GameCamera::Reset(WorldRect bounds, const Character *player) {
     ViewSettings.CellSizePixels = {16, 16};
-    Camera.SetPosition({world.ReadState().Width / 2.0, world.ReadState().Height / 2.0});
-    if (world.GetPlayer()) {
-        const auto &player = *world.GetPlayer();
-        auto position = player.GetWorldPosition();
+    const auto chunk = ChunkOf({bounds.X, bounds.Y});
+    WorldPosition position{chunk,
+        {double(bounds.X - chunk.X * storage::ChunkEdge) + bounds.Width / 2.0,
+         double(bounds.Y - chunk.Y * storage::ChunkEdge) + bounds.Height / 2.0}};
+    if (player) {
+        position = player->GetWorldPosition();
         position.Local[0] += Character::Width / 2;
         position.Local[1] += Character::Height / 2;
-        Camera.SetWorldPosition(position);
     }
+    Camera.SetWorldPosition(position);
 }
-void GameCamera::FollowPlayer(const World &world, float duration) {
-    if (!world.GetPlayer())
-        return;
-    const auto &player = *world.GetPlayer();
-    auto position = player.GetWorldPosition();
+void GameCamera::FollowPlayer(const Character *player, float duration) {
+    if (!player) return;
+    auto position = player->GetWorldPosition();
     position.Local[0] += Character::Width / 2;
     position.Local[1] += Character::Height / 2;
     Camera.FollowWorld(position, std::min(duration, .25f));

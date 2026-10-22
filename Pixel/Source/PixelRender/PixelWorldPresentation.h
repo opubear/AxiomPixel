@@ -2,7 +2,7 @@
 
 #include "Camera/Camera2D.h"
 #include "PixelRender/WorldGridFrame.h"
-#include "World/Character.h"
+#include "Actors/Actors.h"
 #include "World/Environment/Wind/WindField.h"
 #include "World/WorldMap.h"
 #include <unordered_map>
@@ -33,7 +33,7 @@ void BuildForceFieldFrame(const pixel::World &world, WorldGridFrame &output);
 void BuildForceFieldFrame(const pixel::CommittedWorldView &world, WorldGridFrame &output);
 
 // Publish continuous geometry independently from material cells, using the exact camera centre.
-void BuildCharacterFrame(const pixel::Character &character, const pixel::Camera2D &camera,
+void BuildCharacterFrame(const pixel::ActorSnapshot &character, const pixel::Camera2D &camera,
                          std::array<int, 2> framebufferSize, WorldGridFrame &output);
 
 // Camera position is authoritative; pixel rounding happens only at presentation.
