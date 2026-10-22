@@ -11,6 +11,8 @@ namespace {
 constexpr size_t MaxRoots = 16, MaxEffects = FormulaRuntime::MaximumEffects, MaxWind = 64, MaxActivations = 8, MaxDiagnostics = 256;
 struct Root {
     uint64_t Id, Version;
+    uint64_t NextEmission = 1;
+    std::optional<api::RequestKey> ActivationRequest;
     WorldPosition Anchor;
     formula::validation::Analysis Budget;
     formula::Simulator Simulator;
@@ -21,6 +23,10 @@ struct Collision {
     formula::ProjectileId Projectile;
     FormulaContact Contact;
 };
+api::Position PublicPosition(const WorldPosition &position) {
+    const auto cell = position.Cell();
+    return {{cell.X, cell.Y}, position.RelativeTo(cell)};
+}
 } // namespace
 
 struct FormulaRuntime::State {
@@ -32,6 +38,8 @@ struct FormulaRuntime::State {
     std::vector<std::unique_ptr<Root>> Roots;
     std::vector<FormulaProjectile> Projectiles;
     std::deque<FormulaRuntimeDiagnostic> Diagnostics;
+    std::array<FormulaEffectRecord, MaxEffects> Effects;
+    size_t EffectCount = 0;
 
     State() {
         const auto analysis = formula::validation::Analyze(Active);
@@ -60,6 +68,7 @@ struct FormulaRuntime::State {
         result.Roots = Roots.size();
         result.Projectiles = Projectiles.size();
         result.SnapshotBytes = Projectiles.capacity() * sizeof(FormulaProjectile);
+        result.EffectRecordBytes = sizeof(Effects);
         for (const auto &entry : Diagnostics)
             result.DiagnosticBytes += sizeof(FormulaRuntimeDiagnostic) + entry.Message.capacity() + 1;
         result.RetiredWind = RetiredWind;
@@ -119,6 +128,18 @@ struct FormulaRuntime::State {
         }
     }
 
+    uint64_t NextEffectEmission(Root &root) {
+        if (root.NextEmission == UINT64_MAX)
+            throw std::overflow_error("formula effect emission identity exhausted");
+        return root.NextEmission++;
+    }
+
+    void RecordEffect(const Root &root, uint64_t emission, api::FactPayload payload) {
+        if (EffectCount == Effects.size())
+            throw std::logic_error("formula effects exceeded their analyzed reservation");
+        Effects[EffectCount++] = {root.Id, root.Version, emission, root.ActivationRequest, std::move(payload)};
+    }
+
     void Commit(Root &root, World &world) {
         // Analysis has validated every event. Internal errors propagate, including
         // after earlier effects committed; the host must not resume this session.
@@ -126,13 +147,21 @@ struct FormulaRuntime::State {
             Record(root.Id, event.At, formula::FormatTrace(event));
             const auto position = FormulaWorldAdapter::Offset(root.Anchor, event.Position);
             if (const auto *dig = std::get_if<formula::DigArea>(&event.Data)) {
+                const auto emission = NextEffectEmission(root);
                 const auto result = FormulaWorldAdapter::Dig(world, position, dig->Radius);
+                if (result.Applied != 0)
+                    RecordEffect(root, emission, api::MaterialRemovedInDisk{PublicPosition(position), dig->Radius,
+                        result.Applied, result.Blocked, result.NotReady});
                 Record(root.Id, event.At, "Dig applied=" + std::to_string(result.Applied) + " blocked=" + std::to_string(result.Blocked)
                     + " notReady=" + std::to_string(result.NotReady));
             } else if (const auto *wind = std::get_if<formula::WindImpulse>(&event.Data)) {
+                const auto emission = NextEffectEmission(root);
                 const auto result = FormulaWorldAdapter::Wind(world, position, wind->Radius, wind->Velocity);
-                if (result == FormulaWindResult::Applied)
+                if (result == FormulaWindResult::Applied) {
                     ++WindCalls;
+                    RecordEffect(root, emission, api::WindPulseSubmitted{PublicPosition(position), wind->Radius,
+                        {wind->Velocity.X, wind->Velocity.Y}, {0, root.Id}});
+                }
                 Record(root.Id, event.At, FormulaWorldAdapter::WindResultName(result));
             }
         }
@@ -186,7 +215,9 @@ void FormulaRuntime::BeginFrame() {
     Data->Accepted = Data->Rejected = Data->WindCalls = 0;
 }
 
-bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegrees) {
+bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegrees,
+                          std::optional<api::RequestKey> activationRequest) {
+    Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget())
         return Data->Reject("WaitingForBudget: activation requires a committed material step");
     if (!std::isfinite(angleDegrees))
@@ -207,6 +238,7 @@ bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegree
     auto root = std::make_unique<Root>();
     root->Id = Data->NextCast++;
     root->Version = Data->Version;
+    root->ActivationRequest = activationRequest;
     root->Anchor = anchor;
     root->Budget = Data->ActiveBudget;
     root->Simulator.Cast(Data->Active, {}, angleDegrees);
@@ -223,6 +255,7 @@ bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegree
 }
 
 void FormulaRuntime::Step(World &world) {
+    Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("formula step requires a committed environment step");
     std::vector<Collision> collisions;
@@ -236,6 +269,7 @@ void FormulaRuntime::Step(World &world) {
 }
 
 void FormulaRuntime::Clear() {
+    Data->EffectCount = 0;
     for (const auto &root : Data->Roots)
         Data->RetiredWind += root->Budget.WindEffects;
     Data->Roots.clear();
@@ -253,5 +287,8 @@ void FormulaRuntime::OnWorldReplaced() {
 
 const std::vector<FormulaProjectile> &FormulaRuntime::Projectiles() const { return Data->Projectiles; }
 const std::deque<FormulaRuntimeDiagnostic> &FormulaRuntime::Diagnostics() const { return Data->Diagnostics; }
+std::span<const FormulaEffectRecord> FormulaRuntime::LastEffects() const {
+    return {Data->Effects.data(), Data->EffectCount};
+}
 FormulaRuntimeStats FormulaRuntime::Stats() const { return Data->Statistics(); }
 } // namespace pixel

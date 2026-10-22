@@ -19,7 +19,7 @@
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
 | `Pixel/Source/GameAPI/` | 仅依赖标准库的类型化动作、回执与会话控制值 |
 | `Pixel/Source/Gameplay/` | GameSession持有世界与构式运行实例，统一动作入口、同步去重，编排固定步与会话控制 |
-| `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore处理v2/v3/v4元数据、世界目录与current.txt |
+| `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore读取v2–v5、写入v5元数据、世界目录与current.txt |
 | `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
 | `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树、流式与角色；Environment管理材料及风 |
@@ -54,7 +54,7 @@ git submodule update --init --recursive
 
 手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
 
-M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。Pixel 当前仍默认接受；保存失败/Deferred 时保留会话的退出策略由 M2.3 接入。
+M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。Pixel 在该钩子中保存；保存失败或 Deferred 时拒绝本次退出并保留会话，显式重试才会再次保存。
 
 游戏默认从运行目录的 `Saves/current.txt` 恢复当前世界；首次生成新世界。每块文件位于 `Saves/<world-id>/chunks/`，正常退出和面板 `Save world` 写盘；R先保存再创建新世界，旧目录保留。存档已加入忽略规则。可在启动前覆盖：
 
@@ -64,9 +64,9 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
   ../build/bin/Debug/Pixel)
 ```
 
-窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告异常，本版没有跨文件崩溃恢复。
+窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告原因。模拟步等待容量时，Save/正常退出/R 返回 Deferred，不写会话元数据、不自行推进或自动重试；完成该步后需再次发起操作。提示独立于 F2 面板显示。本版没有跨文件崩溃恢复。
 
-`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World；GameSession 先保存块、再写 v4 元数据，新世界首存成功后才替换 `current.txt`。继续读取 v2/v3，保留 v4 的延期步标记和完整时间余量；更改延期保存策略与多领域检查点属于后续阶段。`Pixel.SessionStore` 验证格式兼容及文件边界，现有 Persistence/GenerationSession 回归覆盖恢复与失败重试。
+`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World；GameSession 在完整提交边界先保存块、再写 v5 元数据，新世界首存成功后才替换 `current.txt`。v5 只保存已提交时间和完整余量，不保存半步标记；旧 v2/v3/v4 导入时保留地图/角色/已提交物理时间和全部余量，在已提交时刻重建风，欠步由协调器完整执行一次。迁移细节见[保存边界](Docs/Architecture/SessionSaveBoundary.md)。`Pixel.SessionStore` 验证格式兼容及文件边界，现有 Persistence/GenerationSession 回归覆盖恢复与失败重试。
 
 ## 世界与操作
 
@@ -91,6 +91,9 @@ Input、Debug和CPU driver的开采、放置与激活共用Session动作入口�
 启动和R后默认暂停。Environment的 `Pause simulation` 和 `Step 1/60 second` 控制运行；暂停冻结材料、风和动画，相机/加载仍工作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
 
 固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式一步才增加Tick，暂停编辑只增加CommitRevision，动作回执携带CommitStamp。预算等待期间呈现继续读取最后完整副本，流式加载与步首输入保持冻结；细节及后续边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
+
+`GameSession::Observe` 提供独立的有界领域投影：每个原生调用者保留一个最多64×64格范围，返回冻结材料、空气风速、玩家和构式摘要；观察不触发加载，预算等待只返回最后完整副本。动作回执关联因果事实，256条事实环在淘汰时明确报告缺口；风摘要分别报告驻留覆盖和空气样本分母。DTO与事实值库只依赖标准库，外部LLMView权限/租约/JSON接口属于下一阶段。合同、容量统计与性能入口见[有界领域观测与提交事实](.awtcontext/GlobalDoc/ObservationProjection.md)。
+
 
 材料采用60 Hz同步规则：只向步首为空的邻格申请；同目标按源坐标(y,x)裁决；统一提交后反馈风场。长链空位通过多个步传播，规则不依赖四叉树遍历顺序。静止无风区域休眠；编辑、材料成功移动、基础力变化和加载唤醒邻域。方块不保存速度/惯性，空间力不随材料搬迁。
 
@@ -148,9 +151,10 @@ ctest --test-dir build-chunk64 -R '^Pixel\.(Generation|Liquids|GenerationSession
 
 # 需要窗口服务与Vulkan驱动；不注册到默认CTest
 cmake -S . -B build -DPIXEL_BUILD_SMOKE=ON -DAXIOM_BUILD_LIFECYCLE_SMOKE=ON
-cmake --build build --target Pixel Axiom PixelRuntimeSmoke AxiomLifecycleSmoke AxiomCloseRequestSmoke AxiomApplicationCloseTest -j4
+cmake --build build --target Pixel Axiom PixelRuntimeSmoke PixelCloseSmoke AxiomLifecycleSmoke AxiomCloseRequestSmoke AxiomApplicationCloseTest -j4
 ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-failure
 (cd Pixel && ../build/tests/PixelRuntimeSmoke)
+(cd Pixel && ../build/tests/PixelCloseSmoke)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
 # 只验证本轮背景PNG、sRGB/alpha、视差与F1（可选输出PPM截图）
@@ -178,7 +182,7 @@ Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置�
 
 F2只控制Pixel Debug，F4独立控制 `Formula Editor`，主面板的 `Formula editor (F4)` 也可重新打开编辑器；隐藏普通调试面板不影响编辑器使用。结构树支持选择节点、修改参数、包裹/解包、增删、复制和顺序调整；右侧选择新节点类型，再操作选中节点。预设只改变草稿，点击 `Apply` 后用于下一次右键；已有弹体及其延迟/命中子构式保持旧版本。`Revert to applied` 恢复已应用结构，`Clear running` 无触发清除全部实例与排队任务。
 
-默认仍暂停：右键可生成当前tick的球，使用Environment的单步或取消暂停推进。构式、角色和材料共享成功提交的60Hz固定步；预算等待不推进构式，并拒绝新激活和地形编辑。新存档为v4，可恢复单步后保留的完整时间余量，继续读取v2/v3。配方、草稿和运行实例不保存；实际材料改变、风配置和时钟沿用世界存档，动态风扰动不保存。
+默认仍暂停：右键可生成当前tick的球，使用Environment的单步或取消暂停推进。构式、角色和材料共享成功提交的60Hz固定步；预算等待不推进构式，并拒绝新激活和地形编辑。新存档为v5，可恢复单步后保留的完整时间余量，继续读取v2/v3/v4。配方、草稿和运行实例不保存；实际材料改变、风配置和时钟沿用世界存档，动态风扰动不保存。
 
 基础版支持既有全部节点：序列、伤害/速度修改、延迟、重复、散射、命中载荷，以及挖掘和风脉冲。伤害目前是元数据。风效果仅适配启用的Coarse后端且网格至多1024 cells；其他策略、域外、零/极小半径有明确诊断并跳过风，不取消同根其他效果。草稿至多64节点/16层，每根至多64个效果、会话至多16根/256个预留效果，窗口显示拒绝原因及运行日志。黄色球独立于地图材料，F1隐藏实体表现但不改变执行。
 

@@ -117,6 +117,20 @@ void CommandsAndReset() {
     f.Input.UpdateCamera(.1f);
     Require(f.Camera.GetCamera().GetPosition() == resetCentre, "R must clear held camera movement");
 }
+void PendingResetKeepsView() {
+    Fixture f;
+    f.KeyEvent(Key::KEY_T);
+    f.KeyEvent(Key::KEY_EQUAL);
+    const auto view = f.Camera.GetView();
+    const auto stamp = f.Session.CurrentCommit();
+    pixel::testing::SessionAccess::RestoreClock(f.Session, 0, 1.0 / 60, true);
+    f.KeyEvent(Key::KEY_R);
+    Require(f.Session.LastPersistenceResult().Status == pixel::api::ControlStatus::Deferred
+                && f.Session.CurrentCommit() == stamp && f.Session.GetTimeRemainder() == 1.0 / 60
+                && f.Camera.GetView().CellSizePixels == view.CellSizePixels
+                && f.Camera.GetView().OriginPixels == view.OriginPixels && f.Presentation.Post.Values[1] == .35f,
+            "deferred R must preserve the session, camera and presentation");
+}
 void MouseEditing() {
     Fixture f;
     auto &world = pixel::testing::SessionAccess::World(f.Session);
@@ -177,6 +191,7 @@ int main() {
     try {
         HeldInputAndModes();
         CommandsAndReset();
+        PendingResetKeepsView();
         MouseEditing();
         FormulaInputAndContinuousAim();
         std::cout << "Pixel input behavior passed\n";

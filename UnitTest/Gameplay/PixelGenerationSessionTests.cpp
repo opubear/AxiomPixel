@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -33,6 +34,29 @@ struct SaveRoot {
         std::filesystem::remove_all(Path);
     }
 };
+
+void ConvertToLegacyMetadata(const std::filesystem::path &metadata, unsigned version) {
+    std::ifstream input(metadata);
+    std::string header, descriptor, player, clock;
+    std::getline(input, header);
+    std::getline(input, descriptor);
+    std::getline(input, player);
+    std::getline(input, clock);
+    std::ostringstream rest;
+    rest << input.rdbuf();
+    input.close();
+    header.replace(header.find("World 5"), 7, "World " + std::to_string(version));
+    double committedTime, remainder;
+    std::istringstream clockInput(clock);
+    clockInput >> committedTime >> remainder;
+    std::string windAndPause;
+    std::getline(clockInput, windAndPause);
+    std::ofstream output(metadata);
+    output << std::setprecision(17) << header << '\n';
+    if (version >= 3) output << descriptor << '\n';
+    output << player << '\n' << committedTime << ' ' << committedTime << ' ' << remainder
+           << " 0" << windAndPause << '\n' << rest.str();
+}
 
 void NaturalPersistenceAndStrategySelection() {
     SaveRoot files;
@@ -78,17 +102,8 @@ void LegacyFlatAndResetFailure() {
         original = flat.GetSaveDirectory();
         Require(flat.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
-    // Produce genuine v2 metadata by removing the generation descriptor line.
-    const auto metadata = original / "world.meta";
-    std::ifstream input(metadata);
-    std::string header, descriptor;
-    std::getline(input, header);
-    std::getline(input, descriptor);
-    std::ostringstream rest;
-    rest << input.rdbuf();
-    input.close();
-    header.replace(header.find("World 4"), 7, "World 2");
-    { std::ofstream output(metadata); output << header << '\n' << rest.str(); }
+    // v2 has neither a generation descriptor nor the v5 committed-clock row.
+    ConvertToLegacyMetadata(original / "world.meta", 2);
     WorldGenerationSettings natural;
     natural.Kind = WorldGeneratorKind::Natural;
     GameSession loaded(true, natural);
@@ -167,15 +182,9 @@ void Version3GenerationRemainsReadable() {
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         metadata = session.GetSaveDirectory() / "world.meta";
     }
-    std::ifstream input(metadata);
-    std::ostringstream contents;
-    contents << input.rdbuf();
-    input.close();
-    auto text = contents.str();
-    text.replace(text.find("World 4"), 7, "World 3");
-    { std::ofstream output(metadata); output << text; }
+    ConvertToLegacyMetadata(metadata, 3);
     GameSession loaded(true);
-    Require(loaded.GetGenerationSettings() == natural, "v3 generation descriptor was skipped by the v4 reader");
+    Require(loaded.GetGenerationSettings() == natural, "v3 generation descriptor was skipped by the v5 reader");
 }
 } // namespace
 

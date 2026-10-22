@@ -6,6 +6,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -119,39 +122,130 @@ void PublicationBudgetAndOwnership() {
             "destroying publisher untracked a surviving frame allocation");
 }
 
-void DeferredStepSurvivesSave() {
+std::string ReadText(const std::filesystem::path &path) {
+    std::ifstream input(path);
+    input.exceptions(std::ios::failbit | std::ios::badbit);
+    std::ostringstream text;
+    text << input.rdbuf();
+    return text.str();
+}
+
+bool SamePosition(const pixel::WorldPosition &a, const pixel::WorldPosition &b) {
+    return a.Chunk == b.Chunk && a.Local == b.Local;
+}
+
+void PendingRefusesPersistence() {
     SaveRoot root;
-    pixel::WindVelocity savedWind;
-    {
-        pixel::GameSession session(true);
-        auto &world = pixel::testing::SessionAccess::World(session);
-        pixel::WorldStreamSettings settings;
-        settings.Directory = session.GetSaveDirectory();
-        settings.BudgetBytes = 50ull * 1024 * 1024;
-        world.EnableStreaming(settings);
-        world.SpawnPlayer(511, 508);
-        world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
-        session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
-        world.WaitForStreaming();
-        for (auto coordinate : world.GetMap().ChunkCoordinates())
-            if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
-                pixel::testing::WorldAccess::Map(world).Remove(coordinate);
-        world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
-        session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
-        session.Tick(1.f / 60, {});
-        Require(world.GetEnvironment().IsWaitingForBudget(), "test did not exhaust material scratch budget");
-        savedWind = world.SampleWind(100.5, 100.5);
-        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
+    pixel::GameSession session(true);
+    auto &world = pixel::testing::SessionAccess::World(session);
+    world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
+    session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "initial save failed");
+    const auto directory = session.GetSaveDirectory();
+    const auto metadata = ReadText(directory / "world.meta");
+    const auto pointer = ReadText(root.Path / "current.txt");
+    const auto worldCount = std::distance(std::filesystem::directory_iterator(root.Path), std::filesystem::directory_iterator{});
+    world.WaitForStreaming();
+    for (auto coordinate : world.GetMap().ChunkCoordinates())
+        if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
+            pixel::testing::WorldAccess::Map(world).Remove(coordinate);
+    world.SetPublicationBytes(pixel::storage::DefaultBudget - world.GetStreamer()->RetainedBytes() - 128);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    session.Tick(1.f / 60, {});
+    Require(world.GetEnvironment().IsWaitingForBudget(), "test did not exhaust material scratch budget");
+    const auto stamp = session.CurrentCommit();
+    const auto remainder = session.GetTimeRemainder();
+    const auto wind = world.SampleWind(100.5, 100.5);
+    const auto player = world.GetPlayer()->GetWorldPosition();
+    for (int retry = 0; retry < 3; ++retry) {
+        for (const pixel::api::SessionControl control : {pixel::api::SessionControl{pixel::api::SaveWorld{}}, pixel::api::SessionControl{pixel::api::ResetWorld{}}}) {
+            const auto result = session.Control(pixel::NativeCaller::Driver, control);
+            Require(result.Status == pixel::api::ControlStatus::Deferred && !result.Succeeded()
+                        && result.Rejection == pixel::api::Reason::WaitingForBudget && !result.Message.empty(),
+                    "pending save/reset must return an explicit deferred result");
+        }
+        session.Tick(.2f, {});
+        Require(session.IsPaused() && session.IsReady() && session.CurrentCommit() == stamp
+                    && session.GetTimeRemainder() == remainder && session.GetSaveDirectory() == directory
+                    && SamePosition(world.GetPlayer()->GetWorldPosition(), player) && world.SampleWind(100.5, 100.5) == wind
+                    && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt,
+                "deferred request or persistent budget shortage advanced/replaced the session");
+        Require(ReadText(directory / "world.meta") == metadata && ReadText(root.Path / "current.txt") == pointer
+                    && !std::filesystem::exists(directory / "world.meta.tmp")
+                    && std::distance(std::filesystem::directory_iterator(root.Path), std::filesystem::directory_iterator{}) == worldCount,
+                "deferred request wrote metadata or allocated a replacement world");
     }
-    pixel::GameSession restored(true);
-    auto &world = pixel::testing::SessionAccess::World(restored);
-    const auto loadedWind = world.SampleWind(100.5, 100.5);
-    Require(world.GetEnvironment().IsWaitingForBudget() && std::hypot(savedWind.X - loadedWind.X, savedWind.Y - loadedWind.Y) < 1e-5,
-            "deferred step or advanced procedural phase was lost during save");
-    restored.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
-    restored.Tick(1.f / 60, {});
-    Require(!world.GetEnvironment().IsWaitingForBudget() && std::abs(restored.GetSimulationTime() - 1.0 / 60) < 1e-10,
-            "saved deferred step advanced twice or did not resume");
+    world.SetPublicationBytes(0);
+    session.Tick(1.f / 60, {});
+    Require(session.CurrentCommit().Tick == stamp.Tick + 1 && ReadText(directory / "world.meta") == metadata,
+            "finishing a step must not automatically retry a deferred save");
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Status == pixel::api::ControlStatus::Saved,
+            "explicit save retry did not succeed at the committed boundary");
+}
+
+void LegacyPendingImportsAtCommittedTime() {
+    for (const unsigned version : {2u, 3u, 4u}) {
+        SaveRoot root;
+        std::filesystem::path directory;
+        pixel::WorldPosition savedPlayer;
+        pixel::WindVelocity savedWind;
+        {
+            pixel::GameSession session(true);
+            auto &world = pixel::testing::SessionAccess::World(session);
+            world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
+            session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
+            pixel::testing::SessionAccess::RestoreClock(session, .1, .05);
+            savedPlayer = world.GetPlayer()->GetWorldPosition();
+            savedWind = world.SampleWind(100.5, 100.5);
+            Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "legacy fixture save failed");
+            directory = session.GetSaveDirectory();
+        }
+        // Build a legacy half-step record from the committed chunk files. The
+        // obsolete wall time is deliberately different from the committed time.
+        const auto metadata = directory / "world.meta";
+        std::istringstream input(ReadText(metadata));
+        std::string header, generation, player, clock;
+        std::getline(input, header); std::getline(input, generation);
+        std::getline(input, player); std::getline(input, clock);
+        header.replace(header.find(" 5 "), 3, " " + std::to_string(version) + " ");
+        double time, remainder;
+        std::istringstream clockInput(clock);
+        clockInput >> time >> remainder;
+        std::string windAndPause;
+        std::getline(clockInput, windAndPause);
+        std::ofstream output(metadata, std::ios::trunc);
+        output << std::setprecision(17) << header << '\n';
+        if (version >= 3) output << generation << '\n';
+        output << player << '\n' << "99 " << time << ' ' << remainder << " 1" << windAndPause << '\n' << input.rdbuf();
+        output.close();
+
+        pixel::GameSession restored(true);
+        const auto &world = restored.GetWorld();
+        Require(restored.IsPaused() && !world.GetEnvironment().IsWaitingForBudget()
+                    && restored.CurrentCommit().Tick == 6 && restored.GetTimeRemainder() == .05
+                    && SamePosition(world.GetPlayer()->GetWorldPosition(), savedPlayer) && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt
+                    && world.SampleWind(100.5, 100.5) == savedWind
+                    && world.GetEnvironment().GetWindSimulation().GetSimulationTime() == restored.GetSimulationTime(),
+                "legacy pending import lost committed state/backlog or restored preadvanced wind");
+        restored.Tick(.2f, {});
+        Require(restored.CurrentCommit().Tick == 6 && restored.GetTimeRemainder() == .05, "paused import consumed its backlog");
+        for (unsigned step = 1; step <= 3; ++step) {
+            restored.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+            restored.Tick(.2f, {1, false});
+            Require(restored.CurrentCommit().Tick == 6 + step
+                        && std::abs(restored.GetTimeRemainder() - (.05 - step / 60.0)) < 1e-10
+                        && std::abs(world.GetEnvironment().GetWindSimulation().GetSimulationTime() - restored.GetSimulationTime()) < 1e-10,
+                    "legacy backlog was dropped, replayed or skipped a wind phase");
+            if (step == 1)
+                Require(world.GetCell(32, 10).Type == pixel::CellTypes::Empty
+                            && !SamePosition(world.GetPlayer()->GetWorldPosition(), savedPlayer),
+                        "legacy owed step did not execute both materials and player");
+        }
+        restored.Tick(.2f, {});
+        Require(restored.CurrentCommit().Tick == 9, "paused legacy backlog replayed without a request");
+        Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded()
+                    && ReadText(metadata).starts_with("AxiomPixelWorld 5 "), "legacy import did not upgrade to v5");
+    }
 }
 
 void ManualSaveFailureCanRetry() {
@@ -297,7 +391,7 @@ void SuccessfulSingleStepBacklogRoundTrip() {
     Require(loaded.GetFormulaRuntime().Projectiles().empty(), "live formula instances entered a world save");
     Require(!world.GetEnvironment().IsWaitingForBudget()
                 && std::abs(loaded.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
-            "v4 failed to restore complete backlog without preadvanced wind");
+            "v5 failed to restore complete backlog without preadvanced wind");
     loaded.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     loaded.Tick(.2f, {});
     Require(std::abs(loaded.GetSimulationTime() - 2.0 / 60) < 1e-10
@@ -311,7 +405,8 @@ int main() {
         SessionRoundTrip();
         DistantCameraAndCollision();
         PublicationBudgetAndOwnership();
-        DeferredStepSurvivesSave();
+        PendingRefusesPersistence();
+        LegacyPendingImportsAtCommittedTime();
         ManualSaveFailureCanRetry();
         SavePublishesAcceptedLoads();
         SuccessfulSingleStepBacklogRoundTrip();

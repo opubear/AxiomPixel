@@ -14,6 +14,7 @@ Pixel 的高层设计以探索、构式创造、环境改造与家园生活为�
 
 AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
 `PixelWorld` 管理纯 CPU 世界，WorldMap 持有分块材料/基础力，Environment 负责合成受力与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景，SimulationCoordinator管理固定步时钟、暂停/单步与提交版本，CommittedWorldView为呈现保留完整提交副本。
+M2.4已在完整提交边界加入独立的 `ObservationProjector`：三槽有界区域缓存、拥有值的冻结材料/风/玩家/构式DTO、明确驻留覆盖，以及带因果来源和缺口报告的有限事实环。查询不加载世界、不借用渲染缓冲；外部LLMView的权限、租约和JSON查询留给M2.5。接口与容量/验证见 [有界领域观测与提交事实](GlobalDoc/ObservationProjection.md)。
 `PixelInput` 的 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，将玩法修改转换为游戏会话的类型化动作和控制请求，直接调用表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
 `PixelPresentation` 管理相机、外观与帧首快照转换；`PixelRender` 消费快照完成上传、世界与角色及风效合成、后处理。PixelInput链接CPU表现模块，不链接运行时或ImGui。
 `Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 创建策略，`PixelApplication` 创建游戏，应用所有的 DebugUI 通过引擎 overlay 回调叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。

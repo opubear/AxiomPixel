@@ -37,7 +37,8 @@ class PixelGame final : public IGameInterface {
     void Tick(float duration) override;
     void ClearInputState() override { Input.ClearInputState(); }
     void FrameEnd() override;
-    void GameEnd() override { Session.End(); }
+    // Saving is negotiated before shutdown by PixelApplication.
+    void GameEnd() override { Input.ClearInputState(); }
     void Destroy() override {}
     void OnKeyEvent(Key key, int scancode, ButtonAction action, Mod mods) override {
         Input.OnKeyEvent(key, scancode, action, mods);

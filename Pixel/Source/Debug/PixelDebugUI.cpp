@@ -86,8 +86,6 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
             }
             if (ImGui::Button("Save world"))
                 session.Control(NativeCaller::Debug, api::SaveWorld{});
-            if (!session.GetSaveError().empty())
-                ImGui::TextWrapped("Save failed: %s", session.GetSaveError().c_str());
         }
         bool paused = session.IsPaused();
         if (ImGui::Checkbox("Pause simulation", &paused))
@@ -134,6 +132,14 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
                                                performance::GameProfiler &performance) {
     PIXEL_PROFILE_SCOPE(DebugUI);
     std::optional<ControlMode> requestedMode;
+    // A declined close/reset remains visible even when the debug panel is hidden.
+    const auto &persistence = session.LastPersistenceResult();
+    if (!persistence.Succeeded()) {
+        ImGui::SetNextWindowSize({400, 0}, ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("World save", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+            ImGui::TextWrapped("%s", persistence.Message.c_str());
+        ImGui::End();
+    }
     if (Visible) {
         ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);

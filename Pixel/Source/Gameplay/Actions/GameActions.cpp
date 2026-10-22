@@ -150,9 +150,14 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
     if (reason != api::Reason::None) {
         receipt = reject(reason);
     } else {
-        receipt = Dispatch(request.Payload);
+        const api::WindConfiguration beforeWind{PublicWind(WindKind), GameWorld.GetWindBoundary()};
+        receipt = Dispatch(request.Payload, {request.WorldEpoch, caller, request.Sequence});
         receipt.Key = {request.WorldEpoch, caller, request.Sequence};
-        if (receipt.Applied()) CommitChange();
+        if (receipt.Applied()) {
+            Simulation.CommitChange();
+            RecordActionFacts(receipt, beforeWind);
+            PublishCommit();
+        }
         receipt.ResolvedAt = CurrentCommit();
     }
     // Terminal refusals also consume sequence numbers. Storage stays bounded.
@@ -162,7 +167,7 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
     return receipt;
 }
 
-api::ActionReceipt GameSession::Dispatch(const api::Action &action) {
+api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::RequestKey request) {
     api::ActionReceipt receipt;
     std::visit([&](const auto &value) {
         using T = std::decay_t<decltype(value)>;
@@ -200,7 +205,7 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action) {
             if (value.Program != AppliedProgram()) {
                 receipt.Rejection = api::Reason::StaleProgram;
             } else {
-                receipt.Rejection = ActivateAt(WorldPoint(value.Target));
+                receipt.Rejection = ActivateAt(WorldPoint(value.Target), request);
                 receipt.Message = FormulaError;
                 if (receipt.Rejection == api::Reason::None) {
                     const auto stats = Formulas.Stats();
@@ -225,9 +230,8 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
     if (!state) return {api::ControlStatus::Rejected, api::Reason::CallerExpired, "CallerExpired"};
     if (!state->Debug && !std::holds_alternative<api::ResetWorld>(control))
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
-    return std::visit([&](const auto &value) -> api::ControlReceipt {
+    auto result = std::visit([&](const auto &value) -> api::ControlReceipt {
         using T = std::decay_t<decltype(value)>;
-        // Save/reset preserve v4 deferred behavior until M2. Clear/apply are world writes.
         if constexpr (std::is_same_v<T, api::ClearRunning>) {
             const auto reason = WriteRejection();
             if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
@@ -235,8 +239,12 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             Formulas.Clear();
             if (changed) CommitChange();
         } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld> || std::is_same_v<T, api::RecoverWorld>) {
-            if constexpr (!std::is_same_v<T, api::RecoverWorld>)
+            if constexpr (!std::is_same_v<T, api::RecoverWorld>) {
                 if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
+                if (Simulation.HasPendingStep())
+                    return {api::ControlStatus::Deferred, api::Reason::WaitingForBudget,
+                            "Save/reset deferred: simulation is waiting for storage budget. The session stays open; resolve the budget shortage, finish the step, then retry."};
+            }
             const bool success = [&] {
                 if constexpr (std::is_same_v<T, api::SaveWorld>) return TrySave();
                 else if constexpr (std::is_same_v<T, api::ResetWorld>) return TryReset();
@@ -265,6 +273,10 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
         }
         return {api::ControlStatus::Applied};
     }, control);
+    if (std::holds_alternative<api::SaveWorld>(control) || std::holds_alternative<api::ResetWorld>(control)
+        || std::holds_alternative<api::RecoverWorld>(control))
+        PersistenceResult = result;
+    return result;
 }
 
 ApplyProgramResult GameSession::ApplyProgram(api::CallerSessionId caller, const formula::Formula &description) {

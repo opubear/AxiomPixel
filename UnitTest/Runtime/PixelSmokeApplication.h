@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Application/PixelGame.h"
-#include "Axiom.h"
+#include "Application/PixelApplication.h"
 
 // Uses production game wiring without enabling environment-driven profiling.
-class PixelSmokeApplication final : public Axiom {
+class PixelSmokeApplication final : public PixelApplication {
   public:
     explicit PixelSmokeApplication(std::unique_ptr<PixelGame> game, AxiomSetup setup = {false})
         : PendingGame(std::move(game)) {

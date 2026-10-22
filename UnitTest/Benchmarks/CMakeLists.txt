@@ -1,4 +1,6 @@
 # Explicit offline measurements, excluded from the fast CTest suite and default build.
+add_executable(PixelObservationBenchmark EXCLUDE_FROM_ALL PixelObservationBenchmark.cpp)
+target_link_libraries(PixelObservationBenchmark PRIVATE PixelGameplay)
 add_executable(PixelWindBenchmark EXCLUDE_FROM_ALL PixelWindBenchmark.cpp)
 target_link_libraries(PixelWindBenchmark PRIVATE PixelWorld)
 add_executable(PixelWindStrategyBenchmark EXCLUDE_FROM_ALL PixelWindStrategyBenchmark.cpp)

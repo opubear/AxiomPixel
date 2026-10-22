@@ -137,17 +137,26 @@ SessionSaveData SessionStore::ReadMetadata(const std::filesystem::path &director
     uint32_t version, edge;
     SessionSaveData data;
     input >> magic >> version >> edge >> data.WindowEdge >> data.BudgetBytes;
-    if (magic != "AxiomPixelWorld" || (version != 2 && version != 3 && version != SessionSaveData::CurrentVersion)
+    if (magic != "AxiomPixelWorld" || version < 2 || version > SessionSaveData::CurrentVersion
         || edge != storage::ChunkEdge)
         throw WorldStorageError("incompatible world metadata");
     data.Generation = version >= 3 ? ReadGeneration(input) : WorldGenerationSettings{};
-    input >> data.Player.Chunk.X >> data.Player.Chunk.Y >> data.Player.Local[0] >> data.Player.Local[1]
-        >> data.SimulationTime >> data.PhysicsTime >> data.TimeRemainder >> data.DeferredStep
-        >> data.WindBoundary >> data.WindEnabled >> data.Paused;
-    if (!std::isfinite(data.SimulationTime) || data.SimulationTime < 0)
-        throw WorldStorageError("invalid saved simulation time");
-    if (version < 4 && !data.DeferredStep && data.TimeRemainder >= 1.0 / 60)
-        throw WorldStorageError("invalid legacy fixed simulation clock");
+    input >> data.Player.Chunk.X >> data.Player.Chunk.Y >> data.Player.Local[0] >> data.Player.Local[1];
+    if (version < 5) {
+        double legacyTime;
+        bool deferred;
+        input >> legacyTime >> data.CommittedTime >> data.TimeRemainder >> deferred;
+        if (!std::isfinite(legacyTime) || legacyTime < 0)
+            throw WorldStorageError("invalid saved simulation time");
+        if ((deferred && data.TimeRemainder < 1.0 / 60)
+            || (version < 4 && !deferred && data.TimeRemainder >= 1.0 / 60))
+            throw WorldStorageError("invalid legacy fixed simulation clock");
+        // Old saves have no dynamic wind state. Keep the entire backlog and
+        // rebuild at committed time; the owed step must run all domains anew.
+    } else {
+        input >> data.CommittedTime >> data.TimeRemainder;
+    }
+    input >> data.WindBoundary >> data.WindEnabled >> data.Paused;
     try { data.Player.Normalize(); }
     catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
     catch (const std::out_of_range &error) { throw WorldStorageError(error.what()); }
@@ -161,7 +170,7 @@ void SessionStore::WriteMetadata(const std::filesystem::path &directory, const S
             << data.WindowEdge << ' ' << data.BudgetBytes << '\n';
         WriteGeneration(out, data.Generation);
         out << data.Player.Chunk.X << ' ' << data.Player.Chunk.Y << ' ' << data.Player.Local[0] << ' ' << data.Player.Local[1] << '\n'
-            << data.SimulationTime << ' ' << data.PhysicsTime << ' ' << data.TimeRemainder << ' ' << data.DeferredStep << ' '
+            << data.CommittedTime << ' ' << data.TimeRemainder << ' '
             << data.WindBoundary << ' ' << data.WindEnabled << ' ' << data.Paused << '\n';
         WriteSettings(out, data.Wind);
     });

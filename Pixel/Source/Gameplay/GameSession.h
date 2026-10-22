@@ -4,6 +4,8 @@
 #include "CommittedWorldView.h"
 #include "Actions/ActionValues.h"
 #include "FormulaRuntime.h"
+#include "Observation/ObservationProjector.h"
+#include "Observation/DomainFactBuffer.h"
 #include "Persistence/SessionStore.h"
 #include "World/World.h"
 #include <optional>
@@ -40,8 +42,6 @@ class GameSession {
         return ApplyProgram(CallerSession(caller), description);
     }
     void BeginFrame() { Formulas.BeginFrame(); }
-    // Final lifecycle save propagates storage failure; normal UI saves use Control.
-    void End() { Save(); }
     void ClearPlayerInput() {
         Simulation.ClearInput();
         if (!Simulation.HasPendingStep()) GameWorld.ClearPlayerInput();
@@ -54,11 +54,23 @@ class GameSession {
     const WorldGenerationSettings &GetGenerationSettings() const { return StreamConfiguration.Generation; }
     const WorldGenerationSettings &GetNextGenerationSettings() const { return NextGeneration; }
     const std::string &GetSaveError() const { return SaveError; }
+    const api::ControlReceipt &LastPersistenceResult() const { return PersistenceResult; }
     void Tick(float duration, PlayerInput input);
     bool IsPaused() const { return Simulation.IsPaused(); }
     double GetSimulationTime() const { return Simulation.Time(); }
     double GetTimeRemainder() const { return Simulation.Remainder(); }
     api::CommitStamp CurrentCommit() const;
+    // Native host access; external observer policies/leases belong to LLMView.
+    api::ObservationResult Observe(NativeCaller observer, api::Rect scope);
+    void CloseObservation(NativeCaller observer) { Observations.Close(size_t(observer)); }
+    api::ObservationMetrics ObservationStats() const;
+    api::ObservationServiceStatus ObservationService() const {
+        return {CurrentCommit(), Ready, Simulation.HasPendingStep()};
+    }
+    uint64_t FactHighWatermark() const { return Facts.HighWatermark(); }
+    api::FactReadResult ReadFacts(uint64_t epoch, uint64_t after, uint64_t high, uint32_t limit = 256) const {
+        return Facts.Read(epoch, after, high, limit);
+    }
     // Internal consumers track a bounded live projection, never a prepared step.
     std::shared_ptr<CommittedWorldView> CreateReadView();
     void RefreshReadView(CommittedWorldView &view, WorldRect bounds);
@@ -85,15 +97,19 @@ class GameSession {
     std::array<CallerState, 3> Callers;
     CallerState *FindCaller(api::CallerSessionId caller);
     api::Reason WriteRejection() const;
-    api::ActionReceipt Dispatch(const api::Action &action);
-    api::Reason ActivateAt(WorldPosition target);
+    api::ActionReceipt Dispatch(const api::Action &action, api::RequestKey request);
+    api::Reason ActivateAt(WorldPosition target, api::RequestKey request);
     void RenewActionSessions();
+    void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
+    void RecordFormulaFacts();
     World GameWorld{WorldWidth, WorldHeight};
     FormulaRuntime Formulas;
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;
     std::optional<SessionStore> Store;
     SimulationCoordinator Simulation;
+    ObservationProjector Observations;
+    DomainFactBuffer Facts;
     std::vector<std::weak_ptr<CommittedWorldView>> ReadViews;
     uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0;
     void PublishCommit();
@@ -106,6 +122,7 @@ class GameSession {
     WorldGenerationSettings NextGeneration;
     bool Ready = true;
     std::string SaveError;
+    api::ControlReceipt PersistenceResult{api::ControlStatus::Applied};
     void InitializeScene();
     bool Load();
     void LoadDirectory(const std::filesystem::path &directory);

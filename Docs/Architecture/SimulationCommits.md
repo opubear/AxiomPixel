@@ -28,8 +28,10 @@ Session 先在安全边界处理流式驻留，再由协调器累计最多 0.25 
 
 ## 存储与验证边界
 
-本任务保留 v2/v3/v4 和现有 deferred 保存/恢复合同。时钟现在由协调器导出/恢复，成功 tick 从保存的物理秒数转换；新格式、旧 deferred 转换为完整欠步、Save/Reset 的 Deferred 回执属于 M2.3；M2.2 的通用关闭钩子已实现，见[关闭请求](CloseRequests.md)。动态风和运行构式仍不持久化。
+时钟由协调器导出/恢复，成功 tick 从保存的已提交秒数转换。M2.3 已升级为 v5，并将旧 v2–v4 deferred 转换为完整欠步；Save/Reset 在 Pending 时返回 Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。动态风和运行构式仍不持久化。
 
 正常保存可以等待并接纳已完成的加载，因此无论随后块写入成功还是存储失败，返回前都同步已接纳状态的服务 Revision。延期保存仍不接纳加载，不发布准备中的风。
 
-`Pixel.Simulation` 验证提交版本、旧回执去重、暂停激活、完整构式提交、冻结输入、预算失败/恢复、呈现半步隔离和无样本回退；`Pixel.Session` 验证帧分段及单步余量，`Pixel.Persistence` 保留 v4 与延期/流式回归，并覆盖成功与失败保存的服务版本同步。World、FormulaGameplay、Input 和呈现 CPU 回归继续执行。实际构建、CTest、GPU smoke 与独立审查结果记录于本任务 AWT 日志。
+`Pixel.Simulation` 验证提交版本、旧回执去重、暂停激活、完整构式提交、冻结输入、预算失败/恢复、呈现半步隔离和无样本回退；`Pixel.Session` 验证帧分段及单步余量，`Pixel.Persistence` 覆盖 v5、旧 v2–v4 欠步导入与 Deferred/流式回归，并覆盖成功与失败保存的服务版本同步。World、FormulaGameplay、Input 和呈现 CPU 回归继续执行。实际构建、CTest、GPU smoke 与独立审查结果记录于本任务 AWT 日志。
+
+M2.4已在相同完整提交边界接入独立ObservationProjector与DomainFact环，见[观测实现](../../.awtcontext/GlobalDoc/ObservationProjection.md)。呈现视图仍可请求可视区域加载；观测不会借用其缓冲或加载行为。

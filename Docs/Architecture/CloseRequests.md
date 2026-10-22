@@ -14,7 +14,7 @@ M2.2 为本地 Axiom/PixelMain 增加最小应用钩子。窗口关闭按钮与�
 
 ## Pixel 接入范围
 
-PixelApplication 当前沿用默认接受；Session.End/GameEnd 保存语义保持原状。M2.3 再把可能失败或延期的保存决定移入关闭钩子，并迁移 v4 deferred 导入与正常退出/Reset 策略。本任务没有提前实现该行为。
+M2.3 已由 PixelApplication::OnCloseRequested 调用会话 SaveWorld。Saved 才接受正常退出；Deferred、存储失败或会话不可用均拒绝本次请求，显示结果并保留服务。GameEnd 仅清理输入，不再保存。保存与旧档转换的完整约定见[保存边界](SessionSaveBoundary.md)。
 
 父仓库 gitlink 与 AxiomVersion.json 锁定同一引擎提交；相邻 Axiom 参考仓库未改动。
 
@@ -23,3 +23,5 @@ PixelApplication 当前沿用默认接受；Session.End/GameEnd 保存语义保�
 `Axiom.UnitTest.ApplicationClose` 是无窗口/GPU 初始化的模块联结测试，覆盖合并请求、拒绝后输入/绘制、无新请求不重试、钩子内再请求、默认接受、最终释放和内部错误传播。该目标需要启用 runtime 才可构建。
 
 `AxiomCloseRequestSmoke` 在真实 GLFW/Vulkan 窗口通过原生 close flag 和程序入口双向验证拒绝、五帧输入/绘制、再次关闭和默认 AET 接受；同时运行既有 AxiomLifecycleSmoke 与 PixelRuntimeSmoke。命令见 README，具体结果和环境限制记录于本任务 AWT 日志。
+
+`PixelCloseSmoke` 使用生产 PixelApplication 钩子验证 Pending 与保存失败的关闭拒绝、隐藏调试面板时的提示、显式 Escape 重试及 GameEnd 不重复写盘。

@@ -50,9 +50,9 @@ std::string MetadataFixture(uint32_t version) {
     text << "AxiomPixelWorld " << version << ' ' << storage::ChunkEdge << " 256 123456789\n";
     if (version >= 3)
         text << "1 1 18446744073709551557 768 0 " << GenerationFingerprint(NaturalRecipe()) << '\n';
-    text << "-1234567890123 2345678901234 0.125 63.75\n"
-            "12.5 12.25 0.125 1 -23456 1 0\n"
-            "3\n"
+    text << "-1234567890123 2345678901234 0.125 63.75\n";
+    text << (version < 5 ? "12.5 12.25 0.125 1 -23456 1 0\n" : "12.25 0.125 -23456 1 0\n");
+    text << "3\n"
             "1 1.25 -2.5 3.75 4.5 0.5 11\n"
             "64 32 2.25\n"
             "0 -5.5 6.25 7.5 8.75 0.25 22\n"
@@ -70,16 +70,16 @@ void MetadataCompatibility() {
     SessionStore store(root.Path);
     const auto directory = store.CreateWorldDirectory(NaturalRecipe());
     const auto metadata = directory / "world.meta";
-    const auto fixture = MetadataFixture(4);
+    const auto fixture = MetadataFixture(5);
     WriteText(metadata, fixture);
     const auto data = store.ReadMetadata(directory);
     Require(data.WindowEdge == 256 && data.BudgetBytes == 123456789 && data.Generation == NaturalRecipe(),
             "metadata lost storage settings or generation identity");
     Require(data.Player.Chunk == CellCoord{-1234567890123, 2345678901234}
                 && data.Player.Local == std::array<double, 2>{.125, 63.75}, "metadata lost distant position precision");
-    Require(data.SimulationTime == 12.5 && data.PhysicsTime == 12.25 && data.TimeRemainder == .125
-                && data.DeferredStep && data.WindBoundary == -23456 && data.WindEnabled && !data.Paused,
-            "metadata lost deferred clock or session state");
+    Require(data.CommittedTime == 12.25 && data.TimeRemainder == .125
+                && data.WindBoundary == -23456 && data.WindEnabled && !data.Paused,
+            "metadata lost committed clock or session state");
     const auto &wind = data.Wind;
     Require(wind.Kind == WindStrategyKind::Hybrid && wind.Coarse.Ambient == WindVelocity{1.25f, -2.5f}
                 && wind.Coarse.Seed == 11 && wind.Reference.Ambient == WindVelocity{-5.5f, 6.25f}
@@ -87,16 +87,16 @@ void MetadataCompatibility() {
                 && wind.Adaptive.Flow.Seed == 33 && wind.Lbm.Ambient == WindVelocity{-13.5f, 14.25f}
                 && wind.Lbm.Seed == 44, "wind backend settings were mixed during decoding");
     store.WriteMetadata(directory, data);
-    Require(ReadText(metadata) == fixture, "v4 metadata wire format changed");
+    Require(ReadText(metadata) == fixture, "v5 metadata wire format changed");
 
-    for (const auto version : {2u, 3u}) {
+    for (const auto version : {2u, 3u, 4u}) {
         WriteText(metadata, MetadataFixture(version));
         const auto legacy = store.ReadMetadata(directory);
         Require(legacy.Generation == (version == 2 ? WorldGenerationSettings{} : NaturalRecipe())
-                    && legacy.DeferredStep && legacy.TimeRemainder == .125,
-                "legacy metadata generation or deferred clock changed");
+                    && legacy.CommittedTime == 12.25 && legacy.TimeRemainder == .125,
+                "legacy metadata lost committed time or full owed backlog");
         store.WriteMetadata(directory, legacy);
-        Require(ReadText(metadata).starts_with("AxiomPixelWorld 4 "), "legacy metadata was not saved as v4");
+        Require(ReadText(metadata).starts_with("AxiomPixelWorld 5 "), "legacy metadata was not saved as v5");
     }
     auto corruptGeneration = fixture;
     const auto surface = corruptGeneration.find(" 768 0 ");
@@ -105,7 +105,7 @@ void MetadataCompatibility() {
     const auto corruption = storage::CaptureFailure([&] { store.ReadMetadata(directory); });
     Require(corruption && corruption->find("generation coordinate exceeds supported range") != std::string::npos,
             "corrupt generation range escaped the persistence failure boundary");
-    WriteText(metadata, MetadataFixture(5));
+    WriteText(metadata, MetadataFixture(6));
     RequireFailure([&] { store.ReadMetadata(directory); }, "future metadata version was accepted");
     WriteText(metadata, fixture.substr(0, fixture.size() / 2));
     RequireFailure([&] { store.ReadMetadata(directory); }, "truncated metadata was accepted");

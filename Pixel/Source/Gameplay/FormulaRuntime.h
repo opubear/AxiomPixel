@@ -2,8 +2,10 @@
 
 #include "Formula/Formula.h"
 #include "FormulaWorldAdapter.h"
+#include "GameAPI/Facts.h"
 #include <deque>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -24,8 +26,16 @@ struct FormulaRuntimeStats {
     // Tracked retained payload capacity only: excludes Simulator internals,
     // shared Formula nodes, deque blocks, and allocator bookkeeping.
     uint64_t SnapshotBytes = 0, DiagnosticBytes = 0;
+    uint64_t EffectRecordBytes = 0;
     uint64_t ReservedEffects = 0, ReservedWind = 0, RetiredWind = 0;
     uint64_t AcceptedThisFrame = 0, RejectedThisFrame = 0, WindCallsThisFrame = 0;
+};
+// Evidence of effects actually committed by the latest Cast/Step call. The
+// Session supplies the authoritative epoch and complete commit stamp afterward.
+struct FormulaEffectRecord {
+    uint64_t CastId = 0, Version = 0, EmissionSequence = 0;
+    std::optional<api::RequestKey> ActivationRequest;
+    api::FactPayload Payload;
 };
 
 // Owns one independent local-coordinate Simulator per activation. Only the host's
@@ -43,8 +53,10 @@ class FormulaRuntime {
     uint64_t LastActivationId() const;
     const std::string &LastError() const;
     void BeginFrame();
-    bool Cast(World &world, WorldPosition anchor, double angleDegrees);
+    bool Cast(World &world, WorldPosition anchor, double angleDegrees,
+              std::optional<api::RequestKey> activationRequest = std::nullopt);
     void Step(World &world);
+    std::span<const FormulaEffectRecord> LastEffects() const;
     void Clear();
     void OnWorldReplaced();
     const std::vector<FormulaProjectile> &Projectiles() const;

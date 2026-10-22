@@ -195,8 +195,8 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
         GameWorld.RestorePlayer(data.Player);
         GameWorld.LoadSimulationNow();
         GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
-        Simulation.Restore(data.PhysicsTime, data.TimeRemainder, data.DeferredStep);
-        GameWorld.RestorePendingEnvironmentStep(Simulation.Time(), data.DeferredStep);
+        Simulation.Restore(data.CommittedTime, data.TimeRemainder);
+        GameWorld.RestorePendingEnvironmentStep(Simulation.Time(), false);
     } catch (const std::invalid_argument &error) {
         throw WorldStorageError(error.what());
     } catch (const std::out_of_range &error) {
@@ -207,7 +207,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     Simulation.SetPaused(data.Paused);
     WindKind = data.Wind.Kind;
     Ready = true;
-    if (!data.DeferredStep) PublishCommit();
+    PublishCommit();
 }
 
 SessionSaveData GameSession::CaptureSaveData() const {
@@ -216,10 +216,8 @@ SessionSaveData GameSession::CaptureSaveData() const {
     data.BudgetBytes = StreamConfiguration.BudgetBytes;
     data.Generation = StreamConfiguration.Generation;
     data.Player = GameWorld.GetPlayer() ? GameWorld.GetPlayer()->GetWorldPosition() : WorldPosition{};
-    data.SimulationTime = Simulation.Time();
-    data.PhysicsTime = Simulation.Time();
+    data.CommittedTime = Simulation.Time();
     data.TimeRemainder = Simulation.Remainder();
-    data.DeferredStep = GameWorld.GetEnvironment().IsWaitingForBudget();
     data.WindBoundary = GameWorld.GetWindBoundary();
     data.WindEnabled = GameWorld.IsWindEnabled();
     data.Paused = Simulation.IsPaused();
@@ -228,6 +226,7 @@ SessionSaveData GameSession::CaptureSaveData() const {
 }
 
 void GameSession::Save() {
+    if (Simulation.HasPendingStep()) throw std::logic_error("save during pending simulation step");
     if (!Store) return;
     if (!Ready) throw std::logic_error("cannot save an incomplete world session");
     try {
@@ -267,6 +266,7 @@ void GameSession::Tick(float duration, PlayerInput input) {
         GameWorld.StepPlayer();
         Formulas.Step(GameWorld);
         const bool singleStep = Simulation.CommitStep();
+        RecordFormulaFacts();
         PublishCommit();
         if (singleStep) break;
     }
@@ -294,6 +294,8 @@ bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
 
 void GameSession::ReplacingWorld() {
     RenewActionSessions();
+    Observations.Reset();
+    Facts.Reset(Epoch);
     Simulation = {};
     PublishedMapVersion = PublishedWindVersion = 0;
     for (const auto &weak : ReadViews)
@@ -304,7 +306,7 @@ void GameSession::ReplacingWorld() {
     GameWorld.ClearPlayerInput();
 }
 
-api::Reason GameSession::ActivateAt(WorldPosition target) {
+api::Reason GameSession::ActivateAt(WorldPosition target, api::RequestKey request) {
     FormulaError.clear();
     if (!CanEditWorld() || !GameWorld.GetPlayer()) {
         FormulaError = "World unavailable or waiting for storage budget";
@@ -334,7 +336,7 @@ api::Reason GameSession::ActivateAt(WorldPosition target) {
         return api::Reason::LaunchBlocked;
     }
     const double angle = std::atan2(aim[1], aim[0]) * 180 / std::acos(-1.0);
-    if (!Formulas.Cast(GameWorld, origin, angle)) {
+    if (!Formulas.Cast(GameWorld, origin, angle, request)) {
         FormulaError = Formulas.LastError();
         return api::Reason::LimitExceeded;
     }

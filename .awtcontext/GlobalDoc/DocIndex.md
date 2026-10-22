@@ -44,5 +44,8 @@
 | 统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | M1动作去重、只读公开访问、内部早失败、存储错误边界与M2待办 | |
 | 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | M2.1时钟归属、等待冻结、CommitStamp、呈现读副本与后续保存/观测边界 | |
 | 正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | M2.2 Application钩子、请求消费与拒绝后继续、AET默认行为及M2.3保存接入边界 | |
+| 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | M2.3 Deferred、v5 与旧 v2-v4 导入、关闭协商和持久化验证入口 | |
+| 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2.4冻结DTO、增量采样、风覆盖分母、因果事实环与容量验证 | |
+| 领域观测Release基准原始数据 | `context:GlobalDoc/ObservationBenchmark-2026-10-22.csv` | M2.4三轮128帧静态与动态风有无投影的P50/P95、导出字节及容量 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

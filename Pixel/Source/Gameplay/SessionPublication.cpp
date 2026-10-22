@@ -43,6 +43,7 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
 
 void GameSession::PublishCommit() {
     if (Simulation.HasPendingStep()) throw std::logic_error("publication during pending step");
+    Observations.Publish(GameWorld, Formulas, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
             if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Formulas, CurrentCommit());
