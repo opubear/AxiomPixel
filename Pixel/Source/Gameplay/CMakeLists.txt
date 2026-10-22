@@ -1,4 +1,4 @@
-add_library(PixelObservationValues STATIC ../GameAPI/Observations.cpp ../Observation/DomainFactBuffer.cpp)
+add_library(PixelObservationValues STATIC ../GameAPI/Actions.cpp ../GameAPI/Observations.cpp ../Observation/DomainFactBuffer.cpp)
 target_include_directories(PixelObservationValues PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
 add_library(PixelGameplay STATIC

@@ -126,7 +126,7 @@ Actors、Items 等先以 Session 下的小领域模块开始，不为每个名�
 
 M1.3 已将当前游戏宿主校验提取为 `PixelFormulaValidation`，仅链接 `PixelFormula`；Gameplay 与 Editing 分别调用同一套参数/工作量规则。运行分析直接读取不可变描述，诊断使用子节点路径，编辑器再映射为自身节点 ID。当前游戏额度仍在游戏侧，M3 的语言语义归属与重设计方向保持待验证。
 
-M1.4 已增加标准库值合同 `GameAPI/Actions.h`、同步动作去重、会话控制及Input/Debug迁移。实现与边界见[游戏动作入口](GameActions.md)；M1.5已收敛Session可变公开访问并落实Runtime内部错误传播与精确存储故障分类；M2.1已建立协调器、提交版本和呈现的完整读副本，见[固定步与提交](SimulationCommits.md)；M2.2已实现通用应用关闭钩子，见[关闭请求](CloseRequests.md)；M2.3已迁移保存退出与旧档边界；M2.4已实现有界领域投影和提交事实，见[观测实现](../../.awtcontext/GlobalDoc/ObservationProjection.md)。LLMView权限、租约与JSON查询仍待M2.5实施。
+M1.4 已增加标准库值合同 `GameAPI/Actions.h`、同步动作去重、会话控制及Input/Debug迁移。实现与边界见[游戏动作入口](GameActions.md)；M1.5已收敛Session可变公开访问并落实Runtime内部错误传播与精确存储故障分类；M2.1已建立协调器、提交版本和呈现的完整读副本，见[固定步与提交](SimulationCommits.md)；M2.2已实现通用应用关闭钩子，见[关闭请求](CloseRequests.md)；M2.3已迁移保存退出与旧档边界；M2.4已实现有界领域投影和提交事实，见[观测实现](../../.awtcontext/GlobalDoc/ObservationProjection.md)。M2.5已实现LLMView静态授权、冻结分页、服务帧租约、精确JSON和离线开采贯穿样例，见[LLMView实现](../../.awtcontext/GlobalDoc/LLMView.md)。
 
 ## 4 GameAPI 与领域动作
 

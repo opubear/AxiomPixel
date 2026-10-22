@@ -1,5 +1,5 @@
 add_library(PixelGame STATIC PixelGame.cpp PixelRuntime.cpp PixelApplication.cpp)
-target_link_libraries(PixelGame PUBLIC PixelRender PixelDebugUI AxiomApplication PRIVATE spdlog)
+target_link_libraries(PixelGame PUBLIC PixelRender PixelDebugUI PixelLLMView AxiomApplication PRIVATE spdlog)
 add_executable(Pixel "${AXIOM_ENGINE_DIR}/Source/main.cpp" EntryPoint.cpp)
 target_link_libraries(Pixel PRIVATE PixelGame spdlog)
 axiom_copy_runtime_dlls(Pixel)

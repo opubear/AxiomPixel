@@ -6,6 +6,7 @@
 #include "FormulaRuntime.h"
 #include "Observation/ObservationProjector.h"
 #include "Observation/DomainFactBuffer.h"
+#include "GameAPI/ObservationSource.h"
 #include "Persistence/SessionStore.h"
 #include "World/World.h"
 #include <optional>
@@ -18,7 +19,7 @@ enum class NativeCaller { Input, Debug, Driver };
 namespace testing { struct SessionAccess; }
 class GamePresentation;
 
-class GameSession {
+class GameSession : public api::ObservationSource {
   public:
     static constexpr uint32_t WorldWidth = 1024;
     static constexpr uint32_t WorldHeight = 1024;
@@ -62,13 +63,14 @@ class GameSession {
     api::CommitStamp CurrentCommit() const;
     // Native host access; external observer policies/leases belong to LLMView.
     api::ObservationResult Observe(NativeCaller observer, api::Rect scope);
+    api::ObservationResult CaptureObservation(api::Rect scope) override;
     void CloseObservation(NativeCaller observer) { Observations.Close(size_t(observer)); }
     api::ObservationMetrics ObservationStats() const;
-    api::ObservationServiceStatus ObservationService() const {
+    api::ObservationServiceStatus ObservationService() const override {
         return {CurrentCommit(), Ready, Simulation.HasPendingStep()};
     }
     uint64_t FactHighWatermark() const { return Facts.HighWatermark(); }
-    api::FactReadResult ReadFacts(uint64_t epoch, uint64_t after, uint64_t high, uint32_t limit = 256) const {
+    api::FactReadResult ReadFacts(uint64_t epoch, uint64_t after, uint64_t high, uint32_t limit = 256) const override {
         return Facts.Read(epoch, after, high, limit);
     }
     // Internal consumers track a bounded live projection, never a prepared step.

@@ -4,6 +4,7 @@
 #include "Debug/PixelDebugUI.h"
 #include "GamePlay/GameInterface.h"
 #include "Gameplay/GameSession.h"
+#include "LLMView/ViewService.h"
 #include "Input/GameInput.h"
 #include "Performance/GameProfiler.h"
 #include "PixelRender/GamePresentation.h"
@@ -19,6 +20,7 @@ class PixelGame final : public IGameInterface {
     void ConfigurePerformanceCapture();
     void ConfigureEngine(GameEngine &engine) override;
     pixel::GameSession &GetSession() { return Session; }
+    pixel::llm::ViewService &GetObservationViews() { return ObservationViews; }
     pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
@@ -52,6 +54,7 @@ class PixelGame final : public IGameInterface {
 
   private:
     pixel::GameSession Session;
+    pixel::llm::ViewService ObservationViews{Session};
     pixel::GameCamera Camera;
     pixel::GamePresentation Presentation;
     pixel::ArtAssetStore ArtAssets;

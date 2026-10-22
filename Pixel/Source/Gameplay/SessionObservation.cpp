@@ -6,6 +6,15 @@ api::ObservationResult GameSession::Observe(NativeCaller observer, api::Rect sco
         Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
 }
 
+api::ObservationResult GameSession::CaptureObservation(api::Rect scope) {
+    auto result = Observations.Capture(3, scope, GameWorld, Formulas, CurrentCommit(),
+        Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
+    // LLMView owns its frozen copy. No abandoned external cache keeps sampling
+    // every commit after its view is closed or its lease expires.
+    Observations.Close(3);
+    return result;
+}
+
 api::ObservationMetrics GameSession::ObservationStats() const {
     auto result = Observations.Metrics();
     const auto effects = Formulas.Stats().EffectRecordBytes;

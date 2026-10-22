@@ -6,11 +6,11 @@ namespace pixel {
 class World;
 class FormulaRuntime;
 
-// Single-writer service. Its three host slots are independent of rendering and
+// Single-writer service. Three native slots and one external capture slot are independent of rendering and
 // never request residency. External observer authorization/leases live in LLMView.
 class ObservationProjector {
   public:
-    static constexpr size_t MaximumScopes = 3;
+    static constexpr size_t MaximumScopes = 4;
     static constexpr uint32_t MaximumEdge = 64;
     static constexpr uint64_t MaximumSnapshotBytes = 1024 * 1024;
     ObservationProjector();

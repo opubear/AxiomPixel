@@ -74,6 +74,7 @@ void PixelGame::Initialize() {
 }
 
 void PixelGame::FrameBegin() {
+    ObservationViews.AdvanceServiceFrame();
     Session.BeginFrame();
     Performance.BeginFrame();
     std::array<int, 2> size{};

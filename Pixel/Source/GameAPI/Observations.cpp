@@ -37,7 +37,8 @@ std::vector<WindSummary> SummarizeWind(const ObservationSnapshot &snapshot) {
     const auto &scope = snapshot.Scope;
     if (!scope.Width || !scope.Height || scope.Width > 64 || scope.Height > 64
         || scope.Origin.X < INT64_MIN + 16 || scope.Origin.Y < INT64_MIN + 16
-        || scope.Origin.X > INT64_MAX - 80 || scope.Origin.Y > INT64_MAX - 80
+        || scope.Origin.X > INT64_MAX - int64_t(scope.Width) - 16
+        || scope.Origin.Y > INT64_MAX - int64_t(scope.Height) - 16
         || snapshot.Cells.size() != size_t(scope.Width) * scope.Height)
         throw std::invalid_argument("invalid bounded observation snapshot");
     std::vector<WindSummary> result;
