@@ -52,5 +52,6 @@
 | 构式语言最小语义选择与可执行对照 | `context:GlobalDoc/FormulaSemanticsExperiment.md` | M3.1五场景原型、过程语义、成本测量及M3.2边界；未替换游戏运行时 | |
 | 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
 | 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | M3.2文本编译产物、绑定实例、宿主终态与预算清理；含CLI和新旧兼容范围 | |
+| FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | M3.3宿主接线、作用范围和额度、批次碰撞、三承载样例及验证边界 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `World/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

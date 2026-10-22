@@ -55,7 +55,7 @@ struct ProjectileObservation {
 struct ProgramObservation {
     ProgramRef Applied;
     uint32_t RunningRoots = 0, Projectiles = 0, Pending = 0; // Session-wide counts.
-    // The old prototype has no artifact/source-access contract; no source text.
+    // Artifact source access is not exposed by this observation schema.
 };
 
 struct ObservationSnapshot {

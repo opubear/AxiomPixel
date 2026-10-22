@@ -1,4 +1,5 @@
-#include "FormulaRuntime.h"
+#include "FormulaBridge.h"
+#include "ProcessHost.h"
 #include "FormulaValidation/FormulaAnalysis.h"
 #include <algorithm>
 #include <cmath>
@@ -8,7 +9,7 @@
 
 namespace pixel {
 namespace {
-constexpr size_t MaxRoots = 16, MaxEffects = FormulaRuntime::MaximumEffects, MaxWind = 64, MaxActivations = 8, MaxDiagnostics = 256;
+constexpr size_t MaxRoots = 16, MaxEffects = 256, MaxWind = 64, MaxActivations = 8, MaxDiagnostics = 256;
 struct Root {
     uint64_t Id, Version;
     uint64_t NextEmission = 1;
@@ -29,7 +30,9 @@ api::Position PublicPosition(const WorldPosition &position) {
 }
 } // namespace
 
-struct FormulaRuntime::State {
+struct FormulaBridge::State {
+    ProcessHost Processes;
+    std::optional<formula::process::ProgramArtifact> ActiveProcess;
     formula::Formula Active = formula::Formula::Bolt();
     formula::validation::Analysis ActiveBudget;
     uint64_t Version = 1, Epoch = 1, NextCast = 1;
@@ -38,7 +41,7 @@ struct FormulaRuntime::State {
     std::vector<std::unique_ptr<Root>> Roots;
     std::vector<FormulaProjectile> Projectiles;
     std::deque<FormulaRuntimeDiagnostic> Diagnostics;
-    std::array<FormulaEffectRecord, MaxEffects> Effects;
+    std::array<FormulaEffectRecord, FormulaBridge::MaximumEffects> Effects;
     size_t EffectCount = 0;
 
     State() {
@@ -47,7 +50,7 @@ struct FormulaRuntime::State {
             throw std::logic_error("default bolt failed gameplay analysis");
         ActiveBudget = analysis.Budget;
         Roots.reserve(MaxRoots);
-        Projectiles.reserve(MaxEffects);
+        Projectiles.reserve(FormulaBridge::MaximumEffects);
     }
 
     void Record(uint64_t cast, formula::Tick tick, std::string message) {
@@ -65,7 +68,9 @@ struct FormulaRuntime::State {
 
     FormulaRuntimeStats Statistics() const {
         FormulaRuntimeStats result;
-        result.Roots = Roots.size();
+        const auto process = Processes.Stats();
+        result.Roots = Roots.size() + process.Instances;
+        result.Pending = process.Instances;
         result.Projectiles = Projectiles.size();
         result.SnapshotBytes = Projectiles.capacity() * sizeof(FormulaProjectile);
         result.EffectRecordBytes = sizeof(Effects);
@@ -168,6 +173,13 @@ struct FormulaRuntime::State {
         root.Batch.clear();
     }
 
+    void CollectProcessEffects() {
+        for (const auto &effect : Processes.Effects()) {
+            if (EffectCount == Effects.size()) throw std::logic_error("bridge effect capacity exceeded");
+            Effects[EffectCount++] = effect;
+        }
+    }
+
     void Refresh() {
         for (auto it = Roots.begin(); it != Roots.end();) {
             if ((*it)->Simulator.IsIdle()) {
@@ -183,13 +195,14 @@ struct FormulaRuntime::State {
                 Projectiles.push_back({Epoch, root->Id, projectile.Id, root->Version,
                     FormulaWorldAdapter::Offset(root->Anchor, projectile.Position), FormulaWorldAdapter::BoltRadius,
                     projectile.Damage, projectile.Velocity});
+        Processes.AppendProjectiles(Projectiles, Epoch);
     }
 };
 
-FormulaRuntime::FormulaRuntime() : Data(std::make_unique<State>()) {}
-FormulaRuntime::~FormulaRuntime() = default;
+FormulaBridge::FormulaBridge() : Data(std::make_unique<State>()) {}
+FormulaBridge::~FormulaBridge() = default;
 
-bool FormulaRuntime::Apply(const formula::Formula &description) {
+bool FormulaBridge::Apply(const formula::Formula &description) {
     if (Data->Version == UINT64_MAX)
         throw std::overflow_error("formula program version exhausted");
     const auto result = formula::validation::Analyze(description);
@@ -197,6 +210,7 @@ bool FormulaRuntime::Apply(const formula::Formula &description) {
         Data->Error = result.Errors.empty() ? "formula analysis failed" : result.Errors.front().Field + ": " + result.Errors.front().Message;
         return false;
     }
+    Data->ActiveProcess.reset();
     Data->Active = description;
     Data->ActiveBudget = result.Budget;
     ++Data->Version;
@@ -204,19 +218,60 @@ bool FormulaRuntime::Apply(const formula::Formula &description) {
     return true;
 }
 
-const formula::Formula &FormulaRuntime::ActiveFormula() const { return Data->Active; }
-uint64_t FormulaRuntime::Version() const { return Data->Version; }
-uint64_t FormulaRuntime::LastActivationId() const { return Data->NextCast - 1; }
-const std::string &FormulaRuntime::LastError() const { return Data->Error; }
-uint64_t FormulaRuntime::WorldEpoch() const { return Data->Epoch; }
+void FormulaBridge::ApplyProcess(const formula::process::ProgramArtifact &program) {
+    if (Data->Version == UINT64_MAX) throw std::overflow_error("formula program version exhausted");
+    Data->ActiveProcess = program;
+    ++Data->Version;
+    Data->Error.clear();
+}
+api::ProgramRef FormulaBridge::AppliedProgram() const { return {Data->ActiveProcess ? 2u : 1u, Data->Version}; }
 
-void FormulaRuntime::BeginFrame() {
+bool FormulaBridge::CastCarrier(World &world, const ProcessCarrier &carrier, std::optional<api::RequestKey> request) {
+    Data->EffectCount = 0;
+    if (world.GetEnvironment().IsWaitingForBudget()) return Data->Reject("WaitingForBudget");
+    if (!Data->ActiveProcess) return Data->Reject("ProcessProgramRequired");
+    if (Data->Accepted >= MaxActivations || Data->Statistics().Roots >= MaxRoots) return Data->Reject("ProcessActivationLimit");
+    if (Data->NextCast == UINT64_MAX) throw std::overflow_error("formula activation identity exhausted");
+    if (!Data->Processes.Start(*Data->ActiveProcess, Data->NextCast, Data->Version, carrier, world, request, Data->Error))
+        return Data->Reject(Data->Error);
+    ++Data->NextCast;
+    ++Data->Accepted;
+    Data->Processes.Commit(world);
+    Data->CollectProcessEffects();
+    Data->Refresh();
+    return true;
+}
+void FormulaBridge::CancelCarrier(ProcessCarrierKind kind, uint64_t subject) {
+    Data->EffectCount = 0;
+    Data->Processes.CancelCarrier(kind, subject);
+    Data->Refresh();
+}
+void FormulaBridge::WakeCarrier(ProcessCarrierKind kind, uint64_t subject) { Data->Processes.WakeCarrier(kind, subject); }
+ProcessHostStats FormulaBridge::ProcessStats() const { return Data->Processes.Stats(); }
+const std::deque<ProcessReceipt> &FormulaBridge::ProcessReceipts() const { return Data->Processes.Receipts(); }
+const std::deque<FormulaRuntimeDiagnostic> &FormulaBridge::ProcessDiagnostics() const { return Data->Processes.Diagnostics(); }
+
+const formula::Formula &FormulaBridge::ActiveFormula() const { return Data->Active; }
+uint64_t FormulaBridge::Version() const { return Data->Version; }
+uint64_t FormulaBridge::LastActivationId() const { return Data->NextCast - 1; }
+const std::string &FormulaBridge::LastError() const { return Data->Error; }
+uint64_t FormulaBridge::WorldEpoch() const { return Data->Epoch; }
+
+void FormulaBridge::BeginFrame() {
+    Data->Processes.BeginFrame();
     Data->RetiredWind = 0;
     Data->Accepted = Data->Rejected = Data->WindCalls = 0;
 }
 
-bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegrees,
+bool FormulaBridge::Cast(World &world, WorldPosition anchor, double angleDegrees,
                           std::optional<api::RequestKey> activationRequest) {
+    if (Data->ActiveProcess) {
+        ProcessCarrier carrier;
+        carrier.Origin = anchor;
+        carrier.Scope = world.GetSimulationBounds();
+        carrier.AngleDegrees = angleDegrees;
+        return CastCarrier(world, carrier, activationRequest);
+    }
     Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget())
         return Data->Reject("WaitingForBudget: activation requires a committed material step");
@@ -254,7 +309,7 @@ bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegree
     return true;
 }
 
-void FormulaRuntime::Step(World &world) {
+void FormulaBridge::Step(World &world) {
     Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("formula step requires a committed environment step");
@@ -263,32 +318,36 @@ void FormulaRuntime::Step(World &world) {
     for (auto &root : Data->Roots)
         Data->Advance(*root, true, world, collisions);
     Data->Resolve(collisions);
+    Data->Processes.Prepare(world);
     for (auto &root : Data->Roots)
         Data->Commit(*root, world);
+    Data->Processes.Commit(world);
+    Data->CollectProcessEffects();
     Data->Refresh();
 }
 
-void FormulaRuntime::Clear() {
+void FormulaBridge::Clear() {
     Data->EffectCount = 0;
     for (const auto &root : Data->Roots)
         Data->RetiredWind += root->Budget.WindEffects;
+    Data->Processes.Clear();
     Data->Roots.clear();
     Data->Projectiles.clear();
     Data->Diagnostics.clear();
     Data->Error.clear();
 }
 
-void FormulaRuntime::OnWorldReplaced() {
+void FormulaBridge::OnWorldReplaced() {
     Clear();
     if (Data->Epoch == UINT64_MAX)
         throw std::overflow_error("formula diagnostic epoch exhausted");
     ++Data->Epoch;
 }
 
-const std::vector<FormulaProjectile> &FormulaRuntime::Projectiles() const { return Data->Projectiles; }
-const std::deque<FormulaRuntimeDiagnostic> &FormulaRuntime::Diagnostics() const { return Data->Diagnostics; }
-std::span<const FormulaEffectRecord> FormulaRuntime::LastEffects() const {
+const std::vector<FormulaProjectile> &FormulaBridge::Projectiles() const { return Data->Projectiles; }
+const std::deque<FormulaRuntimeDiagnostic> &FormulaBridge::Diagnostics() const { return Data->Diagnostics; }
+std::span<const FormulaEffectRecord> FormulaBridge::LastEffects() const {
     return {Data->Effects.data(), Data->EffectCount};
 }
-FormulaRuntimeStats FormulaRuntime::Stats() const { return Data->Statistics(); }
+FormulaRuntimeStats FormulaBridge::Stats() const { return Data->Statistics(); }
 } // namespace pixel

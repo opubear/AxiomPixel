@@ -28,6 +28,8 @@ M2.4已在完整提交边界加入独立的 `ObservationProjector`：三槽有�
 
 系统设计入口为 [构式系统](../Docs/GameDesign/FormulaSystem.md)，语言契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证见 [基础版实现](GlobalDoc/FormulaGameplayV1Implementation.md)，操作见 [工程 README](../README.md)，独立运行见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
 
+M3.3 已将游戏接线收拢到 `Gameplay/FormulaBridge/`，新增 process/1 宿主、三承载者有限夹具、固定批次查询/碰撞、下一边界回执和有界清理。新过程可从 F4 示例应用并通过右键或天然源/固定夹具运行，投影与事实区分新旧产物；旧树形编辑器短期保留。真实库存、设备实体、挂起恢复和程序存档仍待后续任务，详见 [FormulaBridge](GlobalDoc/FormulaBridge.md)。
+
 ## 世界与现有玩法
 
 世界现支持策略化Natural与Superflat：游戏新建默认自然土岩、洞穴、五矿种、湖泊/地下积水和干燥草皮；调试Flat保留y<512空气、其他泥土。旧v2存档映射到Flat，当前metadata v4持久化生成器/种子/版本及可重试固定步时钟（兼容v2/v3），不重涂已有块。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。自然生成额外scratch单独预留。

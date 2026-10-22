@@ -3,7 +3,7 @@
 #include "SimulationCoordinator.h"
 #include "CommittedWorldView.h"
 #include "Actions/ActionValues.h"
-#include "FormulaRuntime.h"
+#include "FormulaBridge/FormulaBridge.h"
 #include "Observation/ObservationProjector.h"
 #include "Observation/DomainFactBuffer.h"
 #include "GameAPI/ObservationSource.h"
@@ -29,7 +29,7 @@ class GameSession : public api::ObservationSource {
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
     static WorldGenerationSettings DefaultGeneration();
     uint64_t WorldEpoch() const { return Epoch; }
-    api::ProgramRef AppliedProgram() const { return {1, Formulas.Version()}; }
+    api::ProgramRef AppliedProgram() const { return Formulas.AppliedProgram(); }
     api::CallerSessionId CallerSession(NativeCaller caller) const;
     api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request);
     api::ActionReceipt Execute(NativeCaller caller, api::Action action);
@@ -42,6 +42,10 @@ class GameSession : public api::ObservationSource {
     ApplyProgramResult ApplyProgram(NativeCaller caller, const formula::Formula &description) {
         return ApplyProgram(CallerSession(caller), description);
     }
+    ApplyProgramResult ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program);
+    api::ControlReceipt StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier);
+    api::ControlReceipt CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
+    api::ControlReceipt WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
     void BeginFrame() { Formulas.BeginFrame(); }
     void ClearPlayerInput() {
         Simulation.ClearInput();
@@ -50,7 +54,7 @@ class GameSession : public api::ObservationSource {
     const World &GetWorld() const { return GameWorld; }
     bool IsReady() const { return Ready; }
     bool CanEditWorld() const { return Ready && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
-    const FormulaRuntime &GetFormulaRuntime() const { return Formulas; }
+    const FormulaBridge &GetFormulaRuntime() const { return Formulas; }
     const std::string &GetFormulaError() const { return FormulaError; }
     const WorldGenerationSettings &GetGenerationSettings() const { return StreamConfiguration.Generation; }
     const WorldGenerationSettings &GetNextGenerationSettings() const { return NextGeneration; }
@@ -105,7 +109,7 @@ class GameSession : public api::ObservationSource {
     void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
     void RecordFormulaFacts();
     World GameWorld{WorldWidth, WorldHeight};
-    FormulaRuntime Formulas;
+    FormulaBridge Formulas;
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;
     std::optional<SessionStore> Store;

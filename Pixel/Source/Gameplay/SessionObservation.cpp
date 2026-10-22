@@ -26,7 +26,7 @@ api::ObservationMetrics GameSession::ObservationStats() const {
 void GameSession::RecordFormulaFacts() {
     const auto stamp = CurrentCommit();
     for (const auto &effect : Formulas.LastEffects()) {
-        api::ProgramEffectCause cause{{Epoch, effect.CastId}, {1, effect.Version},
+        api::ProgramEffectCause cause{{Epoch, effect.CastId}, {effect.ResourceId, effect.Version},
             effect.EmissionSequence, effect.ActivationRequest, {}};
         auto payload = effect.Payload;
         if (auto *wind = std::get_if<api::WindPulseSubmitted>(&payload)) wind->Instance.WorldEpoch = Epoch;

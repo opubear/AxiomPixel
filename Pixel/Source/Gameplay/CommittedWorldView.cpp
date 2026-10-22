@@ -12,7 +12,7 @@ uint64_t CommittedWorldView::CapacityFor(WorldRect bounds) {
     const auto rows = (uint64_t(bounds.Height) + storage::RegionEdge - 1) / storage::RegionEdge + 1;
     return uint64_t(bounds.Width) * bounds.Height * 2 * sizeof(WindVelocity)
         + columns * rows * (storage::RegionEdge * storage::RegionEdge * sizeof(CellState) + 1024) + 4096
-        + 2 * FormulaRuntime::MaximumEffects * sizeof(FormulaProjectile);
+        + 2 * FormulaBridge::MaximumEffects * sizeof(FormulaProjectile);
 }
 
 uint64_t CommittedWorldView::ReservedBytes() const {
@@ -21,7 +21,7 @@ uint64_t CommittedWorldView::ReservedBytes() const {
         + Bolts.capacity() * sizeof(FormulaProjectile);
 }
 
-void CommittedWorldView::Update(const World &world, const FormulaRuntime &formulas, api::CommitStamp stamp) {
+void CommittedWorldView::Update(const World &world, const FormulaBridge &formulas, api::CommitStamp stamp) {
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("cannot publish a prepared environment step");
     const auto count = size_t(RequestedBounds.Width) * RequestedBounds.Height;

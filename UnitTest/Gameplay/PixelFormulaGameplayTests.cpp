@@ -1,5 +1,5 @@
 #include "../Support/WorldAccess.h"
-#include "Gameplay/FormulaRuntime.h"
+#include "Gameplay/FormulaBridge/FormulaBridge.h"
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -15,7 +15,7 @@ void Require(bool value, const char *message) {
         throw std::runtime_error(message);
 }
 
-bool HasDiagnostic(const FormulaRuntime &runtime, const std::string &text) {
+bool HasDiagnostic(const FormulaBridge &runtime, const std::string &text) {
     for (const auto &entry : runtime.Diagnostics())
         if (entry.Message.find(text) != std::string::npos)
             return true;
@@ -26,7 +26,7 @@ WorldPosition At(double x, double y) { return WorldPosition::FromAbsolute(x, y);
 
 void DefaultAndVersioning() {
     World world(64, 64);
-    FormulaRuntime runtime;
+    FormulaBridge runtime;
     Require(runtime.Cast(world, At(10.5, 10.5), 0), "default activation failed");
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 10, "default must only produce its final bolt");
     runtime.Step(world);
@@ -70,7 +70,7 @@ void SweptGeometryAndExpiry() {
     world.SetCell(10, 10, {});
     world.SetCell(15, 10, {CellTypeId::Stone});
 
-    FormulaRuntime runtime;
+    FormulaBridge runtime;
     Require(runtime.Apply(Formula::Bolt(10, 600, 1).OnHit(Formula::Dig(3))), "expiry formula rejected");
     runtime.Cast(world, At(10.5, 10.5), 0);
     runtime.Step(world);
@@ -148,7 +148,7 @@ void ClosedSetDigCenters() {
 void ImmediateHitsAndMapConsistency() {
     World world(64, 64);
     world.SetCell(10, 10, {CellTypeId::Stone});
-    FormulaRuntime runtime;
+    FormulaBridge runtime;
     runtime.Apply(Formula::Bolt(10, 0).OnHit(Formula::Bolt(7, 0)));
     runtime.Cast(world, At(10.5, 10.5), 0);
     Require(runtime.Projectiles().empty(), "tick-zero overlap did not consume carrier");
@@ -170,7 +170,7 @@ void ImmediateHitsAndMapConsistency() {
 void DomainExitAndDigRules() {
     World world(16, 16);
     world.SetCell(15, 8, {CellTypeId::Stone});
-    FormulaRuntime runtime;
+    FormulaBridge runtime;
     runtime.Apply(Formula::Bolt(10, 600).OnHit(Formula::Dig(3)));
     runtime.Cast(world, At(14.5, 4.5), 0);
     runtime.Step(world);
@@ -207,7 +207,7 @@ void WindBoundariesAndDelayedConfiguration() {
     World world(64, 64);
     Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1, {60, 0}) == FormulaWindResult::Unavailable, "disabled wind was silently enabled");
     for (const auto radius : {0.0, 1e-300, 1.0 / 256}) {
-        FormulaRuntime runtime;
+        FormulaBridge runtime;
         runtime.Apply(Formula::Sequence({Formula::Wind(radius, 120), Formula::Bolt(10, 0).After(2)}));
         Require(runtime.Cast(world, At(10.5, 10.5), 0), "legal degenerate wind aborted root");
         runtime.Step(world);
@@ -223,7 +223,7 @@ void WindBoundariesAndDelayedConfiguration() {
     world.ConfigureWindStrategy(64, tooLarge);
     Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1, {60, 0}) == FormulaWindResult::GridUnsupported, "grid larger than 1024 cells was accepted");
 
-    FormulaRuntime runtime;
+    FormulaBridge runtime;
     runtime.Apply(Formula::Sequence({Formula::Wind(1, 60).After(2), Formula::Bolt(10, 0).After(3)}));
     runtime.Cast(world, At(10.5, 10.5), 0);
     auto other = Coarse();
@@ -238,7 +238,7 @@ void WindBoundariesAndDelayedConfiguration() {
 
 void LimitsAndRetirement() {
     World world(64, 64);
-    FormulaRuntime runtime;
+    FormulaBridge runtime;
     runtime.Apply(Formula::Bolt(10, 0).Spread(16, 10).Repeated(4, 1));
     for (int i = 0; i < 4; ++i)
         Require(runtime.Cast(world, At(30, 30), 0), "legal reserved root rejected");
@@ -316,7 +316,7 @@ void DistantCoordinates() {
             world.FillRegion(world.GetSimulationBounds(), {});
             WorldPosition anchor{ChunkOf({baseX, baseY}), {10.25, 10.5}};
             world.SetCell(baseX + 15, baseY + 10, {CellTypeId::Stone});
-            FormulaRuntime runtime;
+            FormulaBridge runtime;
             runtime.Cast(world, anchor, 0);
             runtime.Step(world);
             Require(runtime.Projectiles()[0].Position.Cell() == CellCoord{baseX + 11, baseY + 10}

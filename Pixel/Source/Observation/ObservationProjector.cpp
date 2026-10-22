@@ -1,6 +1,6 @@
 #include "ObservationProjector.h"
 #include "Gameplay/Actions/ActionValues.h"
-#include "Gameplay/FormulaRuntime.h"
+#include "Gameplay/FormulaBridge/FormulaBridge.h"
 #include "World/World.h"
 #include <algorithm>
 
@@ -71,7 +71,7 @@ void SampleAir(api::ObservedCell &sample, CellCoord cell, const World &world, co
     }
 }
 
-void UpdateObjects(api::ObservationSnapshot &snapshot, const World &world, const FormulaRuntime &formulas) {
+void UpdateObjects(api::ObservationSnapshot &snapshot, const World &world, const FormulaBridge &formulas) {
     snapshot.Player.reset();
     if (const auto &player = world.GetPlayer()) {
         const auto position = player->GetWorldPosition();
@@ -81,12 +81,12 @@ void UpdateObjects(api::ObservationSnapshot &snapshot, const World &world, const
             snapshot.Player = api::PlayerObservation{ActionPosition(position), {Character::Width, Character::Height}, player->Grounded};
     }
     const auto stats = formulas.Stats();
-    snapshot.Programs = {{1, formulas.Version()}, uint32_t(stats.Roots), uint32_t(stats.Projectiles), uint32_t(stats.Pending)};
+    snapshot.Programs = {formulas.AppliedProgram(), uint32_t(stats.Roots), uint32_t(stats.Projectiles), uint32_t(stats.Pending)};
     snapshot.Projectiles.clear();
     for (const auto &bolt : formulas.Projectiles()) {
         const auto position = ActionPosition(bolt.Position);
         if (WorldBounds(snapshot.Scope).Contains({position.AnchorCell.X, position.AnchorCell.Y}))
-            snapshot.Projectiles.push_back({bolt.CastId, bolt.ProjectileId, {1, bolt.Version}, position,
+            snapshot.Projectiles.push_back({bolt.CastId, bolt.ProjectileId, {bolt.ResourceId, bolt.Version}, position,
                 {bolt.Velocity.X, bolt.Velocity.Y}, bolt.Radius});
     }
     snapshot.ObjectSampledAtRevision = snapshot.Stamp.Revision;
@@ -97,7 +97,7 @@ ObservationProjector::ObservationProjector() = default;
 ObservationProjector::~ObservationProjector() = default;
 
 api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scope, const World &world,
-    const FormulaRuntime &formulas, const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
+    const FormulaBridge &formulas, const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
     uint64_t factHighWatermark) {
     const auto validation = ValidateScope(scope);
     if (validation != api::ObservationStatus::Available) return {validation};
@@ -113,7 +113,7 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
             entry = std::make_unique<Entry>();
             entry->Snapshot.Scope = scope;
             entry->Snapshot.Cells.resize(size_t(scope.Width) * scope.Height);
-            entry->Snapshot.Projectiles.reserve(FormulaRuntime::MaximumEffects);
+            entry->Snapshot.Projectiles.reserve(FormulaBridge::MaximumEffects);
         }
         Update(*entry, world, formulas, stamp, paused, factHighWatermark);
     }
@@ -122,7 +122,7 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
     return result;
 }
 
-void ObservationProjector::Update(Entry &entry, const World &world, const FormulaRuntime &formulas,
+void ObservationProjector::Update(Entry &entry, const World &world, const FormulaBridge &formulas,
     const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     if (world.GetEnvironment().IsWaitingForBudget()) throw std::logic_error("observation during pending step");
     auto &snapshot = entry.Snapshot;
@@ -170,7 +170,7 @@ void ObservationProjector::Update(Entry &entry, const World &world, const Formul
         throw std::logic_error("observation exceeded its fixed payload budget");
 }
 
-void ObservationProjector::Publish(const World &world, const FormulaRuntime &formulas,
+void ObservationProjector::Publish(const World &world, const FormulaBridge &formulas,
     const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     for (auto &entry : Entries)
         if (entry) Update(*entry, world, formulas, stamp, paused, factHighWatermark);

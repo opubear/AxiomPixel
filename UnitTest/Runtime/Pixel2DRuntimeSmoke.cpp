@@ -7,6 +7,7 @@
 #include "HAL/Vulkan/VulkanRasterResources.h"
 #include "InputManager.h"
 #include "Application/PixelGame.h"
+#include "Gameplay/FormulaBridge/ProcessExample.h"
 #include "Asset/Loaders/AssetLoader.h"
 #include "Assets/ArtAssets.h"
 #include "PixelRender/BackgroundView.h"
@@ -714,8 +715,30 @@ void FormulaGameplayGpu() {
     Require(input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::ClearRunning{}).Succeeded(), "GPU formula clear failed");
     Draw(app);
     Require(policy->PublishedFrame().FormulaDraws.empty(), "cleared GPU formula snapshot retained a sphere");
+    auto &session = input->GetSession();
+    Require(bool(session.ApplyProcess(pixel::NativeCaller::Driver, pixel::CarrierExample())), "process GPU apply failed");
+    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {0, 0}}}).Applied(),
+            "process GPU player activation failed");
+    for (const auto kind : {pixel::ProcessCarrierKind::NaturalSource, pixel::ProcessCarrierKind::FixedFixture}) {
+        pixel::ProcessCarrier carrier;
+        carrier.Kind = kind;
+        carrier.Origin = pixel::WorldPosition::FromAbsolute(kind == pixel::ProcessCarrierKind::NaturalSource ? 518.5 : 520.5, 506.5);
+        carrier.Scope = session.GetWorld().GetSimulationBounds();
+        Require(session.StartProcessFixture(pixel::NativeCaller::Driver, carrier).Succeeded(), "process GPU fixture failed");
+    }
+    verifyYellow();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    input->Tick(1.f / 60);
+    verifyYellow();
+    input->GetPresentation().ToggleFieldView();
+    Draw(app);
+    Require(policy->PublishedFrame().FormulaDraws.empty() && runtime.Projectiles().size() == 3, "F1 lost process instances");
+    input->GetPresentation().ToggleFieldView();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::ClearRunning{});
+    Draw(app);
+    Require(policy->PublishedFrame().FormulaDraws.empty(), "process GPU clear retained a sphere");
     app.Shutdown();
-    std::cout << "Formula GPU passed: yellow readback, overlapping fan, slots, step, F1, resize and clear\n";
+    std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize and clear\n";
 }
 
 void BasicWorldGameplay() {

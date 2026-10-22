@@ -1,6 +1,7 @@
 #include "FormulaDebugUI.h"
 #include "Gameplay/GameSession.h"
-#include "Gameplay/FormulaRuntime.h"
+#include "Gameplay/FormulaBridge/FormulaBridge.h"
+#include "Gameplay/FormulaBridge/ProcessExample.h"
 #include "imgui.h"
 #include <algorithm>
 
@@ -87,7 +88,8 @@ void FormulaDebugUI::SelectOperation(NodeId selection) {
 
 void FormulaDebugUI::DrawToolbar(GameSession &session) {
     const auto &runtime = session.GetFormulaRuntime();
-    ImGui::Text("Applied version %llu | %s", static_cast<unsigned long long>(runtime.Version()), Dirty ? "draft modified" : "draft matches applied");
+    ImGui::Text("Applied version %llu | %s", static_cast<unsigned long long>(runtime.Version()),
+        runtime.AppliedProgram().ResourceId == 2 ? "process example active; tree Apply switches back" : Dirty ? "draft modified" : "draft matches applied");
     ImGui::BeginDisabled(!Compiled);
     if (ImGui::Button("Apply")) {
         const auto result = session.ApplyProgram(NativeCaller::Debug, *Compiled.Description);
@@ -130,6 +132,40 @@ void FormulaDebugUI::DrawToolbar(GameSession &session) {
     }
     if (!Status.empty())
         ImGui::TextWrapped("%s", Status.c_str());
+}
+
+void FormulaDebugUI::DrawProcessExample(GameSession &session) {
+    if (!ImGui::CollapsingHeader("Process: three carriers")) return;
+    if (ImGui::Button("Apply three-pulse process")) {
+        const auto result = session.ApplyProcess(NativeCaller::Debug, CarrierExample());
+        Status = result ? "Right-click uses the process. Old instances retain their program." : result.Message;
+    }
+    ImGui::TextWrapped("Each pulse launches a ball and digs on hit. Natural source, fixed fixture and right-click use the same program. Unpause or Step to advance.");
+    const auto &player = session.GetWorld().GetPlayer();
+    ImGui::BeginDisabled(!player || session.AppliedProgram().ResourceId != 2);
+    for (const auto kind : {ProcessCarrierKind::NaturalSource, ProcessCarrierKind::FixedFixture}) {
+        const bool natural = kind == ProcessCarrierKind::NaturalSource;
+        if (ImGui::Button(natural ? "Start natural source" : "Start fixed fixture")) {
+            ProcessCarrier carrier;
+            carrier.Kind = kind;
+            carrier.Subject = 1;
+            carrier.Origin = FormulaWorldAdapter::Offset(player->GetWorldPosition(), {natural ? 8.0 : -8.0, 1});
+            carrier.Scope = session.GetWorld().GetSimulationBounds();
+            carrier.AngleDegrees = 45;
+            carrier.Credits = natural ? 6 : 4;
+            const auto result = session.StartProcessFixture(NativeCaller::Debug, carrier);
+            Status = result.Succeeded() ? "Started fixture; Clear running removes all carriers." : result.Message;
+        }
+        if (natural) ImGui::SameLine();
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Fixture credits: natural 6, fixed 4, player 64; one credit per accepted effect. Not saved.");
+    const auto &bridge = session.GetFormulaRuntime();
+    const auto stats = bridge.ProcessStats();
+    ImGui::Text("Process instances %zu | events %zu | last boundary work %llu | accepted %llu / refused %llu",
+        stats.Instances, stats.PendingEvents, static_cast<unsigned long long>(stats.Work),
+        static_cast<unsigned long long>(stats.Accepted), static_cast<unsigned long long>(stats.Rejected));
+    for (const auto &diagnostic : bridge.ProcessDiagnostics()) ImGui::TextWrapped("%s", diagnostic.Message.c_str());
 }
 
 void FormulaDebugUI::DrawTree(const formula::editing::DraftNode &node, const char *slot) {
@@ -235,6 +271,7 @@ void FormulaDebugUI::Draw(GameSession &session) {
     ImGui::SetNextWindowSize(initialSize, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Formula Editor", &Visible, ImGuiWindowFlags_NoSavedSettings)) {
         DrawToolbar(session);
+        DrawProcessExample(session);
         if (ImGui::BeginTable("Formula structure", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
             ImGui::TableNextColumn();
             ImGui::BeginChild("Tree", {0, 280}, true);

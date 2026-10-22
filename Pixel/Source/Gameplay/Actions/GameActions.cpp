@@ -272,4 +272,46 @@ ApplyProgramResult GameSession::ApplyProgram(api::CallerSessionId caller, const 
     CommitChange();
     return {api::Reason::None, AppliedProgram(), {}};
 }
+
+ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program) {
+    if (caller == NativeCaller::Input) return {api::Reason::PermissionDenied, {}, "PermissionDenied"};
+    const auto reason = WriteRejection();
+    if (reason != api::Reason::None) return {reason, {}, api::ReasonName(reason)};
+    Formulas.ApplyProcess(program);
+    CommitChange();
+    return {api::Reason::None, AppliedProgram(), {}};
+}
+
+api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier) {
+    if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player)
+        return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "Fixture requires native host assembly"};
+    const auto reason = WriteRejection();
+    if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
+    if (!Formulas.CastCarrier(GameWorld, carrier))
+        return {api::ControlStatus::Rejected, api::Reason::InvalidProgram, Formulas.LastError()};
+    Simulation.CommitChange();
+    const api::ProgramEffectCause cause{{Epoch, Formulas.LastActivationId()}, AppliedProgram(), 0, {}, {}};
+    Facts.Append(CurrentCommit(), cause, api::ProgramActivated{AppliedProgram(), Formulas.LastActivationId()});
+    RecordFormulaFacts();
+    PublishCommit();
+    return {api::ControlStatus::Applied};
+}
+
+api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
+    if (caller == NativeCaller::Input) return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
+    const auto reason = WriteRejection();
+    if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
+    Formulas.CancelCarrier(kind, subject);
+    CommitChange();
+    return {api::ControlStatus::Applied};
+}
+
+api::ControlReceipt GameSession::WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
+    if (caller == NativeCaller::Input) return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
+    const auto reason = WriteRejection();
+    if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
+    Formulas.WakeCarrier(kind, subject);
+    CommitChange();
+    return {api::ControlStatus::Applied};
+}
 } // namespace pixel

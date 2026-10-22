@@ -1,6 +1,6 @@
 #pragma once
 #include "GameAPI/CommitStamp.h"
-#include "FormulaRuntime.h"
+#include "FormulaBridge/FormulaBridge.h"
 #include "World/World.h"
 
 namespace pixel {
@@ -36,6 +36,6 @@ class CommittedWorldView {
     uint64_t WindVersion = 0;
     bool Finite = false;
     size_t Index(CellCoord cell) const;
-    void Update(const World &world, const FormulaRuntime &formulas, api::CommitStamp stamp);
+    void Update(const World &world, const FormulaBridge &formulas, api::CommitStamp stamp);
 };
 } // namespace pixel

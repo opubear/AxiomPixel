@@ -12,7 +12,7 @@ struct SessionAccess {
         session.GameWorld.RestorePendingEnvironmentStep(session.Simulation.Time(), deferred);
     }
     static void PublishFixtureChanges(GameSession &session) { session.SynchronizeReadViews(); }
-    static FormulaRuntime &Runtime(GameSession &session) { return session.Formulas; }
+    static FormulaBridge &Runtime(GameSession &session) { return session.Formulas; }
     static WorldGenerationSettings &NextGeneration(GameSession &session) { return session.NextGeneration; }
 };
 } // namespace pixel::testing

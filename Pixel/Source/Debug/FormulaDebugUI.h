@@ -4,7 +4,7 @@
 
 namespace pixel {
 class GameSession;
-// Owns the mutable draft and selection; active descriptions live in FormulaRuntime.
+// Owns the mutable draft and selection; active descriptions live in FormulaBridge.
 class FormulaDebugUI {
   public:
     bool Visible = true;
@@ -20,6 +20,7 @@ class FormulaDebugUI {
     void Rebuild();
     void LoadApplied(GameSession &session);
     void DrawToolbar(GameSession &session);
+    void DrawProcessExample(GameSession &session);
     void DrawTree(const formula::editing::DraftNode &node, const char *slot = "");
     void DrawProperties();
     void DrawDiagnostics(GameSession &session);

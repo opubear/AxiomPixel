@@ -9,7 +9,7 @@
 
 using namespace pixel;
 static_assert(std::is_same_v<decltype(std::declval<GameSession &>().GetWorld()), const World &>);
-static_assert(std::is_same_v<decltype(std::declval<GameSession &>().GetFormulaRuntime()), const FormulaRuntime &>);
+static_assert(std::is_same_v<decltype(std::declval<GameSession &>().GetFormulaRuntime()), const FormulaBridge &>);
 template <class T> concept MutableMapExposed = requires(T &world) { world.GetMutableMap(); };
 static_assert(!MutableMapExposed<World>);
 
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
     const std::string_view mode(argv[1]);
     if (mode == "invalid-anchor") {
         World world(64, 64);
-        FormulaRuntime runtime;
+        FormulaBridge runtime;
         runtime.Cast(world, {{}, {std::numeric_limits<double>::quiet_NaN(), 0}}, 0);
     } else if (mode == "invalid-artifact") {
         GameSession session;
@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
         session.ApplyProgram(NativeCaller::Driver, moved);
     } else if (mode == "pending-step") {
         World world(64, 64);
-        FormulaRuntime runtime;
+        FormulaBridge runtime;
         world.RestorePendingEnvironmentStep(0, true);
         runtime.Step(world);
     } else if (mode == "invalid-session-state") {
