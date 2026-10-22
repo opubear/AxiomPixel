@@ -1,4 +1,5 @@
 #include "SessionStore.h"
+#include "World/WorldStorageError.h"
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -38,7 +39,7 @@ void ReadFlow(std::istream &in, Settings &settings) {
     in >> boundary >> settings.Ambient.X >> settings.Ambient.Y >> settings.GustSpeed
         >> settings.Viscosity >> settings.Relaxation >> settings.Seed;
     if (boundary < int(WindBoundaryMode::Open) || boundary > int(WindBoundaryMode::Periodic))
-        throw std::runtime_error("invalid saved wind boundary mode");
+        throw WorldStorageError("invalid saved wind boundary mode");
     settings.Boundary = WindBoundaryMode(boundary);
 }
 
@@ -61,7 +62,7 @@ WindStrategySettings ReadSettings(std::istream &in) {
     int kind;
     in >> kind;
     if (kind < int(WindStrategyKind::Coarse) || kind > int(WindStrategyKind::Empty))
-        throw std::runtime_error("invalid saved wind strategy");
+        throw WorldStorageError("invalid saved wind strategy");
     settings.Kind = WindStrategyKind(kind);
     ReadFlow(in, settings.Coarse);
     in >> settings.Coarse.Columns >> settings.Coarse.Rows >> settings.Coarse.DirtDrag;
@@ -86,9 +87,11 @@ WorldGenerationSettings ReadGeneration(std::istream &in) {
     uint64_t fingerprint;
     in >> kind >> generation.Version >> generation.Seed >> generation.SurfaceY >> generation.WaterEnabled >> fingerprint;
     generation.Kind = WorldGeneratorKind(kind);
-    ValidateGenerationSettings(generation);
+    try { ValidateGenerationSettings(generation); }
+    catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
+    catch (const std::out_of_range &error) { throw WorldStorageError(error.what()); }
     if (GenerationFingerprint(generation) != fingerprint)
-        throw std::runtime_error("world generation descriptor fingerprint mismatch");
+        throw WorldStorageError("world generation descriptor fingerprint mismatch");
     return generation;
 }
 } // namespace
@@ -103,13 +106,13 @@ std::optional<std::filesystem::path> SessionStore::CurrentDirectory() const {
     std::ifstream current(Root / "current.txt");
     if (!current) {
         if (std::filesystem::exists(Root / "current.txt"))
-            throw std::runtime_error("cannot read current world pointer");
+            throw WorldStorageError("cannot read current world pointer");
         return std::nullopt;
     }
     std::string id;
     current >> id;
     if (id.empty() || std::filesystem::path(id).filename() != id || id == "." || id == "..")
-        throw std::runtime_error("invalid current world name");
+        throw WorldStorageError("invalid current world name");
     return Root / id;
 }
 
@@ -136,16 +139,18 @@ SessionSaveData SessionStore::ReadMetadata(const std::filesystem::path &director
     input >> magic >> version >> edge >> data.WindowEdge >> data.BudgetBytes;
     if (magic != "AxiomPixelWorld" || (version != 2 && version != 3 && version != SessionSaveData::CurrentVersion)
         || edge != storage::ChunkEdge)
-        throw std::runtime_error("incompatible world metadata");
+        throw WorldStorageError("incompatible world metadata");
     data.Generation = version >= 3 ? ReadGeneration(input) : WorldGenerationSettings{};
     input >> data.Player.Chunk.X >> data.Player.Chunk.Y >> data.Player.Local[0] >> data.Player.Local[1]
         >> data.SimulationTime >> data.PhysicsTime >> data.TimeRemainder >> data.DeferredStep
         >> data.WindBoundary >> data.WindEnabled >> data.Paused;
     if (!std::isfinite(data.SimulationTime) || data.SimulationTime < 0)
-        throw std::runtime_error("invalid saved simulation time");
+        throw WorldStorageError("invalid saved simulation time");
     if (version < 4 && !data.DeferredStep && data.TimeRemainder >= 1.0 / 60)
-        throw std::runtime_error("invalid legacy fixed simulation clock");
-    data.Player.Normalize();
+        throw WorldStorageError("invalid legacy fixed simulation clock");
+    try { data.Player.Normalize(); }
+    catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
+    catch (const std::out_of_range &error) { throw WorldStorageError(error.what()); }
     data.Wind = ReadSettings(input);
     return data;
 }

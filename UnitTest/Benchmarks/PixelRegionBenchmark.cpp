@@ -1,3 +1,4 @@
+#include "../Support/WorldAccess.h"
 #include "World/Environment/FieldResponse.h"
 #include "World/World.h"
 #include <algorithm>
@@ -40,7 +41,7 @@ struct FullScan {
                 }
             }
         }
-        world.GetMutableMap().CommitMaterialMoves(Proposals);
+        pixel::testing::WorldAccess::Map(world).CommitMaterialMoves(Proposals);
     }
 };
 
@@ -52,7 +53,7 @@ void Prepare(World &world, int scene) {
         return;
     }
     world.Fill({});
-    auto &map = world.GetMutableMap();
+    auto &map = pixel::testing::WorldAccess::Map(world);
     for (const auto coordinate : map.ChunkCoordinates()) {
         auto &chunk = *map.FindChunk(coordinate);
         for (uint32_t row = 0; row < storage::ChunkEdge; ++row) {
@@ -78,12 +79,18 @@ void Measure(std::ostream &out, int scene, bool reference, int rounds) {
     Prepare(world, scene);
     FullScan full;
     for (int i = 0; i < 8; ++i)
-        reference ? full.Step(world) : world.Tick(1.f / 60);
+        if (reference)
+            full.Step(world);
+        else
+            world.Tick(1.f / 60);
     std::vector<double> samples;
     uint64_t visited = 0, active = 0;
     for (int i = 0; i < rounds; ++i) {
         const auto begin = Clock::now();
-        reference ? full.Step(world) : world.Tick(1.f / 60);
+        if (reference)
+            full.Step(world);
+        else
+            world.Tick(1.f / 60);
         samples.push_back(std::chrono::duration<double, std::milli>(Clock::now() - begin).count());
         visited += reference ? full.Visited : world.GetEnvironment().LastVisitedCells();
         active += reference ? 0 : world.GetEnvironment().LastActiveRegions();

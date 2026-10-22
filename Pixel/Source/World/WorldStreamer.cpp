@@ -1,4 +1,5 @@
 #include "WorldStreamer.h"
+#include "WorldStorageError.h"
 #include <algorithm>
 #include <bit>
 #include <fstream>
@@ -102,16 +103,15 @@ void WorldStreamer::Run() {
             work = std::move(Queue.front());
             Queue.erase(Queue.begin());
         }
-        try {
+        const auto failure = storage::CaptureFailure([&] {
             if (work.Kind == Operation::Load)
                 work.Chunk = ReadChunk(Configuration.Directory, work.Coordinate, *Generator);
             else {
                 WriteChunk(Configuration.Directory, *work.Chunk);
                 work.Chunk->Dirty = false;
             }
-        } catch (const std::exception &exception) {
-            work.Error = exception.what();
-        }
+        });
+        if (failure) work.Error = *failure;
         {
             std::lock_guard lock(Mutex);
             Completed.push_back(std::move(work));
@@ -210,12 +210,12 @@ void WorldStreamer::LoadNow(WorldRect bounds) {
         if (!MakeRoom(LoadReservation(), wanted)) {
             Wait();
             if (!MakeRoom(LoadReservation(), wanted))
-                throw std::runtime_error("world budget cannot fit required region");
+                throw WorldStorageError("world budget cannot fit required region");
         }
         Enqueue({Operation::Load, coordinate, {}, {}});
         Wait();
         if (!Map.FindChunk(coordinate))
-            throw std::runtime_error(Error.empty() ? "required chunk failed to load" : Error);
+            throw WorldStorageError(Error.empty() ? "required chunk failed to load" : Error);
     }
 }
 
@@ -252,7 +252,7 @@ void WorldStreamer::Save() {
         Enqueue({Operation::Save, coordinate, Map.Remove(coordinate), {}, true});
         Wait();
         if (Map.FindChunk(coordinate)->Dirty)
-            throw std::runtime_error(Error.empty() ? "world save failed" : Error);
+            throw WorldStorageError(Error.empty() ? "world save failed" : Error);
     }
 }
 
@@ -333,7 +333,7 @@ std::unique_ptr<WorldChunk> WorldStreamer::ReadChunk(const std::filesystem::path
     Read(input, stored.X);
     Read(input, stored.Y);
     if (magic != FileMagic || version != FileVersion || edge != storage::ChunkEdge || stored != coordinate || std::filesystem::file_size(path) != 3 * sizeof(uint32_t) + 2 * sizeof(int64_t) + sizeof(ChunkPayload))
-        throw std::runtime_error("incompatible or truncated chunk file: " + path.string());
+        throw WorldStorageError("incompatible or truncated chunk file: " + path.string());
     auto &data = chunk->Data();
     input.read(reinterpret_cast<char *>(data.Materials.data()), data.Materials.size() * sizeof(CellTypeId));
     input.read(reinterpret_cast<char *>(data.Directions.data()), data.Directions.size() * sizeof(PackedDirection));
@@ -342,7 +342,7 @@ std::unique_ptr<WorldChunk> WorldStreamer::ReadChunk(const std::filesystem::path
         const auto direction = data.Directions[i];
         const auto force = data.BaseForces[i];
         if (!IsKnownCellType(data.Materials[i]) || direction.X < -1 || direction.X > 1 || direction.Y < -1 || direction.Y > 1 || !std::isfinite(force.X) || !std::isfinite(force.Y))
-            throw std::runtime_error("invalid chunk cell data: " + path.string());
+            throw WorldStorageError("invalid chunk cell data: " + path.string());
     }
     chunk->Recount();
     return chunk;

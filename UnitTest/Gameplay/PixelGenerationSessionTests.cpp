@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "Gameplay/GameSession.h"
 #include <chrono>
 #include <cstdlib>
@@ -42,28 +43,28 @@ void NaturalPersistenceAndStrategySelection() {
     {
         GameSession session(true, natural);
         Require(session.GetGenerationSettings() == natural && session.IsPaused(), "new world did not use natural strategy");
-        auto &world = session.GetWorld();
+        auto &world = pixel::testing::SessionAccess::World(session);
         Require(world.GetCell(511, world.GetPlayer()->GetWorldPosition().Cell().Y + 4).Type == CellTypeId::GrassSoil,
                 "natural spawn lacks a grass platform");
         world.SetCell(32, 10, {CellTypeId::Water});
-        session.Save();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         original = session.GetSaveDirectory();
     }
     {
         GameSession restored(true); // Constructor default must not override saved strategy.
         Require(restored.GetGenerationSettings() == natural, "loaded seed or strategy changed");
-        Require(restored.GetWorld().GetCell(32, 10).Type == CellTypeId::Water, "saved water was regenerated");
-        restored.GetWorld().SetCell(32, 10, {});
-        restored.Save();
+        Require(pixel::testing::SessionAccess::World(restored).GetCell(32, 10).Type == CellTypeId::Water, "saved water was regenerated");
+        pixel::testing::SessionAccess::World(restored).SetCell(32, 10, {});
+        Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
     {
         GameSession restored(true, natural);
-        Require(restored.GetWorld().GetCell(32, 10).Type == CellTypeId::Air, "drained cell was refilled on load");
-        restored.SetNextGenerator(WorldGeneratorKind::Flat);
-        restored.Reset();
+        Require(pixel::testing::SessionAccess::World(restored).GetCell(32, 10).Type == CellTypeId::Air, "drained cell was refilled on load");
+        restored.Control(pixel::NativeCaller::Driver, pixel::api::SetNextGenerator{pixel::api::GeneratorKind::Flat});
+        Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
         Require(restored.GetGenerationSettings().Kind == WorldGeneratorKind::Flat && restored.GetSaveDirectory() != original,
                 "strategy selection modified the old world instead of creating a new one");
-        Require(restored.GetWorld().GetCell(40, 511).Type == CellTypeId::Air && restored.GetWorld().GetCell(40, 512).Type == CellTypeId::Dirt,
+        Require(pixel::testing::SessionAccess::World(restored).GetCell(40, 511).Type == CellTypeId::Air && pixel::testing::SessionAccess::World(restored).GetCell(40, 512).Type == CellTypeId::Dirt,
                 "debug superflat boundary changed");
         Require(std::filesystem::exists(original / "world.meta"), "reset removed the old world");
     }
@@ -75,7 +76,7 @@ void LegacyFlatAndResetFailure() {
     {
         GameSession flat(true);
         original = flat.GetSaveDirectory();
-        flat.Save();
+        Require(flat.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
     // Produce genuine v2 metadata by removing the generation descriptor line.
     const auto metadata = original / "world.meta";
@@ -95,22 +96,22 @@ void LegacyFlatAndResetFailure() {
     auto generator = CreateWorldGenerator(loaded.GetGenerationSettings());
     auto frontier = WorldStreamer::ReadChunk(original, {5, 0}, *generator);
     Require(frontier->Data().Materials[0] == CellTypeId::Air, "legacy frontier was not flat air");
-    loaded.GetWorld().SetCell(32, 10, {CellTypeId::Dirt});
-    loaded.Save();
+    pixel::testing::SessionAccess::World(loaded).SetCell(32, 10, {CellTypeId::Dirt});
+    Require(loaded.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     std::filesystem::remove(files.Path / "current.txt");
     std::filesystem::create_directory(files.Path / "current.txt");
-    Require(!loaded.TryReset(), "reset unexpectedly replaced a directory with the world pointer");
+    Require(!loaded.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "reset unexpectedly replaced a directory with the world pointer");
     Require(loaded.IsReady() && loaded.GetSaveDirectory() == original && loaded.GetGenerationSettings().Kind == WorldGeneratorKind::Flat,
             "failed candidate did not restore the old session identity");
-    Require(loaded.GetWorld().GetCell(32, 10).Type == CellTypeId::Dirt, "candidate failure lost the old world content");
+    Require(pixel::testing::SessionAccess::World(loaded).GetCell(32, 10).Type == CellTypeId::Dirt, "candidate failure lost the old world content");
 }
 
 void FailedRecoveryIsIsolatedAndRetryable() {
     SaveRoot files;
     GameSession session(true);
-    auto &world = session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(session);
     world.SetCell(32, 10, {CellTypeId::Dirt});
-    session.Save();
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     const auto directory = session.GetSaveDirectory();
     const auto chunk = directory / "chunks" / "0_0.bin";
     const auto backup = files.Path / "saved-chunk.bin";
@@ -119,23 +120,38 @@ void FailedRecoveryIsIsolatedAndRetryable() {
     const auto pointer = files.Path / "current.txt";
     std::filesystem::remove(pointer);
     std::filesystem::create_directory(pointer);
-    Require(!session.TryReset() && !session.IsReady(), "double failure did not enter Failed");
+    Require(!session.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded() && !session.IsReady(), "double failure did not enter Failed");
     Require(!world.GetStreamer() && world.GetMap().ChunkCount() == 0, "failed recovery retained an active streamer/map");
     Require(session.GetSaveError().find("recovery failed") != std::string::npos, "candidate error hid the recovery failure");
     Require(world.TryPlaceDirt(32, 10) == CellEditResult::NotReady &&
                 world.TryRemoveMaterial(32, 10) == CellEditResult::NotReady,
             "Failed session permits editing a partial world");
     const auto time = session.GetSimulationTime();
-    session.SetPaused(false);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     session.Tick(.1f, {});
     world.RequestVisibleRegion({2048, 0, 64, 64});
     world.WaitForStreaming();
-    Require(session.GetSimulationTime() == time && world.GetMap().ChunkCount() == 0 && !session.TrySave(),
+    Require(session.GetSimulationTime() == time && world.GetMap().ChunkCount() == 0 && !session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(),
             "Failed session advanced, loaded chunks, or saved");
     std::filesystem::copy_file(backup, chunk, std::filesystem::copy_options::overwrite_existing);
     std::filesystem::remove(pointer);
     { std::ofstream current(pointer); current << directory.filename().string() << '\n'; }
-    Require(session.TryRecover() && session.IsReady() && session.GetSaveDirectory() == directory,
+    const auto metadata = directory / "world.meta";
+    std::ifstream savedMetadata(metadata);
+    std::ostringstream savedText;
+    savedText << savedMetadata.rdbuf();
+    savedMetadata.close();
+    auto corruptText = savedText.str();
+    const auto generationLine = corruptText.find('\n') + 1;
+    const auto generationEnd = corruptText.find('\n', generationLine);
+    corruptText.replace(generationLine, generationEnd - generationLine, "0 1 0 9223372036854775807 1 0");
+    { std::ofstream output(metadata); output << corruptText; }
+    const auto corruption = session.Control(pixel::NativeCaller::Driver, pixel::api::RecoverWorld{});
+    Require(corruption.Status == pixel::api::ControlStatus::Failed && !session.IsReady()
+                && corruption.Message.find("generation coordinate exceeds supported range") != std::string::npos,
+            "corrupt generation must keep a recoverable session and explicit storage diagnosis");
+    { std::ofstream output(metadata); output << savedText.str(); }
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::RecoverWorld{}).Succeeded() && session.IsReady() && session.GetSaveDirectory() == directory,
             "explicit recovery did not reactivate the original world");
     Require(world.GetCell(32, 10).Type == CellTypeId::Dirt && session.GetSaveError().empty(),
             "recovery failed to restore content or clear the error");
@@ -148,7 +164,7 @@ void Version3GenerationRemainsReadable() {
     std::filesystem::path metadata;
     {
         GameSession session(true, natural);
-        session.Save();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         metadata = session.GetSaveDirectory() / "world.meta";
     }
     std::ifstream input(metadata);

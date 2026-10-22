@@ -230,6 +230,8 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
             Formulas.Clear();
         } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld> || std::is_same_v<T, api::RecoverWorld>) {
+            if constexpr (!std::is_same_v<T, api::RecoverWorld>)
+                if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
             const bool success = [&] {
                 if constexpr (std::is_same_v<T, api::SaveWorld>) return TrySave();
                 else if constexpr (std::is_same_v<T, api::ResetWorld>) return TryReset();
@@ -241,13 +243,13 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
         } else if constexpr (std::is_same_v<T, api::SetNextGenerator>) {
             if (value.Kind != api::GeneratorKind::Flat && value.Kind != api::GeneratorKind::Natural)
                 return {api::ControlStatus::Rejected, api::Reason::Unsupported, "Unsupported"};
-            SetNextGenerator(value.Kind == api::GeneratorKind::Flat ? WorldGeneratorKind::Flat : WorldGeneratorKind::Natural);
+            NextGeneration.Kind = value.Kind == api::GeneratorKind::Flat ? WorldGeneratorKind::Flat : WorldGeneratorKind::Natural;
         } else if constexpr (std::is_same_v<T, api::SetNextSeed>) {
-            SetNextWorldSeed(value.Seed);
+            NextGeneration.Seed = value.Seed;
         } else {
             if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
-            if constexpr (std::is_same_v<T, api::SetPaused>) SetPaused(value.Paused);
-            else if constexpr (std::is_same_v<T, api::StepSimulation>) RequestStep();
+            if constexpr (std::is_same_v<T, api::SetPaused>) Paused = value.Paused;
+            else if constexpr (std::is_same_v<T, api::StepSimulation>) StepRequested = true;
             else if constexpr (std::is_same_v<T, api::RetryStreaming>) GameWorld.RetryStreaming();
         }
         return {api::ControlStatus::Applied};

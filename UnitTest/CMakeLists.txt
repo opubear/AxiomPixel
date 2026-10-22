@@ -6,6 +6,23 @@ if(PIXEL_BUILD_SMOKE)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(PixelFailureTests Gameplay/PixelFailureTests.cpp)
+    target_link_libraries(PixelFailureTests PRIVATE PixelGameplay)
+    foreach(failure_case IN ITEMS invalid-anchor invalid-artifact pending-step invalid-session-state)
+        if(failure_case STREQUAL "invalid-anchor")
+            set(expected_error "invalid continuous world position")
+        elseif(failure_case STREQUAL "invalid-artifact")
+            set(expected_error "cannot use a moved-from Formula")
+        elseif(failure_case STREQUAL "pending-step")
+            set(expected_error "formula step requires a committed environment step")
+        else()
+            set(expected_error "unknown world generator")
+        endif()
+        add_test(NAME Pixel.InternalFailure.${failure_case}
+            COMMAND ${CMAKE_COMMAND} -DPIXEL_TEST_PROGRAM=$<TARGET_FILE:PixelFailureTests>
+                -DPIXEL_FAILURE_CASE=${failure_case} -DPIXEL_EXPECTED_ERROR=${expected_error}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyInternalFailure.cmake)
+    endforeach()
     add_executable(PixelActionTests Gameplay/PixelActionTests.cpp)
     target_link_libraries(PixelActionTests PRIVATE PixelInput)
     add_test(NAME Pixel.Actions COMMAND PixelActionTests)

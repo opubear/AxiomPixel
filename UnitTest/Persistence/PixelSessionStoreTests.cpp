@@ -1,4 +1,5 @@
 #include "Persistence/SessionStore.h"
+#include "World/WorldStorageError.h"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -97,6 +98,13 @@ void MetadataCompatibility() {
         store.WriteMetadata(directory, legacy);
         Require(ReadText(metadata).starts_with("AxiomPixelWorld 4 "), "legacy metadata was not saved as v4");
     }
+    auto corruptGeneration = fixture;
+    const auto surface = corruptGeneration.find(" 768 0 ");
+    corruptGeneration.replace(surface, 7, " 9223372036854775807 0 ");
+    WriteText(metadata, corruptGeneration);
+    const auto corruption = storage::CaptureFailure([&] { store.ReadMetadata(directory); });
+    Require(corruption && corruption->find("generation coordinate exceeds supported range") != std::string::npos,
+            "corrupt generation range escaped the persistence failure boundary");
     WriteText(metadata, MetadataFixture(5));
     RequireFailure([&] { store.ReadMetadata(directory); }, "future metadata version was accepted");
     WriteText(metadata, fixture.substr(0, fixture.size() / 2));

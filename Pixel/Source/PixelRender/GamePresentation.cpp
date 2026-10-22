@@ -49,7 +49,7 @@ void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
 }
 std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera) const {
-    auto &owner = session.GetWorld();
+    auto &owner = session.GameWorld;
     const auto lifetime = owner.PublicationLifetime();
     auto snapshot = std::shared_ptr<WorldSnapshot>(new WorldSnapshot, [&owner, lifetime](WorldSnapshot *value) {
         if (!lifetime.expired())
@@ -58,7 +58,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
     });
     return [this, &session, &camera, snapshot = std::move(snapshot)](WorldGridFrame &frame) {
         frame.FormulaDraws.clear();
-        auto &world = session.GetWorld();
+        auto &world = session.GameWorld;
         const auto lifetime = world.PublicationLifetime();
         frame.TrackPublication(world.GetMap().GetIdentity(), [&world, lifetime, key = &frame] {
             if (!lifetime.expired())

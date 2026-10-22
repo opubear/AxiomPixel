@@ -14,6 +14,8 @@ enum class CellEditResult { Applied,
                             Blocked,
                             NotReady };
 
+namespace testing { struct WorldAccess; }
+
 class World {
   public:
     World(uint32_t width, uint32_t height);
@@ -83,7 +85,6 @@ class World {
     void ClearPlayerInput() { PlayerHorizontal = 0; PlayerJump = false; }
     const pixel::Environment &GetEnvironment() const { return Environment; }
     const WorldMap &GetMap() const { return Map; }
-    WorldMap &GetMutableMap() { return Map; }
     WorldMapView ReadState() const { return Map.View(GetSimulationBounds()); }
     void PublishState(WorldSnapshot &destination) const;
     void PublishSnapshot(WorldRect bounds, WorldSnapshot &destination) const;
@@ -116,6 +117,9 @@ class World {
     const WorldStreamer *GetStreamer() const { return Streamer.get(); }
 
   private:
+    friend class Environment;
+    friend struct testing::WorldAccess;
+    WorldMap &GetMutableMap() { return Map; }
     WorldMap Map;
     pixel::Environment Environment;
     std::unique_ptr<WorldStreamer> Streamer;

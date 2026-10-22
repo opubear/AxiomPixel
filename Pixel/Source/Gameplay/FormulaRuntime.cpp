@@ -15,7 +15,6 @@ struct Root {
     formula::validation::Analysis Budget;
     formula::Simulator Simulator;
     std::vector<formula::TraceEntry> Batch;
-    bool Failed = false;
 };
 struct Collision {
     Root *Owner;
@@ -75,38 +74,26 @@ struct FormulaRuntime::State {
         return result;
     }
 
-    void Fail(Root &root, const std::exception &error) {
-        root.Failed = true;
-        root.Batch.clear();
-        Error = error.what();
-        Record(root.Id, root.Simulator.Now(), std::string("RuntimeError: ") + error.what());
-    }
-
     void Drain(Root &root) {
         auto events = root.Simulator.DrainTrace();
         root.Batch.insert(root.Batch.end(), std::make_move_iterator(events.begin()), std::make_move_iterator(events.end()));
     }
 
     void Advance(Root &root, bool step, const World &world, std::vector<Collision> &collisions) {
-        try {
-            std::map<formula::ProjectileId, formula::Vec2> old;
-            for (const auto &projectile : root.Simulator.Projectiles())
-                old.emplace(projectile.Id, projectile.Position);
-            root.Simulator.AdvanceTo(root.Simulator.Now() + (step ? 1 : 0));
-            Drain(root);
+        std::map<formula::ProjectileId, formula::Vec2> old;
+        for (const auto &projectile : root.Simulator.Projectiles())
+            old.emplace(projectile.Id, projectile.Position);
+        root.Simulator.AdvanceTo(root.Simulator.Now() + (step ? 1 : 0));
+        Drain(root);
 
-            // Expiry has already removed its carrier; the final, excluded
-            // lifetime segment must never receive an artificial Hit.
-            for (const auto &projectile : root.Simulator.Projectiles()) {
-                const auto previous = old.find(projectile.Id);
-                const auto to = FormulaWorldAdapter::Offset(root.Anchor, projectile.Position);
-                const auto from = previous == old.end() ? to : FormulaWorldAdapter::Offset(root.Anchor, previous->second);
-                auto contact = FormulaWorldAdapter::Sweep(world, from, to);
-                if (contact.Kind != FormulaContactKind::None)
-                    collisions.push_back({&root, projectile.Id, std::move(contact)});
-            }
-        } catch (const std::exception &error) {
-            Fail(root, error);
+        // Expiry wins at the boundary, so the excluded final segment has no Hit.
+        for (const auto &projectile : root.Simulator.Projectiles()) {
+            const auto previous = old.find(projectile.Id);
+            const auto to = FormulaWorldAdapter::Offset(root.Anchor, projectile.Position);
+            const auto from = previous == old.end() ? to : FormulaWorldAdapter::Offset(root.Anchor, previous->second);
+            auto contact = FormulaWorldAdapter::Sweep(world, from, to);
+            if (contact.Kind != FormulaContactKind::None)
+                collisions.push_back({&root, projectile.Id, std::move(contact)});
         }
     }
 
@@ -117,54 +104,44 @@ struct FormulaRuntime::State {
         });
         for (const auto &collision : collisions) {
             auto &root = *collision.Owner;
-            if (root.Failed)
-                continue;
-            try {
-                if (collision.Contact.Kind == FormulaContactKind::Solid) {
-                    const auto origin = root.Anchor.Cell();
-                    const auto local = collision.Contact.Position.RelativeTo(origin);
-                    const auto anchor = root.Anchor.RelativeTo(origin);
-                    root.Simulator.Hit(collision.Projectile, {local[0] - anchor[0], local[1] - anchor[1]});
-                } else {
-                    root.Simulator.DiscardProjectile(collision.Projectile);
-                    Record(root.Id, root.Simulator.Now(), collision.Contact.Kind == FormulaContactKind::NotReady ? "NotReady" : "OutOfSimulation");
-                }
-                Drain(root);
-            } catch (const std::exception &error) {
-                Fail(root, error);
+            if (collision.Contact.Kind == FormulaContactKind::Solid) {
+                const auto origin = root.Anchor.Cell();
+                const auto local = collision.Contact.Position.RelativeTo(origin);
+                const auto anchor = root.Anchor.RelativeTo(origin);
+                if (!root.Simulator.Hit(collision.Projectile, {local[0] - anchor[0], local[1] - anchor[1]}))
+                    throw std::logic_error("collision references a retired formula projectile");
+            } else {
+                if (!root.Simulator.DiscardProjectile(collision.Projectile))
+                    throw std::logic_error("collision references a retired formula projectile");
+                Record(root.Id, root.Simulator.Now(), collision.Contact.Kind == FormulaContactKind::NotReady ? "NotReady" : "OutOfSimulation");
             }
+            Drain(root);
         }
     }
 
     void Commit(Root &root, World &world) {
-        if (root.Failed)
-            return;
-        try {
-            for (const auto &event : root.Batch) {
-                Record(root.Id, event.At, formula::FormatTrace(event));
-                const auto position = FormulaWorldAdapter::Offset(root.Anchor, event.Position);
-                if (const auto *dig = std::get_if<formula::DigArea>(&event.Data)) {
-                    const auto result = FormulaWorldAdapter::Dig(world, position, dig->Radius);
-                    Record(root.Id, event.At, "Dig applied=" + std::to_string(result.Applied) + " blocked=" + std::to_string(result.Blocked)
-                        + " notReady=" + std::to_string(result.NotReady));
-                } else if (const auto *wind = std::get_if<formula::WindImpulse>(&event.Data)) {
-                    const auto result = FormulaWorldAdapter::Wind(world, position, wind->Radius, wind->Velocity);
-                    if (result == FormulaWindResult::Applied)
-                        ++WindCalls;
-                    Record(root.Id, event.At, FormulaWorldAdapter::WindResultName(result));
-                }
+        // Analysis has validated every event. Internal errors propagate, including
+        // after earlier effects committed; the host must not resume this session.
+        for (const auto &event : root.Batch) {
+            Record(root.Id, event.At, formula::FormatTrace(event));
+            const auto position = FormulaWorldAdapter::Offset(root.Anchor, event.Position);
+            if (const auto *dig = std::get_if<formula::DigArea>(&event.Data)) {
+                const auto result = FormulaWorldAdapter::Dig(world, position, dig->Radius);
+                Record(root.Id, event.At, "Dig applied=" + std::to_string(result.Applied) + " blocked=" + std::to_string(result.Blocked)
+                    + " notReady=" + std::to_string(result.NotReady));
+            } else if (const auto *wind = std::get_if<formula::WindImpulse>(&event.Data)) {
+                const auto result = FormulaWorldAdapter::Wind(world, position, wind->Radius, wind->Velocity);
+                if (result == FormulaWindResult::Applied)
+                    ++WindCalls;
+                Record(root.Id, event.At, FormulaWorldAdapter::WindResultName(result));
             }
-            root.Batch.clear();
-        } catch (const std::exception &error) {
-            // Already submitted world edits keep their established world error
-            // and storage state. Only this root's remaining batch is abandoned.
-            Fail(root, error);
         }
+        root.Batch.clear();
     }
 
     void Refresh() {
         for (auto it = Roots.begin(); it != Roots.end();) {
-            if ((*it)->Failed || (*it)->Simulator.IsIdle()) {
+            if ((*it)->Simulator.IsIdle()) {
                 RetiredWind += (*it)->Budget.WindEffects;
                 it = Roots.erase(it);
             } else {
@@ -172,27 +149,11 @@ struct FormulaRuntime::State {
             }
         }
         Projectiles.clear();
-        for (auto &root : Roots) {
-            try {
-                for (const auto &projectile : root->Simulator.Projectiles()) {
-                    Projectiles.push_back({Epoch, root->Id, projectile.Id, root->Version,
-                        FormulaWorldAdapter::Offset(root->Anchor, projectile.Position), FormulaWorldAdapter::BoltRadius,
-                        projectile.Damage, projectile.Velocity});
-                }
-            } catch (const std::exception &error) {
-                Fail(*root, error);
-                // Remove a partial root snapshot as well as its future work.
-                std::erase_if(Projectiles, [&](const FormulaProjectile &p) { return p.CastId == root->Id; });
-            }
-        }
-        for (auto it = Roots.begin(); it != Roots.end();) {
-            if ((*it)->Failed) {
-                RetiredWind += (*it)->Budget.WindEffects;
-                it = Roots.erase(it);
-            } else {
-                ++it;
-            }
-        }
+        for (const auto &root : Roots)
+            for (const auto &projectile : root->Simulator.Projectiles())
+                Projectiles.push_back({Epoch, root->Id, projectile.Id, root->Version,
+                    FormulaWorldAdapter::Offset(root->Anchor, projectile.Position), FormulaWorldAdapter::BoltRadius,
+                    projectile.Damage, projectile.Velocity});
     }
 };
 
@@ -202,21 +163,16 @@ FormulaRuntime::~FormulaRuntime() = default;
 bool FormulaRuntime::Apply(const formula::Formula &description) {
     if (Data->Version == UINT64_MAX)
         throw std::overflow_error("formula program version exhausted");
-    try {
-        const auto result = formula::validation::Analyze(description);
-        if (!result) {
-            Data->Error = result.Errors.empty() ? "formula analysis failed" : result.Errors.front().Field + ": " + result.Errors.front().Message;
-            return false;
-        }
-        Data->Active = description;
-        Data->ActiveBudget = result.Budget;
-        ++Data->Version;
-        Data->Error.clear();
-        return true;
-    } catch (const std::exception &error) {
-        Data->Error = error.what();
+    const auto result = formula::validation::Analyze(description);
+    if (!result) {
+        Data->Error = result.Errors.empty() ? "formula analysis failed" : result.Errors.front().Field + ": " + result.Errors.front().Message;
         return false;
     }
+    Data->Active = description;
+    Data->ActiveBudget = result.Budget;
+    ++Data->Version;
+    Data->Error.clear();
+    return true;
 }
 
 const formula::Formula &FormulaRuntime::ActiveFormula() const { return Data->Active; }
@@ -247,32 +203,28 @@ bool FormulaRuntime::Cast(World &world, WorldPosition anchor, double angleDegree
 
     if (Data->NextCast == UINT64_MAX)
         throw std::overflow_error("formula activation identity exhausted");
-    try {
-        anchor.Normalize();
-        auto root = std::make_unique<Root>();
-        root->Id = Data->NextCast++;
-        root->Version = Data->Version;
-        root->Anchor = anchor;
-        root->Budget = Data->ActiveBudget;
-        root->Simulator.Cast(Data->Active, {}, angleDegrees);
-        auto &active = *root;
-        Data->Roots.push_back(std::move(root));
-        ++Data->Accepted;
-        std::vector<Collision> collisions;
-        Data->Advance(active, false, world, collisions);
-        Data->Resolve(collisions);
-        Data->Commit(active, world);
-        const bool success = !active.Failed;
-        Data->Refresh();
-        if (success)
-            Data->Error.clear();
-        return success;
-    } catch (const std::exception &error) {
-        return Data->Reject(error.what());
-    }
+    anchor.Normalize();
+    auto root = std::make_unique<Root>();
+    root->Id = Data->NextCast++;
+    root->Version = Data->Version;
+    root->Anchor = anchor;
+    root->Budget = Data->ActiveBudget;
+    root->Simulator.Cast(Data->Active, {}, angleDegrees);
+    auto &active = *root;
+    Data->Roots.push_back(std::move(root));
+    ++Data->Accepted;
+    std::vector<Collision> collisions;
+    Data->Advance(active, false, world, collisions);
+    Data->Resolve(collisions);
+    Data->Commit(active, world);
+    Data->Refresh();
+    Data->Error.clear();
+    return true;
 }
 
 void FormulaRuntime::Step(World &world) {
+    if (world.GetEnvironment().IsWaitingForBudget())
+        throw std::logic_error("formula step requires a committed environment step");
     std::vector<Collision> collisions;
     // All sweeps see the same committed map, before any root's Dig is applied.
     for (auto &root : Data->Roots)
@@ -294,6 +246,8 @@ void FormulaRuntime::Clear() {
 
 void FormulaRuntime::OnWorldReplaced() {
     Clear();
+    if (Data->Epoch == UINT64_MAX)
+        throw std::overflow_error("formula diagnostic epoch exhausted");
     ++Data->Epoch;
 }
 

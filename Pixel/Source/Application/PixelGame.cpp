@@ -55,7 +55,7 @@ void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int 
 void PixelGame::ConfigurePerformanceCapture() {
     const auto scenario = Performance.ConfigureFromEnvironment();
     if (scenario == "paused" || scenario == "paused-no-wind-visual")
-        Session.SetPaused(true);
+        Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     if (scenario == "no-wind-visual" || scenario == "paused-no-wind-visual")
         Presentation.WindVisual.Mode = WindVisualMode::Off;
     if (scenario == "field")
@@ -74,7 +74,7 @@ void PixelGame::Initialize() {
 }
 
 void PixelGame::FrameBegin() {
-    Session.GetFormulaRuntime().BeginFrame();
+    Session.BeginFrame();
     Performance.BeginFrame();
     std::array<int, 2> size{};
     GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);

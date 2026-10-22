@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "PixelSmokeApplication.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
@@ -443,7 +444,7 @@ void Lifecycle(int iteration) {
     auto *input = game.get();
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
-    input->GetWorld().GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
+    pixel::testing::SessionAccess::World(input->GetSession()).GenerateTerrain(512); // Texture-only lifecycle fixture has no character.
     PixelRender *policy = nullptr;
     uint64_t publications = 0;
     // Independent fixture oracle: never derive expected pixels from the renderer's
@@ -452,9 +453,9 @@ void Lifecycle(int iteration) {
     for (uint32_t y = 0; y < Grid2D::Height; ++y)
         for (uint32_t x = 0; x < Grid2D::Width; ++x) {
             expectedCells[size_t(y) * Grid2D::Width + x] = 1 + (x / 4 + y / 4) % 3;
-            input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * expectedCells[size_t(y) * Grid2D::Width + x])});
+            pixel::testing::SessionAccess::World(input->GetSession()).SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * expectedCells[size_t(y) * Grid2D::Width + x])});
         }
-    const auto initialContents = CopyWorldCells(input->GetWorld());
+    const auto initialContents = CopyWorldCells(pixel::testing::SessionAccess::World(input->GetSession()));
     WorldGridFrameView expected{expectedCells, input->GetView(), input->GetPresentation().Post};
     RenderSetup setup;
     setup.Enable3DScene = false;
@@ -480,7 +481,7 @@ void Lifecycle(int iteration) {
     auto first = Draw(app);
     Require(publications == 1, "first frame did not publish initialized world");
     CheckPublishedRegion(policy->PublishedFrame(), expectedCells);
-    Require(CopyWorldCells(input->GetWorld()) == initialContents, "snapshot publication changed gameplay storage contents");
+    Require(CopyWorldCells(pixel::testing::SessionAccess::World(input->GetSession())) == initialContents, "snapshot publication changed gameplay storage contents");
     engine.GetRHI()->WaitIdle();
     VerifyPublishedColor(expected, policy->PublishedFrame(), policy->SceneColor(first.Slot));
     Require(!engine.GetScene() && !app.GetDebugUI(), "2D initialized 3D scene or UI");
@@ -496,7 +497,7 @@ void Lifecycle(int iteration) {
             for (uint32_t x = 0; x < Grid2D::Width; ++x) {
                 const auto layer = uint32_t((y + x + i) % 4);
                 expectedCells[size_t(y) * Grid2D::Width + x] = layer;
-                input->GetWorld().SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * layer)});
+                pixel::testing::SessionAccess::World(input->GetSession()).SetCell(x, y, {static_cast<pixel::CellTypeId>(10 * layer)});
             }
         {
             auto view = input->GetView();
@@ -520,9 +521,9 @@ void Lifecycle(int iteration) {
         if (i == 8) {
             const auto beforePost = publications;
             const auto beforeSubmit = policy->SubmittedFrames();
-            const auto beforeStorage = CopyWorldCells(input->GetWorld());
+            const auto beforeStorage = CopyWorldCells(pixel::testing::SessionAccess::World(input->GetSession()));
             VerifyPostShader(engine, policy->SceneColor(token.Slot));
-            Require(publications == beforePost && policy->SubmittedFrames() == beforeSubmit && CopyWorldCells(input->GetWorld()) == beforeStorage, "shader-only frame advanced gameplay publication");
+            Require(publications == beforePost && policy->SubmittedFrames() == beforeSubmit && CopyWorldCells(pixel::testing::SessionAccess::World(input->GetSession())) == beforeStorage, "shader-only frame advanced gameplay publication");
         }
     }
     // A change after FrameBegin cannot affect this frame's uploaded snapshot.
@@ -532,7 +533,7 @@ void Lifecycle(int iteration) {
         view.WorldOriginCells = {};
         input->SetView(view);
     }
-    input->GetWorld().Fill({pixel::CellTypeId::Dirt});
+    pixel::testing::SessionAccess::World(input->GetSession()).Fill({pixel::CellTypeId::Dirt});
     std::fill(expectedCells.begin(), expectedCells.end(), 1);
     expected.View = input->GetView();
     expected.Post = input->GetPresentation().Post;
@@ -550,7 +551,7 @@ void Lifecycle(int iteration) {
     input->SetView(movedView);
     Require(policy->PublishedFrame().View.OriginPixels == expected.View.OriginPixels,
             "same-frame camera movement leaked into published view");
-    input->GetWorld().SetCell(0, 0, {static_cast<pixel::CellTypeId>(20)});
+    pixel::testing::SessionAccess::World(input->GetSession()).SetCell(0, 0, {static_cast<pixel::CellTypeId>(20)});
     engine.GetInput()->Dispatch();
     app.Tick(0);
     app.FrameEnd();
@@ -591,7 +592,7 @@ void Lifecycle(int iteration) {
     engine.GetInput()->Dispatch();
     const auto beforeMinimize = policy->SubmittedFrames();
     const auto beforeSkipPublications = publications;
-    const auto beforeSkipStorage = CopyWorldCells(input->GetWorld());
+    const auto beforeSkipStorage = CopyWorldCells(pixel::testing::SessionAccess::World(input->GetSession()));
     glfwIconifyWindow(engine.GetPlatform()->GetWindows());
     for (int attempt = 0; attempt < 50 && !engine.GetPlatform()->IsWindowMinimized(); ++attempt) {
         engine.GetPlatform()->PollEvents();
@@ -599,11 +600,11 @@ void Lifecycle(int iteration) {
     }
     if (engine.GetPlatform()->IsWindowMinimized()) {
         Require(!app.FrameBegin(), "minimized frame should be skipped");
-        Require(policy->SubmittedFrames() == beforeMinimize && publications == beforeSkipPublications && CopyWorldCells(input->GetWorld()) == beforeSkipStorage, "minimized frame published/uploaded/submitted");
+        Require(policy->SubmittedFrames() == beforeMinimize && publications == beforeSkipPublications && CopyWorldCells(pixel::testing::SessionAccess::World(input->GetSession())) == beforeSkipStorage, "minimized frame published/uploaded/submitted");
     } else {
         std::cout << "Minimize check skipped: window manager did not report iconification\n";
     }
-    input->GetWorld().Fill({static_cast<pixel::CellTypeId>(20)});
+    pixel::testing::SessionAccess::World(input->GetSession()).Fill({static_cast<pixel::CellTypeId>(20)});
     std::fill(expectedCells.begin(), expectedCells.end(), 2);
     expected.View = input->GetView();
     expected.Post = input->GetPresentation().Post;
@@ -671,8 +672,8 @@ void FormulaGameplayGpu() {
     app.Initialize();
     app.Begin();
     auto &runtime = input->GetSession().GetFormulaRuntime();
-    Require(runtime.Apply(pixel::formula::Formula::Bolt().Spread(3, 12)), "GPU formula fixture rejected a fan");
-    Require(input->GetSession().CastFormulaAt(pixel::WorldPosition::FromAbsolute(600, 510)), "GPU fixture failed to launch");
+    Require(bool(input->GetSession().ApplyProgram(pixel::NativeCaller::Driver, pixel::formula::Formula::Bolt().Spread(3, 12))), "GPU formula fixture rejected a fan");
+    Require(input->GetSession().Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{input->GetSession().AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "GPU fixture failed to launch");
     const auto verifyYellow = [&] {
         const auto token = Draw(app);
         app.Engine->GetRHI()->WaitIdle();
@@ -690,7 +691,7 @@ void FormulaGameplayGpu() {
     };
     for (int slot = 0; slot < 4; ++slot)
         verifyYellow();
-    input->GetSession().RequestStep();
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     input->Tick(1.f / 60);
     verifyYellow();
     input->GetPresentation().ToggleFieldView();
@@ -708,7 +709,7 @@ void FormulaGameplayGpu() {
     }
     Require(app.Engine->GetRHI()->GetSwapchainGeneration() > generation, "formula resize fixture never recreated targets");
     verifyYellow();
-    runtime.Clear();
+    Require(input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::ClearRunning{}).Succeeded(), "GPU formula clear failed");
     Draw(app);
     Require(policy->PublishedFrame().FormulaDraws.empty(), "cleared GPU formula snapshot retained a sphere");
     app.Shutdown();
@@ -732,7 +733,7 @@ void BasicWorldGameplay() {
     auto &engine = *app.Engine;
     app.Initialize();
     app.Begin();
-    auto &world = input->GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(input->GetSession());
     VerifyDefaultWorldField(world);
     Require(input->GetSession().IsPaused(), "application must preserve the default paused session");
     const auto initialWind = world.GetWind().Sample(512.5f, 200.5f);
@@ -797,7 +798,7 @@ void BasicWorldGameplay() {
     world.SpawnPlayer(511, 508);
 
     Require(input->GetControlMode() == PixelGame::ControlMode::Standard, "default mode must control the character");
-    input->GetSession().SetPaused(false);
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     const auto playerX = world.GetPlayer()->X;
     const auto camera = input->GetView().OriginPixels;
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
@@ -976,7 +977,7 @@ void BasicWorldGameplay() {
     world.AddWindImpulse(512, 200, 64, {0, -120});
     input->OnKeyEvent(Key::KEY_R, 0, ButtonAction::ACTION_PRESS, Mod{});
     Require(input->GetSession().IsPaused(), "reset must pause the session");
-    input->GetSession().SetPaused(false);
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     VerifyDefaultWorldField(world);
     Require(world.GetPlayer() && world.GetPlayer()->X == 511 && world.GetPlayer()->Y == 508, "R must reset player");
     world.SpawnPlayer(530, 508);
@@ -1049,7 +1050,7 @@ void ForceFieldDebugGameplay() {
     auto &engine = *app.Engine;
     app.Initialize();
     app.Begin();
-    auto &world = input->GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(input->GetSession());
     world.DisableWind();
     constexpr std::array<pixel::ForceDirection, 9> directions{{{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {-1, -1}, {1, 1}, {-1, 1}, {1, -1}}};
     constexpr std::array<uint32_t, 9> colors{0x808080, 0x8080FF, 0x808000, 0x80FF80, 0x800080, 0x802525, 0x80DADA, 0x80DA25, 0x8025DA};
@@ -1103,7 +1104,7 @@ void ForceFieldDebugGameplay() {
     press(Key::KEY_F1);
     press(Key::KEY_R);
     world.ConfigureWind(424);
-    input->GetSession().SetPaused(false);
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     Require(input->GetPresentation().DisplayMode == GridDisplayMode::ForceField, "world reset unexpectedly disabled debug view");
     {
         auto view = input->GetView();
@@ -1133,7 +1134,7 @@ void ForceFieldDebugGameplay() {
     // This exercises actual gameplay coupling rather than a test-only impulse.
     press(Key::KEY_R);
     world.ConfigureWind(424);
-    input->GetSession().SetPaused(false);
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     pixel::World clearSky(Grid2D::Width, Grid2D::Height);
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
@@ -1168,7 +1169,7 @@ void ForceFieldDebugGameplay() {
     verifyField(1);
     press(Key::KEY_R);
     world.ConfigureWind(424);
-    input->GetSession().SetPaused(false);
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     // A narrow stack rising from the terrain reproduces the reported case at
@@ -1223,7 +1224,7 @@ void ForceFieldDebugGameplay() {
     }
     press(Key::KEY_R);
     world.ConfigureWind(424);
-    input->GetSession().SetPaused(false);
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     clearSky.GenerateTerrain(512);
     clearSky.ConfigureWind(424);
     expected = ExpectedFieldColors(clearSky);

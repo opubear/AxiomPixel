@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "Gameplay/GameSession.h"
 #include "Input/GameInput.h"
 #include "Camera/GameCamera.h"
@@ -31,7 +32,7 @@ void ThreeEntrances() {
         Require(session.IsPaused() && session.GetSimulationTime() == 0, "paused edits advanced the clock");
         Require(session.Execute(caller, PlaceMaterial{{511, 508}}).Rejection == Reason::Blocked,
             "placement inside the player must fail");
-        session.GetWorld().SetCell(20, 20, {CellTypeId::Water, {0, 1}});
+        pixel::testing::SessionAccess::World(session).SetCell(20, 20, {CellTypeId::Water, {0, 1}});
         Require(session.Execute(caller, PlaceMaterial{{20, 20}}).Rejection == Reason::Blocked,
             "placement must not overwrite water");
         const auto missing = session.Execute(caller, MineRegion{{-1, -1}, 10});
@@ -49,9 +50,9 @@ void RequestLifetimeAndValidation() {
     const ActionRequest request{session.WorldEpoch(), 1, MineRegion{{520, 512}, 10}};
     const auto first = session.Submit(caller, request);
     Require(first.Applied(), "first request failed");
-    session.GetWorld().PlaceDirt(520, 512);
+    pixel::testing::SessionAccess::World(session).PlaceDirt(520, 512);
     const auto duplicate = session.Submit(caller, request);
-    Require(duplicate.Key == first.Key && duplicate.Applied() && session.GetWorld().GetCell(520, 512).Type == CellTypeId::Dirt,
+    Require(duplicate.Key == first.Key && duplicate.Applied() && pixel::testing::SessionAccess::World(session).GetCell(520, 512).Type == CellTypeId::Dirt,
             "duplicate request executed twice");
     for (size_t attempt = 0; attempt < 64; ++attempt)
         Require(session.Submit(caller, {session.WorldEpoch(), 0, PlaceMaterial{{1, 1}}}).Rejection == Reason::InvalidArgument,
@@ -84,6 +85,9 @@ void RequestLifetimeAndValidation() {
 void ProgramAndControls() {
     GameSession session;
     const auto oldProgram = session.AppliedProgram();
+    const auto invalid = session.ApplyProgram(NativeCaller::Debug, formula::Formula::Bolt().Spread(17, 10));
+    Require(!invalid && invalid.Rejection == Reason::InvalidProgram && session.AppliedProgram() == oldProgram,
+            "invalid user program must return diagnostics and preserve the applied version");
     const auto cast = session.Execute(NativeCaller::Input, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}});
     Require(cast.Applied() && std::get<ActivationResult>(cast.Result).ActivationId != 0, "activation identity missing");
     const auto original = session.GetFormulaRuntime().Projectiles().front();
@@ -115,7 +119,7 @@ void ProgramAndControls() {
 }
 void WaitingAndFarCoordinates() {
     GameSession session;
-    auto &world = session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(session);
     world.RestoreSimulationClock(0, 1.0 / 60, true);
     for (const auto caller : {NativeCaller::Input, NativeCaller::Debug, NativeCaller::Driver}) {
         Require(session.Execute(caller, MineRegion{{520, 512}, {}}).Rejection == Reason::WaitingForBudget,

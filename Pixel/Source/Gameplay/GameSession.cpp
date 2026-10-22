@@ -1,4 +1,5 @@
 #include "GameSession.h"
+#include "World/WorldStorageError.h"
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
 #include <cmath>
@@ -76,12 +77,12 @@ void GameSession::InitializeScene() {
         for (int x = 0; x < int(Character::Width); ++x) {
             const auto cell = GameWorld.TryGetCell(feet.X + x, feet.Y + y);
             if (!cell || cell->Type != CellTypeId::Air)
-                throw std::runtime_error("generated spawn is not dry and clear");
+                throw std::logic_error("generated spawn is not dry and clear");
         }
     for (int x = 0; x < int(Character::Width); ++x) {
         const auto support = GameWorld.TryGetCell(feet.X + x, surface);
         if (!support || !BlocksCharacter(support->Type))
-            throw std::runtime_error("generated spawn has no solid support");
+            throw std::logic_error("generated spawn has no solid support");
     }
     WindKind = WindStrategyKind::Empty;
     Paused = true;
@@ -103,7 +104,7 @@ void GameSession::Reset() {
         return;
     }
     if (!Ready)
-        throw std::runtime_error("world session requires recovery before creating another world");
+        throw std::logic_error("world session requires recovery before creating another world");
     const auto previous = SaveDirectory;
     if (!previous.empty())
         Save();
@@ -130,11 +131,10 @@ void GameSession::Reset() {
         GameWorld.DiscardStreaming();
         SaveDirectory = previous;
         if (!previous.empty()) {
-            try { LoadDirectory(previous); }
-            catch (const std::exception &error) {
+            if (const auto recovery = storage::CaptureFailure([&] { LoadDirectory(previous); })) {
                 GameWorld.DiscardStreaming();
                 Ready = false;
-                SaveError = std::string("world recovery failed: ") + error.what();
+                SaveError = "world recovery failed: " + *recovery;
             }
         }
         if (!Ready) Paused = true;
@@ -143,31 +143,32 @@ void GameSession::Reset() {
 }
 
 bool GameSession::TryReset() {
-    try { Reset(); return true; }
-    catch (const std::exception &error) {
+    if (const auto failure = storage::CaptureFailure([&] { Reset(); })) {
         const auto recovery = !Ready ? SaveError : std::string{};
-        SaveError = std::string(error.what()) + (recovery.empty() ? "" : "; " + recovery)
+        SaveError = *failure + (recovery.empty() ? "" : "; " + recovery)
             + (Ready ? "" : "; session disabled until recovery");
         return false;
     }
+    return true;
 }
 
 bool GameSession::TryRecover() {
     if (Ready) return true;
     if (!Store || SaveDirectory.empty()) return false;
-    try {
+    const auto failure = storage::CaptureFailure([&] {
         ReplacingWorld();
         GameWorld.DiscardStreaming();
         LoadDirectory(SaveDirectory);
-        SaveError.clear();
-        return true;
-    } catch (const std::exception &error) {
+    });
+    if (failure) {
         GameWorld.DiscardStreaming();
         Ready = false;
         Paused = true;
-        SaveError = std::string("world recovery failed: ") + error.what();
+        SaveError = "world recovery failed: " + *failure;
         return false;
     }
+    SaveError.clear();
+    return true;
 }
 
 bool GameSession::Load() {
@@ -188,11 +189,18 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     stream.Directory = directory;
     Ready = false;
     ReplacingWorld();
-    GameWorld.EnableStreaming(stream, InitialWindow(data.Player, stream.WindowEdge));
-    GameWorld.RestorePlayer(data.Player);
-    GameWorld.LoadSimulationNow();
-    GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
-    GameWorld.RestoreSimulationClock(data.PhysicsTime, data.TimeRemainder, data.DeferredStep);
+    // These parameters came from disk; invalid settings are corrupt save data.
+    try {
+        GameWorld.EnableStreaming(stream, InitialWindow(data.Player, stream.WindowEdge));
+        GameWorld.RestorePlayer(data.Player);
+        GameWorld.LoadSimulationNow();
+        GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
+        GameWorld.RestoreSimulationClock(data.PhysicsTime, data.TimeRemainder, data.DeferredStep);
+    } catch (const std::invalid_argument &error) {
+        throw WorldStorageError(error.what());
+    } catch (const std::out_of_range &error) {
+        throw WorldStorageError(error.what());
+    }
     SaveDirectory = directory;
     StreamConfiguration = stream;
     SimulationTime = data.SimulationTime;
@@ -221,15 +229,18 @@ SessionSaveData GameSession::CaptureSaveData() const {
 
 void GameSession::Save() {
     if (!Store) return;
-    if (!Ready) throw std::runtime_error("cannot save an incomplete world session");
+    if (!Ready) throw std::logic_error("cannot save an incomplete world session");
     GameWorld.Save();
     Store->WriteMetadata(SaveDirectory, CaptureSaveData());
     SaveError.clear();
 }
 
 bool GameSession::TrySave() {
-    try { Save(); return true; }
-    catch (const std::exception &error) { SaveError = error.what(); return false; }
+    if (const auto failure = storage::CaptureFailure([&] { Save(); })) {
+        SaveError = *failure;
+        return false;
+    }
+    return true;
 }
 
 void GameSession::Tick(float duration, PlayerInput input) {
@@ -247,14 +258,6 @@ void GameSession::Tick(float duration, PlayerInput input) {
     }, StepRequested);
     if (completed)
         StepRequested = false;
-}
-
-bool GameSession::SetWindStartHeight(int height) {
-    if (!CanEditWorld())
-        return false;
-    const int64_t boundary = WorldHeight - std::clamp(height, 0, int(WorldHeight));
-    GameWorld.ConfigureWindDomain(boundary, GameWorld.GetWindSettings(), height < int(WorldHeight));
-    return true;
 }
 
 bool GameSession::SetWindBoundary(int64_t y) {
@@ -283,12 +286,6 @@ void GameSession::ReplacingWorld() {
     LastAim = {1, 0};
     FormulaError.clear();
     GameWorld.ClearPlayerInput();
-}
-
-bool GameSession::CastFormulaAt(WorldPosition target) {
-    const auto receipt = Execute(NativeCaller::Driver, api::ActivateProgram{AppliedProgram(), ActionPosition(target)});
-    FormulaError = receipt.Message;
-    return receipt.Applied();
 }
 
 api::Reason GameSession::ActivateAt(WorldPosition target) {

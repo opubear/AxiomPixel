@@ -197,6 +197,6 @@ const char *FormulaWorldAdapter::WindResultName(FormulaWindResult result) {
     case FormulaWindResult::BackendUnsupported: return "WindBackendUnsupported";
     case FormulaWindResult::GridUnsupported: return "WindGridUnsupported";
     }
-    return "WindUnavailable";
+    throw std::logic_error("unknown formula wind result");
 }
 } // namespace pixel

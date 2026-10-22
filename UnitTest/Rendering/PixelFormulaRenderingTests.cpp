@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "HAL/Shader/ShaderLibrary.h"
 #include "PixelRender/PixelRender.h"
 #include "PixelRender/FormulaFrame.h"
@@ -251,8 +252,8 @@ void PublisherIsolation() {
     pixel::GameCamera camera;
     camera.SetFramebufferSize({160, 120});
     camera.GetCamera().SetPosition({20, 20});
-    auto &runtime = session.GetFormulaRuntime();
-    Check(runtime.Cast(session.GetWorld(), pixel::WorldPosition::FromAbsolute(20, 20), 0), "publisher fixture could not activate bolt");
+    auto &runtime = pixel::testing::SessionAccess::Runtime(session);
+    Check(runtime.Cast(pixel::testing::SessionAccess::World(session), pixel::WorldPosition::FromAbsolute(20, 20), 0), "publisher fixture could not activate bolt");
     Check(runtime.Projectiles().size() == 1, "publisher fixture bolt was unexpectedly blocked");
     pixel::GamePresentation presentation;
     auto publishFirst = presentation.CreateFramePublisher(session, camera);

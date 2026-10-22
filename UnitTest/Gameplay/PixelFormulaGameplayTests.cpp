@@ -1,3 +1,4 @@
+#include "../Support/WorldAccess.h"
 #include "Gameplay/FormulaRuntime.h"
 #include <chrono>
 #include <cmath>
@@ -184,10 +185,10 @@ void DomainExitAndDigRules() {
     Require(FormulaWorldAdapter::Dig(world, At(6.01, 6.99), 0).Applied == 1, "zero-radius dig did not select containing cell");
 
     World sparse;
-    sparse.GetMutableMap().Insert(std::make_unique<WorldChunk>(CellCoord{0, 0}));
+    pixel::testing::WorldAccess::Map(sparse).Insert(std::make_unique<WorldChunk>(CellCoord{0, 0}));
     runtime.Clear();
     runtime.Cast(sparse, At(10.5, 4.5), 0);
-    sparse.GetMutableMap().Remove({0, 0});
+    pixel::testing::WorldAccess::Map(sparse).Remove({0, 0});
     runtime.Step(sparse);
     Require(runtime.Projectiles().empty() && HasDiagnostic(runtime, "NotReady") && !HasDiagnostic(runtime, "hit id="),
             "missing chunk must retire without hit or forced residency");

@@ -36,9 +36,17 @@ const auto result = session.Execute(pixel::NativeCaller::Driver,
 
 GameInput只负责事件筛选、按事件尺寸选格和请求转换，持续玩家意图仍按固定步采样，清理已施加输入经Session。Debug的Game actions折叠区可输入Cell X/Y后开采、放置或向格中心激活，显示Input和Debug的最近回执；风、保存、暂停、单步、生成设置和Formula工具栏均使用对应端口。相机、草稿、面板、外观继续由各自模块管理。
 
-M1.5仍需收敛旧的可变公共访问器、整理Runtime的宽泛catch及内部失败分类；当前保留旧入口供既有CPU夹具和宿主编排使用。Input/Debug生产代码不再通过World或FormulaRuntime直接修改玩法状态，也不使用GetMutableMap。World内部求解和底层测试/基准的可变访问不属于外部动作协议。
+M1.5已移除Session与PixelGame的可变World访问器、Session的可变Runtime访问器及旧公开控制/激活方法。World的GetMutableMap仅供内部Environment使用；测试与离线基准的特殊夹具由UnitTest/Support显式构建，生产目标不包含这些访问实现。GamePresentation作为内部友元仅维护快照发布的驻留请求与预算生命周期；Input/Debug通过公开只读引用观察，通过动作/控制端口修改。
+
+## 失败语义
+
+FormulaRuntime的Apply先分析外部程序，参数/结构/工作量不符合宿主规则时返回诊断，保留原版本。预算等待、激活/根/效果/风额度不足仍是可预期拒绝。分析后执行、碰撞解析、效果提交、快照生成中发生的内部异常直接传播；不再标记Failed、清掉该根后继续游戏。已经提交的早先效果不回滚，发生内部错误后宿主不能继续使用该会话。PendingStep期间非法调用Runtime::Step、碰撞引用已退休弹体及身份耗尽使用发布构建仍生效的检查，不能依赖assert。
+
+保存、恢复与后台块I/O只处理文件系统错误、流I/O错误和明确的WorldStorageError（损坏存档或加载必需存储不足）。磁盘数据的非法配置在读取/恢复边界转换为存储诊断。生成器不变量、分配失败和运行器错误不再被宽泛std::exception捕获转换成StorageFailure；Reset中的清理与恢复保护仍会重新抛出原故障。应用生命周期通过Session::BeginFrame重置本帧额度，End沿用最终保存策略；M2仍负责可协商关闭和Deferred。
 
 ## 验证入口
+
+`Pixel.InternalFailure.*`通过独立进程核验内部无效坐标、移后程序产物、非法PendingStep推进和损坏会话状态会传播至terminate；同时检查特定诊断与终止码，Debug/Release均执行。编译断言保证Session公开World/Runtime为const引用、WorldMap写入口非公开。
 
 `Pixel.Actions`覆盖三入口开采结果、玩家/水放置阻挡、缺失格优先级、材料前置条件、重复和淘汰、调用者/epoch替换、权限、非法坐标、预算等待、暂停激活、单步及旧程序隔离。既有Input、Session、FormulaGameplay、FormulaRendering与存储回归继续验证完整行为。
 

@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "Camera/GameCamera.h"
 #include "Gameplay/GameSession.h"
 #include "Input/GameInput.h"
@@ -20,7 +21,7 @@ struct Fixture {
     pixel::GameInput Input{Session, Camera, Presentation, {
         [this] { ++QuitRequests; }, [this] { ++PanelToggles; }, [this] { ++EditorToggles; }, [this] { return Framebuffer; }}};
     Fixture() {
-        Session.GetWorld().DisableWind();
+        pixel::testing::SessionAccess::World(Session).DisableWind();
         Input.ResetView();
     }
     void KeyEvent(Key key, ButtonAction action = ButtonAction::ACTION_PRESS) {
@@ -58,7 +59,7 @@ void HeldInputAndModes() {
     f.KeyEvent(Key::KEY_D);
     f.KeyEvent(Key::KEY_D, ButtonAction::ACTION_RELEASE);
     Require(f.Input.ConsumePlayerInput().Horizontal == 0, "release must stop movement");
-    auto &world = f.Session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(f.Session);
     const auto playerX = world.GetPlayer()->X;
     world.SetPlayerInput(1, true);
     f.Input.ClearInputState();
@@ -98,13 +99,13 @@ void CommandsAndReset() {
     Require(f.Camera.GetView().WorldOriginCells[1] == view.WorldOriginCells[1] + pixel::storage::ChunkEdge,
             "debug mode must advance one world chunk while preserving local projection");
     f.KeyEvent(Key::KEY_D);
-    f.Session.SetPaused(false);
-    f.Session.GetWorld().RemoveDirt(20, 512);
+    f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
+    pixel::testing::SessionAccess::World(f.Session).RemoveDirt(20, 512);
     f.Camera.GetCamera().SetFollowRate(4);
     f.Framebuffer = {1600, 1200};
     f.KeyEvent(Key::KEY_R);
-    Require(f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && f.Session.GetWorld().GetWindEndRow() == 424 &&
-                f.Session.GetWorld().GetCell(20, 512).Type == pixel::CellTypes::Dirt,
+    Require(f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && pixel::testing::SessionAccess::World(f.Session).GetWindEndRow() == 424 &&
+                pixel::testing::SessionAccess::World(f.Session).GetCell(20, 512).Type == pixel::CellTypes::Dirt,
             "R must reset simulation and terrain");
     Require(f.Input.GetControlMode() == pixel::ControlMode::DebugCamera && f.Presentation.DisplayMode == GridDisplayMode::ForceField,
             "R must preserve control and display modes");
@@ -117,7 +118,7 @@ void CommandsAndReset() {
 }
 void MouseEditing() {
     Fixture f;
-    auto &world = f.Session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(f.Session);
     f.Camera.GetCamera().SetPosition({100, 100});
     f.Camera.SetFramebufferSize({1600, 1200});
     const MousePointerState oldEvent{{400, 300}, {800, 600}, {800, 600}};
@@ -155,7 +156,7 @@ void FormulaInputAndContinuousAim() {
     f.Session.Tick(.2f, {});
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles().front().Position.Local == ball.Position.Local,
             "release or pause moved/repeated the bolt");
-    f.Session.RequestStep();
+    f.Session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     f.Session.Tick(.2f, {});
     const auto moved = runtime.Projectiles().front().Position.RelativeTo(ball.Position.Cell());
     const auto before = ball.Position.RelativeTo(ball.Position.Cell());

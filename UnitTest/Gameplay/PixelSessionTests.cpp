@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "Camera/GameCamera.h"
 #include "Gameplay/GameSession.h"
 #include "PixelRender/GamePresentation.h"
@@ -13,7 +14,7 @@ void Require(bool value, const char *message) {
 }
 void SessionAndPublicationContracts() {
     pixel::GameSession session;
-    auto &world = session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(session);
     Require(session.IsPaused(), "session must start paused");
     Require(world.GetWindEndRow() == 424 && world.GetPlayer(), "default scene changed");
     Require(&world.GetBaseForceField() == &world.GetEnvironment().GetBaseForceField(),
@@ -21,26 +22,26 @@ void SessionAndPublicationContracts() {
     Require(session.GetSelectedWindStrategy() == pixel::WindStrategyKind::Empty &&
                 world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty,
             "session must start with empty wind");
-    session.SelectWindStrategy(pixel::WindStrategyKind::Coarse);
+    session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse});
     Require(world.SampleWind(12.5f, 12.5f).X != 0, "comparison switch did not start wind");
-    session.SelectWindStrategy(pixel::WindStrategyKind::Empty);
+    session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Empty});
     Require(world.SampleWind(12.5f, 12.5f) == pixel::WindVelocity{} && world.GetWindEndRow() == 424,
             "empty comparison must clear wind and preserve height");
     Require(session.IsPaused(), "switching wind must not resume simulation");
     world.SetBaseForce(12, 12, {123, 456});
-    session.SetWindStartHeight(1024);
-    session.SetWindStartHeight(600);
+    pixel::testing::SessionAccess::World(session).DisableWind();
+    session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{424});
     const auto force = world.GetBaseForceField().Get(12, 12);
     Require(force.X == 123 && force.Y == 456, "wind restart must preserve base forces");
 
     world.DisableWind();
     world.Fill({});
     world.PlaceDirt(32, 10);
-    session.SetPaused(true);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     session.Tick(.1f, {});
     Require(world.GetCell(32, 10).Type == pixel::CellTypes::Dirt && session.GetSimulationTime() == 0,
             "paused session must freeze simulation and wind animation");
-    session.RequestStep();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(std::numeric_limits<float>::quiet_NaN(), {});
     session.Tick(.2f, {});
     Require(world.GetCell(32, 11).Type == pixel::CellTypes::Dirt && session.IsPaused(),
@@ -88,17 +89,17 @@ void SessionAndPublicationContracts() {
     Require(frame.DisplayMode == GridDisplayMode::Materials && !frame.Character,
             "material publication must not retain removed character");
 
-    session.SetPaused(false);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     session.Tick(1.f / 60, {});
     Require(session.GetSimulationTime() > time, "explicit resume must advance simulation");
-    session.Reset();
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
     Require(session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && world.GetPlayer(),
             "reset must restore scene and simulation controls");
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty, "reset must restore empty wind");
     const auto resetForce = world.GetBaseForceField().Get(12, 12);
     Require(resetForce.X == 0 && resetForce.Y == 3600, "terrain reset must restore base gravity");
-    session.SetWindStartHeight(1024);
-    session.SelectWindStrategy(pixel::WindStrategyKind::Reference);
+    pixel::testing::SessionAccess::World(session).DisableWind();
+    session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Reference});
     Require(session.IsPaused() && world.GetWindEndRow() == 0,
             "selecting expensive strategy while off must preserve disabled wind");
 }
@@ -106,12 +107,12 @@ void FixedClockAndLatchedJump() {
     std::optional<pixel::WorldPosition> reference;
     for (const int rate : {30, 60, 120, 240}) {
         pixel::GameSession session;
-        session.SetPaused(false);
+        session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
         for (int frame = 0; frame < rate; ++frame)
             session.Tick(1.f / rate, {1, frame == 0});
         Require(std::abs(session.GetSimulationTime() - 1) < 1e-9,
                 "session clock must count committed steps at all frame rates");
-        const auto position = session.GetWorld().GetPlayer()->GetWorldPosition();
+        const auto position = pixel::testing::SessionAccess::World(session).GetPlayer()->GetWorldPosition();
         if (reference) {
             Require(position.Chunk == reference->Chunk && std::abs(position.Local[0] - reference->Local[0]) < 1e-8
                         && std::abs(position.Local[1] - reference->Local[1]) < 1e-8,
@@ -122,11 +123,11 @@ void FixedClockAndLatchedJump() {
     }
 
     pixel::GameSession session;
-    session.GetWorld().RestoreSimulationClock(0, .1, false);
-    session.RequestStep();
+    pixel::testing::SessionAccess::World(session).RestoreSimulationClock(0, .1, false);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(.2f, {});
     Require(std::abs(session.GetSimulationTime() - 1.0 / 60) < 1e-10
-                && std::abs(session.GetWorld().GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
+                && std::abs(pixel::testing::SessionAccess::World(session).GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
             "single step must consume one backlog step without adding or draining other time");
 }
 } // namespace

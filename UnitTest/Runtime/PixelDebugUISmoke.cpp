@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "PixelSmokeApplication.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
@@ -179,7 +180,7 @@ void RunPixelDebugUISmoke() {
     Require(ImGui::GetDrawData()->TotalVtxCount > 0 && app.GetDebugUI()->FrameBuffers.LiveBufferCount() > 0,
             "debug UI did not upload GPU geometry");
     Require(app.GetDebugUI()->pushConstBlock.scale.X() > 0, "Pixel present pass did not record the UI overlay");
-    auto &world = pixel->GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(pixel->GetSession());
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty && world.GetWindEndRow() == 424,
             "default UI must preserve empty wind and world Y = 424");
     SelectWindStrategy(app, int(pixel::WindStrategyKind::Coarse));
@@ -309,9 +310,9 @@ void RunPixelFormulaUISmoke() {
     SendKey(app, GLFW_KEY_F2, false);
     Require(!ImGui::FindWindowByName("Pixel Debug")->Active && editor->Active,
             "F2 must hide only Pixel Debug while Formula Editor remains usable");
-    const auto worldBefore = CopyWorldCells(pixel->GetWorld());
+    const auto worldBefore = CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession()));
     ClickButton(app, {editor->Pos.x + 20, editor->Pos.y + 120}, GLFW_MOUSE_BUTTON_RIGHT);
-    Require(runtime.Projectiles().empty() && CopyWorldCells(pixel->GetWorld()) == worldBefore,
+    Require(runtime.Projectiles().empty() && CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore,
             "right click inside Formula Editor leaked into gameplay");
 
     const auto choose = [&](const char *label, int row, const char *child = nullptr) {
@@ -368,7 +369,7 @@ void RunPixelFormulaUISmoke() {
     editor = ImGui::FindWindowByName("Formula Editor");
     editor->Collapsed = true;
     Draw(app, 2);
-    Require(CopyWorldCells(pixel->GetWorld()) == worldBefore, "Formula UI structure editing changed world cells");
+    Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI structure editing changed world cells");
     app.Shutdown();
     std::cout << "Formula ImGui passed: preset/Apply, tree wrap/delete, version isolation, right capture, independent F2/F4 and clear\n";
 }

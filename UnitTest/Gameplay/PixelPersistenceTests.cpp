@@ -1,3 +1,4 @@
+#include "../Support/TestAccess.h"
 #include "Camera/GameCamera.h"
 #include "Gameplay/GameSession.h"
 #include "PixelRender/GamePresentation.h"
@@ -49,28 +50,28 @@ void SessionRoundTrip() {
                                         {double(pixel::storage::ChunkEdge) - 23.875, 507.75 - double(rowChunk) * pixel::storage::ChunkEdge}};
     {
         pixel::GameSession session(true);
-        auto &world = session.GetWorld();
-        session.SetPaused(false);
+        auto &world = pixel::testing::SessionAccess::World(session);
+        session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
         for (int i = 0; i < 60; ++i)
             session.Tick(1.f / 60, {});
         session.Tick(1.f / 120, {});
-        session.SetPaused(true);
+        session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
         world.RestorePlayer(position);
         world.LoadSimulationNow();
         Require(world.GetSimulationBounds().X < 0 && world.TryGetCell(-24, 10), "player window did not load negative chunks");
         world.SetCell(-24, 10, {pixel::CellTypes::Dirt, {-1, 1}});
         world.SetBaseForce(-24, 10, {123.25f, -456.5f});
-        session.SetWindBoundary(450);
-        session.SelectWindStrategy(pixel::WindStrategyKind::Procedural);
+        session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{450});
+        session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
         savedWind = world.SampleWind(100.5, 100.5);
         savedPhysicsTime = world.GetEnvironment().GetSimulationTime();
         savedRemainder = world.GetEnvironment().GetTimeRemainder();
-        session.Save();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         original = session.GetSaveDirectory();
     }
     {
         pixel::GameSession restored(true);
-        auto &world = restored.GetWorld();
+        auto &world = pixel::testing::SessionAccess::World(restored);
         Require(restored.GetSaveDirectory() == original, "startup did not reopen current world");
         Require(world.GetCell(-24, 10) == pixel::CellState{pixel::CellTypes::Dirt, {-1, 1}} && world.GetBaseForceField().Get(-24, 10) == pixel::ForceVector{123.25f, -456.5f},
                 "session save lost map or base force");
@@ -81,7 +82,7 @@ void SessionRoundTrip() {
         const auto restoredWind = world.SampleWind(100.5, 100.5);
         Require(std::abs(restoredWind.X - savedWind.X) < 1e-5 && std::abs(restoredWind.Y - savedWind.Y) < 1e-5 && world.GetEnvironment().GetSimulationTime() == savedPhysicsTime && world.GetEnvironment().GetTimeRemainder() == savedRemainder,
                 "saved procedural wind phase and fixed-step remainder diverged");
-        restored.Reset();
+        Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
         Require(restored.GetSaveDirectory() != original && std::filesystem::exists(original / "world.meta"),
                 "reset must create a new world and preserve old save files");
     }
@@ -90,7 +91,7 @@ void SessionRoundTrip() {
 void PublicationBudgetAndOwnership() {
     SaveRoot root;
     pixel::GameSession session(true);
-    auto &world = session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(session);
     pixel::WorldStreamSettings settings;
     settings.Directory = session.GetSaveDirectory();
     settings.BudgetBytes = 50ull * 1024 * 1024;
@@ -123,26 +124,26 @@ void DeferredStepSurvivesSave() {
     pixel::WindVelocity savedWind;
     {
         pixel::GameSession session(true);
-        auto &world = session.GetWorld();
+        auto &world = pixel::testing::SessionAccess::World(session);
         pixel::WorldStreamSettings settings;
         settings.Directory = session.GetSaveDirectory();
         settings.BudgetBytes = 50ull * 1024 * 1024;
         world.EnableStreaming(settings);
         world.SpawnPlayer(511, 508);
         world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
-        session.SelectWindStrategy(pixel::WindStrategyKind::Procedural);
+        session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
         world.WaitForStreaming();
         for (auto coordinate : world.GetMap().ChunkCoordinates())
             if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
-                world.GetMutableMap().Remove(coordinate);
+                pixel::testing::WorldAccess::Map(world).Remove(coordinate);
         world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
         world.Tick(1.f / 60);
         Require(world.GetEnvironment().IsWaitingForBudget(), "test did not exhaust material scratch budget");
         savedWind = world.SampleWind(100.5, 100.5);
-        session.Save();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
     pixel::GameSession restored(true);
-    auto &world = restored.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(restored);
     const auto loadedWind = world.SampleWind(100.5, 100.5);
     Require(world.GetEnvironment().IsWaitingForBudget() && std::hypot(savedWind.X - loadedWind.X, savedWind.Y - loadedWind.Y) < 1e-5,
             "deferred step or advanced procedural phase was lost during save");
@@ -154,15 +155,15 @@ void DeferredStepSurvivesSave() {
 void ManualSaveFailureCanRetry() {
     SaveRoot root;
     pixel::GameSession session(true);
-    auto &world = session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(session);
     world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
     const auto metadata = session.GetSaveDirectory() / "world.meta";
     std::filesystem::remove(metadata);
     std::filesystem::create_directory(metadata);
-    Require(!session.TrySave() && !session.GetSaveError().empty() && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt,
+    Require(!session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded() && !session.GetSaveError().empty() && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt,
             "manual save failure escaped the session or lost resident data");
     std::filesystem::remove_all(metadata);
-    Require(session.TrySave() && session.GetSaveError().empty(), "manual save did not recover after I/O was repaired");
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded() && session.GetSaveError().empty(), "manual save did not recover after I/O was repaired");
 }
 
 void DistantCameraAndCollision() {
@@ -187,7 +188,7 @@ void DistantCameraAndCollision() {
 void DeferredStepKeepsStreamingDomain() {
     SaveRoot files;
     pixel::GameSession session;
-    auto &world = session.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(session);
     pixel::WorldStreamSettings settings;
     settings.Directory = files.Path / "deferred-domain";
     settings.WindowEdge = 256;
@@ -216,7 +217,7 @@ void DeferredStepKeepsStreamingDomain() {
         world.WaitForStreaming();
         for (const auto coordinate : world.GetMap().ChunkCoordinates())
             if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
-                world.GetMutableMap().Remove(coordinate);
+                pixel::testing::WorldAccess::Map(world).Remove(coordinate);
     };
     discardOptional();
     world.SetPlayerInput(1, false);
@@ -251,26 +252,26 @@ void SuccessfulSingleStepBacklogRoundTrip() {
     SaveRoot root;
     {
         pixel::GameSession session(true);
-        Require(session.CastFormulaAt(pixel::WorldPosition::FromAbsolute(600, 510)), "backlog fixture failed to cast");
-        auto &world = session.GetWorld();
+        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "backlog fixture failed to cast");
+        auto &world = pixel::testing::SessionAccess::World(session);
         world.RestoreSimulationClock(0, .1, true);
-        Require(!session.SetWindBoundary(500) && !session.SelectWindStrategy(pixel::WindStrategyKind::Coarse),
+        Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{500}).Applied() && !session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse}).Applied(),
                 "waiting step permits wind backend replacement");
-        Require(!session.CastFormulaAt(pixel::WorldPosition::FromAbsolute(600, 510)), "waiting step accepted a new cast");
-        session.RequestStep();
+        Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "waiting step accepted a new cast");
+        session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
         session.Tick(.2f, {});
         Require(!world.GetEnvironment().IsWaitingForBudget()
                     && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
                 "single-step did not preserve unadvanced backlog");
-        session.Save();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
     pixel::GameSession loaded(true);
-    auto &world = loaded.GetWorld();
+    auto &world = pixel::testing::SessionAccess::World(loaded);
     Require(loaded.GetFormulaRuntime().Projectiles().empty(), "live formula instances entered a world save");
     Require(!world.GetEnvironment().IsWaitingForBudget()
                 && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
             "v4 failed to restore complete backlog without preadvanced wind");
-    loaded.RequestStep();
+    loaded.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     loaded.Tick(.2f, {});
     Require(std::abs(world.GetEnvironment().GetSimulationTime() - 2.0 / 60) < 1e-10
                 && std::abs(world.GetEnvironment().GetTimeRemainder() - (.1 - 2.0 / 60)) < 1e-10,
