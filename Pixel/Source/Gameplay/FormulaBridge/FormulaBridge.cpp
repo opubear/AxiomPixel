@@ -18,6 +18,7 @@ struct Root {
     formula::validation::Analysis Budget;
     formula::Simulator Simulator;
     std::vector<formula::TraceEntry> Batch;
+    bool Suspended = false;
 };
 struct Collision {
     Root *Owner;
@@ -27,6 +28,11 @@ struct Collision {
 api::Position PublicPosition(const WorldPosition &position) {
     const auto cell = position.Cell();
     return {{cell.X, cell.Y}, position.RelativeTo(cell)};
+}
+bool ActivePosition(const World &world, WorldPosition position, double radius = 0) {
+    const auto cell = position.Cell();
+    return world.GetSimulationBounds().Contains(cell) && world.TryGetCell(cell.X, cell.Y)
+        && FieldSources::Fits({position, radius, {}, 0}, world.GetSimulationBounds());
 }
 } // namespace
 
@@ -95,6 +101,7 @@ struct FormulaBridge::State {
     }
 
     void Advance(Root &root, bool step, const World &world, std::vector<Collision> &collisions) {
+        if (root.Suspended) return;
         std::map<formula::ProjectileId, formula::Vec2> old;
         for (const auto &projectile : root.Simulator.Projectiles())
             old.emplace(projectile.Id, projectile.Position);
@@ -152,6 +159,13 @@ struct FormulaBridge::State {
         for (const auto &event : root.Batch) {
             Record(root.Id, event.At, formula::FormatTrace(event));
             const auto position = FormulaWorldAdapter::Offset(root.Anchor, event.Position);
+            double radius = 0;
+            if (const auto *dig = std::get_if<formula::DigArea>(&event.Data)) radius = dig->Radius;
+            if (const auto *wind = std::get_if<formula::WindImpulse>(&event.Data)) radius = wind->Radius;
+            if (!ActivePosition(world, position, radius)) {
+                Record(root.Id, event.At, "OutOfSimulation: effect crosses inactive area");
+                continue;
+            }
             if (const auto *dig = std::get_if<formula::DigArea>(&event.Data)) {
                 const auto emission = NextEffectEmission(root);
                 const auto result = FormulaWorldAdapter::Dig(world, position, dig->Radius, PlayerCollector);
@@ -191,11 +205,13 @@ struct FormulaBridge::State {
             }
         }
         Projectiles.clear();
-        for (const auto &root : Roots)
+        for (const auto &root : Roots) {
+            if (root->Suspended) continue;
             for (const auto &projectile : root->Simulator.Projectiles())
                 Projectiles.push_back({Epoch, root->Id, projectile.Id, root->Version,
                     FormulaWorldAdapter::Offset(root->Anchor, projectile.Position), FormulaWorldAdapter::BoltRadius,
                     projectile.Damage, projectile.Velocity});
+        }
         Processes.AppendProjectiles(Projectiles, Epoch);
     }
 };
@@ -327,6 +343,7 @@ void FormulaBridge::Step(World &world) {
     Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("formula step requires a committed environment step");
+    SynchronizeActivity(world);
     std::vector<Collision> collisions;
     // All sweeps see the same committed map, before any root's Dig is applied.
     for (auto &root : Data->Roots)
@@ -338,6 +355,21 @@ void FormulaBridge::Step(World &world) {
     Data->Processes.Commit(world, Data->PlayerCollector);
     Data->CollectProcessEffects();
     Data->Refresh();
+}
+
+bool FormulaBridge::SynchronizeActivity(World &world) {
+    bool changed = Data->Processes.SynchronizeActivity(world);
+    for (auto &root : Data->Roots) {
+        bool active = ActivePosition(world, root->Anchor);
+        for (const auto &projectile : root->Simulator.Projectiles())
+            active = active && ActivePosition(world, FormulaWorldAdapter::Offset(root->Anchor, projectile.Position),
+                                              FormulaWorldAdapter::BoltRadius);
+        if (root->Suspended == !active) continue;
+        root->Suspended = !active;
+        changed = true;
+    }
+    if (changed) Data->Refresh();
+    return changed;
 }
 
 void FormulaBridge::Clear(World &world) {

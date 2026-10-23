@@ -105,7 +105,7 @@ bool Environment::UpdateFieldSource(World &world, uint64_t owner, FieldSourceHan
     RequireSourceMutation();
     const auto spec = FieldSources::Validate(owner, input);
     auto *source = Sources.Find(owner, handle);
-    if (!source || !FieldSources::Fits(spec, world.GetSimulationBounds())
+    if (!source || source->Suspended || !FieldSources::Fits(spec, world.GetSimulationBounds())
         || !world.TryGetCell(spec.Center.Cell().X, spec.Center.Cell().Y)) return false;
 
     world.GetMutableMap().Wake(FieldSources::Bounds(source->Spec));
@@ -132,6 +132,16 @@ void Environment::StopFieldSources(World &world, uint64_t owner) {
             Sources.Remove(index, world.GetMutableMap());
         else
             ++index;
+}
+
+void Environment::SuspendFieldSources(World &world, uint64_t owner, bool suspended) {
+    RequireSourceMutation();
+    for (auto &source : std::span(Sources.Values.data(), Sources.Count)) {
+        if (source.Owner != owner || source.Suspended == suspended) continue;
+        source.Suspended = suspended;
+        ++Sources.Version;
+        world.GetMutableMap().Wake(FieldSources::Bounds(source.Spec));
+    }
 }
 
 void Environment::RestorePendingStep(double seconds, bool deferredStep) {

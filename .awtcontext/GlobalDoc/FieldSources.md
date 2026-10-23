@@ -1,4 +1,4 @@
-# 有归属的持续 FieldSource（M4.4）
+# 有归属的持续 FieldSource（M4.5更新）
 
 Environment 拥有局部加速度来源，Formula 与设备持有不透明 EffectHandle。首个实际用途是给 Dirt 持续施加局部推力；Water 和 Actors 沿用各自运动规则。World 不依赖 Formula、设备、UI 或渲染，Axiom 没有改动。
 
@@ -8,7 +8,7 @@ Environment 拥有局部加速度来源，Formula 与设备持有不透明 Effec
 
 均匀圆盘在格中心采样，按递增来源 ID 合成，加在既有 BaseForce + air velocity × 60 的结果之后。加速度单位是格/秒²，空气速度和一次性风脉冲是格/秒。Dirt 的既有响应将合成加速度除以60得到方向判断速度，每成功步最多移动一格；来源从不写入永久 BaseForce，停止仅移除其贡献，已经发生的位移不回滚。
 
-- 最大256个来源，固定内联存储20504字节（本机sizeof），零来源也保留该容量，不增加堆分配。
+- 最大256个来源，固定内联有界存储（M4.5增加Suspended标志），零来源也保留该容量，不增加堆分配。
 - 半径大于0且不超过16格，加速度模长不超过36000格/秒²，寿命1–3600个成功环境步。
 - 完整圆盘必须在当前模拟域内，中心必须驻留；不裁剪圆盘，不通过呈现加载扩大活动域。
 - 安装满容量/域外/未驻留拒绝；更新失败不改变旧来源。无效、过期或外部所有者句柄拒绝，重复清理无副作用。
@@ -20,7 +20,7 @@ Environment 拥有局部加速度来源，Formula 与设备持有不透明 Effec
 
 预算不足时保留准备中的环境输入；来源不老化、不重装、不重复作用，重试成功后只消耗一步。pending期间来源安装/更新/停止及World重置为内部调用错误。暂停只允许编辑而不推进寿命。
 
-来源圆盘离开完整活动域后不再贡献，下一成功环境步清理；活动域实际移动即更新来源版本，关闭风也能让已提交视图及F1及时失效。此处尚不是冻结恢复，M4.5将保存运行实例/来源的本地剩余时间。
+来源圆盘离开完整活动域后不再贡献，保留身份和剩余活动寿命；活动域实际移动即更新来源版本，关闭风也能让已提交视图及F1及时失效。M4.5已接宿主实例与整组来源的[冻结恢复](RegionActivity.md)，冻结时不老化，恢复不重新安装或扣资源。
 
 ProcessHost显式清理正常完成、stop、fault、取消及承载者移除的所有来源；清理不依赖C++析构。Clear/Cancel/OnWorldReplaced明确接收World。所有同批程序先求值和碰撞，再按稳定顺序提交效果；结束片段的效果提交后清理持续对象，已经完成的挖掘等一次性事实保留。
 
@@ -28,7 +28,7 @@ ProcessHost显式清理正常完成、stop、fault、取消及承载者移除的
 
 `process 1`新增 `acceleration`、`field`、`effect_handle`、`update_field`、`stop_field`；不能用speed替代acceleration，不能从数字构造句柄。安装和更新成功的回执返回同一个token，`await result`之后读取；跨等待保存到local。更新需消耗1额度，停止不收费，零额度仍能释放已有来源。无效token收到Rejected/InvalidHandle。Capability::Field=32，AllCapabilities=63。
 
-HostContractVersion与InstanceSnapshot.SchemaVersion升级为2，拒绝旧合同/快照；process语法及SemanticsVersion保留1。独立Formula库与fake host能验证快照中的句柄、缓存回执和挂起/恢复，但游戏实际区域挂起留M4.5。示例见 `Pixel/Formula/Examples/Process/field.formula`。
+HostContractVersion与InstanceSnapshot.SchemaVersion升级为2，拒绝旧合同/快照；process语法及SemanticsVersion保留1。独立Formula库与fake host能验证快照中的句柄、缓存回执和挂起/恢复，游戏实际区域挂起已由M4.5接入。示例见 `Pixel/Formula/Examples/Process/field.formula`。
 
 唯一设备从旧风脉冲发生器更新为推力发生器，类型3001保持，安装程序资源3版本2。每煤维持30个成功tick，程序显式存储安装回传的句柄并停止；设备关闭/拆除还有宿主所有权清理。半径16格、向右3600格/秒²，不要求开启Coarse风。成本、补煤和整批回收规则不变；计数字段Pulses改为Cycles，删除不再适用的OutputUnresolved状态。完整设备合同见[Devices](Devices.md)。
 

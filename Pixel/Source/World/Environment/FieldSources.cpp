@@ -38,14 +38,40 @@ FieldSourceSnapshot *FieldSources::Find(uint64_t owner, FieldSourceHandle handle
     return nullptr;
 }
 
+void FieldSources::RefreshResidency() const {
+    const auto residency = Map->GetResidencyVersion();
+    if (CachedSourceVersion == Version && CachedResidencyVersion == residency) return;
+    bool changed = false;
+    for (size_t index = 0; index < Count; ++index) {
+        const bool resident = Map->TryGet(Values[index].Spec.Center.Cell()).has_value();
+        changed |= Resident[index] != resident;
+        Resident[index] = resident;
+    }
+    if (changed && CachedSourceVersion == Version) ++Version;
+    CachedSourceVersion = Version;
+    CachedResidencyVersion = residency;
+}
+
+uint64_t FieldSources::Revision() const {
+    RefreshResidency();
+    return Version;
+}
+
+bool FieldSources::Active(size_t index, WorldRect bounds) const {
+    const auto &source = Values[index];
+    return Resident[index] && !source.Suspended && Fits(source.Spec, bounds);
+}
+
 ForceVector FieldSources::Sample(CellCoord cell, WorldRect bounds) const {
     ForceVector result;
     if (!bounds.Contains(cell)) return result;
-    for (const auto &source : Sources()) {
-        if (!Fits(source.Spec, bounds)) continue;
+    RefreshResidency();
+    for (size_t index = 0; index < Count; ++index) {
+        const auto &source = Values[index];
         const auto center = source.Spec.Center.RelativeTo(cell);
         const auto dx = center[0] - .5, dy = center[1] - .5;
         if (dx * dx + dy * dy > source.Spec.Radius * source.Spec.Radius) continue;
+        if (!Active(index, bounds)) continue;
         result.X += source.Spec.Acceleration.X;
         result.Y += source.Spec.Acceleration.Y;
     }
@@ -53,22 +79,32 @@ ForceVector FieldSources::Sample(CellCoord cell, WorldRect bounds) const {
 }
 
 void FieldSources::WakeActive(WorldMap &map, WorldRect bounds) const {
-    for (const auto &source : Sources())
-        if (Fits(source.Spec, bounds)) map.Wake(Bounds(source.Spec));
+    RefreshResidency();
+    for (size_t index = 0; index < Count; ++index)
+        if (Active(index, bounds)) map.Wake(Bounds(Values[index].Spec));
 }
 
 void FieldSources::Remove(size_t index, WorldMap &map) {
     map.Wake(Bounds(Values[index].Spec));
     std::move(Values.begin() + index + 1, Values.begin() + Count, Values.begin() + index);
+    std::move(Resident.begin() + index + 1, Resident.begin() + Count, Resident.begin() + index);
     Values[--Count] = {};
+    Resident[Count] = false;
     ++Version;
 }
 
 void FieldSources::CompleteStep(WorldMap &map, WorldRect bounds) {
+    RefreshResidency();
     size_t index = 0;
     while (index < Count) {
         auto &source = Values[index];
-        if (!Fits(source.Spec, bounds) || !map.TryGet(source.Spec.Center.Cell()) || --source.Remaining == 0)
+        // Frozen sources retain their identity and capacity reservation. There
+        // is no elapsed-world-time catch-up when their region becomes active.
+        if (!Active(index, bounds)) {
+            ++index;
+            continue;
+        }
+        if (--source.Remaining == 0)
             Remove(index, map);
         else
             ++index;

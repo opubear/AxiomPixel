@@ -149,6 +149,51 @@ void FieldDomainPublicationWithoutWind() {
     std::filesystem::remove_all(directory);
 }
 
+void FieldResidencyPublicationWithoutWind() {
+    GameSession session;
+    auto &world = testing::SessionAccess::World(session);
+    auto &map = testing::WorldAccess::Map(world);
+    map.ResetInfinite();
+    map.Insert(std::make_unique<WorldChunk>(CellCoord{0, 0}));
+    map.Insert(std::make_unique<WorldChunk>(CellCoord{1, 0}));
+    const int64_t edge = storage::ChunkEdge;
+    testing::WorldAccess::SimulationBounds(world) = {edge - 24, 0, 64, 64};
+    world.DisableWind();
+    world.FillBaseForceRegion(world.GetSimulationBounds(), {});
+    Check(world.InstallFieldSource(999, {WorldPosition::FromAbsolute(double(edge) - .5, 20.5), 4, {3600, 0}, 10}).has_value(),
+          "residency publication source failed");
+    auto view = session.CreateReadView();
+    session.RefreshReadView(*view, {edge, 0, 32, 32});
+    WorldGridFrame direct, published;
+    direct.SetRegion({edge, 0}, 32, 32);
+    published.SetRegion({edge, 0}, 32, 32);
+    BuildForceFieldFrame(world, direct);
+    BuildForceFieldFrame(*view, published);
+    const auto before = direct.Cells()[20 * 32];
+    const auto regionVersion = map.RegionVersion({edge, 20});
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        auto unloaded = map.Remove({0, 0});
+        testing::SessionAccess::PublishFixtureChanges(session);
+        Check(view->GetFieldVelocity(edge, 20).X == 0 && map.RegionVersion({edge, 20}) == regionVersion,
+              "neighbor view retained force after center unloaded");
+        BuildForceFieldFrame(world, direct);
+        BuildForceFieldFrame(*view, published);
+        Check(direct.Cells()[20 * 32] != before && published.Cells()[20 * 32] == direct.Cells()[20 * 32],
+              "direct or committed F1 cache retained a missing-center source");
+        map.Insert(std::move(unloaded));
+        testing::SessionAccess::PublishFixtureChanges(session);
+        Check(view->GetFieldVelocity(edge, 20).X == 60, "center reload did not refresh neighbor view");
+        BuildForceFieldFrame(world, direct);
+        BuildForceFieldFrame(*view, published);
+        Check(direct.Cells()[20 * 32] == before && published.Cells()[20 * 32] == before,
+              "center reload did not refresh both F1 caches");
+    }
+    const auto revision = world.GetEnvironment().GetFieldSources().Revision();
+    map.Insert(std::make_unique<WorldChunk>(CellCoord{2, 0}));
+    Check(world.GetEnvironment().GetFieldSources().Revision() == revision,
+          "unrelated residency invalidated stable sources");
+}
+
 } // namespace
 int main() {
     try {
@@ -156,6 +201,7 @@ int main() {
         PublisherIsolation();
         DeviceValidation();
         FieldDomainPublicationWithoutWind();
+        FieldResidencyPublicationWithoutWind();
         std::cout << "Device snapshot and rendering geometry passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

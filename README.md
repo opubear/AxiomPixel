@@ -44,7 +44,7 @@
 
 M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，M4.3已接入设备放置。**库存尚未保存到磁盘，重启或R建新世界后为空**，持久化留M4.6，库存界面与观测留M4.7。
 
-M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。**设备、燃料和来源尚未存盘**，区域冻结恢复留M4.5，跨域保存留M4.6。
+M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。**设备、燃料和来源尚未存盘**，[M4.5区域冻结恢复](.awtcontext/GlobalDoc/RegionActivity.md)已实现：离开后保留剩余周期，返回接续且不重扣煤；跨域保存留M4.6。
 
 ## 构建和运行
 
@@ -225,7 +225,7 @@ M3.2 的 `PixelFormulaProcessDemo` 使用新的 `process 1;` 入口，包含不�
 
 F4 编辑器展开 `Process source`，载入三脉冲草稿或直接编辑源码，依次点击 `Compile process` 和 `Apply process` 后右键使用新过程。编辑会撤销旧编译结果，错误显示行列；Apply 只影响新实例。展开 `Process: three carriers`，`Start natural source` 和 `Start fixed fixture` 从玩家附近启动同一程序，并查看各实例的版本、PC、活动计时与剩余等待。三脉冲示例会发球、命中挖掘并延时重复，需取消暂停或单步推进。固定装置只是有限夹具；示例额度每次激活独立，天然源6、固定装置4、玩家64，每个成功效果扣1。`Clear running` 统一清理，树形 `Apply` 切回旧程序，既有实例保留旧版本。领域效果与边界见 [FormulaBridge](.awtcontext/GlobalDoc/FormulaBridge.md)。
 
-M3.4 已实现独立程序与实例状态 DTO，在 fake host 验证挂起后重建解释器、剩余延迟/事件/效果寿命接续及不重放已提交请求。具体见[状态与编辑合同](.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。游戏区域离开仍取消，过程、草稿和承载者尚不保存到磁盘；跨领域 checkpoint 属于 M4。
+M3.4 已实现独立程序与实例状态 DTO，在 fake host 验证挂起后重建解释器、剩余延迟/事件/效果寿命接续及不重放已提交请求。具体见[状态与编辑合同](.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。M4.5游戏区域离开会冻结程序与归属效果，返回后按剩余活动时间续接；过程、草稿和承载者尚不保存到磁盘；跨领域 checkpoint 属于 M4。
 
 CPU行为测试包括 `Pixel.FormulaValidation`、`Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。前者只链接共享验证和独立Formula，FormulaGameplay也不链接编辑器或ImGui。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
 

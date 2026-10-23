@@ -196,7 +196,8 @@ void FormulaDebugUI::DrawProcessExample(GameSession &session) {
     for (const auto &diagnostic : bridge.ProcessDiagnostics()) ImGui::TextWrapped("%s", diagnostic.Message.c_str());
     for (const auto &instance : bridge.InspectProcesses()) {
         const auto &state = instance.State;
-        const char *phase = state.Status == formula::process::Phase::Sleeping ? "wait" : "await";
+        const char *phase = instance.Suspended ? "frozen"
+            : state.Status == formula::process::Phase::Sleeping ? "wait" : "await";
         ImGui::Text("#%llu v%llu %.12s | %s PC %zu | active %llu remaining %llu | credits %lld",
             static_cast<unsigned long long>(state.Id), static_cast<unsigned long long>(instance.Version),
             instance.Program.ContentSha256.c_str(), phase, state.Instruction,

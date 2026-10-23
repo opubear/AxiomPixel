@@ -28,7 +28,7 @@ M2.4已在完整提交边界加入独立的 `ObservationProjector`：三槽有�
 
 系统设计入口为 [构式系统](../Docs/GameDesign/FormulaSystem.md)，语言契约见 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证见 [基础版实现](GlobalDoc/FormulaGameplayV1Implementation.md)，操作见 [工程 README](../README.md)，独立运行见 [模块 README](../Pixel/Formula/README.md)。2026-10-14 已完成代码命名迁移：类型 `Formula`、命名空间 `pixel::formula`、`.formula` 示例文件与 `PixelFormula` 构建目标；`cast` 语法及执行行为保留。早期 DOCX 与旧任务名是历史来源，不能据此认定生产方案已实现。
 
-M3 已完成独立 process/1 语言、有界运行时和 `Gameplay/FormulaBridge/` 三承载者接线；固定批次查询/碰撞、下一边界回执和清理规则见 [FormulaBridge](GlobalDoc/FormulaBridge.md)。M3.4 新增程序/实例 DTO 与 fake host 挂起恢复、效果所有权验证；F4 可编辑过程源码、Compile/Apply 并查看实例版本与剩余等待，旧树编辑器短期并存。真实库存、设备实体、游戏区域恢复及跨领域磁盘存档仍留 M4，详见 [状态与编辑合同](GlobalDoc/FormulaStateAndEditing.md)。
+M3 已完成独立 process/1 语言、有界运行时和 `Gameplay/FormulaBridge/` 三承载者接线；固定批次查询/碰撞、下一边界回执和清理规则见 [FormulaBridge](GlobalDoc/FormulaBridge.md)。M3.4 新增程序/实例 DTO 与 fake host 挂起恢复、效果所有权验证；F4 可编辑过程源码、Compile/Apply 并查看实例版本与剩余等待，旧树编辑器短期并存。真实库存、设备实体与持续来源已由M4.2–M4.4接入，M4.5已实现游戏区域冻结恢复，跨领域磁盘存档仍留 M4.6，详见 [状态与编辑合同](GlobalDoc/FormulaStateAndEditing.md)。
 
 M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数量容量、版本化转移及显式预留/释放/消费。玩家直接开采和构式开采收进同一背包，满包保留地形；放土消耗 soil。首个设备成本已用开采所得验证，放置由 M4.3 实现。库存尚不落盘，加载/恢复/R 后为空；一致存档和库存观测仍分别留给 M4.6/M4.7，详见[物品库存合同](GlobalDoc/Items.md)。
 
@@ -58,3 +58,5 @@ Camera2D以块坐标和块内双精度保存连续中心；标准模式速度为
 角色合成使用未取整Camera中心与世界位置差，解析矩形的屏幕像素覆盖以支持亚像素移动；每个frame slot独立RGBA8合成目标，F1或无角色跳过该Pass，角色合成后再后处理和UI。
 
 风场可视化在世界与角色之间增加独立Pass，默认空气折光，可切短轨迹或关闭。Pixel表现层发布纯风速R32UInt快照，不包含重力；GPU通过局部回溯流纹表达方向和相对强度。固体与场外屏蔽，人物后绘制。参数与试用入口见README“风场可视化”章节，设计文档见GlobalDoc/DocIndex。
+
+M4.5已实现[区域活动与冻结恢复](GlobalDoc/RegionActivity.md)：设备、两类程序及归属弹体/场源保留同一身份和剩余活动时间，离域不补算、不重扣煤，返回前重新核验设备承载者。视觉加载和LLM查询不激活模拟，冻结仍占用有界容量；磁盘检查点属于M4.6。

@@ -14,6 +14,9 @@ struct ProcessCarrier {
     WorldRect Scope;
     double AngleDegrees = 0;
     double MaximumRadius = 16;
+    // Fixed carriers may require a complete operating footprint even while
+    // waiting between effects. Ordinary casts require only their anchor.
+    double ActivityRadius = 0;
     int64_t Credits = 64;
     formula::process::Capabilities Grants = formula::process::AllCapabilities;
     formula::process::ExecutionLimits Limits{};
@@ -33,6 +36,7 @@ struct ProcessReceipt {
 };
 struct ProcessHostStats {
     size_t Instances = 0, Projectiles = 0, PendingEvents = 0;
+    size_t SuspendedInstances = 0;
     uint64_t Work = 0, Queries = 0, Requests = 0, Accepted = 0, Rejected = 0;
     uint64_t RetainedBytes = 0;
 };
@@ -43,5 +47,6 @@ struct ProcessInspection {
     ProcessCarrierKind Carrier;
     uint64_t Subject = 0;
     int64_t Credits = 0;
+    bool Suspended = false;
 };
 } // namespace pixel

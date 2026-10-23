@@ -227,9 +227,17 @@ void WindAndFarCoordinates() {
         Check(bridge.Projectiles().front().Position.Cell().X == far + 11
             && std::abs(bridge.Projectiles().front().Position.RelativeTo({far + 11, 10})[0] - .25) < 1e-10,
             "far position lost cell/fraction separation");
-        testing::WorldAccess::Map(sparse).Remove(ChunkOf({far, 0}));
+        const auto beforeFreeze = bridge.InspectProcesses()[0].State;
+        auto unloaded = testing::WorldAccess::Map(sparse).Remove(ChunkOf({far, 0}));
         bridge.Step(sparse);
-        Check(bridge.Projectiles().empty() && bridge.Stats().Roots == 0, "missing carrier region did not cancel");
+        Check(bridge.Projectiles().empty() && bridge.ProcessStats().SuspendedInstances == 1
+            && bridge.InspectProcesses()[0].State.ActiveSteps == beforeFreeze.ActiveSteps,
+              "missing carrier region did not freeze");
+        testing::WorldAccess::Map(sparse).Insert(std::move(unloaded));
+        bridge.SynchronizeActivity(sparse);
+        Check(bridge.Projectiles().size() == 1 && bridge.InspectProcesses()[0].State.ActiveSteps == beforeFreeze.ActiveSteps,
+              "reloading lost the frozen carrier or advanced it");
+        bridge.Clear(sparse);
     }
 }
 void SessionIntegration() {

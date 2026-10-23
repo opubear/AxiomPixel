@@ -36,12 +36,52 @@ DeviceState GameSession::DeviceEnvironment(const DeviceSnapshot &device) const {
     return DeviceState::WaitingForCapacity;
 }
 
+std::vector<api::DeviceChanged> GameSession::SynchronizeDeviceActivity() {
+    // Revalidate durable carrier identity before allowing any saved continuation
+    // or owned field to become active again. Version changes from supply/UI do
+    // not replace the device; its non-reused ID and instance do.
+    for (const auto &process : Formulas.InspectProcesses()) {
+        if (process.Carrier != ProcessCarrierKind::Device) continue;
+        const auto *device = Machines.Find(process.Subject);
+        if (!device || device->Value.Instance != process.State.Id || !device->Value.Enabled
+            || !Characters.Find(ActorId{device->Value.Owner}))
+            Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Device, process.Subject);
+    }
+    std::vector<api::DeviceChanged> changes;
+    for (auto device : Machines.Snapshot()) {
+        if (!device.Enabled) continue;
+        const auto before = device;
+        if (!Characters.Find(ActorId{device.Owner})) {
+            device.Enabled = false;
+            device.Instance = 0;
+            device.State = DeviceState::Stopped;
+        } else {
+            const auto environment = DeviceEnvironment(device);
+            if (environment == DeviceState::WaitingForEnvironment) {
+                Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Device, device.Ref.Id);
+                device.Instance = 0;
+            }
+            device.State = environment;
+            if (environment == DeviceState::WaitingForCapacity)
+                device.State = device.Instance ? DeviceState::Running
+                    : device.Fuel ? DeviceState::WaitingForCapacity : DeviceState::NeedsFuel;
+        }
+        if (device != before) {
+            Machines.Update(device);
+            changes.push_back({Machines.Find(device.Ref.Id)->Value, api::DeviceEvent::StateChanged});
+        }
+    }
+    return changes;
+}
+
 void GameSession::StepDevices(std::vector<FormulaEffectRecord> &effects, std::vector<api::DeviceChanged> &changes) {
     for (auto device : Machines.Snapshot()) {
         const auto before = device;
         if (!device.Enabled) continue;
         const auto ready = DeviceEnvironment(device);
-        if (ready != DeviceState::WaitingForCapacity) {
+        if (ready == DeviceState::OutsideActiveArea) {
+            device.State = ready;
+        } else if (ready != DeviceState::WaitingForCapacity) {
             Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Device, device.Ref.Id);
             device.Instance = 0;
             device.State = ready;
@@ -62,6 +102,7 @@ void GameSession::StepDevices(std::vector<FormulaEffectRecord> &effects, std::ve
                     carrier.Origin = Origin(device);
                     carrier.Scope = GameWorld.GetSimulationBounds();
                     carrier.MaximumRadius = FieldRadius;
+                    carrier.ActivityRadius = FieldRadius;
                     carrier.Credits = 1;
                     carrier.Grants = formula::process::Mask(formula::process::Capability::Field);
                     if (Formulas.CastProcess(GameWorld, ForceEmitterProgram(), {3, 2}, carrier)) {

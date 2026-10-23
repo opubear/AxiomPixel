@@ -115,6 +115,7 @@ class WorldMap {
     size_t ChunkCount() const { return Chunks.size(); }
     uint64_t GetIdentity() const { return Identity; }
     uint64_t GetVersion() const { return Version; }
+    uint64_t GetResidencyVersion() const { return ResidencyVersion; }
     performance::MemoryUsage GetMemoryUsage() const;
     performance::MemoryUsage GetForceMemoryUsage() const;
 
@@ -125,6 +126,7 @@ class WorldMap {
     WorldRect Extent;
     bool Finite = false;
     uint64_t Version = 1;
+    uint64_t ResidencyVersion = 1;
     uint64_t Identity = 0;
     static size_t Index(CellCoord cell);
     static size_t RegionIndex(CellCoord cell);

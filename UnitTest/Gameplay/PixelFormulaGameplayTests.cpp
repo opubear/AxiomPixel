@@ -188,10 +188,14 @@ void DomainExitAndDigRules() {
     pixel::testing::WorldAccess::Map(sparse).Insert(std::make_unique<WorldChunk>(CellCoord{0, 0}));
     runtime.Clear(world);
     runtime.Cast(sparse, At(10.5, 4.5), 0);
-    pixel::testing::WorldAccess::Map(sparse).Remove({0, 0});
+    auto unloaded = pixel::testing::WorldAccess::Map(sparse).Remove({0, 0});
     runtime.Step(sparse);
-    Require(runtime.Projectiles().empty() && HasDiagnostic(runtime, "NotReady") && !HasDiagnostic(runtime, "hit id="),
-            "missing chunk must retire without hit or forced residency");
+    Require(runtime.Projectiles().empty() && runtime.Stats().Roots == 1 && !HasDiagnostic(runtime, "hit id="),
+            "missing chunk must freeze without hit or forced residency");
+    pixel::testing::WorldAccess::Map(sparse).Insert(std::move(unloaded));
+    runtime.SynchronizeActivity(sparse);
+    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Position.Cell().X == 10,
+            "chunk return lost or advanced legacy projectile");
 }
 
 WindStrategySettings Coarse() {

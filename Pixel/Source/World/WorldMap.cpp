@@ -424,6 +424,7 @@ void WorldMap::Clear() {
     Root.reset();
     Chunks.clear();
     ++Version;
+    ++ResidencyVersion;
 }
 
 void WorldMap::GenerateTerrain(int64_t surface) {
@@ -483,6 +484,7 @@ void WorldMap::Insert(std::unique_ptr<WorldChunk> chunk) {
     chunk->RegionVersions.fill(++Version);
     chunk->Active.fill(1);
     Chunks.emplace(coordinate, std::move(chunk));
+    ++ResidencyVersion;
     RebuildIndex();
     Wake({coordinate.X * storage::ChunkEdge - 1, coordinate.Y * storage::ChunkEdge - 1,
           storage::ChunkEdge + 2, storage::ChunkEdge + 2});
@@ -494,6 +496,7 @@ std::unique_ptr<WorldChunk> WorldMap::Remove(CellCoord coordinate) {
         return {};
     auto chunk = std::move(found->second);
     Chunks.erase(found);
+    ++ResidencyVersion;
     RebuildIndex();
     ++Version;
     return chunk;

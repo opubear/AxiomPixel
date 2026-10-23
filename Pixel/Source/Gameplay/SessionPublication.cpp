@@ -67,12 +67,18 @@ void GameSession::CommitChange() {
 
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
-    if (PublishedDeviceVersion != Machines.Revision()
+    const auto deviceChanges = SynchronizeDeviceActivity();
+    const bool activityChanged = Formulas.SynchronizeActivity(GameWorld);
+    if (activityChanged || PublishedDeviceVersion != Machines.Revision()
         || PublishedFieldSourceVersion != GameWorld.GetEnvironment().GetFieldSources().Revision()
         || PublishedActorVersion != Characters.Revision()
         || PublishedMapVersion != GameWorld.GetMap().GetVersion()
-        || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision())
-        CommitChange();
+        || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision()) {
+        Simulation.CommitChange();
+        for (const auto &change : deviceChanges)
+            Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
+        PublishCommit();
+    }
 }
 
 void GameSession::ServiceStreaming() {

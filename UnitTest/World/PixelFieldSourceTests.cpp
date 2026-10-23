@@ -155,8 +155,14 @@ void DistantCoordinatesAndDomainExit() {
         testing::WorldAccess::SimulationBounds(world) = {origin + 17, origin, 64, 64};
         Check(world.GetForce(origin + 16, origin + 16).X == 0 && world.GetForce(origin + 17, origin + 16).X == 0,
               "inactive or partially clipped source contributed outside its complete domain");
-        Check(world.StepEnvironment(0) && world.GetEnvironment().GetFieldSources().Size() == 0,
-              "successful domain step retained an inactive source");
+        Check(world.StepEnvironment(0) && world.GetEnvironment().GetFieldSources().Size() == 2
+            && world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == 10,
+              "inactive source lost identity or consumed lifetime");
+        testing::WorldAccess::SimulationBounds(world) = {origin, origin, 64, 64};
+        Check(world.GetEnvironment().GetFieldSources().Sources()[0].Handle == *handle
+            && world.GetForce(origin + 16, origin + 16).X == 3600 && world.StepEnvironment(FieldResponse::StepSeconds)
+            && world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == 9,
+              "return did not resume the same source for one active step");
     }
     World missing;
     Check(!missing.InstallFieldSource(1, Source()), "source admitted a missing center chunk");
@@ -183,7 +189,7 @@ void PendingStepDoesNotAgeOrMutate() {
                 && world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == 2
                 && world.GetEnvironment().GetFieldSources().Revision() == revision,
                   "pending retry advanced source lifetime or publication revision");
-        for (int mutation = 0; mutation < 5; ++mutation) {
+        for (int mutation = 0; mutation < 6; ++mutation) {
             bool rejected = false;
             try {
                 if (mutation == 0) world.InstallFieldSource(1, Source());
@@ -191,6 +197,7 @@ void PendingStepDoesNotAgeOrMutate() {
                 if (mutation == 2) world.StopFieldSource(1, *handle);
                 if (mutation == 3) world.StopFieldSources(1);
                 if (mutation == 4) world.DiscardStreaming();
+                if (mutation == 5) world.SuspendFieldSources(1, true);
             } catch (const std::logic_error &) { rejected = true; }
             Check(rejected, "pending step admitted a source mutation");
         }
@@ -202,6 +209,36 @@ void PendingStepDoesNotAgeOrMutate() {
     }
     std::filesystem::remove_all(directory);
 }
+
+void MissingCenterFreezesAllContribution() {
+    World world;
+    auto &map = testing::WorldAccess::Map(world);
+    map.Insert(std::make_unique<WorldChunk>(CellCoord{0, 0}));
+    map.Insert(std::make_unique<WorldChunk>(CellCoord{1, 0}));
+    const int64_t edge = storage::ChunkEdge;
+    testing::WorldAccess::SimulationBounds(world) = {edge - 24, 0, 64, 64};
+    world.FillBaseForceRegion(world.GetSimulationBounds(), {});
+    const FieldSourceSpec spec{WorldPosition::FromAbsolute(double(edge) - .5, 20.5), 4, {3600, 0}, 2};
+    const auto handle = world.InstallFieldSource(1, spec);
+    Check(handle && world.GetForce(edge, 20).X == 3600, "cross-chunk source fixture failed");
+    auto unloaded = map.Remove({0, 0});
+    // Querying even before another successful step must not expose a ghost force.
+    Check(world.GetForce(edge, 20).X == 0, "missing-center source still contributed to a resident neighbor");
+    for (uint64_t step = 0; step < 3; ++step) {
+        Check(world.StepEnvironment(step * FieldResponse::StepSeconds), "missing-center step failed");
+        Check(world.GetForce(edge, 20).X == 0 && world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == 2,
+              "missing-center source contributed or consumed lifetime");
+    }
+    Check(world.GetEnvironment().LastActiveRegions() == 0, "missing-center source kept waking resident materials");
+    map.Insert(std::move(unloaded));
+    Check(world.GetEnvironment().GetFieldSources().Size() == 1
+        && world.GetEnvironment().GetFieldSources().Sources()[0].Handle == *handle
+        && world.GetForce(edge, 20).X == 3600, "center reload duplicated or lost the source");
+    Check(world.StepEnvironment(3 * FieldResponse::StepSeconds)
+        && world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == 1, "native source did not resume one active step");
+    Check(world.StepEnvironment(4 * FieldResponse::StepSeconds)
+        && world.GetEnvironment().GetFieldSources().Size() == 0, "native source did not expire after remaining active steps");
+}
 } // namespace
 
 int main() {
@@ -211,6 +248,7 @@ int main() {
         CapacityValidationAndResetIdentity();
         DistantCoordinatesAndDomainExit();
         PendingStepDoesNotAgeOrMutate();
+        MissingCenterFreezesAllContribution();
         std::cout << "Field source contracts passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

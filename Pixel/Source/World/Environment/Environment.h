@@ -10,7 +10,7 @@ class World;
 
 class Environment {
   public:
-    explicit Environment(WorldMap &map) : BaseForces(map) {}
+    explicit Environment(WorldMap &map) : BaseForces(map), Sources(map) {}
     performance::MemoryUsage GetMemoryUsage() const;
     const ForceField &GetBaseForceField() const { return BaseForces; }
     // A retry preserves the already advanced wind and all material inputs.
@@ -47,6 +47,7 @@ class Environment {
     bool UpdateFieldSource(World &world, uint64_t owner, FieldSourceHandle handle, const FieldSourceSpec &spec);
     bool StopFieldSource(World &world, uint64_t owner, FieldSourceHandle handle);
     void StopFieldSources(World &world, uint64_t owner);
+    void SuspendFieldSources(World &world, uint64_t owner, bool suspended);
     void StepMaterials(World &world);
     void ProposeRegion(World &world, WorldRect region);
     void ResolveConflicts(World &world, WorldRect bounds);

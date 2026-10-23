@@ -52,11 +52,12 @@
 | 构式语言最小语义选择与可执行对照 | `context:GlobalDoc/FormulaSemanticsExperiment.md` | M3.1五场景原型、过程语义、成本测量及M3.2边界；未替换游戏运行时 | |
 | 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
 | 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | M3.2文本编译产物、绑定实例、宿主终态与预算清理；含CLI和新旧兼容范围 | |
-| FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | M3.3宿主接线、作用范围和额度、批次碰撞、三承载样例及验证边界 | |
-| 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | M3.4程序与实例DTO、挂起恢复及效果归属、源码编译Apply和验证边界 | |
+| FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 宿主接线、作用范围和额度、批次碰撞、区域冻结与三承载样例 | |
+| 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 程序实例DTO、效果归属与源码Apply；M4.5会话区域冻结和磁盘保存边界 | |
 | Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | M4.1角色集合、持久ID与代次句柄、宿主推进及观测呈现和后续保存边界 | |
 | 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | M4.2稳定物品ID、容量版本、转移预留、开采与建造成本及后续保存边界 | |
-| 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | M4.4推力设备、资源原子操作、30tick持续场、输入呈现及后续保存边界 | |
-| 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | M4.4来源所有权、单位、固定步寿命、Formula句柄、推力设备与CPU GPU性能验证 | |
+| 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | M4.5推力设备、资源原子操作、持续场与区域冻结续接及后续保存边界 | |
+| 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 来源所有权、单位与寿命、M4.5冻结和驻留失效、既有CPU GPU性能验证 | |
+| 区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | M4.5活动时间、身份和资源续接；CPU78项、ChunkEdge64、GPU与独立审查证据 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

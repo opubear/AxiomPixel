@@ -16,6 +16,8 @@ class ProcessHost {
     ProcessHost();
     ~ProcessHost();
     void BeginFrame();
+    // Call after residency/domain changes and before the environment step.
+    bool SynchronizeActivity(World &world);
     bool Start(const formula::process::ProgramArtifact &program, uint64_t id, uint64_t version,
                const ProcessCarrier &carrier, const World &world,
                std::optional<api::RequestKey> request, std::string &error, uint64_t resource = 2);

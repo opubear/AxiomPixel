@@ -28,6 +28,7 @@ struct FieldSourceSnapshot {
     uint64_t Owner = 0;
     FieldSourceSpec Spec;
     uint64_t Remaining = 0;
+    bool Suspended = false;
 };
 
 // Environment owns all mutation. Stable ID order also defines floating-point
@@ -35,22 +36,29 @@ struct FieldSourceSnapshot {
 class FieldSources {
   public:
     static constexpr size_t Capacity = 256;
+    explicit FieldSources(const WorldMap &map) : Map(&map) {}
     size_t Size() const { return Count; }
     bool HasCapacity() const { return Count < Capacity; }
-    uint64_t Revision() const { return Version; }
+    uint64_t Revision() const;
     std::span<const FieldSourceSnapshot> Sources() const { return {Values.data(), Count}; }
+    static bool Fits(const FieldSourceSpec &spec, WorldRect bounds);
 
   private:
     friend class Environment;
     std::array<FieldSourceSnapshot, Capacity> Values{};
     size_t Count = 0;
     uint64_t NextId = 1;
-    uint64_t Version = 1;
+    // Derived residency cache follows the same single-writer lifetime as World.
+    // A center load/unload also invalidates force projections in neighbor chunks.
+    const WorldMap *Map;
+    mutable std::array<bool, Capacity> Resident{};
+    mutable uint64_t Version = 1, CachedSourceVersion = 0, CachedResidencyVersion = 0;
 
     static FieldSourceSpec Validate(uint64_t owner, FieldSourceSpec spec);
-    static bool Fits(const FieldSourceSpec &spec, WorldRect bounds);
     static WorldRect Bounds(const FieldSourceSpec &spec);
     FieldSourceSnapshot *Find(uint64_t owner, FieldSourceHandle handle);
+    void RefreshResidency() const;
+    bool Active(size_t index, WorldRect bounds) const;
     ForceVector Sample(CellCoord cell, WorldRect bounds) const;
     void WakeActive(WorldMap &map, WorldRect bounds) const;
     void CompleteStep(WorldMap &map, WorldRect bounds);

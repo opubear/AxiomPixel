@@ -183,16 +183,21 @@ void EffectCapacityAndSuspension() {
     Step(session);
     Check(Current(session, id).State == DeviceState::Running && Current(session, id).Cycles == 1 &&
           world.GetEnvironment().GetFieldSources().Size() == 1, "device did not recover source capacity");
+    const auto instance = Current(session, id).Instance;
+    const auto source = world.GetEnvironment().GetFieldSources().Sources()[0];
     testing::WorldAccess::SimulationBounds(testing::SessionAccess::World(session)) = {128, 0, 896, 1024};
     Step(session);
-    Check(Current(session, id).State == DeviceState::OutsideActiveArea && !Current(session, id).Instance &&
-          !session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::Device, id) &&
+    Check(Current(session, id).State == DeviceState::OutsideActiveArea && Current(session, id).Instance == instance &&
+          session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::Device, id) &&
+          session.GetFormulaRuntime().ProcessStats().SuspendedInstances == 1 &&
           session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::FixedFixture, id),
-          "leaving simulation did not clear only the owned instance");
+          "leaving simulation did not freeze only the owned instance");
     testing::WorldAccess::SimulationBounds(testing::SessionAccess::World(session)) = {0, 0, 1024, 1024};
     Step(session);
-    Check(Current(session, id).State == DeviceState::NeedsFuel && Current(session, id).Cycles == 1,
-          "return to simulation replayed a paid cycle");
+    Check(Current(session, id).State == DeviceState::Running && Current(session, id).Cycles == 1 &&
+          Current(session, id).Instance == instance && world.GetEnvironment().GetFieldSources().Sources()[0].Handle == source.Handle &&
+          world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == source.Remaining - 1,
+          "return did not continue the paid cycle exactly once");
 }
 
 void SustainedForceOutput() {

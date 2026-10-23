@@ -43,6 +43,7 @@ class FormulaBridge {
     uint64_t LastActivationId() const;
     const std::string &LastError() const;
     void BeginFrame();
+    bool SynchronizeActivity(World &world);
     bool Cast(World &world, WorldPosition anchor, double angleDegrees,
               std::optional<api::RequestKey> activationRequest = std::nullopt);
     void Step(World &world);

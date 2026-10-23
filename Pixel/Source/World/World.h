@@ -47,6 +47,9 @@ class World {
         return Environment.StopFieldSource(*this, owner, handle);
     }
     void StopFieldSources(uint64_t owner) { Environment.StopFieldSources(*this, owner); }
+    void SuspendFieldSources(uint64_t owner, bool suspended) {
+        Environment.SuspendFieldSources(*this, owner, suspended);
+    }
 
     void ConfigureWind(uint32_t endRow, const WindSettings &settings = {});
     void ConfigurePixelWind(uint32_t endRow, const PixelWindSettings &settings = {});

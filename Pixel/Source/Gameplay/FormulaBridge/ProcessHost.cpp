@@ -64,7 +64,7 @@ struct Running {
     process::StepResult Slice;
     // Birth overlaps are also captured before any same-batch world edits.
     std::array<FormulaContact, 64> BirthContacts;
-    bool Prepared = false;
+    bool Prepared = false, Suspended = false;
 };
 struct Projectile {
     process::RequestId Request;
@@ -139,6 +139,24 @@ struct ProcessHost::State {
     void Retire() {
         std::erase_if(Roots, [](const auto &root) { return root->Instance->State().Status == process::Phase::Ended; });
     }
+    bool CanActivate(const Running &root, const World &world) const {
+        const auto bounds = world.GetSimulationBounds();
+        const auto resident = [&](WorldPosition position, double radius) {
+            const auto cell = position.Cell();
+            return ContainsDisk(bounds, position, radius) && world.TryGetCell(cell.X, cell.Y).has_value();
+        };
+        if (!resident(root.Carrier.Origin, root.Carrier.ActivityRadius)
+            || !resident(WorldPoint(root.Instance->State().Origin), 0)) return false;
+        const auto id = root.Instance->State().Id;
+        for (const auto &source : world.GetEnvironment().GetFieldSources().Sources()) {
+            if (source.Owner != id) continue;
+            const auto cell = source.Spec.Center.Cell();
+            if (!FieldSources::Fits(source.Spec, bounds) || !world.TryGetCell(cell.X, cell.Y)) return false;
+        }
+        for (const auto &bolt : Bolts)
+            if (bolt.Request.Instance == id && !resident(bolt.Position, FormulaWorldAdapter::BoltRadius)) return false;
+        return true;
+    }
     ProcessRefusal Validate(const Running &root, const process::EffectRequest &request, const World &world) const {
         if (!(root.Carrier.Grants & process::Mask(CapabilityOf(request.Description)))) return ProcessRefusal::Capability;
         // Stopping a resource never needs another paid credit or new geometry.
@@ -171,11 +189,7 @@ struct ProcessHost::State {
         return ProcessRefusal::None;
     }
     void Evaluate(Running &root, const World &world) {
-        const auto cell = root.Carrier.Origin.Cell();
-        if (!world.GetSimulationBounds().Contains(cell) || !world.TryGetCell(cell.X, cell.Y)) {
-            Cancel(root);
-            return;
-        }
+        if (root.Suspended) return;
         const process::HostView view{At, (root.Carrier.Grants & process::Mask(process::Capability::Inventory))
             ? std::optional(root.Carrier.Credits) : std::nullopt};
         root.Slice = root.Instance->Step(view, root.Events);
@@ -203,6 +217,7 @@ struct ProcessHost::State {
         Collisions.clear();
         for (auto it = Bolts.begin(); it != Bolts.end();) {
             auto &root = Owner(it->Request.Instance);
+            if (root.Suspended) { ++it; continue; }
             if (--it->Remaining == 0) {
                 Queue(root, process::Outcome::Expired, it->Request);
                 it = Bolts.erase(it);
@@ -323,6 +338,21 @@ ProcessHost::ProcessHost() : Data(std::make_unique<State>()) {}
 ProcessHost::~ProcessHost() = default;
 void ProcessHost::BeginFrame() { Data->WindCallsThisFrame = 0; }
 
+bool ProcessHost::SynchronizeActivity(World &world) {
+    if (world.GetEnvironment().IsWaitingForBudget())
+        throw std::logic_error("process activity change during pending environment step");
+    bool changed = false;
+    for (auto &root : Data->Roots) {
+        if (root->Prepared) throw std::logic_error("process activity change before effects commit");
+        const bool suspended = !Data->CanActivate(*root, world);
+        if (root->Suspended == suspended) continue;
+        root->Suspended = suspended;
+        world.SuspendFieldSources(root->Instance->State().Id, suspended);
+        changed = true;
+    }
+    return changed;
+}
+
 bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, uint64_t version,
                         const ProcessCarrier &carrier, const World &world,
                         std::optional<api::RequestKey> request, std::string &error, uint64_t resource) {
@@ -332,6 +362,7 @@ bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, ui
     position.Normalize();
     if (!resource || !version || !carrier.Subject || carrier.Credits < 0 || !std::isfinite(carrier.AngleDegrees)
         || !std::isfinite(carrier.MaximumRadius) || carrier.MaximumRadius < 0 || carrier.MaximumRadius > 16
+        || !std::isfinite(carrier.ActivityRadius) || carrier.ActivityRadius < 0 || carrier.ActivityRadius > 16
         || carrier.Scope.Empty() || carrier.Scope.Width > 2048 || carrier.Scope.Height > 2048
         || carrier.Scope.X > INT64_MAX - carrier.Scope.Width || carrier.Scope.Y > INT64_MAX - carrier.Scope.Height
         || carrier.Limits.Outputs > 16 || carrier.Limits.Work > 256 || carrier.Limits.Queries > 8
@@ -343,7 +374,9 @@ bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, ui
     upper.Normalize();
     if (Data->Roots.size() == MaximumInstances) { error = "ProcessInstanceLimit"; return false; }
     const auto origin = position.Cell();
-    if (!carrier.Scope.Contains(origin) || !world.GetSimulationBounds().Contains(origin)) { error = "ProcessScope"; return false; }
+    if (!carrier.Scope.Contains(origin) || !ContainsDisk(world.GetSimulationBounds(), position, carrier.ActivityRadius)) {
+        error = "ProcessScope"; return false;
+    }
     if (!world.TryGetCell(origin.X, origin.Y)) { error = "ProcessNotReady"; return false; }
     auto result = process::Instance::Start(program, id, carrier.Grants, carrier.Limits, LanguagePosition(position));
     if (const auto *diagnostic = std::get_if<process::Diagnostic>(&result)) { error = diagnostic->Message; return false; }
@@ -403,13 +436,14 @@ void ProcessHost::CancelCarrier(World &world, ProcessCarrierKind kind, uint64_t 
 }
 void ProcessHost::WakeCarrier(ProcessCarrierKind kind, uint64_t subject) {
     for (auto &root : Data->Roots)
-        if (root->Carrier.Kind == kind && root->Carrier.Subject == subject)
+        if (!root->Suspended && root->Carrier.Kind == kind && root->Carrier.Subject == subject)
             if (const auto subscription = root->Instance->State().WakeSubscription)
                 Data->Queue(*root, process::Outcome::Wake, {}, {}, *subscription);
 }
 void ProcessHost::AppendProjectiles(std::vector<FormulaProjectile> &output, uint64_t epoch) const {
     for (const auto &bolt : Data->Bolts) {
         const auto &root = Data->Owner(bolt.Request.Instance);
+        if (root.Suspended) continue;
         output.push_back({epoch, bolt.Request.Instance, bolt.Request.Sequence, root.Version,
             bolt.Position, FormulaWorldAdapter::BoltRadius, bolt.Damage, bolt.Velocity, root.Resource});
     }
@@ -425,6 +459,7 @@ ProcessHostStats ProcessHost::Stats() const {
         + Data->Bolts.capacity() * sizeof(Projectile) + Data->Collisions.capacity() * sizeof(Collision)
         + Data->Effects.capacity() * sizeof(FormulaEffectRecord) + Data->Receipts.size() * sizeof(ProcessReceipt);
     for (const auto &root : Data->Roots) {
+        result.SuspendedInstances += root->Suspended;
         result.PendingEvents += root->Events.size();
         result.RetainedBytes += sizeof(Running) + root->Events.capacity() * sizeof(process::HostEvent);
     }
@@ -438,7 +473,7 @@ std::vector<ProcessInspection> ProcessHost::Inspect() const {
     result.reserve(Data->Roots.size());
     for (const auto &root : Data->Roots)
         result.push_back({root->Instance->Program().Identity(), root->Instance->State(), root->Version,
-            root->Carrier.Kind, root->Carrier.Subject, root->Carrier.Credits});
+            root->Carrier.Kind, root->Carrier.Subject, root->Carrier.Credits, root->Suspended});
     return result;
 }
 } // namespace pixel

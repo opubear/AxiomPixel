@@ -115,6 +115,7 @@ class GameSession : public api::ObservationSource {
     api::ActionReceipt PlaceDevice(api::Cell target);
     api::ActionReceipt ChangeDevice(DeviceRef device, const api::Action &action);
     DeviceState DeviceEnvironment(const DeviceSnapshot &device) const;
+    std::vector<api::DeviceChanged> SynchronizeDeviceActivity();
     void StepDevices(std::vector<FormulaEffectRecord> &effects, std::vector<api::DeviceChanged> &changes);
     std::vector<api::DeviceChanged> StopDevices();
     World GameWorld{WorldWidth, WorldHeight};
