@@ -9,6 +9,7 @@ nlohmann::json ToJson(const Response &response);
 nlohmann::json ToJson(const OpenResult &result);
 nlohmann::json ToJson(const Capabilities &capabilities);
 nlohmann::json ToJson(const api::ActionReceipt &receipt);
+nlohmann::json ToJson(const DerivedMemory &memory);
 
 class JsonAdapter {
   public:

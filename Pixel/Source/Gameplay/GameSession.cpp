@@ -306,7 +306,7 @@ void GameSession::Tick(float duration, PlayerInput input) {
         const bool singleStep = Simulation.CommitStep();
         RecordFormulaFacts(effects);
         for (const auto &change : changes)
-            Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
+            RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
         PublishCommit();
         if (singleStep) break;
     }
@@ -336,6 +336,8 @@ void GameSession::ReplacingWorld() {
     RenewActionSessions();
     Observations.Reset();
     Facts.Reset(Epoch);
+    Knowledge.Reset();
+    Knowledge.BeginRuntime(Epoch);
     Simulation = {};
     PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
     PublishedFieldSourceVersion = 0;

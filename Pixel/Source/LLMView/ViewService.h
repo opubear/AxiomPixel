@@ -1,5 +1,6 @@
 #pragma once
 #include "GameAPI/ObservationSource.h"
+#include "DerivedMemory.h"
 #include <memory>
 
 namespace pixel::llm {
@@ -27,12 +28,17 @@ struct Limits {
 struct InventoryGrant {
     uint64_t WorldEpoch = 0, OwnerActor = 0;
 };
+struct KnowledgeGrant {
+    uint64_t WorldEpoch = 0, OwnerActor = 0;
+};
 struct Policy {
     std::array<bool, size_t(api::Topic::Count)> Topics{};
     std::optional<api::Rect> Region;
-    bool Facts = false; // Requires AllInventories: facts contain private device fuel.
+    bool Facts = false; // Requires AllInventories + AllKnowledge for private facts.
     bool AllInventories = false;
     std::optional<InventoryGrant> InventoryOwner;
+    bool AllKnowledge = false;
+    std::optional<KnowledgeGrant> KnowledgeOwner;
     static Policy FullAccess();
 };
 struct Capability {
@@ -47,6 +53,8 @@ struct Capabilities {
     bool Facts = false;
     bool AllInventories = false;
     std::optional<InventoryGrant> InventoryOwner;
+    bool AllKnowledge = false;
+    std::optional<KnowledgeGrant> KnowledgeOwner;
 };
 struct ViewDescriptor {
     ViewId Id = 0;
@@ -95,14 +103,28 @@ struct QueryPage {
     std::vector<api::DeviceObservation> Devices;
     std::vector<api::ProcessObservation> Processes;
     std::vector<api::FieldSourceObservation> FieldSources;
+    std::vector<knowledge::Discovery> Discoveries;
+    std::vector<knowledge::HistoryRecord> History;
+    // History is a global archive; Query.Scope does not spatially filter it.
+    // Metadata exists only on an authorized History page.
+    std::optional<uint64_t> HistoryFirstSequence, HistoryHighWatermark;
     uint64_t RetainedBytes() const;
 };
 struct Response {
+    Response(Status status = Status::Ok) : Result(status) {}
     Status Result = Status::Ok;
     std::optional<QueryPage> Page;
     std::optional<ViewDescriptor> FactView;
     std::optional<api::FactReadResult> Facts;
+    std::optional<knowledge::HistoryRead> History;
     uint64_t RetainedBytes() const;
+
+  private:
+    // The service issues this immutable proof only through Deliver. Copying or
+    // editing a public response cannot introduce a never-delivered citation.
+    std::shared_ptr<const std::vector<HistoryReference>> DeliveredHistory;
+    friend class ViewService;
+    friend class DerivedMemoryStore;
 };
 struct PreparedResponse {
     Status Result = Status::Ok;
@@ -132,6 +154,7 @@ class ViewService {
     OpenResult OpenView(ObserverId observer, api::Rect scope);
     PreparedResponse Query(ObserverId observer, ViewId view, QuerySpec query, CursorId cursor = 0);
     PreparedResponse ReadFacts(ObserverId observer, ViewId view, uint64_t after, uint32_t limit = 256);
+    PreparedResponse ReadHistory(ObserverId observer, ViewId view, uint64_t after, uint32_t limit = 128);
     Response Deliver(ObserverId observer, DeliveryId delivery);
     Status CloseView(ObserverId observer, ViewId view);
     Metrics Statistics() const;

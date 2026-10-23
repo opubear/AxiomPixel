@@ -26,7 +26,8 @@ uint64_t GameplayObservation::RetainedBytes() const {
 uint64_t ObservationSnapshot::RetainedBytes() const {
     return sizeof(*this) + Stamp.WorldId.capacity() + 1
         + Cells.capacity() * sizeof(ObservedCell) + Projectiles.capacity() * sizeof(ProjectileObservation)
-        + Gameplay.RetainedBytes() - sizeof(GameplayObservation);
+        + Gameplay.RetainedBytes() - sizeof(GameplayObservation)
+        + Knowledge.RetainedBytes() - sizeof(knowledge::Snapshot);
 }
 
 namespace {

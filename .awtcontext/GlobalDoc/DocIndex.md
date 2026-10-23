@@ -47,7 +47,7 @@
 | 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | Deferred和关闭协商；M4.6多域检查点、v2-v5导入与验证入口 | |
 | 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2投影与事实；M4.7加入同提交设备库存程序和场源值 | |
 | 领域观测Release基准原始数据 | `context:GlobalDoc/ObservationBenchmark-2026-10-22.csv` | M2.4三轮128帧静态与动态风有无投影的P50/P95、导出字节及容量 | |
-| LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | 授权交付、冻结分页与JSON；M4.7新增库存权限和设备/场源主题 | |
+| LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | 授权冻结分页与JSON；M4.7库存设备、M5.1知识历史和来源摘要 | |
 | LLMView Release基准原始数据 | `context:GlobalDoc/LLMViewBenchmark-2026-10-22.csv` | M2.5三轮128帧、三个观察者完整分页和JSON序列化耗时与保留字节 | |
 | 构式语言最小语义选择与可执行对照 | `context:GlobalDoc/FormulaSemanticsExperiment.md` | M3.1五场景原型、过程语义、成本测量及M3.2边界；未替换游戏运行时 | |
 | 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
@@ -62,5 +62,6 @@
 | 多领域一致检查点与程序持久化 | `context:GlobalDoc/Checkpoints.md` | M4.6不可变世代、各域和程序恢复、旧档导入；80项回归、chunk64及停顿与RSS实测 | |
 | 设备库存与持续程序观测 | `context:GlobalDoc/GameplayObservation.md` | M4.7统一提交投影、库存授权与分页、设备状态与场源UI及验证 | |
 | 可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | M4.8天然晶体、真实资源、设备与植物条件响应、冻结存档、试玩和验证 | |
+| 发现知识、重要历史与派生记忆 | `context:GlobalDoc/KnowledgeAndHistory.md` | M5.1显式观测、来源档案、授权冻结查询、非权威摘要及保存DTO边界 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

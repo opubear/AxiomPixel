@@ -22,7 +22,7 @@ GameSession 保留原生 Input/Debug/Driver 三个观察槽，另用第四槽完
 | Deliver | 再检查主体、授权版本、epoch、租约后移交数据；每编号仅交付一次 |
 | CloseView | 释放冻结副本、游标与待交付数据 |
 
-Policy.Topics 为显式授权集合，默认全拒绝；Region 可限制空间矩形。先验证请求完全位于授权区和 view 区内，再切片和聚合。当前 Programs、Runtime 的数量是全会话统计，Facts 也只支持全会话授权；带 Region 的策略不得授予这些能力，错误宿主配置直接抛异常。局部观察者只能获取已授权的空间主题，不收到隐藏的总数或 factHighWatermark。源码和动作权限没有隐含授权。M4.7的库存数量另需显式AllInventories或绑定epoch的OwnerActor授权；Facts包含私有设备煤数，现要求AllInventories，完整规则见[设备库存观测](GameplayObservation.md)。
+Policy.Topics 为显式授权集合，默认全拒绝；Region 可限制空间矩形。先验证请求完全位于授权区和 view 区内，再切片和聚合。当前 Programs、Runtime 的数量是全会话统计，Facts 也只支持全会话授权；带 Region 的策略不得授予这些能力，错误宿主配置直接抛异常。局部观察者只能获取已授权的空间主题，不收到隐藏的总数或 factHighWatermark。源码和动作权限没有隐含授权。M4.7的库存数量另需显式AllInventories或绑定epoch的OwnerActor授权；Facts包含私有设备煤数及M5.1玩家观测，现同时要求AllInventories与AllKnowledge。M5.1增加Knowledge/History授权、ReadHistory冻结增量和独立派生摘要；历史档案需全局完整授权，规则见[发现知识与历史](KnowledgeAndHistory.md)，设备规则见[设备库存观测](GameplayObservation.md)。
 
 SetPolicy 每次增加版本，即使更新后权限更宽，也撤销旧活动 view、游标和未交付结果（ViewRevoked）。epoch 更换、关闭、成功替换或第120个服务帧到达后旧 view 返回 ViewExpired。移除主体后凭据无效，统一 PermissionDenied。已交付值无法追溯收回。
 
@@ -35,7 +35,7 @@ SetPolicy 每次增加版本，即使更新后权限更宽，也撤销旧活动 
 | 矩形 | 每边64 cells，最多4096 cells |
 | 精细材料/空气风页 | 每页256 cells；每个查询最多16页 |
 | 游标 | 每 view 64；重放同一查询页复用游标 |
-| 待交付结果 | 每主体1，Query 与 ReadFacts 共用 |
+| 待交付结果 | 每主体1，Query、ReadFacts 与 ReadHistory 共用 |
 | 保留字节 | 每主体 view、副本元数据、游标与待交付结果合计≤1 MiB |
 | 租约 | 120宿主服务帧 |
 | 事实页 | 256条；来源事实环仍遵守256条/128 KiB上限 |
@@ -57,7 +57,7 @@ Player 用角色锚点是否位于查询范围决定可见性；程序返回已�
 
 ## JSON 使用
 
-JsonAdapter::Handle(observer, request) 中 observer 是宿主绑定参数。JSON 不接受 observerId、权限字段或动作方法。Query/ReadFacts 在 Handle 内立即 Deliver，然后序列化；以后若接异步队列，应保留交付编号并在发送时调用 Deliver；Handle 的同步 JSON 不能充当可撤销的待发送缓存。
+JsonAdapter::Handle(observer, request) 中 observer 是宿主绑定参数。JSON 不接受 observerId、权限字段或动作方法。Query/ReadFacts/ReadHistory 在 Handle 内立即 Deliver，然后序列化；以后若接异步队列，应保留交付编号并在发送时调用 Deliver；Handle 的同步 JSON 不能充当可撤销的待发送缓存。
 
 M4.1 的 player 对象增加 `actorId`，表示世界内稳定身份，结合 view 的世界/epoch 使用。
 

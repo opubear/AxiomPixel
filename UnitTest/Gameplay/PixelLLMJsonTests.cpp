@@ -306,7 +306,7 @@ void WindMetadataAndUnsupportedTopics() {
                 && capabilities["limits"]["maximumRequestBytes"] == llm::JsonAdapter::MaximumRequestBytes
                 && capabilities["topics"][1]["resolutionCells"] == Json::array({1, 16}),
             "capability catalogue omitted enforced limits or supported wind resolutions");
-    for (const auto *topic : {"temperature", "ecology", "knowledge"}) {
+    for (const auto *topic : {"temperature", "ecology"}) {
         const auto response = fixture.Send(fixture.Query(topic));
         const auto &page = response["page"];
         Require(page["availability"] == "unsupported" && page["reason"] == "unsupported"
@@ -314,6 +314,11 @@ void WindMetadataAndUnsupportedTopics() {
                     && !page.contains("oldestSampledAtRevision") && !page.contains("source"),
                 "unsupported topic was serialized as fabricated zero observations");
     }
+    const auto knowledge = fixture.Send(fixture.Query("knowledge"))["page"];
+    Require(knowledge["availability"] == "available" && knowledge["source"] == "knowledge.discoveries"
+            && knowledge["totalRecords"] == 0 && knowledge["discoveries"].is_array()
+            && knowledge["discoveries"].empty(),
+            "implemented empty knowledge was confused with an unsupported domain");
 }
 
 void FactsPreserveEveryCauseAndPayload() {

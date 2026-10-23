@@ -117,6 +117,11 @@ Json WindConfigurationJson(const api::WindConfiguration &configuration) {
 
 Json FactPayloadJson(const api::FactPayload &payload) {
     return std::visit(Overload{
+        [](const api::ForceObserved &value) -> Json {
+            return {{"kind", "ForceObserved"}, {"actorId", std::to_string(value.ActorId)},
+                    {"location", CellJson(value.Location)},
+                    {"accelerationCellsPerSecondSquared", value.AccelerationCellsPerSecondSquared}};
+        },
         [](const api::FieldSourceChanged &value) -> Json {
             const char *event = value.Event == api::FieldSourceEvent::Installed ? "installed"
                 : value.Event == api::FieldSourceEvent::Updated ? "updated" : "stopped";
@@ -178,6 +183,33 @@ Json FactsJson(const api::FactReadResult &facts) {
     for (const auto &fact : facts.Facts)
         result["facts"].push_back({{"id", FactIdJson(fact.Id)}, {"committedAt", StampJson(fact.CommittedAt)},
                                   {"cause", FactCauseJson(fact.Cause)}, {"payload", FactPayloadJson(fact.Payload)}});
+    return result;
+}
+
+Json HistoryRecordJson(const knowledge::HistoryRecord &record) {
+    const auto &fact = record.Source;
+    return {{"id", {{"worldId", fact.CommittedAt.WorldId}, {"sequence", std::to_string(record.Sequence)}}},
+            {"sourceFactId", FactIdJson(fact.Id)}, {"committedAt", StampJson(fact.CommittedAt)},
+            {"cause", FactCauseJson(fact.Cause)}, {"payload", FactPayloadJson(fact.Payload)}};
+}
+
+Json HistoryJson(const knowledge::HistoryRead &history) {
+    Json result{{"status", history.Status == knowledge::ReadStatus::Gap ? "Gap" : "Available"},
+                {"firstSequence", std::to_string(history.FirstSequence)},
+                {"highWatermark", std::to_string(history.HighWatermark)},
+                {"nextSequence", std::to_string(history.NextSequence)}, {"hasMore", history.HasMore},
+                {"records", Json::array()}};
+    for (const auto &record : history.Records) result["records"].push_back(HistoryRecordJson(record));
+    return result;
+}
+
+Json DiscoveryJson(const knowledge::Discovery &discovery, const std::string &worldId) {
+    Json result{{"ownerActor", std::to_string(discovery.OwnerActor)}, {"location", CellJson(discovery.Location)},
+                {"observed", discovery.Observed}, {"analyzed", discovery.Analyzed},
+                {"canCopy", discovery.CanCopy}, {"canEdit", discovery.CanEdit}, {"evidence", nullptr},
+                {"evidenceAvailability", discovery.EvidenceSequence ? "available" : "permission_denied"}};
+    if (discovery.EvidenceSequence)
+        result["evidence"] = {{"worldId", worldId}, {"sequence", std::to_string(discovery.EvidenceSequence)}};
     return result;
 }
 
@@ -293,6 +325,8 @@ std::string_view SourceFor(api::Topic topic) {
     case api::Topic::Items: return "session.inventory";
     case api::Topic::Devices: return "session.devices";
     case api::Topic::FieldSources: return "environment.field_sources";
+    case api::Topic::Knowledge: return "knowledge.discoveries";
+    case api::Topic::History: return "knowledge.important_history";
     default: return {};
     }
 }
@@ -305,6 +339,8 @@ std::string_view TopicUnit(api::Topic topic) {
     case api::Topic::Items: return "item";
     case api::Topic::Devices: return "device";
     case api::Topic::FieldSources: return "cell/second^2";
+    case api::Topic::Knowledge: return "discovery";
+    case api::Topic::History: return "history_record";
     default: return "count";
     }
 }
@@ -372,6 +408,20 @@ Json PageJson(const QueryPage &page) {
     if (page.Query.Topic == api::Topic::Runtime) {
         result["projectiles"] = Json::array();
         for (const auto &projectile : page.Projectiles) result["projectiles"].push_back(ProjectileJson(projectile));
+    }
+    if (page.Query.Topic == api::Topic::Knowledge) {
+        result["totalRecords"] = page.TotalRecords;
+        result["discoveries"] = Json::array();
+        for (const auto &discovery : page.Discoveries)
+            result["discoveries"].push_back(DiscoveryJson(discovery, page.View.Stamp.WorldId));
+    }
+    if (page.Query.Topic == api::Topic::History) {
+        result["spatialScope"] = "global_archive";
+        result["totalRecords"] = page.TotalRecords;
+        result["firstSequence"] = std::to_string(*page.HistoryFirstSequence);
+        result["highWatermark"] = std::to_string(*page.HistoryHighWatermark);
+        result["history"] = Json::array();
+        for (const auto &record : page.History) result["history"].push_back(HistoryRecordJson(record));
     }
     return result;
 }
@@ -504,15 +554,16 @@ Json Dispatch(ViewService &service, ObserverId observer, const Json &request) {
         return ToJson(service.OpenView(observer, scope));
     }
     if (method == "Query") return HandleQuery(service, observer, request);
-    if (method == "ReadFacts") {
+    if (method == "ReadFacts" || method == "ReadHistory") {
         ViewId view = 0;
         uint64_t after = 0;
-        uint32_t limit = Limits::MaximumFacts;
+        uint32_t limit = method == "ReadFacts" ? Limits::MaximumFacts : knowledge::HistoryCapacity;
         if (!ExactFields(request, {"method", "viewId", "after"}, {"limit"})
             || !Decimal(request["viewId"], view) || !Decimal(request["after"], after)
             || (request.contains("limit") && !Unsigned32(request["limit"], limit)))
             return StatusJson(Status::InvalidArgument);
-        return DeliverJson(service, observer, service.ReadFacts(observer, view, after, limit));
+        return DeliverJson(service, observer, method == "ReadFacts" ? service.ReadFacts(observer, view, after, limit)
+            : service.ReadHistory(observer, view, after, limit));
     }
     if (method == "CloseView") {
         ViewId view = 0;
@@ -532,6 +583,7 @@ Json ToJson(const Response &response) {
     if (response.Page) result["page"] = PageJson(*response.Page);
     if (response.FactView) result["view"] = ViewJson(*response.FactView);
     if (response.Facts) result["facts"] = FactsJson(*response.Facts);
+    if (response.History) result["history"] = HistoryJson(*response.History);
     return result;
 }
 
@@ -566,6 +618,19 @@ Json ToJson(const Capabilities &capabilities) {
             if (capability.Topic == api::Topic::Devices) topic["pageUnit"] = "device";
             if (capability.Topic == api::Topic::Programs) topic["pageUnit"] = "process";
             if (capability.Topic == api::Topic::FieldSources) topic["pageUnit"] = "field_source";
+            if (capability.Topic == api::Topic::Knowledge) {
+                topic["pageUnit"] = "discovery";
+                topic["knowledgeAccess"] = {{"kind", capabilities.AllKnowledge ? "all"
+                    : capabilities.KnowledgeOwner ? "owner" : "none"}};
+                if (!capabilities.AllKnowledge && capabilities.KnowledgeOwner) {
+                    topic["knowledgeAccess"]["worldEpoch"] = std::to_string(capabilities.KnowledgeOwner->WorldEpoch);
+                    topic["knowledgeAccess"]["ownerActor"] = std::to_string(capabilities.KnowledgeOwner->OwnerActor);
+                }
+            }
+            if (capability.Topic == api::Topic::History) {
+                topic["pageUnit"] = "history_record";
+                topic["spatialScope"] = "global_archive";
+            }
             topic["source"] = SourceFor(capability.Topic);
         }
         result["topics"].push_back(std::move(topic));
@@ -574,10 +639,22 @@ Json ToJson(const Capabilities &capabilities) {
                         {"maximumEdgeCells", Limits::MaximumEdge}, {"maximumPageCells", Limits::MaximumPageCells},
                         {"maximumPages", Limits::MaximumPages}, {"maximumCursorsPerView", Limits::MaximumCursors},
                         {"maximumPendingDeliveriesPerView", 1}, {"maximumFacts", Limits::MaximumFacts},
+                        {"maximumHistoryRecords", knowledge::HistoryCapacity},
                         {"maximumViewBytes", std::to_string(Limits::MaximumViewBytes)},
                         {"leaseServiceFrames", std::to_string(Limits::LeaseFrames)},
                         {"maximumRequestBytes", JsonAdapter::MaximumRequestBytes},
                         {"maximumResponseBytes", JsonAdapter::MaximumResponseBytes}};
+    return result;
+}
+
+Json ToJson(const DerivedMemory &memory) {
+    Json result{{"provenance", DerivedMemory::Provenance}, {"id", std::to_string(memory.Id)},
+                {"text", memory.Text}, {"sources", Json::array()}};
+    for (const auto &source : memory.Sources)
+        result["sources"].push_back({{"history", {{"worldId", source.History.WorldId},
+                                                  {"sequence", std::to_string(source.History.Sequence)}}},
+                                     {"sourceFactId", FactIdJson(source.SourceFact)},
+                                     {"sourceVersion", StampJson(source.SourceVersion)}});
     return result;
 }
 
@@ -591,6 +668,7 @@ Json ToJson(const api::ActionReceipt &receipt) {
     std::visit(Overload{
         [&](const std::monostate &) {},
         [&](const api::DeviceChanged &value) { result["result"] = FactPayloadJson(value); },
+        [&](const api::ForceObserved &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::MaterialResult &value) {
             Json data{{"kind", "material"}, {"target", CellJson(value.Target)}, {"changed", value.Changed},
                       {"blocked", value.Blocked}, {"notReady", value.NotReady}};

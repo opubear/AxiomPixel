@@ -35,6 +35,7 @@ const char *TopicName(api::Topic topic) {
     case api::Topic::Devices: return "devices";
     case api::Topic::Knowledge: return "knowledge";
     case api::Topic::FieldSources: return "field_sources";
+    case api::Topic::History: return "history";
     case api::Topic::Count: break;
     }
     throw std::logic_error("unknown observation topic");
@@ -45,6 +46,7 @@ Policy Policy::FullAccess() {
     policy.Topics.fill(true);
     policy.Facts = true;
     policy.AllInventories = true;
+    policy.AllKnowledge = true;
     return policy;
 }
 
@@ -55,8 +57,11 @@ uint64_t QueryPage::RetainedBytes() const {
         + Inventories.capacity() * sizeof(api::InventoryObservation)
         + Devices.capacity() * sizeof(api::DeviceObservation)
         + Processes.capacity() * sizeof(api::ProcessObservation)
-        + FieldSources.capacity() * sizeof(api::FieldSourceObservation);
+        + FieldSources.capacity() * sizeof(api::FieldSourceObservation)
+        + Discoveries.capacity() * sizeof(knowledge::Discovery)
+        + History.capacity() * sizeof(knowledge::HistoryRecord);
     for (const auto &inventory : Inventories) bytes += inventory.RetainedBytes() - sizeof(inventory);
+    for (const auto &record : History) bytes += record.Source.CommittedAt.WorldId.capacity() + 1;
     return bytes;
 }
 
@@ -68,18 +73,63 @@ uint64_t Response::RetainedBytes() const {
         bytes += Facts->Facts.capacity() * sizeof(api::DomainFact);
         for (const auto &fact : Facts->Facts) bytes += fact.CommittedAt.WorldId.capacity() + 1;
     }
+    if (History) {
+        bytes += History->Records.capacity() * sizeof(knowledge::HistoryRecord);
+        for (const auto &record : History->Records) bytes += record.Source.CommittedAt.WorldId.capacity() + 1;
+    }
+    if (DeliveredHistory) {
+        bytes += sizeof(*DeliveredHistory) + DeliveredHistory->capacity() * sizeof(HistoryReference);
+        for (const auto &source : *DeliveredHistory) bytes += source.RetainedBytes() - sizeof(source);
+    }
     return bytes;
 }
 
 namespace {
 void ValidatePolicy(const Policy &policy) {
-    if (policy.Facts && !policy.AllInventories)
-        throw std::invalid_argument("session facts require an explicit full inventory grant");
+    if (policy.Facts && (!policy.AllInventories || !policy.AllKnowledge))
+        throw std::invalid_argument("session facts require full inventory and knowledge grants");
     if (policy.InventoryOwner && (!policy.InventoryOwner->WorldEpoch || !policy.InventoryOwner->OwnerActor))
         throw std::invalid_argument("inventory owner grant requires a nonzero epoch and actor");
+    if (policy.KnowledgeOwner && (!policy.KnowledgeOwner->WorldEpoch || !policy.KnowledgeOwner->OwnerActor))
+        throw std::invalid_argument("knowledge owner grant requires a nonzero epoch and actor");
     if (policy.Region && (!ValidRect(*policy.Region) || policy.Facts
         || policy.Topics[size_t(api::Topic::Programs)] || policy.Topics[size_t(api::Topic::Runtime)]))
         throw std::invalid_argument("spatial observer cannot grant session-wide summaries or facts");
+}
+
+bool HistoryAllowed(const Policy &policy) {
+    return policy.Topics[size_t(api::Topic::History)] && policy.Facts
+        && policy.AllInventories && policy.AllKnowledge && !policy.Region;
+}
+
+void AuthorizeKnowledge(api::ObservationSnapshot &snapshot, const Policy &policy) {
+    auto &knowledge = snapshot.Knowledge;
+    // Older empty sources need not manufacture a domain stamp. Actual knowledge
+    // values must always belong to the same committed snapshot.
+    if (knowledge.Stamp == api::CommitStamp{} && knowledge.History.empty() && knowledge.Discoveries.empty())
+        return;
+    if (knowledge.Stamp != snapshot.Stamp)
+        throw std::logic_error("knowledge observations do not belong to the snapshot commit");
+    std::vector<knowledge::Discovery> discoveries;
+    if (policy.Topics[size_t(api::Topic::Knowledge)]) {
+        for (const auto &entry : knowledge.Discoveries) {
+            const bool owner = policy.KnowledgeOwner && policy.KnowledgeOwner->WorldEpoch == snapshot.Stamp.WorldEpoch
+                && policy.KnowledgeOwner->OwnerActor == entry.OwnerActor;
+            if ((policy.AllKnowledge || owner) && Contains(snapshot.Scope, {entry.Location, 1, 1})) {
+                auto visible = entry;
+                // Archive sequence numbers reveal how much global history came
+                // before this discovery, even without returning those records.
+                if (!HistoryAllowed(policy)) visible.EvidenceSequence = 0;
+                discoveries.push_back(visible);
+            }
+        }
+    }
+    knowledge.Discoveries = std::move(discoveries);
+    if (!HistoryAllowed(policy)) {
+        std::vector<knowledge::HistoryRecord>{}.swap(knowledge.History);
+        knowledge.FirstSequence = 1;
+        knowledge.HighWatermark = 0;
+    }
 }
 
 bool InventoryAllowed(const Policy &policy, uint64_t epoch, uint64_t owner) {
@@ -179,6 +229,20 @@ struct ViewService::State {
         return Status::Ok;
     }
     PreparedResponse Prepare(Observer &observer, Response response) {
+        // Retain provenance under the same byte budget as the pending response.
+        // It becomes externally usable only if Deliver passes the current grant.
+        if (response.Result == Status::Ok) {
+            const auto *records = response.History ? &response.History->Records
+                : response.Page && response.Page->Query.Topic == api::Topic::History ? &response.Page->History : nullptr;
+            if (records && !records->empty()) {
+                auto evidence = std::make_shared<std::vector<HistoryReference>>();
+                evidence->reserve(records->size());
+                for (const auto &record : *records)
+                    evidence->push_back({{record.Source.CommittedAt.WorldId, record.Sequence},
+                                         record.Source.Id, record.Source.CommittedAt});
+                response.DeliveredHistory = std::move(evidence);
+            }
+        }
         const auto prospective = observer.RetainedBytes() + response.RetainedBytes() - sizeof(Response);
         if (prospective > Limits::MaximumViewBytes) return {Status::LimitExceeded};
         observer.Delivery = Allocate(NextDelivery);
@@ -237,8 +301,11 @@ Capabilities ViewService::DescribeCapabilities(ObserverId id) const {
     result.Facts = observer->Grant.Facts;
     result.AllInventories = observer->Grant.AllInventories;
     result.InventoryOwner = observer->Grant.InventoryOwner;
+    result.AllKnowledge = observer->Grant.AllKnowledge;
+    result.KnowledgeOwner = observer->Grant.KnowledgeOwner;
     for (size_t i = 0; i < observer->Grant.Topics.size(); ++i)
-        if (observer->Grant.Topics[i]) result.Topics.push_back({api::Topic(i), api::TopicSupport(api::Topic(i))});
+        if (observer->Grant.Topics[i] && (api::Topic(i) != api::Topic::History || HistoryAllowed(observer->Grant)))
+            result.Topics.push_back({api::Topic(i), api::TopicSupport(api::Topic(i))});
     return result;
 }
 
@@ -256,6 +323,7 @@ OpenResult ViewService::OpenView(ObserverId id, api::Rect scope) {
         || capture.Snapshot->Cells.size() != size_t(scope.Width) * scope.Height)
         throw std::logic_error("observation source violated bounded snapshot contract");
     AuthorizeGameplay(*capture.Snapshot, observer->Grant);
+    AuthorizeKnowledge(*capture.Snapshot, observer->Grant);
     if (capture.Snapshot->RetainedBytes() + sizeof(State::View) + sizeof(State::Observer)
         + capture.Snapshot->Stamp.WorldId.capacity() + 1 > Limits::MaximumViewBytes)
         return {Status::LimitExceeded};
@@ -279,6 +347,7 @@ PreparedResponse ViewService::Query(ObserverId id, ViewId viewId, QuerySpec quer
     if (const auto status = Data->Check(*observer, viewId); status != Status::Ok) return {status};
     if (size_t(query.Topic) >= observer->Grant.Topics.size() || !observer->Grant.Topics[size_t(query.Topic)])
         return {Status::PermissionDenied};
+    if (query.Topic == api::Topic::History && !HistoryAllowed(observer->Grant)) return {Status::PermissionDenied};
     if (observer->Pending) return {Status::LimitExceeded};
     if (query.SchemaVersion != 1 || !ValidRect(query.Scope) || query.PageSize == 0) return {Status::InvalidArgument};
     if (query.PageSize > Limits::MaximumPageCells) return {Status::LimitExceeded};
@@ -337,6 +406,25 @@ PreparedResponse ViewService::ReadFacts(ObserverId id, ViewId viewId, uint64_t a
     }
     response.FactView = observer->Active->Descriptor;
     response.Facts = std::move(facts);
+    return Data->Prepare(*observer, std::move(response));
+}
+
+PreparedResponse ViewService::ReadHistory(ObserverId id, ViewId viewId, uint64_t after, uint32_t limit) {
+    auto *observer = Data->Find(id);
+    if (!observer) return {Status::PermissionDenied};
+    if (const auto status = Data->Check(*observer, viewId); status != Status::Ok) return {status};
+    if (!HistoryAllowed(observer->Grant)) return {Status::PermissionDenied};
+    if (observer->Pending) return {Status::LimitExceeded};
+    auto history = knowledge::ReadHistory(observer->Active->Snapshot.Knowledge, after, limit);
+    Response response;
+    switch (history.Status) {
+    case knowledge::ReadStatus::Available: break;
+    case knowledge::ReadStatus::Gap: response.Result = Status::Gap; break;
+    case knowledge::ReadStatus::InvalidRange: return {Status::InvalidArgument};
+    case knowledge::ReadStatus::LimitExceeded: return {Status::LimitExceeded};
+    }
+    response.FactView = observer->Active->Descriptor;
+    response.History = std::move(history);
     return Data->Prepare(*observer, std::move(response));
 }
 

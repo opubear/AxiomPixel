@@ -586,10 +586,28 @@ void CursorAndByteBudgets() {
     Require(service.CloseView(observer, opened.View->Id) == llm::Status::Ok, "budget fixture close failed");
     Require(service.Statistics().RetainedBytes == idleBytes, "closed view retained dynamic allocations");
 
-    source.Snapshot.Stamp.WorldId = std::string(220 * 1024, 'w');
+    // Find the actual metadata boundary rather than pinning a magic WorldId
+    // length to the current set of owned domain DTOs and their fixed overhead.
+    size_t acceptedBytes = 1, rejectedBytes = llm::Limits::MaximumViewBytes;
+    while (rejectedBytes - acceptedBytes > 1) {
+        const size_t candidate = acceptedBytes + (rejectedBytes - acceptedBytes) / 2;
+        source.Snapshot.Stamp.WorldId = std::string(candidate, 'w');
+        source.Snapshot.Gameplay.Stamp = source.Snapshot.Stamp;
+        const auto attempt = service.OpenView(observer, FullScope());
+        if (attempt.Result == llm::Status::Ok) acceptedBytes = candidate;
+        else {
+            Require(attempt.Result == llm::Status::LimitExceeded, "metadata budget search failed for an unrelated reason");
+            rejectedBytes = candidate;
+        }
+    }
+    source.Snapshot.Stamp.WorldId = std::string(acceptedBytes, 'w');
     source.Snapshot.Gameplay.Stamp = source.Snapshot.Stamp;
     const auto large = service.OpenView(observer, FullScope());
     Require(large.View.has_value(), "valid large metadata snapshot exceeded its budget");
+    Require(service.Statistics().RetainedBytes > idleBytes + llm::Limits::MaximumViewBytes / 2,
+        "metadata fixture did not approach the real retained byte budget");
+    std::cout << "view metadata boundary: " << acceptedBytes << " bytes; retained view bytes: "
+              << service.Statistics().RetainedBytes - idleBytes << '\n';
     Require(service.Query(observer, large.View->Id, Materials()).Result == llm::Status::LimitExceeded
         && service.ReadFacts(observer, large.View->Id, 0).Result == llm::Status::LimitExceeded,
         "pending results exceeded the combined snapshot and response byte budget");

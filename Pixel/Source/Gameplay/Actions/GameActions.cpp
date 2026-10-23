@@ -43,7 +43,7 @@ api::Reason Validate(const api::Action &action) {
         } else if constexpr (std::is_same_v<T, api::SelectWindStrategy>) {
             if (value.Kind < api::WindKind::Coarse || value.Kind > api::WindKind::Empty)
                 return api::Reason::Unsupported;
-        } else if constexpr (std::is_same_v<T, api::PlaceDevice>) {
+        } else if constexpr (std::is_same_v<T, api::PlaceDevice> || std::is_same_v<T, api::ObserveForce>) {
             if (!ValidCell(value.Target)) return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> ||
                              std::is_same_v<T, api::SetDeviceEnabled>) {
@@ -224,6 +224,22 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                         stats.Roots, stats.Projectiles, stats.Pending};
                 }
             }
+        } else if constexpr (std::is_same_v<T, api::ObserveForce>) {
+            const auto player = Characters.PlayerSnapshot();
+            const CellCoord cell{value.Target.X, value.Target.Y};
+            if (!player || !GameWorld.GetSimulationBounds().Contains(cell) || !GameWorld.TryGetCell(cell.X, cell.Y)) {
+                receipt.Rejection = api::Reason::NotReady;
+            } else {
+                const auto position = player->GetWorldPosition().RelativeTo(cell);
+                // Native measurement tool: proximity authorizes observation,
+                // not program inspection, copying, editing or device control.
+                if (std::hypot(position[0], position[1]) > 32) receipt.Rejection = api::Reason::PermissionDenied;
+                else if (!Knowledge.CanDiscover(player->Id.Value, value.Target)) receipt.Rejection = api::Reason::LimitExceeded;
+                else {
+                    const auto force = GameWorld.GetForce(cell.X, cell.Y);
+                    receipt.Result = api::ForceObserved{player->Id.Value, value.Target, {force.X, force.Y}};
+                }
+            }
         } else if constexpr (std::is_same_v<T, api::PlaceDevice>) {
             receipt = PlaceDevice(value.Target);
         } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> ||
@@ -259,7 +275,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             if (changed || crystalStopped || !stopped.empty()) {
                 Simulation.CommitChange();
                 for (const auto &change : stopped)
-                    Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, 0}, change);
+                    RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, 0}, change);
                 PublishCommit();
             }
         } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld>
@@ -344,7 +360,7 @@ api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const 
         return {api::ControlStatus::Rejected, api::Reason::InvalidProgram, Formulas.LastError()};
     Simulation.CommitChange();
     const api::ProgramEffectCause cause{{Epoch, Formulas.LastActivationId()}, AppliedProgram(), 0, {}, {}};
-    Facts.Append(CurrentCommit(), cause, api::ProgramActivated{AppliedProgram(), Formulas.LastActivationId()});
+    RecordFact(CurrentCommit(), cause, api::ProgramActivated{AppliedProgram(), Formulas.LastActivationId()});
     RecordFormulaFacts();
     PublishCommit();
     return {api::ControlStatus::Applied};

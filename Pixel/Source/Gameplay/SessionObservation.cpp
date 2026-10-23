@@ -2,8 +2,10 @@
 
 namespace pixel {
 api::ObservationResult GameSession::Observe(NativeCaller observer, api::Rect scope) {
-    return Observations.Capture(size_t(observer), scope, GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(),
+    auto result = Observations.Capture(size_t(observer), scope, GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(),
         Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
+    if (result.Snapshot) result.Snapshot->Knowledge = Knowledge.Capture(result.Snapshot->Stamp);
+    return result;
 }
 
 api::ObservationResult GameSession::CaptureObservation(api::Rect scope) {
@@ -12,15 +14,24 @@ api::ObservationResult GameSession::CaptureObservation(api::Rect scope) {
     // LLMView owns its frozen copy. No abandoned external cache keeps sampling
     // every commit after its view is closed or its lease expires.
     Observations.Close(3);
+    if (result.Snapshot) result.Snapshot->Knowledge = Knowledge.Capture(result.Snapshot->Stamp);
     return result;
 }
 
 api::ObservationMetrics GameSession::ObservationStats() const {
     auto result = Observations.Metrics();
     const auto effects = Formulas.Stats().EffectRecordBytes;
-    result.RetainedBytes += Facts.RetainedBytes() + effects + GameplayValues.RetainedBytes();
-    result.MaximumRetainedBytes += DomainFactBuffer::MaximumRetainedBytes + effects + api::GameplayObservation::MaximumRetainedBytes;
+    result.RetainedBytes += Facts.RetainedBytes() + effects + GameplayValues.RetainedBytes() + Knowledge.RetainedBytes();
+    result.MaximumRetainedBytes += DomainFactBuffer::MaximumRetainedBytes + effects + api::GameplayObservation::MaximumRetainedBytes + 256 * 1024;
     return result;
+}
+
+api::FactId GameSession::RecordFact(const api::CommitStamp &stamp, api::FactCause cause, api::FactPayload payload) {
+    const auto id = Facts.Append(stamp, cause, payload);
+    // Feed important history directly: a large committed batch may already
+    // have evicted early entries from the transient domain-fact ring.
+    Knowledge.Record({id, stamp, std::move(cause), std::move(payload)});
+    return id;
 }
 
 void GameSession::RecordFormulaFacts() { RecordFormulaFacts(Formulas.LastEffects()); }
@@ -32,7 +43,7 @@ void GameSession::RecordFormulaFacts(std::span<const FormulaEffectRecord> effect
             effect.EmissionSequence, effect.ActivationRequest, {}};
         auto payload = effect.Payload;
         if (auto *wind = std::get_if<api::WindPulseSubmitted>(&payload)) wind->Instance.WorldEpoch = Epoch;
-        Facts.Append(stamp, cause, std::move(payload));
+        RecordFact(stamp, cause, std::move(payload));
     }
 }
 
@@ -43,16 +54,18 @@ void GameSession::RecordActionFacts(api::ActionReceipt &receipt, api::WindConfig
         if (!material->Before || !material->After || material->Changed != 1)
             throw std::logic_error("applied material action has no actual result");
         if (*material->After == uint32_t(CellTypeId::Air))
-            Facts.Append(stamp, receipt.Key, api::MaterialRemoved{material->Target, *material->Before, *material->After});
+            RecordFact(stamp, receipt.Key, api::MaterialRemoved{material->Target, *material->Before, *material->After});
         else
-            Facts.Append(stamp, receipt.Key, api::MaterialPlaced{material->Target, *material->Before, *material->After});
+            RecordFact(stamp, receipt.Key, api::MaterialPlaced{material->Target, *material->Before, *material->After});
     } else if (const auto *activation = std::get_if<api::ActivationResult>(&receipt.Result)) {
-        Facts.Append(stamp, receipt.Key, api::ProgramActivated{activation->Program, activation->ActivationId});
+        RecordFact(stamp, receipt.Key, api::ProgramActivated{activation->Program, activation->ActivationId});
         RecordFormulaFacts();
     } else if (const auto *wind = std::get_if<api::WindResult>(&receipt.Result)) {
-        Facts.Append(stamp, receipt.Key, api::WindConfigured{beforeWind, {wind->Kind, wind->BoundaryY}});
+        RecordFact(stamp, receipt.Key, api::WindConfigured{beforeWind, {wind->Kind, wind->BoundaryY}});
     } else if (const auto *device = std::get_if<api::DeviceChanged>(&receipt.Result)) {
-        Facts.Append(stamp, receipt.Key, *device);
+        RecordFact(stamp, receipt.Key, *device);
+    } else if (const auto *observed = std::get_if<api::ForceObserved>(&receipt.Result)) {
+        RecordFact(stamp, receipt.Key, *observed);
     } else {
         throw std::logic_error("applied action has no fact payload");
     }

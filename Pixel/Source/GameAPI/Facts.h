@@ -80,8 +80,14 @@ enum class FieldSourceEvent { Installed, Updated, Stopped };
 // An acknowledged operation, not a full source snapshot. Expiry and owner
 // termination are reflected by the committed environment projection.
 struct FieldSourceChanged { uint64_t Handle = 0; FieldSourceEvent Event; };
+// An explicit player measurement. It grants neither program text nor control.
+struct ForceObserved {
+    uint64_t ActorId = 0;
+    Cell Location;
+    std::array<double, 2> AccelerationCellsPerSecondSquared{};
+};
 using FactPayload = std::variant<MaterialRemoved, MaterialPlaced, ProgramActivated,
-                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged, FieldSourceChanged>;
+                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged, FieldSourceChanged, ForceObserved>;
 struct DomainFact {
     FactId Id;
     CommitStamp CommittedAt;

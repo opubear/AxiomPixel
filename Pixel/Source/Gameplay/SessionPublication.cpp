@@ -2,7 +2,7 @@
 
 namespace pixel {
 api::CommitStamp GameSession::CurrentCommit() const {
-    return {SaveDirectory.empty() ? "finite-world" : SaveDirectory.filename().string(),
+    return {SaveDirectory.empty() ? "finite-world-" + std::to_string(Epoch) : SaveDirectory.filename().string(),
             Epoch, Simulation.Tick(), Simulation.Revision()};
 }
 
@@ -77,7 +77,7 @@ void GameSession::SynchronizeReadViews() {
         || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision()) {
         Simulation.CommitChange();
         for (const auto &change : deviceChanges)
-            Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
+            RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
         PublishCommit();
     }
 }

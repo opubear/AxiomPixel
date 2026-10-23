@@ -7,6 +7,7 @@
 #include "FormulaBridge/FormulaBridge.h"
 #include "Observation/ObservationProjector.h"
 #include "Observation/DomainFactBuffer.h"
+#include "Knowledge/Knowledge.h"
 #include "GameAPI/ObservationSource.h"
 #include "Persistence/SessionStore.h"
 #include "World/World.h"
@@ -78,6 +79,7 @@ class GameSession : public api::ObservationSource {
     api::ObservationResult CaptureObservation(api::Rect scope) override;
     void CloseObservation(NativeCaller observer) { Observations.Close(size_t(observer)); }
     api::ObservationMetrics ObservationStats() const;
+    knowledge::SaveData CaptureKnowledgeData() const { return Knowledge.Export(); }
     api::ObservationServiceStatus ObservationService() const override {
         return {CurrentCommit(), Ready, Simulation.HasPendingStep()};
     }
@@ -116,6 +118,7 @@ class GameSession : public api::ObservationSource {
     api::Reason ActivateAt(WorldPosition target, api::RequestKey request);
     void RenewActionSessions();
     void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
+    api::FactId RecordFact(const api::CommitStamp &stamp, api::FactCause cause, api::FactPayload payload);
     void RecordFormulaFacts();
     void RecordFormulaFacts(std::span<const FormulaEffectRecord> effects);
     api::ActionReceipt PlaceDevice(api::Cell target);
@@ -144,6 +147,7 @@ class GameSession : public api::ObservationSource {
     api::GameplayObservation GameplayValues;
     void PublishGameplayObservation();
     DomainFactBuffer Facts;
+    knowledge::Journal Knowledge;
     std::vector<std::weak_ptr<CommittedWorldView>> ReadViews;
     uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0, PublishedActorVersion = 0, PublishedDeviceVersion = 0;
     uint64_t PublishedFieldSourceVersion = 0;

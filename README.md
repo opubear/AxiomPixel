@@ -6,7 +6,7 @@
 
 后续技术演进见[面向游戏愿景的架构规划](Docs/Architecture/GameplayArchitecturePlan.md)：按独立子系统考虑构式语言、LLMView 与游戏领域，给出引擎边界及分阶段迁移方案；它是规划提案，以下仍描述当前实现。
 
-首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；动作入口及M2.1固定步协调/提交版本已实现，事实和LLMView仍待后续M2任务；当前用法见[游戏动作入口](Docs/Architecture/GameActions.md)。
+首个执行切片的观测、开采/激活、动作回执、版本和提交语义见[贯穿场景与 GameAPI 契约](Docs/Architecture/FirstGameplaySliceContract.md)；统一动作入口、固定步提交、事实和LLMView已实现；当前用法见[游戏动作入口](Docs/Architecture/GameActions.md)。
 
 基于 Axiom 的早期像素游戏，从引擎 `2DRender` 的 `5c8af21` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
 
@@ -26,6 +26,8 @@
 | `Pixel/Source/Actors/` | 玩家/Resident状态、值身份与代次句柄、只读地形碰撞与水体响应 |
 | `Pixel/Source/Items/` | 标准库物品定义、容器数量/容量、版本化转移与物料预留 |
 | `Pixel/Source/Devices/` | 有界设备集合、版本化身份、建造占用及工作状态值 |
+| `Pixel/Source/Knowledge/` | 有来源的重要历史、玩家发现、有界保留和版本化保存DTO |
+| `Pixel/Source/LLMView/` | 授权冻结查询、JSON交付及与权威事实分离的模型派生摘要 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
 | `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
 | `Pixel/Source/PixelRender/` | 帧首区域快照、外观映射、每frame slot缓存及GPU上传 |
@@ -47,6 +49,8 @@ M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包�
 M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、停机原因、程序等待和场源归属；Inventory查看背包与煤槽，Programs and fields查看运行状态，均读取同一已发布帧。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。设备、燃料和来源通过[M4.6一致检查点](.awtcontext/GlobalDoc/Checkpoints.md)保存；[M4.5区域冻结恢复](.awtcontext/GlobalDoc/RegionActivity.md)已实现：离开后保留剩余周期，返回接续且不重扣煤，重启后继续已支付周期。M4.7的设备、库存、程序与场源查询遵守独立库存授权和冻结分页，见[观测与表现](.awtcontext/GlobalDoc/GameplayObservation.md)。
 
 M4.8 提供可保存的「力场育圃」小场景：F2展开 `Force garden`，点击 `Save and create force garden` 保存旧世界并创建独立场景。观察左侧晶体和野生植株，应用同一个构式并走近右侧育圃试验；开采面板标出的真实石头、铜和煤，建造、供煤并启用推力设备，取消暂停后观察开花。成长按实际水平加速度与地形条件累计，离开活动区冻结，保存重启接续。创建需要至少128格模拟窗口；R仍创建普通世界。操作、规则与验证见[力场育圃贯穿场景](.awtcontext/GlobalDoc/ForceGarden.md)。
+
+M5.1 已建立[发现知识与重要历史](.awtcontext/GlobalDoc/KnowledgeAndHistory.md)：显式ObserveForce动作记录32格内的真实加速度，只授予“已观测”；重要开采、设备操作和首次发现保留原始来源。LLMView增加独立授权的Knowledge/History冻结查询，模型摘要另存并引用已交付历史。当前提供CPU入口和版本化保存DTO，尚无知识UI、模型连接或知识磁盘存档；重启会清空新增知识与历史，不影响M4既有存档领域。
 
 ## 构建和运行
 

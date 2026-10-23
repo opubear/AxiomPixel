@@ -45,6 +45,7 @@ api::Position DeviceLocation(const api::DeviceObservation &device) { return {dev
 api::Position InventoryLocation(const api::InventoryObservation &inventory) { return inventory.Location; }
 api::Position ProcessLocation(const api::ProcessObservation &process) { return process.Location; }
 api::Position FieldCenter(const api::FieldSourceObservation &source) { return source.Center; }
+api::Position DiscoveryLocation(const knowledge::Discovery &discovery) { return {discovery.Location, {0, 0}}; }
 
 const api::ObservedCell &At(const api::ObservationSnapshot &snapshot, api::Cell cell) {
     return snapshot.Cells[size_t(cell.Y - snapshot.Scope.Origin.Y) * snapshot.Scope.Width
@@ -129,6 +130,8 @@ uint32_t QueryRecordCount(const api::ObservationSnapshot &snapshot, const QueryS
     case api::Topic::Devices: return CountInside(snapshot.Gameplay.Devices, query.Scope, DeviceLocation);
     case api::Topic::Programs: return CountInside(snapshot.Gameplay.Processes, query.Scope, ProcessLocation);
     case api::Topic::FieldSources: return CountInside(snapshot.Gameplay.FieldSources, query.Scope, FieldCenter);
+    case api::Topic::Knowledge: return CountInside(snapshot.Knowledge.Discoveries, query.Scope, DiscoveryLocation);
+    case api::Topic::History: return uint32_t(snapshot.Knowledge.History.size());
     default: return 0;
     }
 }
@@ -183,6 +186,25 @@ QueryPage ProjectQuery(const api::ObservationSnapshot &snapshot, const ViewDescr
         ProjectRecords(page.FieldSources, snapshot.Gameplay.FieldSources, query, offset, FieldCenter);
         page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.Gameplay.Stamp.Revision;
         break;
+    case api::Topic::Knowledge:
+        page.Unit = "discovery";
+        ProjectRecords(page.Discoveries, snapshot.Knowledge.Discoveries, query, offset, DiscoveryLocation);
+        page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.Stamp.Revision;
+        break;
+    case api::Topic::History: {
+        page.Unit = "history_record";
+        const auto &history = snapshot.Knowledge;
+        page.HistoryFirstSequence = history.FirstSequence;
+        page.HistoryHighWatermark = history.HighWatermark;
+        const auto end = std::min(history.History.size(), size_t(offset) + query.PageSize);
+        page.History.assign(history.History.begin() + offset, history.History.begin() + end);
+        page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.Stamp.Revision;
+        if (history.FirstSequence > 1) {
+            page.Availability = api::Availability::Partial;
+            page.Reason = "history_retention_gap";
+        }
+        break;
+    }
     case api::Topic::Runtime:
         page.Unit = "count";
         page.Programs = snapshot.Programs;

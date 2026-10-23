@@ -18,8 +18,9 @@ struct PlaceDevice { Cell Target; };
 struct RemoveDevice { DeviceRef Device; };
 struct SupplyDevice { DeviceRef Device; uint32_t Quantity = 1; };
 struct SetDeviceEnabled { DeviceRef Device; bool Enabled; };
+struct ObserveForce { Cell Target; };
 using Action = std::variant<MineRegion, PlaceMaterial, ActivateProgram, SelectWindStrategy, SetWindBoundary,
-                            PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled>;
+                            PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce>;
 struct ActionRequest {
     uint64_t WorldEpoch = 0, Sequence = 0;
     Action Payload;
@@ -45,7 +46,7 @@ struct ActivationResult {
     uint64_t RunningRoots = 0, Projectiles = 0, Pending = 0;
 };
 struct WindResult { WindKind Kind; int64_t BoundaryY; };
-using ActionResult = std::variant<std::monostate, MaterialResult, ActivationResult, WindResult, DeviceChanged>;
+using ActionResult = std::variant<std::monostate, MaterialResult, ActivationResult, WindResult, DeviceChanged, ForceObserved>;
 // Synchronous terminal result at a complete committed state.
 struct ActionReceipt {
     RequestKey Key;
