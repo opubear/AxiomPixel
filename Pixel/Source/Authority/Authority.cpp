@@ -28,8 +28,21 @@ void Control::Reset(api::CallerSessionId subject) {
     if (!subject) throw std::logic_error("authority requires host identity");
     Subject = subject;
     Revision = 1;
+    Influence = {};
     Grants = {};
     Protections.clear();
+}
+void Control::ReserveIntervention() {
+    if (!Influence.Available) throw std::logic_error("intervention reserved without influence capacity");
+    if (Influence.Version == UINT64_MAX) throw std::overflow_error("intervention resource version exhausted");
+    --Influence.Available;
+    ++Influence.Version;
+}
+void Control::ReleaseIntervention() {
+    if (Influence.Available == MaximumInterventions) throw std::logic_error("intervention influence released twice");
+    if (Influence.Version == UINT64_MAX) throw std::overflow_error("intervention resource version exhausted");
+    ++Influence.Available;
+    ++Influence.Version;
 }
 bool Control::Controlled(api::Rect scope) const {
     return ValidRegion(scope) && std::none_of(Protections.begin(), Protections.end(),

@@ -17,8 +17,12 @@ struct Protection {
 // rules, not caller-provided roles or a general authorization registry.
 class Control {
   public:
+    static constexpr uint32_t MaximumInterventions = 4;
     void Reset(api::CallerSessionId subject);
     uint64_t Version() const { return Revision; }
+    const api::InterventionResources &Resources() const { return Influence; }
+    void ReserveIntervention();
+    void ReleaseIntervention();
     bool CanObserve(api::CallerSessionId subject, api::Rect scope) const;
     bool CanIntervene(api::CallerSessionId subject, api::Rect scope) const;
     bool SetCapabilities(Capabilities capabilities);
@@ -33,6 +37,7 @@ class Control {
   private:
     api::CallerSessionId Subject = 0;
     uint64_t Revision = 1;
+    api::InterventionResources Influence;
     Capabilities Grants;
     std::vector<Protection> Protections;
     bool Controlled(api::Rect scope) const;

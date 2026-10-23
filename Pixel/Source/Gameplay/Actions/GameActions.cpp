@@ -51,8 +51,11 @@ api::Reason Validate(const api::Action &action) {
             if constexpr (std::is_same_v<T, api::SupplyDevice>)
                 if (!value.Quantity || value.Quantity > 64) return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::InstallIntervention>) {
-            if (!authority::Control::ValidRegion(value.Scope) || !ValidCell(value.Origin)
+            if (!value.ExpectedResourceVersion || !authority::Control::ValidRegion(value.Scope) || !ValidCell(value.Origin)
                 || !authority::Control::Contains(value.Scope, value.Origin)) return api::Reason::InvalidArgument;
+        } else if constexpr (std::is_same_v<T, api::InterveneAtDevice>) {
+            if (!value.ExpectedResourceVersion || !value.Device.Id || !value.Device.Version)
+                return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::SetWindBoundary>) {
             if (!ValidCell({0, value.Y})) return api::Reason::InvalidArgument;
         }
@@ -237,6 +240,8 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
             }
         } else if constexpr (std::is_same_v<T, api::InstallIntervention>) {
             receipt = InstallIntervention(value, request);
+        } else if constexpr (std::is_same_v<T, api::InterveneAtDevice>) {
+            receipt = InterveneAtDevice(value, request);
         } else if constexpr (std::is_same_v<T, api::SetDeviceProtection>) {
             receipt = SetDeviceProtection(value);
         } else if constexpr (std::is_same_v<T, api::ObserveForce>) {
@@ -286,7 +291,6 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             const bool crystalStopped = Garden.Enabled && Garden.CrystalEnabled;
             if (crystalStopped) Garden.CrystalEnabled = false;
             Formulas.Clear(GameWorld);
-            Interventions.clear();
             const auto stopped = StopDevices();
             const auto authorityChanges = ReconcileAuthority();
             if (changed || crystalStopped || !stopped.empty()) {

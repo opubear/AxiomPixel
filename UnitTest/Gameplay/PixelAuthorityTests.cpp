@@ -54,7 +54,8 @@ void Apply(GameSession &session, std::string_view source = Field) {
     Check(bool(session.ApplyProcess(NativeCaller::Driver, std::get<formula::process::ProgramArtifact>(program))), "apply process");
 }
 api::ActionRequest Request(GameSession &session, uint64_t sequence = 1, api::Rect scope = {{92, 92}, 32, 32}) {
-    return {session.WorldEpoch(), sequence, api::InstallIntervention{session.AppliedProgram(), {100, 100}, scope}};
+    return {session.WorldEpoch(), sequence, api::InstallIntervention{session.AppliedProgram(), {100, 100}, scope,
+        session.GetAuthority().Resources().Version}};
 }
 void Step(GameSession &session, int count = 1) {
     for (int i = 0; i < count; ++i) {
@@ -86,6 +87,87 @@ void RegionBoundaries() {
     Check(control.CanIntervene(7, {{-(int64_t{1} << 53), 0}, 64, 64}), "far signed coordinates lost precision");
     control.SetCapabilities({false, true});
     Check(!control.CanObserve(7, {{0, 0}, 1, 1}) && control.CanIntervene(7, {{0, 0}, 1, 1}), "observation and action conflated");
+}
+void InfluenceLifecycle() {
+    GameSession session;
+    Apply(session, "process 1; wait ticks(1000);");
+    api::WorldWillHost &host = session;
+    const auto initial = host.WorldWillStatus();
+    Check(initial.Caller == session.WorldWillSession() && initial.NextSequence == 1 && initial.Ready
+        && !initial.Pending && initial.Program == session.AppliedProgram()
+        && initial.Resources == api::InterventionResources{}, "host status did not expose current admission values");
+    const auto observationVersion = session.GetAuthority().Version();
+    auto missingVersion = Request(session);
+    std::get<api::InstallIntervention>(missingVersion.Payload).ExpectedResourceVersion = 0;
+    Check(host.Submit(initial.Caller, missingVersion).Rejection == api::Reason::InvalidArgument,
+        "omitted resource version bypassed admission");
+    const auto proposal = Request(session, 2);
+    Check(host.Submit(initial.Caller, proposal).Applied(), "first influence slot");
+    Check(session.GetAuthority().Resources() == api::InterventionResources{2, 3}, "influence was not reserved once");
+    Check(host.Submit(initial.Caller, proposal).Applied()
+        && session.GetAuthority().Resources() == api::InterventionResources{2, 3}, "duplicate reserved another influence slot");
+    auto stale = proposal;
+    stale.Sequence = 3;
+    Check(host.Submit(initial.Caller, stale).Rejection == api::Reason::PreconditionFailed,
+        "stale influence observation was accepted");
+
+    const auto independent = Request(session, 4);
+    Check(session.Execute(NativeCaller::Driver, api::SetWindBoundary{601}).Applied(), "unrelated revision fixture");
+    Check(host.Submit(initial.Caller, independent).Applied(), "unrelated commit invalidated influence proposal");
+    Check(host.Submit(initial.Caller, Request(session, 5)).Applied()
+        && host.Submit(initial.Caller, Request(session, 6)).Applied(), "four influence slots unavailable");
+    Check(host.Submit(initial.Caller, Request(session, 7)).Rejection == api::Reason::LimitExceeded
+        && session.GetAuthority().Resources() == api::InterventionResources{5, 0}, "fifth influence escaped gameplay capacity");
+    const auto carrier = session.GetFormulaRuntime().InspectProcesses().front().Subject;
+    Check(session.CancelProcessCarrier(NativeCaller::Driver, ProcessCarrierKind::Intervention, carrier).Succeeded()
+        && session.GetAuthority().Resources() == api::InterventionResources{6, 1}, "native cancellation did not release influence");
+    Check(session.Control(NativeCaller::Driver, api::ClearRunning{}).Succeeded()
+        && session.GetAuthority().Resources() == api::InterventionResources{9, 4}, "clear running leaked influence reservations");
+    session.Control(NativeCaller::Driver, api::ClearRunning{});
+    Check(session.GetAuthority().Resources() == api::InterventionResources{9, 4}, "repeated clear released influence twice");
+
+    Apply(session, "process 1; wait ticks(1);");
+    Check(host.Submit(initial.Caller, Request(session, 8)).Applied(), "short intervention start");
+    Step(session);
+    Check(session.GetAuthority().Resources() == api::InterventionResources{11, 4}, "natural completion leaked influence");
+    Check(session.GetAuthority().Version() == observationVersion, "influence reservation revoked observation leases");
+    Check(host.WorldWillStatus().NextSequence == 9, "host sequence missed terminal requests");
+    Check(session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded(), "influence reset");
+    Check(host.WorldWillStatus().Caller != initial.Caller && host.WorldWillStatus().NextSequence == 1
+        && session.GetAuthority().Resources() == api::InterventionResources{}, "new epoch retained resource ledger");
+}
+void DeviceAnchoredIntervention() {
+    GameSession session;
+    Apply(session);
+    const auto original = Device(session);
+    const auto subject = session.WorldWillSession();
+    const api::InterveneAtDevice proposal{session.AppliedProgram(), original, session.GetAuthority().Resources().Version};
+    Check(session.Execute(NativeCaller::Input, proposal).Rejection == api::Reason::PermissionDenied,
+        "native caller acquired world-will device action");
+    Check(session.Execute(NativeCaller::Input, api::RemoveDevice{original}).Applied(), "target removal");
+    Check(session.Submit(subject, {session.WorldEpoch(), 1, proposal}).Rejection == api::Reason::PreconditionFailed,
+        "deleted device accepted delayed proposal");
+    const auto replacement = Device(session);
+    Check(replacement.Id != original.Id, "replacement reused device identity");
+    const api::InterveneAtDevice stale{session.AppliedProgram(), replacement, session.GetAuthority().Resources().Version};
+    const auto enabled = Enable(session, replacement.Id, true);
+    Check(session.Submit(subject, {session.WorldEpoch(), 2, stale}).Rejection == api::Reason::PreconditionFailed,
+        "changed device accepted stale version");
+    const auto inventory = session.GetInventory().Inspect(session.PlayerInventory());
+    const api::InterveneAtDevice current{session.AppliedProgram(), enabled, session.GetAuthority().Resources().Version};
+    Check(session.Submit(subject, {session.WorldEpoch(), 3, current}).Applied(), "current device intervention");
+    Check(session.GetInventory().Inspect(session.PlayerInventory()) == inventory, "world-will intervention consumed player stock");
+    const auto processes = session.GetFormulaRuntime().InspectProcesses();
+    const auto &carrier = processes.front().Configuration;
+    Check(carrier.Kind == ProcessCarrierKind::Intervention && carrier.Origin.Cell() == CellCoord{101, 101}
+        && carrier.Scope.X == 84 && carrier.Scope.Y == 84 && carrier.Scope.Width == 34 && carrier.Scope.Height == 34,
+        "device action did not derive host anchor and scope");
+    Check(session.GetWorld().GetForce(101, 101).X == 100, "device intervention did not produce real force");
+    Check(session.Execute(NativeCaller::Input, api::SetDeviceProtection{enabled, true}).Applied(), "protect target device");
+    Check(session.GetAuthority().Resources() == api::InterventionResources{3, 4}, "protection did not release influence");
+    const api::InterveneAtDevice protectedProposal{session.AppliedProgram(), enabled, session.GetAuthority().Resources().Version};
+    Check(session.Submit(subject, {session.WorldEpoch(), 4, protectedProposal}).Rejection == api::Reason::PermissionDenied,
+        "device action bypassed regional protection");
 }
 void ProtectionAndDelivery() {
     GameSession session;
@@ -204,6 +286,7 @@ void FrozenAndExpired() {
     session.SetWorldWillCapabilities(NativeCaller::Driver, {true, false});
     Check(session.GetFormulaRuntime().ProcessStats().Instances == 0 && world.GetEnvironment().GetFieldSources().Sources().empty(),
         "frozen root survived revoke");
+    Check(session.GetAuthority().Resources() == api::InterventionResources{3, 4}, "frozen revocation leaked influence");
 
     GameSession expiry;
     Apply(expiry);
@@ -213,6 +296,7 @@ void FrozenAndExpired() {
     testing::SessionAccess::RestoreClock(expiry, 599 * SimulationCoordinator::StepSeconds, 0);
     Step(expiry);
     Check(expiry.GetFormulaRuntime().ProcessStats().Instances == 0 && expiry.GetWorld().GetForce(100, 100).X == 0, "lease did not clear source");
+    Check(expiry.GetAuthority().Resources() == api::InterventionResources{3, 4}, "lease expiry leaked influence");
     const auto history = expiry.CaptureKnowledgeData();
     Check(std::get<api::InterventionStopped>(history.History.back().Source.Payload).Reason == api::InterventionStopReason::LeaseExpired,
         "lease expiry reason missing");
@@ -224,7 +308,7 @@ void PendingAndPersistence() {
     const auto subject = session.WorldWillSession();
     const api::Rect scope{{580, 480}, 48, 32};
     const auto proposal = api::ActionRequest{session.WorldEpoch(), 1,
-        api::InstallIntervention{session.AppliedProgram(), {600, 500}, scope}};
+        api::InstallIntervention{session.AppliedProgram(), {600, 500}, scope, session.GetAuthority().Resources().Version}};
     Check(session.Submit(subject, proposal).Applied(), "persistent intervention start");
     const auto epoch = session.WorldEpoch();
     Check(session.Control(NativeCaller::Driver, api::SaveWorld{}).Rejection == api::Reason::Unsupported
@@ -299,7 +383,8 @@ void PendingAndPersistence() {
 }
 int main() {
     try {
-        RegionBoundaries(); ProtectionAndDelivery(); CapabilitiesAndDescendants(); FrozenAndExpired(); OwnershipIsolation(); PendingAndPersistence();
+        RegionBoundaries(); InfluenceLifecycle(); DeviceAnchoredIntervention(); ProtectionAndDelivery();
+        CapabilitiesAndDescendants(); FrozenAndExpired(); OwnershipIsolation(); PendingAndPersistence();
         std::cout << "authority regions, admission, delivery, revocation, descendants and leases passed\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }

@@ -22,6 +22,7 @@ const auto result = session.Execute(pixel::NativeCaller::Driver,
 - MineRegion 开采一格，提供可选期望材料，返回实际前后材料及 changed/blocked/notReady 计数与 Collected 物品。缺失格先返回 NotReady，再比较材料前置条件；水和空气不可开采。M4.2 在同一提交段将产物收入玩家背包，InventoryFull 保留材料且不增加提交版本。
 - PlaceMaterial 只支持 Dirt，检查空气和所有角色占用，不覆盖水，不新增距离或模拟窗口限制。M4.2 消耗一份 soil；缺料返回 InsufficientItems，成功回执包含 Consumed。所有原生来源使用相同资源规则。库存合同与保存边界见[物品库存](../../.awtcontext/GlobalDoc/Items.md)。
 - ActivateProgram 核验当前 ProgramRef、连续目标、会话阶段、发射路径和既有额度；返回本次激活身份和当前运行数量。Empty/延迟程序成功时可以没有球。拒绝发射不会改变上次成功瞄准方向。
+- InstallIntervention、InterveneAtDevice 仅由宿主世界意志身份提交，核验当前程序、资源版本、区域控制及目标设备版本。成功干预占用4个并发槽之一，结束归还；模型不消耗玩家库存。动作序号在安全提交边界分配，异步调度与离线演示见 [WorldWill](../../.awtcontext/GlobalDoc/WorldWill.md)。
 - SelectWindStrategy、SetWindBoundary 需要 Debug 能力。保留原有七策略及高成本后端自动暂停行为；没有通用属性写入接口。
 
 坐标使用 int64 cell 和 [0,1) double offset，转换先保留整数格再处理局部小数，不经过绝对 double。边界拒绝非有限值、非法offset、不受支持的材料/枚举及超出当前 WorldPosition 能力的坐标；极端chunk预留给内部邻域和发射偏移。M1没有JSON适配或完整schema序列化。

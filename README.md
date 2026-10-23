@@ -55,6 +55,8 @@ M5.1 已建立[发现知识与重要历史](.awtcontext/GlobalDoc/KnowledgeAndHi
 
 M5.2 已建立[区域控制与干预撤销](.awtcontext/GlobalDoc/Authority.md)：宿主分配世界意志身份，设备保护模块阻断区域观察与干预，撤权清理实例、后续事件和实际场源，同时使旧查询与待交付结果失效。当前为CPU动作接口，无新UI或模型网络；保护模块、活跃干预及非默认能力尚不支持磁盘保存，持久会话会明确拒绝保存/重置，清理后可保存。
 
+M5.3 已建立[异步 WorldWill 与离线模型闭环](.awtcontext/GlobalDoc/WorldWill.md)：授权观测复制给有界 worker，主线程在安全边界核验设备、程序和干预资源，保留真实回执与事实。当前通过 CPU demo 演示，应用已接服务帧和关闭生命周期，尚无自动祈祷、新 UI 或网络模型。
+
 ## 构建和运行
 
 需要CMake 3.23+、C++20、引擎锁定子模块及运行时Slang/Vulkan工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎；窗口配置位于 `Pixel/Config/GameConfig.json`。
@@ -122,6 +124,14 @@ cmake --build build-cpu --target PixelObservationDemo -j4
 # 显式 Release 测量：三个观察者每帧完整读取 64×64 材料及16格风摘要，并序列化 JSON
 cmake --build build-region-release --target PixelLLMViewBenchmark -j4
 ./build-region-release/bin/Release/PixelLLMViewBenchmark /private/tmp/pixel-llm-view.csv
+```
+
+`PixelWorldWillDemo` 使用真实 fake-model 工作线程：模型挂起期间模拟继续，释放后提交受限干预并输出真实场源和事实。无需窗口、模型密钥或网络。
+
+```sh
+cmake --build build-cpu --target PixelWorldWillDemo -j4
+./build-cpu/bin/Debug/PixelWorldWillDemo
+ctest --test-dir build-cpu -R '^Pixel\.(WorldWill|WorldWillWorker|Authority|AuthorityView)$' --output-on-failure
 ```
 
 材料采用60 Hz同步规则：只向步首为空的邻格申请；同目标按源坐标(y,x)裁决；统一提交后反馈风场。长链空位通过多个步传播，规则不依赖四叉树遍历顺序。静止无风区域休眠；编辑、材料成功移动、基础力变化和加载唤醒邻域。方块不保存速度/惯性，空间力不随材料搬迁。

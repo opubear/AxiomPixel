@@ -5,6 +5,8 @@
 #include "GamePlay/GameInterface.h"
 #include "Gameplay/GameSession.h"
 #include "LLMView/ViewService.h"
+#include "WorldWill/FakeModel.h"
+#include "WorldWill/WorldWill.h"
 #include "Input/GameInput.h"
 #include "Performance/GameProfiler.h"
 #include "PixelRender/GamePresentation.h"
@@ -22,6 +24,7 @@ class PixelGame final : public IGameInterface {
     pixel::GameSession &GetSession() { return Session; }
     const pixel::GameSession &GetSession() const { return Session; }
     pixel::llm::ViewService &GetObservationViews() { return ObservationViews; }
+    pixel::will::WorldWill &GetWorldWill() { return WorldWill; }
     pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
@@ -41,7 +44,7 @@ class PixelGame final : public IGameInterface {
     void ClearInputState() override { Input.ClearInputState(); }
     void FrameEnd() override;
     // Saving is negotiated before shutdown by PixelApplication.
-    void GameEnd() override { Input.ClearInputState(); }
+    void GameEnd() override { WorldWill.Close(); Input.ClearInputState(); }
     void Destroy() override {}
     void OnKeyEvent(Key key, int scancode, ButtonAction action, Mod mods) override {
         Input.OnKeyEvent(key, scancode, action, mods);
@@ -56,6 +59,8 @@ class PixelGame final : public IGameInterface {
   private:
     pixel::GameSession Session;
     pixel::llm::ViewService ObservationViews{Session};
+    pixel::will::FakeModel Model;
+    pixel::will::WorldWill WorldWill{Session, Model};
     pixel::GameCamera Camera;
     pixel::GamePresentation Presentation;
     pixel::ArtAssetStore ArtAssets;

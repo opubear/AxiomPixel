@@ -1,18 +1,25 @@
 #include "GameSession.h"
-#include "FormulaBridge/ProcessHost.h"
 #include <algorithm>
+#include <stdexcept>
 
 namespace pixel {
+api::WorldWillHostStatus GameSession::WorldWillStatus() const {
+    const auto &caller = Callers[3];
+    if (caller.HighWatermark == UINT64_MAX) throw std::overflow_error("world-will action sequence exhausted");
+    return {CurrentCommit(), caller.Id, caller.HighWatermark + 1, AppliedProgram(), Authority.Resources(),
+        Ready, Simulation.HasPendingStep(), Simulation.IsPaused()};
+}
+
 api::ObservationAuthorization GameSession::AuthorizeObservation(uint64_t subject, api::Rect scope) const {
     return {Authority.Version(), Ready && Authority.CanObserve(subject, scope)};
 }
 
 api::Reason GameSession::AuthorizeAction(api::CallerSessionId caller, const api::Action &action) const {
-    const auto *intervention = std::get_if<api::InstallIntervention>(&action);
+    const bool intervention = std::holds_alternative<api::InstallIntervention>(action)
+        || std::holds_alternative<api::InterveneAtDevice>(action);
     if (caller != WorldWillSession())
         return intervention ? api::Reason::PermissionDenied : api::Reason::None;
-    if (!intervention || !Authority.CanIntervene(caller, intervention->Scope)) return api::Reason::PermissionDenied;
-    return api::Reason::None;
+    return intervention ? api::Reason::None : api::Reason::PermissionDenied;
 }
 
 api::ControlReceipt GameSession::SetWorldWillCapabilities(NativeCaller caller, authority::Capabilities capabilities) {
@@ -47,6 +54,14 @@ api::ActionReceipt GameSession::SetDeviceProtection(const api::SetDeviceProtecti
 
 api::ActionReceipt GameSession::InstallIntervention(const api::InstallIntervention &action, api::RequestKey request) {
     api::ActionReceipt result;
+    if (!Authority.CanIntervene(request.Caller, action.Scope)) {
+        result.Rejection = api::Reason::PermissionDenied;
+        return result;
+    }
+    if (action.ExpectedResourceVersion != Authority.Resources().Version) {
+        result.Rejection = api::Reason::PreconditionFailed;
+        return result;
+    }
     if (action.Program != AppliedProgram()) {
         result.Rejection = api::Reason::StaleProgram;
         return result;
@@ -55,7 +70,7 @@ api::ActionReceipt GameSession::InstallIntervention(const api::InstallInterventi
         result.Rejection = api::Reason::Unsupported;
         return result;
     }
-    if (Interventions.size() == ProcessHost::MaximumInstances) {
+    if (!Authority.Resources().Available) {
         result.Rejection = api::Reason::LimitExceeded;
         return result;
     }
@@ -80,9 +95,27 @@ api::ActionReceipt GameSession::InstallIntervention(const api::InstallInterventi
     }
     const auto id = Formulas.LastActivationId();
     Interventions.push_back({carrier.Subject, request.Caller, Simulation.Tick() + 600, action.Scope});
+    Authority.ReserveIntervention();
     const auto stats = Formulas.Stats();
     result.Result = api::ActivationResult{Epoch, id, AppliedProgram(), stats.Roots, stats.Projectiles, stats.Pending};
     return result;
+}
+
+api::ActionReceipt GameSession::InterveneAtDevice(const api::InterveneAtDevice &action, api::RequestKey request) {
+    const auto *device = Machines.Find(action.Device.Id);
+    if (!device || device->Value.Ref != action.Device) {
+        api::ActionReceipt result;
+        result.Rejection = api::Reason::PreconditionFailed;
+        return result;
+    }
+    const api::Rect scope{{device->Value.X - 16, device->Value.Y - 16}, 34, 34};
+    if (!authority::Control::ValidRegion(scope)) {
+        api::ActionReceipt result;
+        result.Rejection = api::Reason::InvalidArgument;
+        return result;
+    }
+    return InstallIntervention({action.Program, {device->Value.X + 1, device->Value.Y + 1}, scope,
+        action.ExpectedResourceVersion}, request);
 }
 
 std::vector<api::FactPayload> GameSession::ReconcileAuthority() {
@@ -97,6 +130,7 @@ std::vector<api::FactPayload> GameSession::ReconcileAuthority() {
             return value.Carrier == ProcessCarrierKind::Intervention && value.Subject == it->Id;
         });
         if (process == processes.end()) {
+            Authority.ReleaseIntervention();
             it = Interventions.erase(it);
             continue;
         }
@@ -106,6 +140,7 @@ std::vector<api::FactPayload> GameSession::ReconcileAuthority() {
             Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Intervention, it->Id);
             changes.emplace_back(api::InterventionStopped{{Epoch, process->State.Id}, it->Subject,
                 permitted ? api::InterventionStopReason::LeaseExpired : api::InterventionStopReason::ControlRevoked});
+            Authority.ReleaseIntervention();
             it = Interventions.erase(it);
         } else ++it;
     }

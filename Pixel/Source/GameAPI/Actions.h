@@ -23,9 +23,21 @@ struct ObserveForce { Cell Target; };
 struct SetDeviceProtection { DeviceRef Device; bool Enabled; };
 // The host chooses capabilities, credits, lifetime and identity. A proposal
 // selects only an already approved program and a bounded execution rectangle.
-struct InstallIntervention { ProgramRef Program; Cell Origin; Rect Scope; };
+struct InstallIntervention {
+    ProgramRef Program;
+    Cell Origin;
+    Rect Scope;
+    uint64_t ExpectedResourceVersion = 0;
+};
+// The current device determines the anchor and bounded region on the host.
+struct InterveneAtDevice {
+    ProgramRef Program;
+    DeviceRef Device;
+    uint64_t ExpectedResourceVersion = 0;
+};
 using Action = std::variant<MineRegion, PlaceMaterial, ActivateProgram, SelectWindStrategy, SetWindBoundary,
-                            PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection, InstallIntervention>;
+                            PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection,
+                            InstallIntervention, InterveneAtDevice>;
 struct ActionRequest {
     uint64_t WorldEpoch = 0, Sequence = 0;
     Action Payload;

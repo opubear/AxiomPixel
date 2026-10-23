@@ -4,7 +4,7 @@ Authority 是 Pixel 的玩法领域，拥有世界意志的观察/干预能力�
 
 ## 身份与能力
 
-`GameSession::WorldWillSession()` 返回宿主装配凭据，和 Input、Debug、Driver 分开，世界替换后全部失效。请求仍只有 epoch、sequence、类型化 payload，没有 owner/admin/grants 字段。世界意志凭据仅可提交 `InstallIntervention`，不能调用普通玩家动作、程序编辑、调试设置或 SessionControl。原生可信代码仍负责注册观察者及向未来模型适配器绑定凭据。
+`GameSession::WorldWillSession()` 返回宿主装配凭据，和 Input、Debug、Driver 分开，世界替换后全部失效。请求仍只有 epoch、sequence、类型化 payload，没有 owner/admin/grants 字段。世界意志凭据仅可提交 `InstallIntervention` 和 M5.3 增加的 `InterveneAtDevice`，不能调用普通玩家动作、程序编辑、调试设置或 SessionControl。原生可信代码负责注册观察者及向 WorldWill 主线程端口绑定凭据，模型线程不持有凭据。
 
 `SetWorldWillCapabilities(Debug/Driver, {Observe, Intervene})` 修改当前能力，Input 无权调用。初始两项均开启；观察与执行独立。发现知识不授予这些能力，也不授予程序源码。外部协议不能自行选择 NativeCaller；原生 C++ 装配接口不是网络安全边界。
 
@@ -18,9 +18,11 @@ Authority 是 Pixel 的玩法领域，拥有世界意志的观察/干预能力�
 
 ## 持续干预
 
-`InstallIntervention{ProgramRef, Origin, Scope}` 只能引用宿主已 ApplyProcess 的当前 process/1 程序。旧版本返回 StaleProgram，legacy tree 不支持。Scope 为 1–64 格边长的矩形，坐标范围 ±2^54 内，Origin 必须在其中且驻留于活动世界。宿主分配非重用承载 ID、最多64次付费输出额度、600个成功全局 tick 的租约；语言已有单步预算、最多16实例/128弹体/半径16限制继续生效。
+`InstallIntervention{ProgramRef, Origin, Scope, ExpectedResourceVersion}` 只能引用宿主已 ApplyProcess 的当前 process/1 程序。旧版本返回 StaleProgram，legacy tree 不支持。Scope 为 1–64 格边长的矩形，坐标范围 ±2^54 内，Origin 必须在其中且驻留于活动世界。宿主分配非重用承载 ID、最多64次付费输出额度、600个成功全局 tick 的租约；语言已有单步预算、最多16实例/128弹体/半径16限制继续生效。
 
-安装先核验当前能力与区域，再启动并发布实际 ProgramActivated/效果事实。requestSequence 重复返回原回执，不再启动；重复成功回执表示原请求的结果，不承诺实例仍存在。暂停期间允许原生驱动的显式安装；异步自主调度策略留给 M5.3。
+安装先核验当前能力与区域，再启动并发布实际 ProgramActivated/效果事实。requestSequence 重复返回原回执，不再启动；重复成功回执表示原请求的结果，不承诺实例仍存在。暂停期间允许原生驱动的显式安装；M5.3 的异步 WorldWill 则等待恢复运行后再提交，并继续计算墙钟期限。
+
+M5.3 增加 4 个并发干预槽，与解释器技术容量分开。每次成功安装占用、结束或取消归还时递增资源版本，不改变观察授权版本。请求必须携带非零的当前资源版本；旧版本返回 PreconditionFailed，当前版本但缺槽返回 LimitExceeded。`InterveneAtDevice` 先核验设备 ID/Version，再派生中心及 34×34 范围并复用安装路径。细节见 [WorldWill](WorldWill.md)。
 
 每次完整模拟步后及安全流式边界重新核验；保护/能力动作在同一提交内立即撤销不再合法的实例。撤销通过 FormulaBridge 的承载归属清理实例、弹体、队列事件和全部 owned FieldSource，包括冻结实例。续发、命中后续、field update 等继续共享原始 carrier 的范围、能力、额度和租约，不能扩大权限；已经撤销的实例不会在控制恢复后自动复活。
 
@@ -40,13 +42,13 @@ OpenView 在捕获前核验整个 Policy.Region；任一保护区相交则拒绝
 
 本项不实现 M5.4 的持久干预检查点。持久 Session 存在保护模块、活跃干预或非默认能力时，Save/Reset/CreateForceGarden 返回 Unsupported 并保留当前会话，不写出不完整权限存档。停止干预、移除模块并恢复默认能力后可正常保存；历史过程回执可以保存，但不会复活已终止实例。知识/重要历史仍沿 M5.1 的 DTO-only 边界，尚未接磁盘。
 
-当前提供 C++ 动作及 CPU 贯穿验证，没有新的 UI、模型网络或自主决策循环。后续 M5.3 接异步 fake model，M5.4 再接持久化与可试玩的自主权场景。
+当前提供 C++ 动作及 CPU 贯穿验证，没有新的 UI 或模型网络。M5.3 已接异步 fake model 与宿主显式请求入口，M5.4 接续持久化与可试玩的自主权场景。
 
 ## 验证
 
 测试入口为 `Pixel.Authority` 和 `Pixel.AuthorityView`。前者使用真实 Session、设备、FieldSource、LLMView 和流式预算；后者使用默认拒绝/动态版本的 fake source，验证所有查询、交付、策略和数据过滤边界。构建与实际结果在本任务最终验证后登记。
 
-2026-10-23，macOS，本轮最终代码验证：
+2026-10-23，macOS，M5.2 提交前验证（M5.3 资源扩展的当前结果见 [WorldWill](WorldWill.md)）：
 
 - 独立验证agent执行 `cmake --build build-cpu -j4`，全目标重链接成功；随后 `ctest --test-dir build-cpu --output-on-failure -j4` **86/86通过**，46.94秒。
 - `build-chunk64` 刷新为 Release、`AXIOM_BUILD_RUNTIME=OFF`、`PIXEL_CHUNK_EDGE=64` 后构建 Authority、AuthorityView、KnowledgeView、LLMView 测试，**4/4通过**。

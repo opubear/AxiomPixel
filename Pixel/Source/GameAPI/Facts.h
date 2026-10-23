@@ -27,6 +27,12 @@ struct ProgramRef {
     uint64_t ResourceId = 1, Version = 0;
     bool operator==(const ProgramRef &) const = default;
 };
+// Concurrent world-will influence slots, independent of interpreter capacity.
+struct InterventionResources {
+    uint64_t Version = 1;
+    uint32_t Available = 4;
+    bool operator==(const InterventionResources &) const = default;
+};
 enum class WindKind { Coarse, Reference, Procedural, Hybrid, Adaptive, Lbm, Empty };
 struct RequestKey {
     uint64_t WorldEpoch = 0;

@@ -76,6 +76,7 @@ void PixelGame::Initialize() {
 void PixelGame::FrameBegin() {
     ObservationViews.AdvanceServiceFrame();
     Session.BeginFrame();
+    WorldWill.Service();
     Performance.BeginFrame();
     std::array<int, 2> size{};
     GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);

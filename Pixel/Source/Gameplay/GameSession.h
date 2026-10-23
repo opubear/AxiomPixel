@@ -9,7 +9,7 @@
 #include "Observation/DomainFactBuffer.h"
 #include "Knowledge/Knowledge.h"
 #include "Authority/Authority.h"
-#include "GameAPI/ObservationSource.h"
+#include "GameAPI/WorldWillHost.h"
 #include "Persistence/SessionStore.h"
 #include "World/World.h"
 #include <optional>
@@ -27,7 +27,7 @@ enum class NativeCaller { Input, Debug, Driver };
 namespace testing { struct SessionAccess; }
 class GamePresentation;
 
-class GameSession : public api::ObservationSource {
+class GameSession : public api::WorldWillHost {
   public:
     static constexpr uint32_t WorldWidth = 1024;
     static constexpr uint32_t WorldHeight = 1024;
@@ -44,7 +44,8 @@ class GameSession : public api::ObservationSource {
     api::ControlReceipt SetWorldWillCapabilities(NativeCaller caller, authority::Capabilities capabilities);
     api::ObservationAuthorization AuthorizeObservation(uint64_t subject, api::Rect scope) const override;
     const authority::Control &GetAuthority() const { return Authority; }
-    api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request);
+    api::WorldWillHostStatus WorldWillStatus() const override;
+    api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request) override;
     api::ActionReceipt Execute(NativeCaller caller, api::Action action);
     const api::ActionReceipt *LastAction(NativeCaller caller) const;
     api::ControlReceipt Control(api::CallerSessionId caller, const api::SessionControl &control);
@@ -125,6 +126,7 @@ class GameSession : public api::ObservationSource {
     void RenewActionSessions();
     api::Reason AuthorizeAction(api::CallerSessionId caller, const api::Action &action) const;
     api::ActionReceipt InstallIntervention(const api::InstallIntervention &action, api::RequestKey request);
+    api::ActionReceipt InterveneAtDevice(const api::InterveneAtDevice &action, api::RequestKey request);
     api::ActionReceipt SetDeviceProtection(const api::SetDeviceProtection &action);
     std::vector<api::FactPayload> ReconcileAuthority();
     void RecordAuthorityFacts(std::span<const api::FactPayload> changes);
