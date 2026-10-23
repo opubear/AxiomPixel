@@ -7,10 +7,9 @@ const char *DeviceStateName(DeviceState state) {
     case DeviceState::Stopped: return "Stopped";
     case DeviceState::Running: return "Running";
     case DeviceState::NeedsFuel: return "Needs fuel (coal)";
-    case DeviceState::WaitingForEnvironment: return "Needs Coarse wind and clear air";
+    case DeviceState::WaitingForEnvironment: return "Needs clear air";
     case DeviceState::OutsideActiveArea: return "Outside active area";
     case DeviceState::WaitingForCapacity: return "Waiting for program capacity";
-    case DeviceState::OutputUnresolved: return "Wind grid cannot resolve output here";
     }
     throw std::logic_error("unknown device state");
 }

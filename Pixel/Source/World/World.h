@@ -34,8 +34,19 @@ class World {
     void FillBaseForce(ForceVector force);
     void FillBaseForceRegion(WorldRect region, ForceVector force) { Map.FillForce(region, force); }
     const ForceField &GetBaseForceField() const { return Environment.GetBaseForceField(); }
-    ForceVector GetForce(int64_t x, int64_t y) const { return Environment.SampleForce({x, y}); }
+    ForceVector GetForce(int64_t x, int64_t y) const { return Environment.SampleForce({x, y}, GetSimulationBounds()); }
     WindVelocity GetFieldVelocity(int64_t x, int64_t y) const;
+
+    std::optional<FieldSourceHandle> InstallFieldSource(uint64_t owner, const FieldSourceSpec &spec) {
+        return Environment.InstallFieldSource(*this, owner, spec);
+    }
+    bool UpdateFieldSource(uint64_t owner, FieldSourceHandle handle, const FieldSourceSpec &spec) {
+        return Environment.UpdateFieldSource(*this, owner, handle, spec);
+    }
+    bool StopFieldSource(uint64_t owner, FieldSourceHandle handle) {
+        return Environment.StopFieldSource(*this, owner, handle);
+    }
+    void StopFieldSources(uint64_t owner) { Environment.StopFieldSources(*this, owner); }
 
     void ConfigureWind(uint32_t endRow, const WindSettings &settings = {});
     void ConfigurePixelWind(uint32_t endRow, const PixelWindSettings &settings = {});

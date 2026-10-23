@@ -9,3 +9,5 @@ add_executable(PixelWindStrategyBenchmark EXCLUDE_FROM_ALL PixelWindStrategyBenc
 target_link_libraries(PixelWindStrategyBenchmark PRIVATE PixelWorld)
 add_executable(PixelRegionBenchmark EXCLUDE_FROM_ALL PixelRegionBenchmark.cpp)
 target_link_libraries(PixelRegionBenchmark PRIVATE PixelWorld)
+add_executable(PixelFieldSourceBenchmark EXCLUDE_FROM_ALL PixelFieldSourceBenchmark.cpp)
+target_link_libraries(PixelFieldSourceBenchmark PRIVATE PixelWorld)

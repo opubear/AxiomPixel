@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ForceField.h"
+#include "FieldSources.h"
 #include "Wind/WindSimulation.h"
 
 
@@ -14,7 +15,8 @@ class Environment {
     const ForceField &GetBaseForceField() const { return BaseForces; }
     // A retry preserves the already advanced wind and all material inputs.
     bool TryStep(World &world, double committedSeconds);
-    ForceVector SampleForce(CellCoord cell) const;
+    ForceVector SampleForce(CellCoord cell, WorldRect bounds) const;
+    const FieldSources &GetFieldSources() const { return Sources; }
     WindSimulation &GetWindSimulation() { return Wind; }
     const WindSimulation &GetWindSimulation() const { return Wind; }
     uint64_t LastVisitedCells() const { return VisitedCells; }
@@ -23,8 +25,10 @@ class Environment {
     void RestorePendingStep(double seconds, bool deferredStep);
 
   private:
+    friend class World;
     double PendingSeconds = 0;
     ForceField BaseForces;
+    FieldSources Sources;
     WindSimulation Wind;
     axiom::Array<MaterialMove> Proposals;
     axiom::Array<uint32_t> Winners, WinnerEpochs;
@@ -36,6 +40,13 @@ class Environment {
     uint64_t ActiveRegions = 0;
     bool WindAdvancedForStep = false;
     bool WaitingForBudget = false;
+    void Reset(WorldMap &map);
+    void SimulationDomainChanged();
+    void RequireSourceMutation() const;
+    std::optional<FieldSourceHandle> InstallFieldSource(World &world, uint64_t owner, const FieldSourceSpec &spec);
+    bool UpdateFieldSource(World &world, uint64_t owner, FieldSourceHandle handle, const FieldSourceSpec &spec);
+    bool StopFieldSource(World &world, uint64_t owner, FieldSourceHandle handle);
+    void StopFieldSources(World &world, uint64_t owner);
     void StepMaterials(World &world);
     void ProposeRegion(World &world, WorldRect region);
     void ResolveConflicts(World &world, WorldRect bounds);

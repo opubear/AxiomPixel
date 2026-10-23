@@ -44,7 +44,7 @@
 
 M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，M4.3已接入设备放置。**库存尚未保存到磁盘，重启或R建新世界后为空**，持久化留M4.6，库存界面与观测留M4.7。
 
-M4.3 已加入[风发射器设备](.awtcontext/GlobalDoc/Devices.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2设备；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤启动一次Formula风脉冲并等待30成功tick，需Coarse风域覆盖设备中心（地表可将Wind boundary Y设为600），取消暂停或单步才工作。回收退建造物料与未用煤；背包满则拒绝整个回收。设备不提供角色/材料物理碰撞；动态材料进入时暂停工作。**设备和燃料尚未存盘**，跨区域暂停恢复也留后续任务。
+M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。**设备、燃料和来源尚未存盘**，区域冻结恢复留M4.5，跨域保存留M4.6。
 
 ## 构建和运行
 
@@ -90,7 +90,7 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
 | 左键 | 消耗一份土料放置Dirt；先开采取得土料，不覆盖水或人物 |
 | 右键 / Shift＋右键 | 设备内启停 / 回收；其他位置激活当前构式 / 开采固体 |
-| B | 切换设备布置工具；开启时左键放置风发射器 |
+| B | 切换设备布置工具；开启时左键放置推力发生器 |
 | F1 | 材料 / 合成力场方向视图 |
 | F2 | 显示或隐藏Pixel Debug |
 | F4 | 独立显示或隐藏Formula Editor |
@@ -177,6 +177,8 @@ ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-fail
 (cd Pixel && ../build/tests/PixelCloseSmoke)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
+# 持续场安装/清理的F1实际GPU读回，可导出对比截图
+(cd Pixel && PIXEL_FIELD_CAPTURE_DIR=/private/tmp/pixel-fields ../build/tests/PixelRuntimeSmoke --formula-only)
 # 只验证本轮背景PNG、sRGB/alpha、视差与F1（可选输出PPM截图）
 (cd Pixel && PIXEL_ART_CAPTURE=/private/tmp/pixel-art.ppm ../build/tests/PixelRuntimeSmoke --art-only)
 (cd Axiom && ../build/tests/AxiomLifecycleSmoke --skip-minimize)
@@ -190,6 +192,8 @@ cmake --build build-engine --target Axiom -j4
 cmake -S . -B build-region-release -DAXIOM_BUILD_RUNTIME=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build-region-release --target PixelRegionBenchmark -j4
 ./build-region-release/bin/Release/PixelRegionBenchmark /private/tmp/pixel-regions.csv 40
+cmake --build build-region-release --target PixelFieldSourceBenchmark -j4
+./build-region-release/bin/Release/PixelFieldSourceBenchmark /private/tmp/pixel-fields.csv
 ```
 
 Environment显示驻留/排队块、预算与I/O错误；Performance显示阶段时间、P95、材料访问格数、活动区域、上传量及内存，支持CSV。内存为所有权容量与工作预留，不等于进程RSS；风求解器单列，GPU不计。自动捕获和扩展方式见 [采样模块](Pixel/Source/Performance/README.md)。本轮结果以 [新规则基准和最终验证](Docs/WorldRepresentationValidation.md) 为准，早期测量保留于Docs/PerformanceProfiling.md、MemoryProfiling.md和MaterialUpdatePerformance.md。
@@ -231,3 +235,5 @@ cmake --build build --target PixelRuntimeSmoke -j4
 ```
 
 本布局AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`；状态通过CLI维护，工程文档见 [.awtcontext/GlobalDoc/DocIndex.md](.awtcontext/GlobalDoc/DocIndex.md)。
+
+持续场程序使用 `field(cells(r), acceleration(ax), acceleration(ay), ticks(life))`，其中加速度为格/秒²；`await result` 后的 `effect_handle()` 返回不透明句柄，保存到local后可 `update_field(handle, field(...))` 或 `stop_field(handle)`。来源由Environment拥有，程序终止/故障/撤销或设备拆除都清理；已有一次性挖掘与风脉冲不回滚。HostContractVersion与运行快照schema升至2，旧快照不兼容；`process 1`语法保留。当前来源容量256，完整圆盘必须在活动域内，寿命仅随成功环境步推进。更多示例见 [field.formula](Pixel/Formula/Examples/Process/field.formula)。

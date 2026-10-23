@@ -52,7 +52,7 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
 GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
     : NextGeneration(generation) {
     ValidateGenerationSettings(generation);
-    items::ValidateCost(WindEmitterCost());
+    items::ValidateCost(ForceEmitterCost());
     if (persistent) {
         const auto edge = RuntimeNumber("PIXEL_SIMULATION_WINDOW", storage::DefaultWindowEdge);
         if (edge > 2048)
@@ -307,9 +307,10 @@ void GameSession::ReplacingWorld() {
     Facts.Reset(Epoch);
     Simulation = {};
     PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
+    PublishedFieldSourceVersion = 0;
     for (const auto &weak : ReadViews)
         if (auto view = weak.lock()) view->CommittedAt = {};
-    Formulas.OnWorldReplaced();
+    Formulas.OnWorldReplaced(GameWorld);
     Machines.Clear();
     Inventory.Clear();
     PlayerBag = Inventory.Create(4096);

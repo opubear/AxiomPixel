@@ -39,7 +39,7 @@ void ProgramRecords() {
     Check(std::holds_alternative<Diagnostic>(ImportProgram(invalid)), "record version accepted");
     invalid = record; invalid.Identity.SemanticsVersion = 2;
     Check(std::holds_alternative<Diagnostic>(ImportProgram(invalid)), "language version accepted");
-    invalid = record; invalid.Identity.HostContractVersion = 2;
+    invalid = record; invalid.Identity.HostContractVersion = 1;
     Check(std::holds_alternative<Diagnostic>(ImportProgram(invalid)), "host version accepted");
     invalid = record; invalid.Source += " ";
     Check(std::holds_alternative<Diagnostic>(ImportProgram(invalid)), "source identity mismatch accepted");
@@ -67,7 +67,7 @@ void ValuesAndValidation() {
     const auto reject = [&](InstanceSnapshot state) {
         Check(std::holds_alternative<Diagnostic>(Instance::Restore(program, state)), "invalid snapshot accepted");
     };
-    auto bad = snapshot; bad.SchemaVersion = 2; reject(bad);
+    auto bad = snapshot; bad.SchemaVersion = 1; reject(bad);
     bad = snapshot; bad.Program.ContentSha256 = "other"; reject(bad);
     bad = snapshot; bad.State.Instruction = 0; reject(bad);
     bad = snapshot; bad.State.Status = Phase::Ready; reject(bad);

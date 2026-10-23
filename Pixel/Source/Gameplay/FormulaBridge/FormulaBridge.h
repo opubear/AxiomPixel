@@ -31,8 +31,7 @@ class FormulaBridge {
     bool CastProcess(World &world, const formula::process::ProgramArtifact &program, api::ProgramRef identity,
                      const ProcessCarrier &carrier, std::optional<api::RequestKey> request = std::nullopt);
     bool HasCarrier(ProcessCarrierKind kind, uint64_t subject) const;
-    bool HasProcessWindCapacity() const;
-    void CancelCarrier(ProcessCarrierKind kind, uint64_t subject);
+    void CancelCarrier(World &world, ProcessCarrierKind kind, uint64_t subject);
     void WakeCarrier(ProcessCarrierKind kind, uint64_t subject);
     ProcessHostStats ProcessStats() const;
     std::vector<ProcessInspection> InspectProcesses() const;
@@ -48,8 +47,8 @@ class FormulaBridge {
               std::optional<api::RequestKey> activationRequest = std::nullopt);
     void Step(World &world);
     std::span<const FormulaEffectRecord> LastEffects() const;
-    void Clear();
-    void OnWorldReplaced();
+    void Clear(World &world);
+    void OnWorldReplaced(World &world);
     const std::vector<FormulaProjectile> &Projectiles() const;
     const std::deque<FormulaRuntimeDiagnostic> &Diagnostics() const;
     FormulaRuntimeStats Stats() const;

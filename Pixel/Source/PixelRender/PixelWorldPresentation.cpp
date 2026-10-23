@@ -101,6 +101,8 @@ pixel::WorldMapView ReadSource(const pixel::World &world, pixel::WorldRect bound
 pixel::WorldMapView ReadSource(const pixel::CommittedWorldView &world, pixel::WorldRect) { return world.ReadState(); }
 uint64_t WindRevision(const pixel::World &world) { return world.GetEnvironment().GetWindSimulation().GetRevision(); }
 uint64_t WindRevision(const pixel::CommittedWorldView &world) { return world.WindRevision(); }
+uint64_t FieldSourceRevision(const pixel::World &world) { return world.GetEnvironment().GetFieldSources().Revision(); }
+uint64_t FieldSourceRevision(const pixel::CommittedWorldView &world) { return world.FieldSourceRevision(); }
 template <class ReadWorld>
 void BuildForceFieldFrameImpl(const ReadWorld &world, WorldGridFrame &output) {
     PIXEL_PROFILE_SCOPE(ForceColors);
@@ -110,7 +112,7 @@ void BuildForceFieldFrameImpl(const ReadWorld &world, WorldGridFrame &output) {
     const auto origin = output.GetCellOrigin();
     const auto source = ReadSource(world, {origin[0], origin[1], output.GetWidth(), output.GetHeight()});
     const uint64_t windRevision = WindRevision(world);
-    const bool invalidate = output.PrepareRegionVersions(0x666f726365ULL ^ windRevision * 0x9e3779b97f4a7c15ULL ^ source.Identity() * 0xd6e8feb86659fd93ULL);
+    const bool invalidate = output.PrepareRegionVersions(0x666f726365ULL ^ FieldSourceRevision(world) * 0xa0761d6478bd642fULL ^ windRevision * 0x9e3779b97f4a7c15ULL ^ source.Identity() * 0xd6e8feb86659fd93ULL);
     for (uint32_t ry = 0; ry < output.RegionRows(); ++ry) {
         for (uint32_t rx = 0; rx < output.RegionColumns(); ++rx) {
             const size_t region = size_t(ry) * output.RegionColumns() + rx;

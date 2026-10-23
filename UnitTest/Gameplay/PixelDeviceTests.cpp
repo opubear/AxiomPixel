@@ -112,35 +112,32 @@ void WorkAndLifecycle() {
     const auto id = device.Ref.Id;
     const auto program = session.AppliedProgram();
     Enable(session, id);
-    Step(session);
-    Check(Current(session, id).State == DeviceState::WaitingForEnvironment && Current(session, id).Fuel == 2 &&
-          session.GetFormulaRuntime().Stats().Roots == 0, "unsupported wind charged fuel");
-    Check(session.Execute(NativeCaller::Driver, api::SelectWindStrategy{api::WindKind::Coarse}).Applied(), "wind setup failed");
     const auto before = session.FactHighWatermark();
     Step(session);
     device = Current(session, id);
-    Check(device.State == DeviceState::Running && device.Fuel == 1 && device.Pulses == 1 && device.Instance &&
-          session.AppliedProgram() == program, "device pulse failed or changed player program");
+    Check(device.State == DeviceState::Running && device.Fuel == 1 && device.Cycles == 1 && device.Instance &&
+          session.AppliedProgram() == program, "device field failed or changed player program");
     const auto running = session.GetFormulaRuntime().InspectProcesses();
     Check(running.size() == 1 && running.front().Carrier == ProcessCarrierKind::Device && running.front().Subject == id,
           "device instance has no owning carrier");
     const auto facts = session.ReadFacts(session.WorldEpoch(), before, session.FactHighWatermark());
-    Check(facts.Facts.size() == 2 && std::holds_alternative<api::WindPulseSubmitted>(facts.Facts[0].Payload) &&
-          std::get<api::ProgramEffectCause>(facts.Facts[0].Cause).Program == api::ProgramRef{3, 1} &&
-          std::get<api::DeviceCause>(facts.Facts[1].Cause).DeviceId == id, "device facts lost ownership or pulse");
+    Check(facts.Facts.size() == 2 && std::holds_alternative<api::FieldSourceChanged>(facts.Facts[0].Payload) &&
+          std::get<api::ProgramEffectCause>(facts.Facts[0].Cause).Program == api::ProgramRef{3, 2} &&
+          std::get<api::DeviceCause>(facts.Facts[1].Cause).DeviceId == id, "device facts lost ownership or source");
     const auto snapshot = device;
     session.Tick(.1f, {});
     Check(Current(session, id) == snapshot, "paused device advanced");
     for (int i = 0; i < 29; ++i) Step(session);
-    Check(Current(session, id).Pulses == 1 && Current(session, id).Fuel == 1, "device fired before its wait elapsed");
+    Check(Current(session, id).Cycles == 1 && Current(session, id).Fuel == 1, "device restarted before its wait elapsed");
     Step(session);
-    Check(Current(session, id).Pulses == 2 && Current(session, id).Fuel == 0, "device did not restart at its next cycle");
+    Check(Current(session, id).Cycles == 2 && Current(session, id).Fuel == 0, "device did not restart at its next cycle");
     Check(bool(session.ApplyProgram(NativeCaller::Driver, formula::Formula::Dig(0))), "player program change failed");
-    Check(Current(session, id).Pulses == 2 && session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::Device, id),
+    Check(Current(session, id).Cycles == 2 && session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::Device, id),
           "player Apply replaced the installed device program");
     const auto removed = session.Execute(NativeCaller::Input, api::RemoveDevice{Current(session, id).Ref});
     Check(removed.Applied() && !session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::Device, id) &&
-          session.GetFormulaRuntime().ProcessStats().PendingEvents == 0, "device destruction orphaned runtime");
+          session.GetFormulaRuntime().ProcessStats().PendingEvents == 0 &&
+          session.GetWorld().GetEnvironment().GetFieldSources().Size() == 0, "device destruction orphaned runtime or source");
     Check(llm::ToJson(removed).at("result").at("event") == "removed", "device receipt JSON missing");
     device = Place(session);
     Enable(session, device.Ref.Id, 1);
@@ -149,7 +146,7 @@ void WorkAndLifecycle() {
           !Current(session, device.Ref.Id).Enabled && session.GetFormulaRuntime().Stats().Roots == 0,
           "clear running left auto-restarting device");
     Step(session);
-    Check(Current(session, device.Ref.Id).Pulses == 1, "cleared device restarted");
+    Check(Current(session, device.Ref.Id).Cycles == 1, "cleared device restarted");
     Check(session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded() && session.GetDevices().Count() == 0 &&
           session.GetInventory().Count() == 1, "world replacement retained device or port");
 }
@@ -164,30 +161,28 @@ void EffectCapacityAndSuspension() {
     for (auto &chunk : chunks) map.Insert(std::move(chunk));
     const auto id = Place(session).Ref.Id;
     Enable(session, id, 1);
-    Check(session.Execute(NativeCaller::Driver, api::SelectWindStrategy{api::WindKind::Coarse}).Applied(), "wind setup failed");
-    std::string source = "process 1; ";
-    for (int i = 0; i < 16; ++i) source += "emit wind(cells(2), speed(60), speed(0)); ";
-    source += "wait ticks(30);";
-    auto compiled = formula::process::Compile("device-capacity-test", source);
-    Check(std::holds_alternative<formula::process::ProgramArtifact>(compiled), "capacity fixture program invalid");
-    Check(bool(session.ApplyProcess(NativeCaller::Driver, std::get<formula::process::ProgramArtifact>(compiled))), "capacity program apply failed");
+    auto &runtime = testing::SessionAccess::Runtime(session);
+    auto program = formula::process::Compile("independent-fixture", "process 1; wait ticks(100);");
+    runtime.ApplyProcess(std::get<formula::process::ProgramArtifact>(program));
     ProcessCarrier carrier;
     carrier.Kind = ProcessCarrierKind::FixedFixture;
     carrier.Subject = id; // Same numeric identity must remain an independent owner.
     carrier.Origin = WorldPosition::FromAbsolute(200, 100);
-    carrier.Scope = session.GetWorld().GetSimulationBounds();
-    session.BeginFrame();
-    Check(session.StartProcessFixture(NativeCaller::Driver, carrier).Succeeded(), "wind budget fixture failed");
+    carrier.Scope = world.GetSimulationBounds();
+    Check(session.StartProcessFixture(NativeCaller::Driver, carrier).Succeeded(), "fixture failed");
+    for (size_t i = 0; i < FieldSources::Capacity; ++i)
+        Check(world.InstallFieldSource(90000, {WorldPosition::FromAbsolute(200, 100), 1, {0, 0}, 3600}).has_value(),
+              "capacity fixture failed");
     const auto fuel = session.GetDevices().Find(id)->FuelContainer;
     const auto stock = session.GetInventory().Inspect(fuel);
-    session.Control(NativeCaller::Driver, api::StepSimulation{});
-    session.Tick(1.f / 60, {}); // Stay in the frame whose effect budget was consumed.
-    Check(Current(session, id).State == DeviceState::WaitingForCapacity && !Current(session, id).Instance &&
-          Current(session, id).Pulses == 0 && session.GetInventory().Inspect(fuel) == stock,
-          "effect capacity rejection charged fuel or left an instance");
     Step(session);
-    Check(Current(session, id).State == DeviceState::Running && Current(session, id).Pulses == 1,
-          "device did not recover when effect budget became available");
+    Check(Current(session, id).State == DeviceState::WaitingForCapacity && !Current(session, id).Instance &&
+          Current(session, id).Cycles == 0 && session.GetInventory().Inspect(fuel) == stock,
+          "source capacity rejection charged fuel or left an instance");
+    world.StopFieldSources(90000);
+    Step(session);
+    Check(Current(session, id).State == DeviceState::Running && Current(session, id).Cycles == 1 &&
+          world.GetEnvironment().GetFieldSources().Size() == 1, "device did not recover source capacity");
     testing::WorldAccess::SimulationBounds(testing::SessionAccess::World(session)) = {128, 0, 896, 1024};
     Step(session);
     Check(Current(session, id).State == DeviceState::OutsideActiveArea && !Current(session, id).Instance &&
@@ -196,51 +191,35 @@ void EffectCapacityAndSuspension() {
           "leaving simulation did not clear only the owned instance");
     testing::WorldAccess::SimulationBounds(testing::SessionAccess::World(session)) = {0, 0, 1024, 1024};
     Step(session);
-    Check(Current(session, id).State == DeviceState::NeedsFuel && Current(session, id).Pulses == 1,
-          "return to simulation replayed a paid pulse");
+    Check(Current(session, id).State == DeviceState::NeedsFuel && Current(session, id).Cycles == 1,
+          "return to simulation replayed a paid cycle");
 }
 
-void ResolvedWindOutput() {
-    GameSession session, control;
+void SustainedForceOutput() {
+    GameSession session;
     const auto id = Place(session).Ref.Id;
     Enable(session, id, 1);
-    for (auto *value : {&session, &control}) {
-        Check(value->Execute(NativeCaller::Driver, api::SelectWindStrategy{api::WindKind::Coarse}).Applied(), "wind setup failed");
-        Step(*value);
-    }
-    bool changed = false;
-    const auto bounds = session.GetWorld().GetWindBounds();
-    for (uint32_t y = 0; y < bounds.Height; ++y)
-        for (uint32_t x = 0; x < bounds.Width; ++x) {
-            const auto a = session.GetWorld().SampleWind(CellCoord{bounds.X + x, bounds.Y + y});
-            const auto b = control.GetWorld().SampleWind(CellCoord{bounds.X + x, bounds.Y + y});
-            changed |= a.X != b.X || a.Y != b.Y;
-        }
-    Check(Current(session, id).Pulses == 1 && changed, "paid device pulse did not change any sampled wind velocity");
-
-    const auto blocked = Place(control);
-    Enable(control, blocked.Ref.Id, 1);
-    auto &world = testing::SessionAccess::World(control);
-    auto wind = world.GetWindSettings();
-    wind.Coarse.Columns = wind.Coarse.Rows = 4;
-    world.ConfigureWindDomain(424, wind);
-    const auto fuel = control.GetDevices().Find(blocked.Ref.Id)->FuelContainer;
-    const auto stock = control.GetInventory().Inspect(fuel);
-    Step(control);
-    Check(Current(control, blocked.Ref.Id).State == DeviceState::OutputUnresolved &&
-          !Current(control, blocked.Ref.Id).Instance && Current(control, blocked.Ref.Id).Pulses == 0 &&
-          control.GetInventory().Inspect(fuel) == stock, "unresolved output consumed coal or claimed to work");
-    wind.Coarse.Columns = 32;
-    wind.Coarse.Rows = 16;
-    world.ConfigureWindDomain(424, wind);
-    Step(control);
-    Check(Current(control, blocked.Ref.Id).State == DeviceState::Running && Current(control, blocked.Ref.Id).Pulses == 1,
-          "device did not resume after grid resolution became sufficient");
+    auto &world = testing::SessionAccess::World(session);
+    world.FillBaseForceRegion({85, 85, 33, 33}, {0, 0});
+    world.SetCell(104, 101, {CellTypeId::Dirt, {0, 0}});
+    Step(session); // Install after the environment step.
+    const auto &sources = world.GetEnvironment().GetFieldSources();
+    Check(sources.Size() == 1 && world.GetForce(104, 101).X == 3600 &&
+          world.GetBaseForceField().Get(104, 101).X == 0, "device did not install a separate force source");
+    for (int i = 0; i < 4; ++i) Step(session);
+    Check(world.GetCell(108, 101).Type == CellTypeId::Dirt && sources.Size() == 1,
+          "persistent field did not keep pushing dirt across successful steps");
+    Check(session.Execute(NativeCaller::Input, api::SetDeviceEnabled{Current(session, id).Ref, false}).Applied(), "disable failed");
+    Check(sources.Size() == 0 && world.GetForce(108, 101).X == 0, "disable left permanent acceleration");
+    Step(session);
+    Check(world.GetCell(108, 101).Type == CellTypeId::Dirt, "dirt kept moving after source removal");
+    Check(Current(session, id).Cycles == 1 && Current(session, id).Fuel == 0, "source charged fuel each tick");
 }
+
 } // namespace
 int main() {
     try {
-        AtomicPlacement(); OwnershipCapacityAndRecycling(); WorkAndLifecycle(); EffectCapacityAndSuspension(); ResolvedWindOutput();
+        AtomicPlacement(); OwnershipCapacityAndRecycling(); WorkAndLifecycle(); EffectCapacityAndSuspension(); SustainedForceOutput();
         std::cout << "Device construction, ports and runtime passed\n";
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

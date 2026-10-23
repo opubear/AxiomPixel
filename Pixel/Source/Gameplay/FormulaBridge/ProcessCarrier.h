@@ -20,7 +20,7 @@ struct ProcessCarrier {
 };
 enum class ProcessRefusal {
     None, Capability, Scope, Geometry, Resources, NotReady, Blocked,
-    WindUnavailable, Capacity
+    WindUnavailable, Capacity, InvalidHandle
 };
 struct ProcessReceipt {
     formula::process::Boundary At = 0;

@@ -131,6 +131,7 @@ class GameSession : public api::ObservationSource {
     DomainFactBuffer Facts;
     std::vector<std::weak_ptr<CommittedWorldView>> ReadViews;
     uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0, PublishedActorVersion = 0, PublishedDeviceVersion = 0;
+    uint64_t PublishedFieldSourceVersion = 0;
     void PublishCommit();
     void CommitChange();
     void ServiceStreaming();

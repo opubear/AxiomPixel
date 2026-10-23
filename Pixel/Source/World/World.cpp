@@ -139,8 +139,9 @@ WindVelocity World::GetFieldVelocity(int64_t x, int64_t y) const {
 
 void World::GenerateTerrain(uint32_t surfaceRow) {
     RequireFinite();
+    Environment.RequireSourceMutation();
     Map.GenerateTerrain(surfaceRow);
-    Environment = pixel::Environment(Map);
+    Environment.Reset(Map);
     ScratchReservation = 0;
     WindEnabled = false;
     SimulationFocus.reset();
@@ -198,9 +199,10 @@ void World::PublishSnapshot(WorldRect bounds, WorldSnapshot &destination) const 
 }
 
 void World::DiscardStreaming() {
+    Environment.RequireSourceMutation();
     Streamer.reset();
     Map.ResetInfinite();
-    Environment = pixel::Environment(Map);
+    Environment.Reset(Map);
     ScratchReservation = 0;
     VisibleBounds = {};
     SimulationFocus.reset();
@@ -234,9 +236,14 @@ void World::UpdateStreaming() {
         WorldRect centre{SimulationBounds.X + quarter, SimulationBounds.Y + quarter,
                          SimulationBounds.Width / 2, SimulationBounds.Height / 2};
         if (!centre.Contains(cell)) {
-            SimulationBounds.X = FloorDivide(cell.X - SimulationBounds.Width / 2, storage::RegionEdge) * storage::RegionEdge;
-            SimulationBounds.Y = FloorDivide(cell.Y - SimulationBounds.Height / 2, storage::RegionEdge) * storage::RegionEdge;
-            Map.Wake(SimulationBounds);
+            auto next = SimulationBounds;
+            next.X = FloorDivide(cell.X - next.Width / 2, storage::RegionEdge) * storage::RegionEdge;
+            next.Y = FloorDivide(cell.Y - next.Height / 2, storage::RegionEdge) * storage::RegionEdge;
+            if (next != SimulationBounds) {
+                SimulationBounds = next;
+                Environment.SimulationDomainChanged();
+                Map.Wake(SimulationBounds);
+            }
         }
     }
     if (deferred) {

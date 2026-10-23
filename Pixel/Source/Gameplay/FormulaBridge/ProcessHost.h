@@ -16,15 +16,14 @@ class ProcessHost {
     ProcessHost();
     ~ProcessHost();
     void BeginFrame();
-    bool HasWindCapacity() const;
     bool Start(const formula::process::ProgramArtifact &program, uint64_t id, uint64_t version,
                const ProcessCarrier &carrier, const World &world,
                std::optional<api::RequestKey> request, std::string &error, uint64_t resource = 2);
     void Prepare(const World &world);
     void Commit(World &world, const std::optional<MiningCollector> &playerCollector = std::nullopt);
-    void Clear();
+    void Clear(World &world);
     bool HasCarrier(ProcessCarrierKind kind, uint64_t subject) const;
-    void CancelCarrier(ProcessCarrierKind kind, uint64_t subject);
+    void CancelCarrier(World &world, ProcessCarrierKind kind, uint64_t subject);
     void WakeCarrier(ProcessCarrierKind kind, uint64_t subject);
     void AppendProjectiles(std::vector<FormulaProjectile> &output, uint64_t epoch) const;
     std::span<const FormulaEffectRecord> Effects() const;

@@ -252,7 +252,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             const auto reason = WriteRejection();
             if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
             const bool changed = Formulas.Stats().Roots != 0;
-            Formulas.Clear();
+            Formulas.Clear(GameWorld);
             const auto stopped = StopDevices();
             if (changed || !stopped.empty()) {
                 Simulation.CommitChange();
@@ -340,7 +340,7 @@ api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, Proce
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     const auto reason = WriteRejection();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
-    Formulas.CancelCarrier(kind, subject);
+    Formulas.CancelCarrier(GameWorld, kind, subject);
     CommitChange();
     return {api::ControlStatus::Applied};
 }

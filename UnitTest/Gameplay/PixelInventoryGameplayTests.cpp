@@ -34,15 +34,15 @@ void MiningAndConstruction() {
             Check(session.Execute(caller, api::MineRegion{{20, 20}, {}}).Applied(), "construction mining failed");
         }
         const auto before = inventory.Inspect(bag);
-        const auto reserve = inventory.Reserve(before.Ref, WindEmitterCost());
+        const auto reserve = inventory.Reserve(before.Ref, ForceEmitterCost());
         Check(reserve.Status == Result::Applied, "mined materials cannot fund device cost");
         Check(inventory.Release(reserve.Id) == Result::Applied && inventory.Inspect(bag).Quantity == before.Quantity,
               "failed placement preflight must release all stock");
-        const auto paid = inventory.Reserve(inventory.Reference(bag), WindEmitterCost());
+        const auto paid = inventory.Reserve(inventory.Reference(bag), ForceEmitterCost());
         Check(inventory.Consume(paid.Id) == Result::Applied && inventory.Inspect(bag).Quantity == before.Quantity - 6,
               "device cost did not consume exactly six items");
         const auto after = inventory.Inspect(bag);
-        Check(inventory.Reserve(after.Ref, WindEmitterCost()).Status == Result::InsufficientItems && inventory.Inspect(bag) == after,
+        Check(inventory.Reserve(after.Ref, ForceEmitterCost()).Status == Result::InsufficientItems && inventory.Inspect(bag) == after,
               "short device cost partially consumed inventory");
     }
 }

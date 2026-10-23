@@ -767,9 +767,43 @@ void FormulaGameplayGpu() {
     };
     for (int slot = 0; slot < 4; ++slot) verifyDevice();
     Require(session.Execute(pixel::NativeCaller::Input, pixel::api::SupplyDevice{currentDevice().Ref}).Applied(), "GPU fuel failed");
-    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{600}).Applied() &&
-            session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse}).Applied() &&
-            session.Execute(pixel::NativeCaller::Input, pixel::api::SetDeviceEnabled{currentDevice().Ref, true}).Applied(),
+    auto &fieldWorld = pixel::testing::SessionAccess::World(session);
+    fieldWorld.DisableWind();
+    fieldWorld.FillBaseForceRegion({502, 490, 36, 36}, {0, 0});
+    input->GetPresentation().ToggleFieldView();
+    const auto captureField = [&](const char *name, bool active) {
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        const auto frame = policy->PublishedFrame();
+        Require(frame.DisplayMode == GridDisplayMode::ForceField && frame.DeviceDraws.empty(), "F1 field projection invalid");
+        Require(fieldWorld.GetForce(522, 505).X == (active ? 3600 : 0), "actual local acceleration disagrees with device state");
+        for (uint32_t y = 0; y < frame.Height; ++y)
+            for (uint32_t x = 0; x < frame.Width; ++x) {
+                const auto cx = frame.CellOrigin[0] + x, cy = frame.CellOrigin[1] + y;
+                if (!fieldWorld.TryGetCell(cx, cy)) continue;
+                const auto color = FieldDirectionColor(fieldWorld.GetFieldVelocity(cx, cy));
+                uint32_t packed = 0;
+                for (size_t c = 0; c < 3; ++c) packed |= uint32_t(std::lround(color[c] * 255)) << (8 * c);
+                Require(frame.Cells[size_t(y) * frame.Width + x] == packed, "F1 retained stale source contribution");
+            }
+        const auto &scene = policy->SceneColor(token.Slot);
+        VerifyColor(frame, scene);
+        if (const char *directory = std::getenv("PIXEL_FIELD_CAPTURE_DIR")) {
+            std::filesystem::create_directories(directory);
+            std::ofstream image(std::filesystem::path(directory) / name, std::ios::binary);
+            image << "P6\n" << scene.Desc.Width << ' ' << scene.Desc.Height << "\n255\n";
+            const auto rgba = ReadColor(scene);
+            for (size_t i = 0; i < rgba.size(); i += 4)
+                for (size_t c = 0; c < 3; ++c) {
+                    const float linear = rgba[i + c] / 255.f;
+                    image.put(char(uint8_t(std::lround(255 * (linear <= .0031308f ? 12.92f * linear
+                        : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f)))));
+                }
+        }
+    };
+    captureField("field-before.ppm", false);
+    input->GetPresentation().ToggleFieldView();
+    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::SetDeviceEnabled{currentDevice().Ref, true}).Applied(),
             "GPU device enable failed");
     session.BeginFrame();
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
@@ -777,15 +811,14 @@ void FormulaGameplayGpu() {
     Require(currentDevice().State == pixel::DeviceState::Running, "GPU device did not start");
     verifyDevice();
     input->GetPresentation().ToggleFieldView();
-    Draw(app);
-    Require(policy->PublishedFrame().DeviceDraws.empty() && session.GetDevices().Count() == 1, "F1 removed device state");
-    input->GetPresentation().ToggleFieldView();
+    for (int slot = 0; slot < 4; ++slot) captureField("field-active.ppm", true);
+    Require(session.GetDevices().Count() == 1, "F1 removed device state");
     Require(session.Execute(pixel::NativeCaller::Input, pixel::api::RemoveDevice{currentDevice().Ref}).Applied(), "GPU device removal failed");
-    Draw(app);
-    Require(policy->PublishedFrame().DeviceDraws.empty() && session.GetFormulaRuntime().Stats().Roots == 0,
-            "GPU removal retained device or runtime");
+    for (int slot = 0; slot < 4; ++slot) captureField("field-stopped.ppm", false);
+    Require(session.GetFormulaRuntime().Stats().Roots == 0 && fieldWorld.GetEnvironment().GetFieldSources().Size() == 0,
+            "GPU removal retained device runtime or field");
     app.Shutdown();
-    std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize, device body/port readback and clear\n";
+    std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize, device body/port and sustained field install/remove readback\n";
 }
 
 void BasicWorldGameplay() {

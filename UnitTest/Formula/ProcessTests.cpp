@@ -83,7 +83,7 @@ void IdentityAndPublication() {
     source = "process 1; emit dig(cells(9));";
     const auto replacement = Program(source, "hot-reload");
     Require(original.Identity().ContentSha256 != replacement.Identity().ContentSha256, "source replacement has new identity");
-    Require(original.Source() != source && original.Identity().SemanticsVersion == 1 && original.Identity().HostContractVersion == 1,
+    Require(original.Source() != source && original.Identity().SemanticsVersion == 1 && original.Identity().HostContractVersion == 2,
             "artifact owns source and semantic versions");
     auto oldInstance = Start(original);
     oldInstance->Step({0, 0});

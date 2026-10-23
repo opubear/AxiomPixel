@@ -1,10 +1,10 @@
-# 设备放置、端口与最小工作状态（M4.3）
+# 设备放置、端口与最小工作状态（M4.4更新）
 
-本轮实现一类风发射器，构成“开采物料 → 放置 → 供煤 → 启动 → Formula 风脉冲 → 停机/回收”的最小路径。设备属于 Pixel，既不编码进 CellType，也不进入 Axiom。当前设备记录仅在会话内存中存在；M4.4 接持续场源，M4.5 接区域暂停/恢复，M4.6 接跨领域保存，M4.7 接完整库存/设备 UI 与 LLMView 投影。
+设备属于 Pixel，不编码进 CellType，也不进入 Axiom。M4.3 建立建造和供煤路径，M4.4 将唯一设备更新为局部推力发生器（类型3001），以持续FieldSource验证程序承载。当前设备与来源仅在会话内存中存在；M4.5接区域冻结恢复，M4.6接跨领域保存，M4.7接完整库存/设备 UI 与 LLMView投影。
 
 ## 领域与身份
 
-- `Devices` 是标准库与 Items 值类型上的有界集合，最多64台。每台有单调不复用的 ID、版本、玩家 ActorId 所有权、整数格坐标、启用状态、运行实例、脉冲次数和煤数量。
+- `Devices` 是标准库与 Items 值类型上的有界集合，最多64台。每台有单调不复用的 ID、版本、玩家 ActorId 所有权、整数格坐标、启用状态、运行实例、工作周期数（Cycles）和煤数量。
 - `DeviceRef` 是 ID+版本；外部动作还受世界 epoch 与调用者会话约束。放置、补煤、启停和回收由 `GameSession` 在完整提交边界编排；原生 Input/Debug/Driver 均代表本会话玩家，payload不能指定所有者。
 - `Items::Inventory` 持有燃料容器，设备仅保存容器身份与提交摘要。燃料槽容量64，仅接收煤。回收后销毁空容器，不累积废弃槽；世界替换统一清实例、设备与库存。
 - 设备是2×2格非实体设施，不提供角色碰撞，也不改变材料模拟的运动规则。Construction 拒绝与地形、角色或其他设备重叠的放置，拒绝在已占用格放土。流动材料仍可能进入设备范围；下一成功步检测到非空气会取消工作实例并报告环境等待。
@@ -19,36 +19,37 @@
 
 ## 运行合同
 
-每台设备安装独立不可变的 `device/wind-emitter/1` 程序（ProgramRef资源3、版本1）：
+每台设备安装独立不可变的 `device/force-emitter/2` 程序（ProgramRef资源3、版本2）：
 
 ```text
-process 1; emit wind(cells(16), speed(60), speed(0)); wait ticks(30);
+process 1;
+emit field(cells(16), acceleration(3600), acceleration(0), ticks(31));
+await result within ticks(1);
+let source = effect_handle();
+wait ticks(29);
+emit stop_field(source);
 ```
 
-输出圆心为设备格框中心，半径16格，向右速度增量60格/秒。一份煤支付一次脉冲及其30成功步等待周期；同一设备最多一个运行实例。只授予Wind能力、一次效果额度和16格半径限制。玩家Apply其他程序不会更换已安装设备程序。
+输出圆心为设备格框中心，圆盘内均匀向右加速度3600格/秒²；与BaseForce和风响应合成，不写回BaseForce。一份煤支付30个成功环境步，首个下一步接收安装回执，再等29步通过句柄停止。来源31步寿命提供独立上限；正常设备在到期前停止。随后若仍启用且有煤，同一提交中启动新周期。授予Field能力、一次付费效果额度和16格半径限制，stop不收费；同设备最多一个实例。玩家Apply不更换设备程序。
 
-需要启用Coarse风后端、网格不超过1024单元、设备范围为空气、输出圆心在风域内，完整输出圆在当前模拟窗口中。非零风分量必须覆盖至少一个粗网格MAC面样本；过粗网格或采样空隙返回OutputUnresolved，不消耗煤。覆盖查询与实际AddImpulse共用权重核；设备测试额外对照无设备会话检查实际风速差。正常状态包括Stopped、Running、NeedsFuel、WaitingForEnvironment、OutsideActiveArea、WaitingForCapacity、OutputUnresolved。启用后等待下一个成功步尝试启动；帧激活上限8、运行根上限16，过程风脉冲每帧上限16。被容量拒绝不消耗煤。暂停/预算等待不推进设备。
+设备范围需要驻留空气，完整圆盘必须位于当前模拟窗口。无需Coarse或任何风后端。状态为Stopped、Running、NeedsFuel、WaitingForEnvironment、OutsideActiveArea、WaitingForCapacity；旧OutputUnresolved状态删除。来源容量256、会话运行根16、每帧激活8。启动前检查来源容量，再预留燃料；程序拒绝时释放预留，不能扣煤或留下实例。暂停/预算等待不推进。
 
-环境或模拟窗口不适合时取消当前实例，保持开关与剩余煤；重新满足条件后需要新的煤启动新周期，不恢复原等待。当前不是M4.5的区域checkpoint。停机取消剩余等待，不撤销已提交的风扰动。`Clear running` 同时关闭设备，避免下一步自动重启。
+环境或窗口不适合时取消实例和其全部来源，保留开关及未用煤；重返活动域需要新的煤启动新周期，尚不恢复旧等待。关闭或回收立即清理持续来源，已经发生的材料移动不回滚。`Clear running`同时关闭设备以阻止自动重启。持续场的详细所有权、单位和提交规则见[FieldSources](FieldSources.md)。
 
 ## 事实与呈现
 
-动作回执和领域事实包含拥有值的DeviceChanged（placed/removed/supplied/enabled/state_changed），包含DeviceRef、Owner、坐标、燃料、状态和实例身份。主动动作原因是RequestKey；成功步中的状态事实原因是DeviceCause。实际风脉冲仍记录WindPulseSubmitted，以资源3+实例身份关联设备，不伪称测得了风速变化。LLMView既有全域事实权限可读取这些事实；设备topic仍留M4.7。
+动作回执和领域事实包含拥有值的DeviceChanged（placed/removed/supplied/enabled/state_changed），包含DeviceRef、Owner、坐标、燃料、状态和实例身份。主动动作原因是RequestKey；成功步中的状态事实原因是DeviceCause。安装/更新/停止记录FieldSourceChanged（句柄与操作），以资源3+实例身份关联设备。事实表示操作已提交，F1与已提交力场值显示实际作用。LLMView既有全域事实权限可读取这些事实；设备topic仍留M4.7。
 
 `CommittedWorldView` 保存独立设备摘要，`DeviceFrame` 仅按已提交值生成呈现几何。颜色区分状态，右侧小矩形标出输出端口。远坐标先相对整数参考再转浮点。渲染复用现有合成目标，顺序为世界→风→设备→构式球→人物→后处理→UI；F1隐藏设备图形，数据仍保留。CPU快照纳入发布预留，几何内存单独统计；没有新增GPU目标。
 
 B切换设备布置工具，左键放置；设备范围内右键启停、Shift+右键回收。F2 Devices可输入坐标放置、选择设备、补1煤、Enable/Disable、Recycle，显示建造成本、燃料、状态及操作拒绝。布置模式有常驻操作提示。测试夹具可直接给库存注入资源；正常游戏仍需开采。
 
-默认风后端Empty且出生高度通常在风域外。验证工作时在F2选Coarse，并将Wind boundary Y调到设备中心下方（例如平地设备520,510，设600）；启动后取消暂停或单步。默认暂停只允许配置和建造，不产生脉冲。
+默认暂停只允许配置和建造。放置、补煤、启用后单步或取消暂停；F1可看到局部方向变化，Dirt按合成力逐步移动。设备不改变Water或Actor的既有运动规则。
 
 ## 验证入口
 
-- `Pixel.Devices`：缺料/占用/未驻留/权限拒绝、占用不编码地形、过期引用、重复动作、整批燃料转移、背包满回收拒绝、完整回收/容器释放、工作周期、真实风速差/未覆盖采样拒绝、每帧风额度竞争、区域退出不重放、玩家程序隔离、设备归属与事实、停机/销毁/清空和世界替换。
+- `Pixel.Devices`：缺料/占用/未驻留/权限拒绝、占用不编码地形、过期引用、重复动作、整批燃料转移、背包满回收拒绝、完整回收/容器释放、工作周期、持续推力实际Dirt运动、来源容量竞争、区域退出不重放、玩家程序隔离、设备归属与事实、停机/销毁/清空和世界替换。
 - `Pixel.DeviceRendering`：远坐标精度、状态颜色、独立发布、移除与F1；`Pixel.Input`：B、非重复按键及设备鼠标路由。
 - `PixelRuntimeSmoke`：设备body/port真实GPU颜色读回与状态变化、frame slots、F1和移除；F2真实点击放置/补煤/启停/回收，确认没有输入穿透。
 
-2026-10-23，独立验证Subagent在最终代码执行 `cmake --build build-cpu -j6`、`ctest --test-dir build-cpu --output-on-failure -j4`，75/75通过（48.54秒）。设备测试的零时长单步、有限地图忽略模拟窗口两个夹具问题已修正，没有修改生产时钟或弱化预期。
-
-Apple M5/macOS上 `cmake --build build --target Pixel PixelRuntimeSmoke -j6` 与完整 `PixelRuntimeSmoke` 通过，包括真实F2设备操作、body/port颜色读回及两轮resize/minimize。Review修复后重新构建，最终 `PixelRuntimeSmoke --formula-only` 退出0，重新覆盖设备、Formula GPU和Formula UI；F2设备点击代码与之前通过版本一致。Vulkan validation layer不可用，未执行Release/sanitizer；未改引擎或重跑AET。
-
-独立review发现并关闭两项：P1正常过程风额度竞争被误判为内部错误，已在预留燃料前检查共享额度，回归验证不扣煤也不留下实例；P2两格脉冲常未覆盖任何MAC面样本，已采用16格半径并增加同核覆盖检查，独立对照观察到434176个格中心中的3392个风速变化。审查者复核当前全部变更、生命周期、呈现与事实，无未解决发现。`git diff --check` 与AWT `check` 通过。
+M4.4最终验证与性能记录见[FieldSources](FieldSources.md)。M4.3旧脉冲设备的75项CPU与GPU验证属于提交d5fa1d0；当前设备行为按本页更新，不能用旧测量替代新验证。

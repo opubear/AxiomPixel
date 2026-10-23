@@ -1,0 +1,59 @@
+#pragma once
+
+#include "World/CellState.h"
+#include "World/WorldCoordinates.h"
+#include <array>
+#include <optional>
+#include <span>
+
+namespace pixel {
+class Environment;
+class WorldMap;
+
+// Handles belong to one World lifetime; reset never recycles an earlier ID.
+struct FieldSourceHandle {
+    uint64_t Id = 0;
+    bool operator==(const FieldSourceHandle &) const = default;
+};
+
+struct FieldSourceSpec {
+    WorldPosition Center;
+    double Radius = 0;
+    ForceVector Acceleration; // cells / second squared, independent of air velocity
+    uint64_t Lifetime = 0;    // successful environment steps
+};
+
+struct FieldSourceSnapshot {
+    FieldSourceHandle Handle;
+    uint64_t Owner = 0;
+    FieldSourceSpec Spec;
+    uint64_t Remaining = 0;
+};
+
+// Environment owns all mutation. Stable ID order also defines floating-point
+// addition order; removals preserve it and installation always appends.
+class FieldSources {
+  public:
+    static constexpr size_t Capacity = 256;
+    size_t Size() const { return Count; }
+    bool HasCapacity() const { return Count < Capacity; }
+    uint64_t Revision() const { return Version; }
+    std::span<const FieldSourceSnapshot> Sources() const { return {Values.data(), Count}; }
+
+  private:
+    friend class Environment;
+    std::array<FieldSourceSnapshot, Capacity> Values{};
+    size_t Count = 0;
+    uint64_t NextId = 1;
+    uint64_t Version = 1;
+
+    static FieldSourceSpec Validate(uint64_t owner, FieldSourceSpec spec);
+    static bool Fits(const FieldSourceSpec &spec, WorldRect bounds);
+    static WorldRect Bounds(const FieldSourceSpec &spec);
+    FieldSourceSnapshot *Find(uint64_t owner, FieldSourceHandle handle);
+    ForceVector Sample(CellCoord cell, WorldRect bounds) const;
+    void WakeActive(WorldMap &map, WorldRect bounds) const;
+    void CompleteStep(WorldMap &map, WorldRect bounds);
+    void Remove(size_t index, WorldMap &map);
+};
+} // namespace pixel

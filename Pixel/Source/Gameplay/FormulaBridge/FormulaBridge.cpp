@@ -253,10 +253,9 @@ bool FormulaBridge::CastProcess(World &world, const formula::process::ProgramArt
     return true;
 }
 bool FormulaBridge::HasCarrier(ProcessCarrierKind kind, uint64_t subject) const { return Data->Processes.HasCarrier(kind, subject); }
-bool FormulaBridge::HasProcessWindCapacity() const { return Data->Processes.HasWindCapacity(); }
-void FormulaBridge::CancelCarrier(ProcessCarrierKind kind, uint64_t subject) {
+void FormulaBridge::CancelCarrier(World &world, ProcessCarrierKind kind, uint64_t subject) {
     Data->EffectCount = 0;
-    Data->Processes.CancelCarrier(kind, subject);
+    Data->Processes.CancelCarrier(world, kind, subject);
     Data->Refresh();
 }
 void FormulaBridge::WakeCarrier(ProcessCarrierKind kind, uint64_t subject) { Data->Processes.WakeCarrier(kind, subject); }
@@ -341,19 +340,19 @@ void FormulaBridge::Step(World &world) {
     Data->Refresh();
 }
 
-void FormulaBridge::Clear() {
+void FormulaBridge::Clear(World &world) {
     Data->EffectCount = 0;
     for (const auto &root : Data->Roots)
         Data->RetiredWind += root->Budget.WindEffects;
-    Data->Processes.Clear();
+    Data->Processes.Clear(world);
     Data->Roots.clear();
     Data->Projectiles.clear();
     Data->Diagnostics.clear();
     Data->Error.clear();
 }
 
-void FormulaBridge::OnWorldReplaced() {
-    Clear();
+void FormulaBridge::OnWorldReplaced(World &world) {
+    Clear(world);
     if (Data->Epoch == UINT64_MAX)
         throw std::overflow_error("formula diagnostic epoch exhausted");
     ++Data->Epoch;

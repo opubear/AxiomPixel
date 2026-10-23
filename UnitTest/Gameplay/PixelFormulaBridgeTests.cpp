@@ -101,7 +101,7 @@ void RefusalsAndResources() {
     bridge.Step(world);
     Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Resources && bridge.Projectiles().size() == 1,
         "resource refusal changed prior accepted carrier");
-    bridge.CancelCarrier(carrier.Kind, carrier.Subject);
+    bridge.CancelCarrier(world, carrier.Kind, carrier.Subject);
     Check(bridge.Projectiles().empty() && bridge.ProcessStats().PendingEvents == 0, "revocation did not clean ownership");
 
     bridge.BeginFrame();
@@ -110,7 +110,7 @@ void RefusalsAndResources() {
     Check(bridge.CastCarrier(world, Carrier()), "dynamic geometry should be a host refusal");
     Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Geometry
         && world.GetCell(10, 10).Type == CellTypeId::Stone, "oversized effect escaped host contract");
-    bridge.Clear();
+    bridge.Clear(world);
     carrier = Carrier();
     carrier.Grants = process::Mask(process::Capability::Bolt);
     Check(!bridge.CastCarrier(world, carrier), "missing capability admitted");
@@ -118,7 +118,7 @@ void RefusalsAndResources() {
     carrier = Carrier(); carrier.Scope = {10, 10, 2, 2};
     Check(bridge.CastCarrier(world, carrier) && bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Scope,
         "descendant disk escaped carrier scope");
-    bridge.Clear();
+    bridge.Clear(world);
 
     bridge.ApplyProcess(Program("process 1; emit bolt(10, speed(600), ticks(10)); await hit within ticks(4); if outcome() == cancelled { emit dig(cells(0)); }"));
     carrier = Carrier(); carrier.Scope = {9, 9, 3, 3};
@@ -129,7 +129,7 @@ void RefusalsAndResources() {
     bridge.Step(world);
     Check(world.GetCell(10, 10).Type == CellTypeId::Air, "scope exit did not deliver cancellation");
 
-    bridge.Clear();
+    bridge.Clear(world);
     bridge.BeginFrame();
     bridge.ApplyProcess(Program("process 1; emit bolt(10, speed(600), ticks(10)); await hit within ticks(4); if outcome() == hit { emit dig(cells(1)); }"));
     carrier = Carrier(); carrier.Scope = {0, 0, 16, 32};
@@ -155,7 +155,7 @@ void FrozenQueriesVersionsAndFaults() {
     bridge.CastCarrier(world, carrier);
     Check(bridge.Projectiles().size() == 2 && bridge.Projectiles()[0].Version == oldVersion
         && bridge.Projectiles()[0].Damage == 10 && bridge.Projectiles()[1].Damage == 30, "old artifact replaced in flight");
-    bridge.Clear();
+    bridge.Clear(world);
     bridge.BeginFrame();
     bridge.ApplyProcess(Program("process 1; emit dig(cells(0)); while true {}"));
     world.SetCell(10, 10, {CellTypeId::Stone});
@@ -184,7 +184,7 @@ void WakeAndBounds() {
     Check(bridge.Projectiles().size() == 128 && bridge.ProcessStats().PendingEvents <= 1
         && bridge.ProcessReceipts().size() == 256 && bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Capacity,
         "projectile, event or receipt bound failed");
-    bridge.Clear();
+    bridge.Clear(world);
     Check(bridge.Projectiles().empty() && bridge.ProcessStats().Instances == 0, "clear failed");
 }
 void WindAndFarCoordinates() {
@@ -203,13 +203,13 @@ void WindAndFarCoordinates() {
         Check(bridge.ProcessReceipts().back().Outcome == process::Outcome::Applied
             && std::holds_alternative<api::WindPulseSubmitted>(bridge.LastEffects()[0].Payload), "wind semantics differed by carrier");
     }
-    bridge.Clear();
+    bridge.Clear(world);
     bridge.BeginFrame();
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindStrategy(64, wind);
     bridge.CastCarrier(world, Carrier());
     Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::WindUnavailable, "unsupported wind backend not refused");
-    bridge.Clear();
+    bridge.Clear(world);
 
     for (const int64_t far : {int64_t{1} << 55, -(int64_t{1} << 55)}) {
         World sparse;
@@ -308,9 +308,75 @@ void ProcessEditingAndInspection() {
     bridge.Step(world); bridge.Step(world);
     Check(bridge.Projectiles().size() == 2 && bridge.Projectiles()[0].Damage == 9 && bridge.Projectiles()[1].Damage == 1,
         "editing changed the existing continuation's effects");
-    bridge.Clear();
+    bridge.Clear(world);
     Check(bridge.InspectProcesses().empty(), "debug view retained cancelled processes");
 }
+void PersistentFields() {
+    World world(64, 64);
+    world.FillBaseForce({0, 0});
+    FormulaBridge bridge;
+    const auto source = "field(cells(4), acceleration(3600), acceleration(0), ticks(20))";
+    const auto program = Program(std::string("process 1; emit ") + source +
+        "; await result within ticks(1); let h = effect_handle(); "
+        "emit update_field(h, field(cells(4), acceleration(0), acceleration(-3600), ticks(10))); "
+        "await result within ticks(1); emit stop_field(h); wait ticks(1); emit stop_field(h); wait ticks(1);");
+    for (const auto kind : {ProcessCarrierKind::Player, ProcessCarrierKind::NaturalSource,
+                           ProcessCarrierKind::FixedFixture, ProcessCarrierKind::Device}) {
+        bridge.BeginFrame();
+        auto carrier = Carrier(kind);
+        carrier.Credits = 2; // Installation + update; cleanup must remain possible at zero.
+        bridge.ApplyProcess(program);
+        Check(bridge.CastCarrier(world, carrier), "field carrier admission failed");
+        const auto &fields = world.GetEnvironment().GetFieldSources();
+        Check(fields.Size() == 1 && world.GetForce(10, 10).X == 3600, "field installation has no actual force");
+        const auto handle = fields.Sources().front().Handle;
+        Check(std::get<api::FieldSourceChanged>(bridge.LastEffects().front().Payload).Handle == handle.Id,
+              "installation fact lost its handle");
+        bridge.Step(world);
+        Check(fields.Size() == 1 && fields.Sources().front().Handle == handle &&
+              world.GetForce(10, 10).Y == -3600 && world.GetForce(10, 10).X == 0,
+              "handle update replaced identity or accumulated acceleration");
+        Check(!world.UpdateFieldSource(bridge.LastActivationId() + 1, handle,
+                  {At(10.5, 10.5), 4, {999, 0}, 20}) &&
+              !world.StopFieldSource(bridge.LastActivationId() + 1, handle), "foreign owner could mutate source");
+        bridge.Step(world);
+        Check(fields.Size() == 0 && world.GetForce(10, 10).Y == 0 && bridge.InspectProcesses().front().Credits == 0,
+              "zero-credit stop did not remove source");
+        bridge.Step(world);
+        Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::InvalidHandle && fields.Size() == 0,
+              "repeated stop revived a handle or changed resources");
+        bridge.Step(world);
+        Check(bridge.Stats().Roots == 0, "field program failed to retire");
+    }
+    for (const auto ending : {std::string("stop;"), std::string("emit update_field(effect_handle(), dig(cells(0)));"),
+                             std::string("")}) {
+        bridge.BeginFrame();
+        world.SetCell(10, 10, {CellTypeId::Stone});
+        bridge.ApplyProcess(Program(std::string("process 1; emit dig(cells(0)); emit ") + source + "; wait ticks(1); " + ending));
+        Check(bridge.CastCarrier(world, Carrier()), "cleanup fixture failed");
+        Check(world.GetEnvironment().GetFieldSources().Size() == 1, "cleanup fixture missing source");
+        bridge.Step(world);
+        Check(world.GetEnvironment().GetFieldSources().Size() == 0 && world.GetCell(10, 10).Type == CellTypeId::Air,
+              "termination leaked field or rolled back completed mining");
+    }
+    bridge.BeginFrame();
+    bridge.ApplyProcess(Program(std::string("process 1; emit ") + source + "; wait ticks(100);"));
+    Check(bridge.CastCarrier(world, Carrier()), "revocation fixture failed");
+    bridge.CancelCarrier(world, ProcessCarrierKind::Player, 1);
+    bridge.CancelCarrier(world, ProcessCarrierKind::Player, 1);
+    Check(world.GetEnvironment().GetFieldSources().Size() == 0 && bridge.Stats().Roots == 0,
+          "repeated revocation left owned field");
+    for (const auto field : {"field(cells(17), acceleration(0), acceleration(0), ticks(20))",
+                             "field(cells(1), acceleration(36001), acceleration(0), ticks(20))",
+                             "field(cells(1), acceleration(0), acceleration(0), ticks(3601))"}) {
+        bridge.BeginFrame();
+        bridge.ApplyProcess(Program(std::string("process 1; emit ") + field + "; wait ticks(1);"));
+        Check(bridge.CastCarrier(world, Carrier()) && bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Geometry &&
+              world.GetEnvironment().GetFieldSources().Size() == 0, "field escaped host geometry/lifetime bound");
+        bridge.Clear(world);
+    }
+}
+
 } // namespace
 int main() {
     try {
@@ -323,6 +389,7 @@ int main() {
         SessionIntegration();
         InvalidHostCoordinates();
         ProcessEditingAndInspection();
+        PersistentFields();
         std::cout << "FormulaBridge contracts passed\n";
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

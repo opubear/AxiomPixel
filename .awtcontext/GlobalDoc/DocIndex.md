@@ -56,6 +56,7 @@
 | 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | M3.4程序与实例DTO、挂起恢复及效果归属、源码编译Apply和验证边界 | |
 | Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | M4.1角色集合、持久ID与代次句柄、宿主推进及观测呈现和后续保存边界 | |
 | 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | M4.2稳定物品ID、容量版本、转移预留、开采与建造成本及后续保存边界 | |
-| 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | M4.3独立设备占用、资源原子操作、煤驱动Formula、事实与输入呈现及后续保存边界 | |
+| 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | M4.4推力设备、资源原子操作、30tick持续场、输入呈现及后续保存边界 | |
+| 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | M4.4来源所有权、单位、固定步寿命、Formula句柄、推力设备与CPU GPU性能验证 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

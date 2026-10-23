@@ -12,7 +12,6 @@ std::array<float, 4> DeviceColor(DeviceState state) {
     case DeviceState::WaitingForEnvironment: return {.80f, .60f, .12f, 1};
     case DeviceState::OutsideActiveArea: return {.32f, .34f, .52f, 1};
     case DeviceState::WaitingForCapacity: return {.63f, .24f, .62f, 1};
-    case DeviceState::OutputUnresolved: return {.64f, .43f, .24f, 1};
     }
     throw std::logic_error("unknown device presentation state");
 }

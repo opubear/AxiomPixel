@@ -26,13 +26,32 @@ struct Bolt {
     std::uint64_t Lifetime = 1;
     bool operator==(const Bolt &) const = default;
 };
-using Effect = std::variant<Dig, Wind, Bolt>;
+struct EffectHandle {
+    std::uint64_t Id = 0;
+    bool operator==(const EffectHandle &) const = default;
+};
+// Acceleration is measured in cells/s²; it is not a wind velocity impulse.
+struct FieldSource {
+    double Radius = 0, AccelerationX = 0, AccelerationY = 0;
+    std::uint64_t Lifetime = 1;
+    bool operator==(const FieldSource &) const = default;
+};
+struct UpdateField {
+    EffectHandle Handle{};
+    FieldSource Source;
+    bool operator==(const UpdateField &) const = default;
+};
+struct StopField {
+    EffectHandle Handle{};
+    bool operator==(const StopField &) const = default;
+};
+using Effect = std::variant<Dig, Wind, Bolt, FieldSource, UpdateField, StopField>;
 
 enum class Capability : std::uint32_t {
-    Dig = 1, Wind = 2, Bolt = 4, Inventory = 8, Wake = 16
+    Dig = 1, Wind = 2, Bolt = 4, Inventory = 8, Wake = 16, Field = 32
 };
 using Capabilities = std::uint32_t;
-constexpr Capabilities AllCapabilities = 31;
+constexpr Capabilities AllCapabilities = 63;
 constexpr Capabilities Mask(Capability capability) { return static_cast<Capabilities>(capability); }
 
 struct RequestId {
@@ -68,6 +87,9 @@ struct HostEvent {
     RequestId Request;
     Subscription WakeSubscription;
     Position HitPosition;
+    // Successful field installation/update returns its host-owned opaque token.
+    // Other events carry zero. The host verifies ownership on update/stop.
+    EffectHandle Handle{};
 };
 // Process v1 can address only its latest emitted RequestId and current wake
 // Subscription. A host may omit notifications for retired tokens, while keeping

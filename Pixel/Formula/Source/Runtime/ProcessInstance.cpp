@@ -16,6 +16,15 @@ bool ValidLimits(ExecutionLimits limits) {
     return limits.Work > 0 && limits.Work <= 4096 && limits.Queries <= 32 && limits.Outputs <= 64;
 }
 bool ValidOutcome(Outcome outcome) { return outcome >= Outcome::None && outcome <= Outcome::Timeout; }
+bool ValidField(const FieldSource &source) {
+    return std::isfinite(source.Radius) && source.Radius >= 0
+        && std::isfinite(source.AccelerationX) && std::isfinite(source.AccelerationY)
+        && source.Lifetime > 0 && source.Lifetime <= std::uint64_t(INT64_MAX);
+}
+bool ValidEventHandle(const HostEvent &event) {
+    return event.Handle.Id == 0 || (event.Result == Outcome::Applied
+        && event.Request.Sequence != 0 && event.WakeSubscription.Sequence == 0);
+}
 bool ValidValue(const Value &value) {
     const auto nonnegative = [](double number) { return std::isfinite(number) && number >= 0; };
     const auto duration = [](std::uint64_t ticks) { return ticks > 0 && ticks <= std::uint64_t(INT64_MAX); };
@@ -30,10 +39,15 @@ bool ValidValue(const Value &value) {
         if (const auto *dig = std::get_if<Dig>(&effect)) return nonnegative(dig->Radius);
         if (const auto *wind = std::get_if<Wind>(&effect))
             return nonnegative(wind->Radius) && std::isfinite(wind->VelocityX) && std::isfinite(wind->VelocityY);
-        const auto &bolt = std::get<Bolt>(effect);
-        return nonnegative(bolt.Damage) && std::isfinite(bolt.VelocityX) && duration(bolt.Lifetime);
+        if (const auto *bolt = std::get_if<Bolt>(&effect))
+            return nonnegative(bolt->Damage) && std::isfinite(bolt->VelocityX) && duration(bolt->Lifetime);
+        if (const auto *field = std::get_if<FieldSource>(&effect)) return ValidField(*field);
+        if (const auto *update = std::get_if<UpdateField>(&effect)) return ValidField(update->Source);
+        return std::holds_alternative<StopField>(effect);
     }
     case 7: return ValidOutcome(std::get<Outcome>(value));
+    case 8: return std::isfinite(std::get<Acceleration>(value).Value);
+    case 9: return true; // Zero is an empty handle; ownership belongs to the host.
     }
     return false;
 }
@@ -71,12 +85,13 @@ struct Instance::Execution {
     bool ReceiptSeen = false, ImpactSeen = false;
 
     std::string ValidateSnapshot(const InstanceSnapshot &snapshot) const {
-        if (snapshot.SchemaVersion != 1) return "unsupported instance state version";
+        if (snapshot.SchemaVersion != 2) return "unsupported instance state version";
         if (snapshot.Program != Program.Identity()) return "instance state requires its exact program identity";
         const auto &state = snapshot.State;
         if (state.Id == 0 || !ValidLimits(snapshot.Limits) || !ValidPosition(state.Origin)
             || !ValidOutcome(state.LastOutcome) || state.ActiveSteps == 0
-            || state.Remaining == 0 || state.Remaining > std::uint64_t(INT64_MAX))
+            || state.Remaining == 0 || state.Remaining > std::uint64_t(INT64_MAX)
+            || (state.LastEffectHandle.Id != 0 && state.LastOutcome != Outcome::Applied))
             return "invalid instance state values";
         if ((state.Status != Phase::Sleeping && state.Status != Phase::Awaiting)
             || state.Instruction == 0 || state.Instruction >= Program.InstructionCount())
@@ -104,7 +119,7 @@ struct Instance::Execution {
             return "invalid wake subscription in instance state";
         const auto validEvent = [&](const HostEvent &event) {
             return event.Target == state.Id && event.Sequence > 0 && event.Sequence <= snapshot.EventSequence
-                && event.CommittedAt < snapshot.LastBoundary && ValidPosition(event.HitPosition);
+                && event.CommittedAt < snapshot.LastBoundary && ValidPosition(event.HitPosition) && ValidEventHandle(event);
         };
         const auto receipt = [](Outcome result) {
             return result == Outcome::Applied || result == Outcome::Rejected || result == Outcome::Cancelled;
@@ -140,6 +155,7 @@ struct Instance::Execution {
         case ExpressionKind::Literal: return expression.Literal;
         case ExpressionKind::Local: return Locals[expression.Slot];
         case ExpressionKind::Outcome: return State.LastOutcome;
+        case ExpressionKind::EffectHandle: return State.LastEffectHandle;
         case ExpressionKind::Inventory:
             if (result.QueriesUsed == Limits.Queries) Fault(source, "query budget exceeded");
             ++result.QueriesUsed;
@@ -175,6 +191,7 @@ struct Instance::Execution {
         }
         case ExpressionKind::Cells: return Cells{Nonnegative(Number(argument(0)), source)};
         case ExpressionKind::Speed: return Speed{Number(argument(0))};
+        case ExpressionKind::Acceleration: return Acceleration{Number(argument(0))};
         case ExpressionKind::Ticks: {
             const auto value = std::get<std::int64_t>(argument(0));
             if (value <= 0) Fault(source, "duration must be positive");
@@ -193,6 +210,21 @@ struct Instance::Execution {
             const auto lifetime = std::get<Duration>(argument(2)).Value;
             return Effect{Bolt{damage, speed, lifetime}};
         }
+        case ExpressionKind::Field: {
+            const auto radius = std::get<Cells>(argument(0)).Value;
+            const auto x = std::get<Acceleration>(argument(1)).Value;
+            const auto y = std::get<Acceleration>(argument(2)).Value;
+            const auto lifetime = std::get<Duration>(argument(3)).Value;
+            return Effect{FieldSource{radius, x, y, lifetime}};
+        }
+        case ExpressionKind::UpdateField: {
+            const auto handle = std::get<EffectHandle>(argument(0));
+            const auto effect = std::get<Effect>(argument(1));
+            const auto *field = std::get_if<FieldSource>(&effect);
+            if (!field) Fault(source, "update_field requires a field value");
+            return Effect{UpdateField{handle, *field}};
+        }
+        case ExpressionKind::StopField: return Effect{StopField{std::get<EffectHandle>(argument(0))}};
         case ExpressionKind::DamageAdd:
         case ExpressionKind::DamageMultiply:
         case ExpressionKind::SpeedMultiply: {
@@ -216,7 +248,8 @@ struct Instance::Execution {
             if (event.Target != State.Id) continue;
             if (event.Sequence <= previous || event.CommittedAt >= view.At)
                 throw std::invalid_argument("events must be ordered and committed before the active boundary");
-            if (event.Result == Outcome::None || event.Result == Outcome::Timeout || !ValidPosition(event.HitPosition))
+            if (!ValidOutcome(event.Result) || event.Result == Outcome::None || event.Result == Outcome::Timeout
+                || !ValidPosition(event.HitPosition) || !ValidEventHandle(event))
                 throw std::invalid_argument("invalid host event value");
             previous = event.Sequence;
         }
@@ -244,10 +277,15 @@ struct Instance::Execution {
             auto &event = WaitingFor == AwaitKind::Result ? Receipt : WaitingFor == AwaitKind::Hit ? Impact : Wake;
             if (event) {
                 State.LastOutcome = event->Result;
+                State.LastEffectHandle = WaitingFor == AwaitKind::Result && event->Result == Outcome::Applied
+                    ? event->Handle : EffectHandle{};
                 if (event->Result == Outcome::Hit) State.Origin = event->HitPosition;
                 event.reset();
             } else if (--State.Remaining != 0) return false;
-            else State.LastOutcome = Outcome::Timeout;
+            else {
+                State.LastOutcome = Outcome::Timeout;
+                State.LastEffectHandle = {};
+            }
             State.WakeSubscription.reset();
             Wake.reset();
         } else if (State.Status == Phase::Sleeping && --State.Remaining != 0) return false;

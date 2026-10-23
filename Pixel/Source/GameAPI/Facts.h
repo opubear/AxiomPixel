@@ -76,8 +76,12 @@ struct MaterialRemovedInDisk {
     double RadiusCells = 0;
     uint32_t Changed = 0, Blocked = 0, NotReady = 0;
 };
+enum class FieldSourceEvent { Installed, Updated, Stopped };
+// An acknowledged operation, not a full source snapshot. Expiry and owner
+// termination are reflected by the committed environment projection.
+struct FieldSourceChanged { uint64_t Handle = 0; FieldSourceEvent Event; };
 using FactPayload = std::variant<MaterialRemoved, MaterialPlaced, ProgramActivated,
-                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged>;
+                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged, FieldSourceChanged>;
 struct DomainFact {
     FactId Id;
     CommitStamp CommittedAt;

@@ -2,6 +2,8 @@
 #include "PixelRender/DeviceFrame.h"
 #include "PixelRender/GamePresentation.h"
 #include <iostream>
+#include <chrono>
+#include <filesystem>
 #include <set>
 #include <stdexcept>
 
@@ -39,13 +41,12 @@ void DeviceProjection() {
     Check(first.GetDeviceMemoryUsage().ReservedHeapBytes >= sizeof(DeviceDraw), "device memory is not reported");
     std::set<std::array<float, 4>> colors;
     for (const auto state : {DeviceState::Stopped, DeviceState::Running, DeviceState::NeedsFuel,
-                            DeviceState::WaitingForEnvironment, DeviceState::OutsideActiveArea, DeviceState::WaitingForCapacity,
-                            DeviceState::OutputUnresolved}) {
+                            DeviceState::WaitingForEnvironment, DeviceState::OutsideActiveArea, DeviceState::WaitingForCapacity}) {
         devices[0].State = state;
         BuildDeviceFrame(devices, camera, {160, 120}, second);
         colors.insert(second.DeviceDraws.front().Color);
     }
-    Check(colors.size() == 7, "device states do not have distinct colors");
+    Check(colors.size() == 6, "device states do not have distinct colors");
     BuildDeviceFrame({}, camera, {160, 120}, first);
     Check(first.DeviceDraws.empty(), "empty publication retained device geometry");
 }
@@ -91,12 +92,70 @@ void DeviceValidation() {
     catch (const std::invalid_argument &) { rejected = true; }
     Check(rejected, "zero-sized device output geometry was accepted");
 }
+void FieldDomainPublicationWithoutWind() {
+    const auto directory = std::filesystem::temp_directory_path() /
+        ("pixel-field-view-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    {
+        GameSession session;
+        auto &world = testing::SessionAccess::World(session);
+        WorldStreamSettings settings;
+        settings.Directory = directory;
+        settings.WindowEdge = 256;
+        settings.SurfaceY = 10000;
+        world.EnableStreaming(settings, {0, 0, 256, 256});
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(130, 100));
+        world.DisableWind();
+        const auto installed = world.InstallFieldSource(999, {WorldPosition::FromAbsolute(130, 100), 8, {3600, 0}, 20});
+        Check(installed.has_value(), "domain publication source failed");
+        auto view = session.CreateReadView();
+        session.RefreshReadView(*view, {112, 80, 40, 40});
+        WorldGridFrame direct, published;
+        direct.SetRegion({112, 80}, 40, 40);
+        published.SetRegion({112, 80}, 40, 40);
+        BuildForceFieldFrame(world, direct);
+        BuildForceFieldFrame(*view, published);
+        Check(view->GetFieldVelocity(130, 100).X == 60, "initial field projection absent");
+        const auto before = published.Cells()[20 * 40 + 18];
+        const auto fieldRevision = world.GetEnvironment().GetFieldSources().Revision();
+        const auto windRevision = world.GetEnvironment().GetWindSimulation().GetRevision();
+        // Same resident region and visible bounds; only the simulation domain moves.
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(260, 128));
+        session.RefreshReadView(*view, {112, 80, 40, 40});
+        Check(world.GetSimulationBounds().X == 128 && world.GetForce(130, 100).X == 0 &&
+              world.GetEnvironment().GetWindSimulation().GetRevision() == windRevision,
+              "domain fixture did not isolate source activity from wind");
+        Check(view->GetFieldVelocity(130, 100).X == 0, "committed field retained source outside the complete domain");
+        BuildForceFieldFrame(world, direct);
+        BuildForceFieldFrame(*view, published);
+        Check(direct.Cells()[20 * 40 + 18] != before && published.Cells()[20 * 40 + 18] == direct.Cells()[20 * 40 + 18],
+              "F1 cache retained source after domain-only change");
+        Check(world.GetEnvironment().GetFieldSources().Revision() > fieldRevision &&
+              world.GetEnvironment().GetFieldSources().Sources()[0].Remaining == 20,
+              "domain publication aged or failed to invalidate source state");
+        // Region alignment may keep a small window unchanged even though the
+        // focus is outside its central quarter. Do not publish a phantom move.
+        settings.WindowEdge = 64;
+        world.EnableStreaming(settings, {0, 0, 64, 64});
+        world.DisableWind();
+        Check(world.InstallFieldSource(999, {WorldPosition::FromAbsolute(32, 32), 8, {3600, 0}, 20}).has_value(),
+              "small domain source failed");
+        const auto stableRevision = world.GetEnvironment().GetFieldSources().Revision();
+        world.SetSimulationFocus(WorldPosition::FromAbsolute(48, 32));
+        for (int i = 0; i < 3; ++i) world.UpdateStreaming();
+        Check(world.GetSimulationBounds() == WorldRect{0, 0, 64, 64} &&
+              world.GetEnvironment().GetFieldSources().Revision() == stableRevision,
+              "unchanged aligned domain invalidated source publication");
+    }
+    std::filesystem::remove_all(directory);
+}
+
 } // namespace
 int main() {
     try {
         DeviceProjection();
         PublisherIsolation();
         DeviceValidation();
+        FieldDomainPublicationWithoutWind();
         std::cout << "Device snapshot and rendering geometry passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

@@ -5,17 +5,18 @@
 #include <vector>
 
 namespace pixel::formula::process {
-enum class Type { Bool, Integer, Number, Cells, Speed, Duration, Effect, Outcome };
+enum class Type { Bool, Integer, Number, Cells, Speed, Duration, Effect, Outcome, Acceleration, EffectHandle };
 enum class ExpressionKind {
     Literal, Local, Inventory, Outcome, Add, Less, Equal, Not, Negate,
-    Cells, Speed, Ticks, Dig, Wind, Bolt, DamageAdd, DamageMultiply, SpeedMultiply
+    Cells, Speed, Ticks, Dig, Wind, Bolt, DamageAdd, DamageMultiply, SpeedMultiply,
+    Acceleration, EffectHandle, Field, UpdateField, StopField
 };
 struct Expression {
     ExpressionKind Kind = ExpressionKind::Literal;
     Type Result = Type::Bool;
     SourceSpan Source;
     Value Literal = false;
-    std::array<std::size_t, 3> Arguments{};
+    std::array<std::size_t, 4> Arguments{};
     std::size_t Slot = 0, Depth = 1;
 };
 enum class InstructionKind { Assign, Emit, Branch, Jump, Wait, Await, Stop, Complete };

@@ -5,12 +5,20 @@
 namespace pixel::formula::process::testing {
 struct TraceEntry { Boundary At; EffectRequest Request; Outcome Result; };
 struct Carrier { EffectRequest Request; std::uint64_t Remaining; };
+struct OwnedField {
+    EffectHandle Handle;
+    RequestId Request;
+    FieldSource Source;
+    std::uint64_t Remaining;
+};
 struct SuspendedProcess {
     ProgramRecord Program;
     InstanceSnapshot Runtime;
     std::uint64_t NextEvent = 1;
     std::vector<HostEvent> Events;
     std::vector<Carrier> Carriers;
+    std::uint64_t NextEffect = 1;
+    std::vector<OwnedField> Fields;
 };
 
 // One-instance executable reference host. Its bounded operational state is
@@ -36,23 +44,28 @@ class FakeHost {
     bool RejectEffects = false;
     const Instance &Process() const;
     const std::vector<TraceEntry> &Trace() const { return History; }
-    std::size_t OwnedCount() const { return Carriers.size(); }
+    std::size_t OwnedCount() const { return Carriers.size() + Fields.size(); }
+    const std::vector<OwnedField> &FieldSources() const { return Fields; }
     std::size_t IndependentCount() const { return Independent.size(); }
     std::size_t PendingCount() const { return Events.size(); }
     std::size_t CleanupCount() const { return Cleanups; }
     Boundary Now() const { return At; }
 
   private:
-    void Queue(Outcome outcome, RequestId request = {}, Subscription subscription = {}, Position position = {});
+    void Queue(Outcome outcome, RequestId request = {}, Subscription subscription = {}, Position position = {},
+               EffectHandle handle = {});
+    Outcome ApplyEffect(const EffectRequest &request, EffectHandle &handle);
     void Apply(const StepResult &result);
     std::unique_ptr<Instance> Running;
     std::optional<SuspendedProcess> Suspended;
     Boundary At = 0;
     std::uint64_t NextEvent = 1;
+    std::uint64_t NextEffect = 1;
     std::size_t Cleanups = 0;
     std::vector<HostEvent> Events;
     std::vector<Carrier> Carriers;
     std::vector<Carrier> Independent;
+    std::vector<OwnedField> Fields;
     std::vector<TraceEntry> History;
 };
 } // namespace pixel::formula::process::testing

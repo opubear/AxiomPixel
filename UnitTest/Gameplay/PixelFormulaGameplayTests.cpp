@@ -31,7 +31,7 @@ void DefaultAndVersioning() {
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 10, "default must only produce its final bolt");
     runtime.Step(world);
     Require(std::abs(runtime.Projectiles()[0].Position.RelativeTo({10, 10})[0] - 1.5) < 1e-9, "bolt did not move one cell per tick");
-    runtime.Clear();
+    runtime.Clear(world);
 
     Require(runtime.Apply(Formula{}), "empty apply failed");
     Require(runtime.Cast(world, At(10.5, 10.5), 0) && runtime.Projectiles().empty() && runtime.Stats().Roots == 0, "empty must not create a placeholder");
@@ -155,7 +155,7 @@ void ImmediateHitsAndMapConsistency() {
     world.SetCell(10, 10, {});
     runtime.Step(world);
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 7, "overlap payload did not wait exactly one tick");
-    runtime.Clear();
+    runtime.Clear(world);
 
     world.SetCell(15, 10, {CellTypeId::Stone});
     runtime.Apply(Formula::Sequence({Formula::Dig(3).After(1), Formula::Bolt(10, 600)}));
@@ -186,7 +186,7 @@ void DomainExitAndDigRules() {
 
     World sparse;
     pixel::testing::WorldAccess::Map(sparse).Insert(std::make_unique<WorldChunk>(CellCoord{0, 0}));
-    runtime.Clear();
+    runtime.Clear(world);
     runtime.Cast(sparse, At(10.5, 4.5), 0);
     pixel::testing::WorldAccess::Map(sparse).Remove({0, 0});
     runtime.Step(sparse);
@@ -243,7 +243,7 @@ void LimitsAndRetirement() {
     for (int i = 0; i < 4; ++i)
         Require(runtime.Cast(world, At(30, 30), 0), "legal reserved root rejected");
     Require(runtime.Stats().ReservedEffects == 256 && !runtime.Cast(world, At(30, 30), 0), "session total effects did not pre-reject");
-    runtime.Clear();
+    runtime.Clear(world);
     runtime.Apply(Formula::Bolt(10, 0).After(600));
     for (int frame = 0; frame < 2; ++frame) {
         runtime.BeginFrame();
@@ -252,7 +252,7 @@ void LimitsAndRetirement() {
     }
     runtime.BeginFrame();
     Require(runtime.Stats().Roots == 16 && !runtime.Cast(world, At(30, 30), 0), "root limit ignored delayed instances without balls");
-    runtime.Clear();
+    runtime.Clear(world);
     runtime.BeginFrame();
     runtime.Apply(Formula{});
     for (int i = 0; i < 8; ++i)
@@ -272,21 +272,21 @@ void LimitsAndRetirement() {
         Require(!runtime.Cast(world, At(30, 30), 0), "instant wind retirement restored same-frame quota");
     const auto rejectElapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - rejectStarted).count();
     Require(runtime.Stats().WindCallsThisFrame == 64, "rejected activations called wind backend");
-    runtime.Clear();
-    runtime.OnWorldReplaced();
+    runtime.Clear(world);
+    runtime.OnWorldReplaced(world);
     Require(!runtime.Cast(world, At(30, 30), 0), "clear/reset restored same-frame wind quota");
     runtime.BeginFrame();
     Require(runtime.Cast(world, At(30, 30), 0), "BeginFrame failed to release retired wind quota");
     std::cout << "64 Coarse impulses over 1024 cells: " << elapsed << " ms; backend calls=64; 16 same-frame rejections: " << rejectElapsed << " ms\n";
 
-    runtime.Clear();
+    runtime.Clear(world);
     runtime.BeginFrame();
     runtime.Apply(Formula::Wind(1, 60).Repeated(16, 2));
     Require(runtime.Cast(world, At(30, 30), 0) && runtime.Stats().ReservedWind == 16, "delayed wind root reservation missing");
     runtime.BeginFrame();
     Require(runtime.Stats().ReservedWind == 16, "BeginFrame refunded live root wind reservation");
     const auto epoch = runtime.WorldEpoch();
-    runtime.OnWorldReplaced();
+    runtime.OnWorldReplaced(world);
     Require(runtime.WorldEpoch() == epoch + 1 && runtime.Stats().Roots == 0 && runtime.Stats().RetiredWind == 16,
             "world replacement did not clear queues and preserve retired wind quota");
     Require(runtime.Diagnostics().empty(), "clear retained old runtime diagnostics");

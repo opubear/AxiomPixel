@@ -117,6 +117,11 @@ Json WindConfigurationJson(const api::WindConfiguration &configuration) {
 
 Json FactPayloadJson(const api::FactPayload &payload) {
     return std::visit(Overload{
+        [](const api::FieldSourceChanged &value) -> Json {
+            const char *event = value.Event == api::FieldSourceEvent::Installed ? "installed"
+                : value.Event == api::FieldSourceEvent::Updated ? "updated" : "stopped";
+            return {{"kind", "FieldSourceChanged"}, {"handle", std::to_string(value.Handle)}, {"event", event}};
+        },
         [](const api::DeviceChanged &value) -> Json {
             const auto &d = value.Device;
             const auto event = [&] {
@@ -130,10 +135,10 @@ Json FactPayloadJson(const api::FactPayload &payload) {
                 throw std::logic_error("unknown device event");
             }();
             return {{"kind", "DeviceChanged"}, {"event", event}, {"deviceId", std::to_string(d.Ref.Id)},
-                    {"version", std::to_string(d.Ref.Version)}, {"typeId", WindEmitterType},
+                    {"version", std::to_string(d.Ref.Version)}, {"typeId", ForceEmitterType},
                     {"owner", std::to_string(d.Owner)}, {"target", CellJson({d.X, d.Y})},
                     {"enabled", d.Enabled}, {"state", DeviceStateName(d.State)}, {"fuel", d.Fuel},
-                    {"instanceId", std::to_string(d.Instance)}, {"pulses", std::to_string(d.Pulses)}};
+                    {"instanceId", std::to_string(d.Instance)}, {"cycles", std::to_string(d.Cycles)}};
         },
         [](const api::MaterialRemoved &value) -> Json {
             return {{"kind", "MaterialRemoved"}, {"target", CellJson(value.Target)},

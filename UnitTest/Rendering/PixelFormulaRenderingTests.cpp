@@ -262,7 +262,7 @@ void PublisherIsolation() {
     publishFirst(first);
     publishSecond(second);
     Check(first.Read().FormulaDraws.size() == 1 && second.Read().FormulaDraws.size() == 1, "publishers did not copy runtime balls");
-    runtime.Clear();
+    runtime.Clear(pixel::testing::SessionAccess::World(session));
     publishSecond(second);
     Check(first.Read().FormulaDraws.size() == 1 && second.Read().FormulaDraws.empty(), "runtime clear mutated an already published frame");
     presentation.DisplayMode = GridDisplayMode::ForceField;

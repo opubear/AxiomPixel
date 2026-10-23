@@ -19,7 +19,7 @@ struct ProgramIdentity {
     std::string Resource;
     std::string ContentSha256;
     std::uint32_t SemanticsVersion = 1;
-    std::uint32_t HostContractVersion = 1;
+    std::uint32_t HostContractVersion = 2;
     bool operator==(const ProgramIdentity &) const = default;
 };
 // Portable source record, not a dump of compiler memory or executable bytecode.

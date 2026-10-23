@@ -6,7 +6,7 @@ endif()
 add_library(PixelWorld STATIC
     World.cpp WorldMap.cpp WorldStreamer.cpp
     Generation/WorldGenerator.cpp Generation/GenerationNoise.cpp
-    Environment/Environment.cpp
+    Environment/Environment.cpp Environment/FieldSources.cpp
     Environment/Wind/PixelWindField.cpp
     Environment/Wind/WindSimulation.cpp
     Environment/Wind/WindStrategy.cpp

@@ -20,12 +20,14 @@ struct InstanceState {
     Outcome LastOutcome = Outcome::None;
     Position Origin;
     std::optional<Subscription> WakeSubscription;
+    // Set by a successful await result; the next await completion replaces it.
+    EffectHandle LastEffectHandle{};
 };
 // Export only at Sleeping/Awaiting, after the host commits the returned slice.
 // Host-owned carriers, queued events and committed world facts are separate.
 // v1 has no random operation/state. Adding one requires a new schema/semantics.
 struct InstanceSnapshot {
-    std::uint32_t SchemaVersion = 1;
+    std::uint32_t SchemaVersion = 2;
     ProgramIdentity Program;
     InstanceState State;
     ExecutionLimits Limits;

@@ -182,7 +182,7 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     Require(game.GetPresentation().DevicePlacementMode, "device UI checkbox did not enable the native placement tool");
     EnterScalar(app, "Cell X", "100", "Devices");
     EnterScalar(app, "Cell Y", "100", "Devices");
-    Click(app, deviceControl("Place wind emitter"));
+    Click(app, deviceControl("Place force emitter"));
     const auto placed = changed(pixel::api::DeviceEvent::Placed);
     Require(session.GetDevices().Count() == 1 && placed.X == 100 && placed.Y == 100 &&
                 !placed.Enabled && placed.Fuel == 0 && inventory.Inspect(bag).Quantity == funded.Quantity - 6,

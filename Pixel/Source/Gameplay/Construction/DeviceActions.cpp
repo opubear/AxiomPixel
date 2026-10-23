@@ -31,7 +31,7 @@ api::ActionReceipt GameSession::PlaceDevice(api::Cell target) {
         }
     if (Machines.Count() == Devices::MaximumCount || Inventory.Count() == items::Inventory::MaximumContainers)
         return Refused(api::Reason::LimitExceeded);
-    const auto payment = Inventory.Reserve(Inventory.Reference(PlayerBag), WindEmitterCost());
+    const auto payment = Inventory.Reserve(Inventory.Reference(PlayerBag), ForceEmitterCost());
     if (payment.Status == items::Result::InsufficientItems) return Refused(api::Reason::InsufficientItems);
     if (payment.Status == items::Result::ReservationLimit) return Refused(api::Reason::LimitExceeded);
     RequireApplied(payment.Status);
@@ -53,14 +53,14 @@ api::ActionReceipt GameSession::ChangeDevice(DeviceRef ref, const api::Action &a
         const auto bag = Inventory.Inspect(PlayerBag);
         const auto remaining = Inventory.Inspect(fuel);
         uint64_t refund = remaining.Quantity;
-        for (const auto &amount : WindEmitterCost()) refund += amount.Quantity;
+        for (const auto &amount : ForceEmitterCost()) refund += amount.Quantity;
         if (refund > bag.Capacity - bag.Quantity) return Refused(api::Reason::InventoryFull);
-        Formulas.CancelCarrier(ProcessCarrierKind::Device, ref.Id);
+        Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Device, ref.Id);
         if (remaining.Quantity) {
             const std::array stock{items::ItemAmount{items::ItemId::Coal, remaining.Quantity}};
             RequireApplied(Inventory.Transfer(remaining.Ref, Inventory.Reference(PlayerBag), stock));
         }
-        RequireApplied(Inventory.Add(Inventory.Reference(PlayerBag), WindEmitterCost()));
+        RequireApplied(Inventory.Add(Inventory.Reference(PlayerBag), ForceEmitterCost()));
         Inventory.Destroy(fuel);
         Machines.Remove(ref);
         device.Enabled = false;
@@ -81,7 +81,7 @@ api::ActionReceipt GameSession::ChangeDevice(DeviceRef ref, const api::Action &a
     } else {
         device.Enabled = std::get<api::SetDeviceEnabled>(action).Enabled;
         if (!device.Enabled) {
-            Formulas.CancelCarrier(ProcessCarrierKind::Device, ref.Id);
+            Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Device, ref.Id);
             device.Instance = 0;
         }
     }

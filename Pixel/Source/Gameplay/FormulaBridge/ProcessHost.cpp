@@ -52,7 +52,8 @@ formula::Vec2 Velocity(const ProcessCarrier &carrier, double speed) {
 process::Capability CapabilityOf(const process::Effect &effect) {
     if (std::holds_alternative<process::Dig>(effect)) return process::Capability::Dig;
     if (std::holds_alternative<process::Wind>(effect)) return process::Capability::Wind;
-    return process::Capability::Bolt;
+    if (std::holds_alternative<process::Bolt>(effect)) return process::Capability::Bolt;
+    return process::Capability::Field;
 }
 struct Running {
     std::unique_ptr<process::Instance> Instance;
@@ -111,8 +112,8 @@ struct ProcessHost::State {
         throw std::logic_error("process carrier has no owning instance");
     }
     void Queue(Running &root, process::Outcome outcome, process::RequestId request = {},
-               process::Position hit = {}, process::Subscription subscription = {}) {
-        process::HostEvent event{0, At, root.Instance->State().Id, outcome, request, subscription, hit};
+               process::Position hit = {}, process::Subscription subscription = {}, process::EffectHandle handle = {}) {
+        process::HostEvent event{0, At, root.Instance->State().Id, outcome, request, subscription, hit, handle};
         if (!Observable(root, event)) return;
         // At most one admission, one terminal carrier event and one wake.
         const bool admission = outcome == process::Outcome::Applied || outcome == process::Outcome::Rejected;
@@ -125,21 +126,23 @@ struct ProcessHost::State {
         event.Sequence = root.NextEvent++;
         root.Events.push_back(event);
     }
-    void RemoveOwned(Running &root) {
+    void RemoveOwned(Running &root, World &world) {
         const auto id = root.Instance->State().Id;
+        world.StopFieldSources(id);
         std::erase_if(Bolts, [&](const auto &bolt) { return bolt.Request.Instance == id; });
         root.Events.clear();
     }
     void Cancel(Running &root) {
         root.Instance->Cancel();
         root.Prepared = false;
-        RemoveOwned(root);
     }
     void Retire() {
         std::erase_if(Roots, [](const auto &root) { return root->Instance->State().Status == process::Phase::Ended; });
     }
     ProcessRefusal Validate(const Running &root, const process::EffectRequest &request, const World &world) const {
         if (!(root.Carrier.Grants & process::Mask(CapabilityOf(request.Description)))) return ProcessRefusal::Capability;
+        // Stopping a resource never needs another paid credit or new geometry.
+        if (std::holds_alternative<process::StopField>(request.Description)) return ProcessRefusal::None;
         double radius = FormulaWorldAdapter::BoltRadius;
         if (const auto *dig = std::get_if<process::Dig>(&request.Description)) radius = dig->Radius;
         if (const auto *wind = std::get_if<process::Wind>(&request.Description)) {
@@ -148,6 +151,15 @@ struct ProcessHost::State {
         }
         if (const auto *bolt = std::get_if<process::Bolt>(&request.Description)) {
             if (std::abs(bolt->VelocityX) > 600 || bolt->Lifetime > 3600 || bolt->Damage > 1e6)
+                return ProcessRefusal::Geometry;
+        }
+        const auto *source = std::get_if<process::FieldSource>(&request.Description);
+        if (const auto *update = std::get_if<process::UpdateField>(&request.Description)) source = &update->Source;
+        if (source) {
+            radius = source->Radius;
+            // Validate the actual float representation accepted by Environment.
+            if (radius <= 0 || source->Lifetime > 3600 ||
+                std::hypot(double(float(source->AccelerationX)), double(float(source->AccelerationY))) > 36000)
                 return ProcessRefusal::Geometry;
         }
         if (radius > root.Carrier.MaximumRadius || radius > 16) return ProcessRefusal::Geometry;
@@ -234,6 +246,7 @@ struct ProcessHost::State {
         auto refusal = Validate(root, request, world);
         const auto origin = WorldPoint(request.Origin);
         uint32_t changed = 0;
+        process::EffectHandle handle;
         if (refusal == ProcessRefusal::None) {
             if (const auto *dig = std::get_if<process::Dig>(&request.Description)) {
                 const auto result = FormulaWorldAdapter::Dig(world, origin, dig->Radius,
@@ -254,23 +267,49 @@ struct ProcessHost::State {
                     RecordEffect(root, request, api::WindPulseSubmitted{PublicPosition(request.Origin), wind->Radius,
                         {wind->VelocityX, wind->VelocityY}, {0, request.Id.Instance}});
                 else if (refusal == ProcessRefusal::None) refusal = ProcessRefusal::WindUnavailable;
-            } else {
-                const auto &bolt = std::get<process::Bolt>(request.Description);
+            } else if (const auto *bolt = std::get_if<process::Bolt>(&request.Description)) {
                 if (Bolts.size() == MaximumProjectiles) refusal = ProcessRefusal::Capacity;
                 else {
                     const auto &contact = root.BirthContacts[index];
                     if (contact.Kind == FormulaContactKind::None)
-                        Bolts.push_back({request.Id, origin, Velocity(root.Carrier, bolt.VelocityX), bolt.Damage, bolt.Lifetime});
+                        Bolts.push_back({request.Id, origin, Velocity(root.Carrier, bolt->VelocityX), bolt->Damage, bolt->Lifetime});
+                }
+            } else {
+                const auto owner = root.Instance->State().Id;
+                const auto spec = [&](const process::FieldSource &value) {
+                    return FieldSourceSpec{origin, value.Radius,
+                        {float(value.AccelerationX), float(value.AccelerationY)}, value.Lifetime};
+                };
+                if (const auto *source = std::get_if<process::FieldSource>(&request.Description)) {
+                    const auto installed = world.InstallFieldSource(owner, spec(*source));
+                    if (!installed) refusal = ProcessRefusal::Capacity;
+                    else {
+                        handle.Id = installed->Id;
+                        RecordEffect(root, request, api::FieldSourceChanged{handle.Id, api::FieldSourceEvent::Installed});
+                    }
+                } else if (const auto *update = std::get_if<process::UpdateField>(&request.Description)) {
+                    if (!world.UpdateFieldSource(owner, {update->Handle.Id}, spec(update->Source))) refusal = ProcessRefusal::InvalidHandle;
+                    else {
+                        handle = update->Handle;
+                        RecordEffect(root, request, api::FieldSourceChanged{handle.Id, api::FieldSourceEvent::Updated});
+                    }
+                } else {
+                    const auto &stop = std::get<process::StopField>(request.Description);
+                    if (!world.StopFieldSource(owner, {stop.Handle.Id})) refusal = ProcessRefusal::InvalidHandle;
+                    else RecordEffect(root, request, api::FieldSourceChanged{stop.Handle.Id, api::FieldSourceEvent::Stopped});
                 }
             }
         }
         const auto outcome = refusal == ProcessRefusal::None ? process::Outcome::Applied : process::Outcome::Rejected;
         ++Counters.Requests;
-        if (refusal == ProcessRefusal::None) { --root.Carrier.Credits; ++Counters.Accepted; }
+        if (refusal == ProcessRefusal::None) {
+            if (!std::holds_alternative<process::StopField>(request.Description)) --root.Carrier.Credits;
+            ++Counters.Accepted;
+        }
         else ++Counters.Rejected;
         if (Receipts.size() == MaximumReceipts) Receipts.pop_front();
         Receipts.push_back({At, request.Id, root.Carrier.Kind, root.Carrier.Subject, outcome, refusal, changed});
-        Queue(root, outcome, request.Id);
+        Queue(root, outcome, request.Id, {}, {}, handle);
         if (refusal == ProcessRefusal::None && std::holds_alternative<process::Bolt>(request.Description)) {
             const auto &contact = root.BirthContacts[index];
             if (contact.Kind != FormulaContactKind::None)
@@ -283,7 +322,6 @@ struct ProcessHost::State {
 ProcessHost::ProcessHost() : Data(std::make_unique<State>()) {}
 ProcessHost::~ProcessHost() = default;
 void ProcessHost::BeginFrame() { Data->WindCallsThisFrame = 0; }
-bool ProcessHost::HasWindCapacity() const { return Data->WindCallsThisFrame < MaximumWindPulsesPerFrame; }
 
 bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, uint64_t version,
                         const ProcessCarrier &carrier, const World &world,
@@ -331,15 +369,18 @@ void ProcessHost::Prepare(const World &world) {
 }
 void ProcessHost::Commit(World &world, const std::optional<MiningCollector> &playerCollector) {
     for (auto &root : Data->Roots) {
-        if (!root->Prepared) continue;
-        for (size_t i = 0; i < root->Slice.Count; ++i) Data->Apply(*root, i, world, playerCollector);
+        if (root->Prepared)
+            for (size_t i = 0; i < root->Slice.Count; ++i) Data->Apply(*root, i, world, playerCollector);
         root->Prepared = false;
-        if (root->Slice.End) Data->RemoveOwned(*root);
+        if (root->Instance->State().Status == process::Phase::Ended) Data->RemoveOwned(*root, world);
     }
     Data->Retire();
 }
-void ProcessHost::Clear() {
-    for (auto &root : Data->Roots) Data->Cancel(*root);
+void ProcessHost::Clear(World &world) {
+    for (auto &root : Data->Roots) {
+        Data->Cancel(*root);
+        Data->RemoveOwned(*root, world);
+    }
     Data->Roots.clear();
     Data->Effects.clear();
     Data->Receipts.clear();
@@ -351,10 +392,13 @@ bool ProcessHost::HasCarrier(ProcessCarrierKind kind, uint64_t subject) const {
         return root->Carrier.Kind == kind && root->Carrier.Subject == subject;
     });
 }
-void ProcessHost::CancelCarrier(ProcessCarrierKind kind, uint64_t subject) {
+void ProcessHost::CancelCarrier(World &world, ProcessCarrierKind kind, uint64_t subject) {
     Data->Effects.clear();
     for (auto &root : Data->Roots)
-        if (root->Carrier.Kind == kind && root->Carrier.Subject == subject) Data->Cancel(*root);
+        if (root->Carrier.Kind == kind && root->Carrier.Subject == subject) {
+            Data->Cancel(*root);
+            Data->RemoveOwned(*root, world);
+        }
     Data->Retire();
 }
 void ProcessHost::WakeCarrier(ProcessCarrierKind kind, uint64_t subject) {

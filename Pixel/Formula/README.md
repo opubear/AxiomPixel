@@ -10,6 +10,12 @@ M3.2 已新增独立 `process 1;` 文本入口、`ProgramArtifact`、绑定实�
 
 M3.3 已通过 FormulaBridge 接入游戏；M3.4 增加 `ProgramRecord`、`InstanceSnapshot`、`ImportProgram` / `Instance::Restore` 和独立 `editing::Draft`，并接入 F4 过程源码 Compile/Apply。挂起点、活动时间、宿主效果所有权和版本拒绝见[状态与编辑合同](../../.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。`Pixel.Formula.Process.State` 可在无引擎环境验证；游戏磁盘保存仍留待 M4。
 
+M4.4 为过程入口增加持续来源描述：`field(cells(radius), acceleration(x), acceleration(y), ticks(lifetime))`。`acceleration` 单位为格/秒²，不能传入表示格/秒的 `speed`。`emit field(...)` 安装成功后，`await result` 从宿主回执读取不透明 `EffectHandle`；`effect_handle()` 返回该句柄，初始值、拒绝、超时以及其他等待终态均返回零。后续等待会替换这一临时结果，跨等待使用时保存到 `let` / `var`。
+
+`emit update_field(handle, field(...))` 替换来源参数和剩余寿命，成功回执保留同一句柄；`emit stop_field(handle)` 停止来源，回执句柄为零。句柄不可从数字构造；宿主负责检查归属及是否仍存活，过期或无效句柄返回拒绝。`update_field` 的第二个参数虽然是通用效果值，运行时必须为 `field`，否则整个当前片段故障且不提交其输出。实例终止清理其来源，不回滚已完成的一次性事实。示例见 `Examples/Process/field.formula`，独立验证见 `Pixel.Formula.Process.Field`。
+
+这次扩展保留 `process 1;` 语法和 `SemanticsVersion=1`，将 `HostContractVersion` 与 `InstanceSnapshot.SchemaVersion` 升至 2；旧宿主记录/实例快照显式拒绝。快照保存加速度、句柄、来源/更新/停止描述及已收到的句柄回执；宿主仍必须单独保存对应来源，语言快照本身不重新安装它们。
+
 ## 快速运行
 
 在仓库根目录执行。独立构建只依赖 CMake 3.23+、C++20 编译器与标准库，不需要 `Axiom/`、Slang、窗口或 GPU。

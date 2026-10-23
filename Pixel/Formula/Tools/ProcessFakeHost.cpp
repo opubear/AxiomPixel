@@ -8,8 +8,9 @@ FakeHost::FakeHost(std::unique_ptr<Instance> instance) : Running(std::move(insta
     if (!Running) throw std::invalid_argument("fake host requires an instance");
     Events.reserve(128);
     Carriers.reserve(32);
+    Fields.reserve(32);
 }
-void FakeHost::Queue(Outcome outcome, RequestId request, Subscription subscription, Position position) {
+void FakeHost::Queue(Outcome outcome, RequestId request, Subscription subscription, Position position, EffectHandle handle) {
     const auto &state = Running->State();
     const bool observable = request.Sequence != 0 ? request == state.LastRequest
         : state.WakeSubscription && subscription == *state.WakeSubscription;
@@ -19,22 +20,44 @@ void FakeHost::Queue(Outcome outcome, RequestId request, Subscription subscripti
         })) return;
     if (Events.size() == 128 || NextEvent == std::numeric_limits<std::uint64_t>::max())
         throw std::logic_error("fake host event capacity exhausted");
-    Events.push_back({NextEvent++, At, Running->State().Id, outcome, request, subscription, position});
+    Events.push_back({NextEvent++, At, Running->State().Id, outcome, request, subscription, position, handle});
+}
+Outcome FakeHost::ApplyEffect(const EffectRequest &request, EffectHandle &handle) {
+    if (RejectEffects) return Outcome::Rejected;
+    const auto &effect = request.Description;
+    if (std::holds_alternative<Dig>(effect)) {
+        if (Inventory == std::numeric_limits<std::int64_t>::max()) throw std::logic_error("fake inventory overflow");
+        ++Inventory;
+    } else if (const auto *bolt = std::get_if<Bolt>(&effect)) {
+        if (Carriers.size() == 32) return Outcome::Rejected;
+        Carriers.push_back({request, bolt->Lifetime});
+    } else if (const auto *field = std::get_if<FieldSource>(&effect)) {
+        if (Fields.size() == 32) return Outcome::Rejected;
+        if (NextEffect == std::numeric_limits<std::uint64_t>::max()) throw std::logic_error("fake effect identity exhausted");
+        handle = {NextEffect++};
+        Fields.push_back({handle, request.Id, *field, field->Lifetime});
+    } else if (const auto *update = std::get_if<UpdateField>(&effect)) {
+        const auto field = std::find_if(Fields.begin(), Fields.end(), [&](const auto &value) { return value.Handle == update->Handle; });
+        if (field == Fields.end()) return Outcome::Rejected;
+        field->Source = update->Source;
+        field->Remaining = update->Source.Lifetime;
+        handle = field->Handle;
+    } else if (const auto *stop = std::get_if<StopField>(&effect)) {
+        if (std::erase_if(Fields, [&](const auto &value) { return value.Handle == stop->Handle; }) == 0)
+            return Outcome::Rejected;
+    }
+    return Outcome::Applied;
 }
 void FakeHost::Apply(const StepResult &result) {
     for (const auto &request : result.Effects()) {
-        const bool bolt = std::holds_alternative<Bolt>(request.Description);
-        const auto outcome = RejectEffects || (bolt && Carriers.size() == 32) ? Outcome::Rejected : Outcome::Applied;
+        EffectHandle handle;
+        const auto outcome = ApplyEffect(request, handle);
         History.push_back({At, request, outcome});
-        Queue(outcome, request.Id);
-        if (outcome == Outcome::Rejected) continue;
-        if (std::holds_alternative<Dig>(request.Description)) {
-            if (Inventory == std::numeric_limits<std::int64_t>::max()) throw std::logic_error("fake inventory overflow");
-            ++Inventory;
-        } else if (bolt) Carriers.push_back({request, std::get<Bolt>(request.Description).Lifetime});
+        Queue(outcome, request.Id, {}, {}, handle);
     }
     if (result.End) {
         Carriers.clear();
+        Fields.clear();
         Events.clear();
         ++Cleanups;
     }
@@ -69,6 +92,7 @@ StepResult FakeHost::Advance() {
             carrier = Carriers.erase(carrier);
         } else ++carrier;
     }
+    std::erase_if(Fields, [](auto &field) { return --field.Remaining == 0; });
     Apply(result);
     if (At == std::numeric_limits<Boundary>::max()) throw std::logic_error("fake boundary exhausted");
     ++At;
@@ -109,6 +133,8 @@ void FakeHost::Suspend() {
     SuspendedProcess capsule{instance.Program().Export(), instance.ExportState(), NextEvent};
     capsule.Events = std::move(Events);
     capsule.Carriers = std::move(Carriers);
+    capsule.NextEffect = NextEffect;
+    capsule.Fields = std::move(Fields);
     Suspended = std::move(capsule);
     Running.reset();
 }
@@ -123,6 +149,8 @@ std::optional<Diagnostic> FakeHost::Resume(Capabilities granted) {
     Events = std::move(Suspended->Events);
     Carriers = std::move(Suspended->Carriers);
     NextEvent = capsule.NextEvent;
+    NextEffect = capsule.NextEffect;
+    Fields = std::move(Suspended->Fields);
     Suspended.reset();
     return std::nullopt;
 }

@@ -13,13 +13,14 @@ void DrawDevices(GameSession &session, GamePresentation &presentation,
     if (!ImGui::CollapsingHeader("Devices"))
         return;
     ImGui::Checkbox("Place devices with left click (B)", &presentation.DevicePlacementMode);
-    ImGui::TextUnformatted("Wind emitter: 2 x 2 cells, output to the right");
-    ImGui::TextUnformatted("Build: 4 stone + 2 copper ore; fuel: coal");
+    ImGui::TextUnformatted("Force emitter: 2 x 2 cells, pushes dirt to the right");
+    ImGui::TextUnformatted("Build: 4 stone + 2 copper ore; 1 coal / 30 active ticks");
+    ImGui::TextUnformatted("F1: inspect local force direction (radius 16 cells)");
     ImGui::TextWrapped("Right click: enable/disable; Shift+right: recycle");
     ImGui::PushID("Devices");
     ImGui::InputScalar("Cell X", ImGuiDataType_S64, &cell[0]);
     ImGui::InputScalar("Cell Y", ImGuiDataType_S64, &cell[1]);
-    if (ImGui::Button("Place wind emitter")) {
+    if (ImGui::Button("Place force emitter")) {
         session.Execute(NativeCaller::Debug, api::PlaceDevice{{cell[0], cell[1]}});
         if (const auto *device = session.GetDevices().FindAt(cell[0], cell[1]))
             selected = device->Value.Ref.Id;
@@ -41,7 +42,7 @@ void DrawDevices(GameSession &session, GamePresentation &presentation,
         // Actions can replace/remove the record; retain only an owned value.
         const auto device = record->Value;
         ImGui::Text("State: %s; fuel: %u", DeviceStateName(device.State), device.Fuel);
-        ImGui::Text("Pulses: %llu; instance: %llu", static_cast<unsigned long long>(device.Pulses),
+        ImGui::Text("Cycles: %llu; instance: %llu", static_cast<unsigned long long>(device.Cycles),
                     static_cast<unsigned long long>(device.Instance));
         if (ImGui::Button("Supply 1 coal"))
             session.Execute(NativeCaller::Debug, api::SupplyDevice{device.Ref, 1});
@@ -68,7 +69,7 @@ void DrawDevicePlacement(const GameSession &session, const GamePresentation &pre
     if (ImGui::Begin("Device placement", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing)) {
         ImGui::TextUnformatted("DEVICE PLACEMENT (B to exit)");
-        ImGui::TextWrapped("Left click: wind emitter | Cost: 4 stone + 2 copper ore");
+        ImGui::TextWrapped("Left click: force emitter | Cost: 4 stone + 2 copper ore");
         ImGui::TextWrapped("Right click device: enable/disable | Shift+right: recycle");
         if (const auto *receipt = session.LastAction(NativeCaller::Input))
             ImGui::TextWrapped("%s: %s", receipt->Applied() ? "Applied" : "Rejected", receipt->Message.c_str());

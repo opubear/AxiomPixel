@@ -29,6 +29,8 @@ void CommittedWorldView::Update(const World &world, const Actors &actors, const 
     const bool changedBounds = Bounds() != RequestedBounds;
     const auto oldWindVersion = WindVersion;
     WindVersion = world.GetEnvironment().GetWindSimulation().GetRevision();
+    const auto oldFieldSourceVersion = FieldSourceVersion;
+    FieldSourceVersion = world.GetEnvironment().GetFieldSources().Revision();
     const bool changedWorld = Materials.GetMapIdentity() != world.GetMap().GetIdentity();
     if (Air.size() != count) {
         std::vector<WindVelocity>(count).swap(Air);
@@ -37,6 +39,7 @@ void CommittedWorldView::Update(const World &world, const Actors &actors, const 
     // Region versions avoid resampling stable material/force data with Empty wind.
     world.GetMap().ForEachRegion(RequestedBounds, [&](WorldRect region, uint64_t version) {
         if (!changedBounds && !changedWorld && oldWindVersion == WindVersion
+            && oldFieldSourceVersion == FieldSourceVersion
             && Materials.RegionVersion({region.X, region.Y}) == version) return;
         const auto right = std::min(region.X + region.Width, RequestedBounds.X + RequestedBounds.Width);
         const auto bottom = std::min(region.Y + region.Height, RequestedBounds.Y + RequestedBounds.Height);

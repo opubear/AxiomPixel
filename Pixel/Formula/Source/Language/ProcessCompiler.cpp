@@ -15,7 +15,8 @@ bool Reserved(std::string_view name) {
     constexpr std::array words{"process", "let", "var", "if", "else", "while", "emit", "wait",
         "await", "within", "stop", "result", "true", "false", "applied", "rejected", "hit",
         "expired", "cancelled", "wake", "timeout", "inventory", "outcome", "cells", "speed",
-        "ticks", "dig", "wind", "bolt", "damage_add", "damage_mul", "speed_mul"};
+        "ticks", "dig", "wind", "bolt", "damage_add", "damage_mul", "speed_mul",
+        "acceleration", "effect_handle", "field", "update_field", "stop_field"};
     return std::find(words.begin(), words.end(), name) != words.end();
 }
 std::vector<Token> Lex(std::string_view source) {
@@ -59,7 +60,7 @@ struct Builtin {
     std::string_view Name;
     ExpressionKind Kind;
     Type Result;
-    std::array<Type, 3> Arguments{};
+    std::array<Type, 4> Arguments{};
     std::size_t Count = 0;
     Capabilities Required = 0;
 };
@@ -68,10 +69,17 @@ constexpr std::array Builtins{
     Builtin{"outcome", ExpressionKind::Outcome, Type::Outcome},
     Builtin{"cells", ExpressionKind::Cells, Type::Cells, {Type::Number}, 1},
     Builtin{"speed", ExpressionKind::Speed, Type::Speed, {Type::Number}, 1},
+    Builtin{"acceleration", ExpressionKind::Acceleration, Type::Acceleration, {Type::Number}, 1},
+    Builtin{"effect_handle", ExpressionKind::EffectHandle, Type::EffectHandle},
     Builtin{"ticks", ExpressionKind::Ticks, Type::Duration, {Type::Integer}, 1},
     Builtin{"dig", ExpressionKind::Dig, Type::Effect, {Type::Cells}, 1, Mask(Capability::Dig)},
     Builtin{"wind", ExpressionKind::Wind, Type::Effect, {Type::Cells, Type::Speed, Type::Speed}, 3, Mask(Capability::Wind)},
     Builtin{"bolt", ExpressionKind::Bolt, Type::Effect, {Type::Number, Type::Speed, Type::Duration}, 3, Mask(Capability::Bolt)},
+    Builtin{"field", ExpressionKind::Field, Type::Effect,
+        {Type::Cells, Type::Acceleration, Type::Acceleration, Type::Duration}, 4, Mask(Capability::Field)},
+    Builtin{"update_field", ExpressionKind::UpdateField, Type::Effect,
+        {Type::EffectHandle, Type::Effect}, 2, Mask(Capability::Field)},
+    Builtin{"stop_field", ExpressionKind::StopField, Type::Effect, {Type::EffectHandle}, 1, Mask(Capability::Field)},
     Builtin{"damage_add", ExpressionKind::DamageAdd, Type::Effect, {Type::Effect, Type::Number}, 2},
     Builtin{"damage_mul", ExpressionKind::DamageMultiply, Type::Effect, {Type::Effect, Type::Number}, 2},
     Builtin{"speed_mul", ExpressionKind::SpeedMultiply, Type::Effect, {Type::Effect, Type::Number}, 2}};

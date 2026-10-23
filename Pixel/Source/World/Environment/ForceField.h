@@ -9,8 +9,8 @@
 #include <stdexcept>
 
 namespace pixel {
-// One vector per world pixel. Sources add to the same spatial field; material
-// motion never transports it. Callers decide when to clear transient sources.
+// Permanent acceleration per world pixel; material motion never transports it.
+// Environment composes temporary FieldSources without changing these values.
 class ForceField {
   public:
     performance::MemoryUsage GetMemoryUsage() const {

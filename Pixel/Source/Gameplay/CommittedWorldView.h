@@ -19,6 +19,7 @@ class CommittedWorldView {
     WindVelocity SampleWind(CellCoord cell) const { return Materials.TryGet(cell) ? Air.at(Index(cell)) : WindVelocity{}; }
     WindVelocity GetFieldVelocity(int64_t x, int64_t y) const { return Materials.TryGet({x, y}) ? Field.at(Index({x, y})) : WindVelocity{}; }
     uint64_t WindRevision() const { return WindVersion; }
+    uint64_t FieldSourceRevision() const { return FieldSourceVersion; }
     uint32_t GetWindEndRow() const { return WindBounds.Height; }
     const std::optional<ActorSnapshot> &GetPlayer() const { return Player; }
     const std::vector<FormulaProjectile> &Projectiles() const { return Bolts; }
@@ -37,7 +38,7 @@ class CommittedWorldView {
     std::vector<FormulaProjectile> Bolts;
     std::vector<DeviceSnapshot> DeviceValues;
     api::CommitStamp CommittedAt;
-    uint64_t WindVersion = 0;
+    uint64_t WindVersion = 0, FieldSourceVersion = 0;
     bool Finite = false;
     size_t Index(CellCoord cell) const;
     void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices, api::CommitStamp stamp);

@@ -1,0 +1,11 @@
+process 1;
+emit field(cells(8), acceleration(3600), acceleration(0), ticks(120));
+await result within ticks(2);
+let source = effect_handle();
+if outcome() == applied {
+    wait ticks(30);
+    emit update_field(source, field(cells(8), acceleration(-3600), acceleration(0), ticks(60)));
+    await result within ticks(2);
+    wait ticks(30);
+    emit stop_field(source);
+}

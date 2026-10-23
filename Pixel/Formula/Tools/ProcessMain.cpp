@@ -54,8 +54,8 @@ int main(int argc, char **argv) {
         const auto result = host.Advance();
         for (; printed < host.Trace().size(); ++printed) {
             const auto &entry = host.Trace()[printed];
-            std::cout << "t=" << entry.At << ' ' << (std::holds_alternative<Dig>(entry.Request.Description) ? "dig" :
-                std::holds_alternative<Wind>(entry.Request.Description) ? "wind" : "bolt")
+            constexpr std::array names{"dig", "wind", "bolt", "field", "update_field", "stop_field"};
+            std::cout << "t=" << entry.At << ' ' << names[entry.Request.Description.index()]
                 << " cell=" << entry.Request.Origin.CellX << ',' << entry.Request.Origin.CellY
                 << (entry.Result == Outcome::Rejected ? " rejected" : " applied") << '\n';
         }

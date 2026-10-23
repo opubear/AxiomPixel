@@ -59,8 +59,79 @@ performance::MemoryUsage Environment::GetMemoryUsage() const {
     return usage;
 }
 
-ForceVector Environment::SampleForce(CellCoord cell) const {
-    return FieldResponse::AddWind(BaseForces.Get(cell.X, cell.Y), Wind.SampleForMaterial(cell));
+ForceVector Environment::SampleForce(CellCoord cell, WorldRect bounds) const {
+    auto result = FieldResponse::AddWind(BaseForces.Get(cell.X, cell.Y), Wind.SampleForMaterial(cell));
+    const auto acceleration = Sources.Sample(cell, bounds);
+    result.X += acceleration.X;
+    result.Y += acceleration.Y;
+    return result;
+}
+
+void Environment::Reset(WorldMap &map) {
+    RequireSourceMutation();
+    const auto next = Sources.NextId, revision = Sources.Version + 1;
+    *this = Environment(map);
+    Sources.NextId = next;
+    Sources.Version = revision;
+}
+
+void Environment::RequireSourceMutation() const {
+    if (WindAdvancedForStep)
+        throw std::logic_error("field source mutation requires a committed environment step");
+}
+
+void Environment::SimulationDomainChanged() {
+    RequireSourceMutation();
+    // Source eligibility depends on the full disk fitting the active domain.
+    // Publication must observe that change even when no wind backend is enabled.
+    if (Sources.Size() != 0) ++Sources.Version;
+}
+
+std::optional<FieldSourceHandle> Environment::InstallFieldSource(World &world, uint64_t owner, const FieldSourceSpec &input) {
+    RequireSourceMutation();
+    const auto spec = FieldSources::Validate(owner, input);
+    if (!Sources.HasCapacity() || !FieldSources::Fits(spec, world.GetSimulationBounds())
+        || !world.TryGetCell(spec.Center.Cell().X, spec.Center.Cell().Y)) return std::nullopt;
+    if (!Sources.NextId) throw std::overflow_error("field source identity exhausted");
+
+    const FieldSourceHandle handle{Sources.NextId++};
+    Sources.Values[Sources.Count++] = {handle, owner, spec, spec.Lifetime};
+    ++Sources.Version;
+    world.GetMutableMap().Wake(FieldSources::Bounds(spec));
+    return handle;
+}
+
+bool Environment::UpdateFieldSource(World &world, uint64_t owner, FieldSourceHandle handle, const FieldSourceSpec &input) {
+    RequireSourceMutation();
+    const auto spec = FieldSources::Validate(owner, input);
+    auto *source = Sources.Find(owner, handle);
+    if (!source || !FieldSources::Fits(spec, world.GetSimulationBounds())
+        || !world.TryGetCell(spec.Center.Cell().X, spec.Center.Cell().Y)) return false;
+
+    world.GetMutableMap().Wake(FieldSources::Bounds(source->Spec));
+    source->Spec = spec;
+    source->Remaining = spec.Lifetime;
+    ++Sources.Version;
+    world.GetMutableMap().Wake(FieldSources::Bounds(spec));
+    return true;
+}
+
+bool Environment::StopFieldSource(World &world, uint64_t owner, FieldSourceHandle handle) {
+    RequireSourceMutation();
+    const auto *source = Sources.Find(owner, handle);
+    if (!source) return false;
+    Sources.Remove(size_t(source - Sources.Values.data()), world.GetMutableMap());
+    return true;
+}
+
+void Environment::StopFieldSources(World &world, uint64_t owner) {
+    RequireSourceMutation();
+    size_t index = 0;
+    while (index < Sources.Count)
+        if (Sources.Values[index].Owner == owner)
+            Sources.Remove(index, world.GetMutableMap());
+        else
+            ++index;
 }
 
 void Environment::RestorePendingStep(double seconds, bool deferredStep) {
@@ -92,6 +163,7 @@ bool Environment::TryStep(World &world, double committedSeconds) {
         return false;
     }
     Wind.UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
+    Sources.CompleteStep(world.GetMutableMap(), world.GetSimulationBounds());
     WindAdvancedForStep = false;
     WaitingForBudget = false;
     performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
@@ -140,6 +212,7 @@ void Environment::StepMaterials(World &world) {
     SharedProposalDirection = true;
     DirtMovements.clear();
     auto &map = world.GetMutableMap();
+    Sources.WakeActive(map, world.GetSimulationBounds());
     const auto dynamicForces = Wind.GetKind() == WindStrategyKind::Empty ? WorldRect{} : world.GetWindBounds();
     const auto regions = map.TakeActiveRegions(world.GetSimulationBounds(), dynamicForces);
     ActiveRegions += regions.size();

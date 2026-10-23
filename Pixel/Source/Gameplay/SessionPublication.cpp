@@ -57,6 +57,7 @@ void GameSession::PublishCommit() {
     PublishedDeviceVersion = Machines.Revision();
     PublishedMapVersion = GameWorld.GetMap().GetVersion();
     PublishedWindVersion = GameWorld.GetEnvironment().GetWindSimulation().GetRevision();
+    PublishedFieldSourceVersion = GameWorld.GetEnvironment().GetFieldSources().Revision();
 }
 
 void GameSession::CommitChange() {
@@ -67,6 +68,7 @@ void GameSession::CommitChange() {
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
     if (PublishedDeviceVersion != Machines.Revision()
+        || PublishedFieldSourceVersion != GameWorld.GetEnvironment().GetFieldSources().Revision()
         || PublishedActorVersion != Characters.Revision()
         || PublishedMapVersion != GameWorld.GetMap().GetVersion()
         || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision())
