@@ -189,16 +189,31 @@ WindVelocity WindField::Sample(float x, float y) const {
     return SampleGrid(Velocity, x / SpacingX, y / SpacingY);
 }
 
+float WindField::ImpulseWeight(float x, float y, float radius, float faceX, float faceY) const {
+    const double dx = WindDistance(double(faceX) - x, double(Width), Settings.Boundary) / radius;
+    const double dy = WindDistance(double(faceY) - y, double(Height), Settings.Boundary) / radius;
+    const double falloff = std::max(0.0, 1 - dx * dx - dy * dy);
+    return float(falloff * falloff);
+}
+
+bool WindField::ResolvesImpulse(float x, float y, float radius, WindVelocity delta) const {
+    if (!IsEnabled() || !std::isfinite(x) || !std::isfinite(y) || x < 0 || y < 0 || x >= Width || y >= Height
+        || !std::isfinite(radius) || radius <= 0 || !ValidVelocity(delta))
+        return false;
+    for (uint32_t row = 0; row < Settings.Rows; ++row)
+        for (uint32_t col = 0; col < Settings.Columns; ++col) {
+            if (delta.X != 0 && ImpulseWeight(x, y, radius, float(col) * SpacingX, (float(row) + .5f) * SpacingY) > 0)
+                return true;
+            if (delta.Y != 0 && ImpulseWeight(x, y, radius, (float(col) + .5f) * SpacingX, float(row) * SpacingY) > 0)
+                return true;
+        }
+    return false;
+}
+
 void WindField::AddImpulse(float x, float y, float radius, WindVelocity delta) {
     if (!IsEnabled() || !std::isfinite(x) || !std::isfinite(y) || x < 0 || y < 0 || x >= Width || y >= Height
         || !std::isfinite(radius) || radius <= 0 || !ValidVelocity(delta))
         throw std::invalid_argument("wind impulse requires an active region, valid position, radius and velocity");
-    auto weight = [&](float px, float py) {
-        const double dx = WindDistance(double(px) - x, double(Width), Settings.Boundary) / radius;
-        const double dy = WindDistance(double(py) - y, double(Height), Settings.Boundary) / radius;
-        const double falloff = std::max(0.0, 1 - dx * dx - dy * dy);
-        return float(falloff * falloff);
-    };
     auto apply = [](float &velocity, float increment) {
         // Ambient + gust may already exceed the impulse limit. Leave untouched
         // components unchanged, including zero impulses and out-of-radius faces.
@@ -209,8 +224,8 @@ void WindField::AddImpulse(float x, float y, float radius, WindVelocity delta) {
         for (uint32_t col = 0; col < Settings.Columns; ++col) {
             auto &v = Velocity[Index(col, row)];
             // Bound repeated user impulses; the next Step projects them.
-            apply(v.X, delta.X * weight(float(col) * SpacingX, (float(row) + 0.5f) * SpacingY));
-            apply(v.Y, delta.Y * weight((float(col) + 0.5f) * SpacingX, float(row) * SpacingY));
+            apply(v.X, delta.X * ImpulseWeight(x, y, radius, float(col) * SpacingX, (float(row) + 0.5f) * SpacingY));
+            apply(v.Y, delta.Y * ImpulseWeight(x, y, radius, (float(col) + 0.5f) * SpacingX, float(row) * SpacingY));
         }
 }
 

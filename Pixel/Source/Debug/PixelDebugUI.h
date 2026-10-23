@@ -22,5 +22,7 @@ class PixelDebugUI {
     bool Visible = true;
     FormulaDebugUI FormulaEditor;
     std::array<int64_t, 2> ActionCell{520, 512};
+    std::array<int64_t, 2> DeviceCell{520, 510};
+    uint64_t SelectedDevice = 0;
 };
 } // namespace pixel

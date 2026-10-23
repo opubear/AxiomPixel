@@ -1,0 +1,106 @@
+#include "Gameplay/GameSession.h"
+
+namespace pixel {
+namespace {
+constexpr int64_t PulseRadius = 16;
+const formula::process::ProgramArtifact &WindEmitterProgram() {
+    static const auto program = [] {
+        auto compiled = formula::process::Compile("device/wind-emitter/1",
+            "process 1; emit wind(cells(" + std::to_string(PulseRadius) + "), speed(60), speed(0)); wait ticks(30);");
+        if (const auto *error = std::get_if<formula::process::Diagnostic>(&compiled))
+            throw std::logic_error(error->Message);
+        return std::get<formula::process::ProgramArtifact>(std::move(compiled));
+    }();
+    return program;
+}
+WorldPosition Origin(const DeviceSnapshot &device) {
+    const CellCoord cell{device.X + 1, device.Y + 1};
+    const auto chunk = ChunkOf(cell);
+    return {chunk, {double(cell.X - chunk.X * storage::ChunkEdge), double(cell.Y - chunk.Y * storage::ChunkEdge)}};
+}
+} // namespace
+
+DeviceState GameSession::DeviceEnvironment(const DeviceSnapshot &device) const {
+    const auto bounds = GameWorld.GetSimulationBounds();
+    // The complete output disk, as well as the fixture, must be in this window.
+    if (!bounds.Contains({device.X + 1 - PulseRadius, device.Y + 1 - PulseRadius}) ||
+        !bounds.Contains({device.X + 1 + PulseRadius, device.Y + 1 + PulseRadius}))
+        return DeviceState::OutsideActiveArea;
+    for (uint32_t y = 0; y < DeviceHeight; ++y)
+        for (uint32_t x = 0; x < DeviceWidth; ++x) {
+            const auto cell = GameWorld.TryGetCell(device.X + x, device.Y + y);
+            if (!cell) return DeviceState::OutsideActiveArea;
+            if (cell->Type != CellTypeId::Air) return DeviceState::WaitingForEnvironment;
+        }
+    if (FormulaWorldAdapter::WindAvailability(GameWorld, Origin(device)) != FormulaWindResult::Applied)
+        return DeviceState::WaitingForEnvironment;
+    const auto &wind = GameWorld.GetEnvironment().GetWindSimulation();
+    const auto local = Origin(device).RelativeTo(wind.GetDomain().Origin);
+    if (!wind.GetCoarse().ResolvesImpulse(float(local[0]), float(local[1]), PulseRadius, {60, 0}))
+        return DeviceState::OutputUnresolved;
+    return DeviceState::WaitingForCapacity;
+}
+
+void GameSession::StepDevices(std::vector<FormulaEffectRecord> &effects, std::vector<api::DeviceChanged> &changes) {
+    for (auto device : Machines.Snapshot()) {
+        const auto before = device;
+        if (!device.Enabled) continue;
+        const auto ready = DeviceEnvironment(device);
+        if (ready != DeviceState::WaitingForCapacity) {
+            Formulas.CancelCarrier(ProcessCarrierKind::Device, device.Ref.Id);
+            device.Instance = 0;
+            device.State = ready;
+        } else if (Formulas.HasCarrier(ProcessCarrierKind::Device, device.Ref.Id)) {
+            device.State = DeviceState::Running;
+        } else {
+            device.Instance = 0;
+            device.State = device.Fuel ? DeviceState::WaitingForCapacity : DeviceState::NeedsFuel;
+            if (device.Fuel && Formulas.HasProcessWindCapacity()) {
+                const auto fuel = Machines.Find(device.Ref.Id)->FuelContainer;
+                const std::array cost{items::ItemAmount{items::ItemId::Coal, 1}};
+                const auto payment = Inventory.Reserve(Inventory.Reference(fuel), cost);
+                if (payment.Status != items::Result::ReservationLimit) {
+                    if (payment.Status != items::Result::Applied) throw std::logic_error("device fuel snapshot diverged");
+                    ProcessCarrier carrier;
+                    carrier.Kind = ProcessCarrierKind::Device;
+                    carrier.Subject = device.Ref.Id;
+                    carrier.Origin = Origin(device);
+                    carrier.Scope = GameWorld.GetSimulationBounds();
+                    carrier.MaximumRadius = PulseRadius;
+                    carrier.Credits = 1;
+                    carrier.Grants = formula::process::Mask(formula::process::Capability::Wind);
+                    if (Formulas.CastProcess(GameWorld, WindEmitterProgram(), {3, 1}, carrier)) {
+                        if (Formulas.LastEffects().size() != 1 || Inventory.Consume(payment.Id) != items::Result::Applied)
+                            throw std::logic_error("preflighted wind emitter pulse failed");
+                        effects.insert(effects.end(), Formulas.LastEffects().begin(), Formulas.LastEffects().end());
+                        --device.Fuel;
+                        if (device.Pulses == UINT64_MAX) throw std::overflow_error("device pulse counter exhausted");
+                        ++device.Pulses;
+                        device.Instance = Formulas.LastActivationId();
+                        device.State = DeviceState::Running;
+                    } else if (Inventory.Release(payment.Id) != items::Result::Applied) {
+                        throw std::logic_error("device fuel release failed");
+                    }
+                }
+            }
+        }
+        if (device != before) {
+            Machines.Update(device);
+            changes.push_back({Machines.Find(device.Ref.Id)->Value, api::DeviceEvent::StateChanged});
+        }
+    }
+}
+
+std::vector<api::DeviceChanged> GameSession::StopDevices() {
+    std::vector<api::DeviceChanged> changes;
+    for (auto device : Machines.Snapshot()) {
+        if (!device.Enabled) continue;
+        device.Enabled = false;
+        device.Instance = 0;
+        device.State = DeviceState::Stopped;
+        Machines.Update(device);
+        changes.push_back({Machines.Find(device.Ref.Id)->Value, api::DeviceEvent::Enabled});
+    }
+    return changes;
+}
+} // namespace pixel

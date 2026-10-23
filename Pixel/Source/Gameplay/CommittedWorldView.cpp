@@ -12,16 +12,17 @@ uint64_t CommittedWorldView::CapacityFor(WorldRect bounds) {
     const auto rows = (uint64_t(bounds.Height) + storage::RegionEdge - 1) / storage::RegionEdge + 1;
     return uint64_t(bounds.Width) * bounds.Height * 2 * sizeof(WindVelocity)
         + columns * rows * (storage::RegionEdge * storage::RegionEdge * sizeof(CellState) + 1024) + 4096
-        + 2 * FormulaBridge::MaximumEffects * sizeof(FormulaProjectile);
+        + 2 * FormulaBridge::MaximumEffects * sizeof(FormulaProjectile)
+        + Devices::MaximumCount * sizeof(DeviceSnapshot);
 }
 
 uint64_t CommittedWorldView::ReservedBytes() const {
     return sizeof(*this) + Materials.GetMemoryUsage().ReservedBytes()
         + (Air.capacity() + Field.capacity()) * sizeof(WindVelocity)
-        + Bolts.capacity() * sizeof(FormulaProjectile);
+        + Bolts.capacity() * sizeof(FormulaProjectile) + DeviceValues.capacity() * sizeof(DeviceSnapshot);
 }
 
-void CommittedWorldView::Update(const World &world, const Actors &actors, const FormulaBridge &formulas, api::CommitStamp stamp) {
+void CommittedWorldView::Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices, api::CommitStamp stamp) {
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("cannot publish a prepared environment step");
     const auto count = size_t(RequestedBounds.Width) * RequestedBounds.Height;
@@ -56,6 +57,7 @@ void CommittedWorldView::Update(const World &world, const Actors &actors, const 
     world.PublishSnapshot(RequestedBounds, Materials);
     Player = actors.PlayerSnapshot();
     Bolts = formulas.Projectiles();
+    DeviceValues = devices.Snapshot();
     WindBounds = world.GetWindBounds();
     Finite = world.GetMap().IsFinite();
     CommittedAt = std::move(stamp);

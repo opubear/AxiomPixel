@@ -57,7 +57,7 @@ process::Capability CapabilityOf(const process::Effect &effect) {
 struct Running {
     std::unique_ptr<process::Instance> Instance;
     ProcessCarrier Carrier;
-    uint64_t Version = 0, NextEvent = 1;
+    uint64_t Version = 0, Resource = 2, NextEvent = 1;
     std::optional<api::RequestKey> Activation;
     std::vector<process::HostEvent> Events;
     process::StepResult Slice;
@@ -227,7 +227,7 @@ struct ProcessHost::State {
     }
     void RecordEffect(const Running &root, const process::EffectRequest &request, api::FactPayload payload) {
         if (Effects.size() == MaximumEffects) throw std::logic_error("process effect record bound violated");
-        Effects.push_back({request.Id.Instance, root.Version, request.Id.Sequence, root.Activation, std::move(payload), 2});
+        Effects.push_back({request.Id.Instance, root.Version, request.Id.Sequence, root.Activation, std::move(payload), root.Resource});
     }
     void Apply(Running &root, size_t index, World &world, const std::optional<MiningCollector> &playerCollector) {
         const auto &request = root.Slice.Requests[index];
@@ -244,7 +244,7 @@ struct ProcessHost::State {
                 else refusal = result.InventoryFull ? ProcessRefusal::Capacity :
                     result.NotReady ? ProcessRefusal::NotReady : ProcessRefusal::Blocked;
             } else if (const auto *wind = std::get_if<process::Wind>(&request.Description)) {
-                if (WindCallsThisFrame == 16) refusal = ProcessRefusal::Capacity;
+                if (WindCallsThisFrame == MaximumWindPulsesPerFrame) refusal = ProcessRefusal::Capacity;
                 auto result = FormulaWindResult::Unavailable;
                 if (refusal == ProcessRefusal::None) {
                     ++WindCallsThisFrame;
@@ -283,20 +283,21 @@ struct ProcessHost::State {
 ProcessHost::ProcessHost() : Data(std::make_unique<State>()) {}
 ProcessHost::~ProcessHost() = default;
 void ProcessHost::BeginFrame() { Data->WindCallsThisFrame = 0; }
+bool ProcessHost::HasWindCapacity() const { return Data->WindCallsThisFrame < MaximumWindPulsesPerFrame; }
 
 bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, uint64_t version,
                         const ProcessCarrier &carrier, const World &world,
-                        std::optional<api::RequestKey> request, std::string &error) {
+                        std::optional<api::RequestKey> request, std::string &error, uint64_t resource) {
     // These are trusted host values, but Cell/RelativeTo assume normalized,
     // supported coordinates. Fail before those integer conversions/subtractions.
     auto position = carrier.Origin;
     position.Normalize();
-    if (!carrier.Subject || carrier.Credits < 0 || !std::isfinite(carrier.AngleDegrees)
+    if (!resource || !version || !carrier.Subject || carrier.Credits < 0 || !std::isfinite(carrier.AngleDegrees)
         || !std::isfinite(carrier.MaximumRadius) || carrier.MaximumRadius < 0 || carrier.MaximumRadius > 16
         || carrier.Scope.Empty() || carrier.Scope.Width > 2048 || carrier.Scope.Height > 2048
         || carrier.Scope.X > INT64_MAX - carrier.Scope.Width || carrier.Scope.Y > INT64_MAX - carrier.Scope.Height
         || carrier.Limits.Outputs > 16 || carrier.Limits.Work > 256 || carrier.Limits.Queries > 8
-        || carrier.Kind < ProcessCarrierKind::Player || carrier.Kind > ProcessCarrierKind::FixedFixture)
+        || carrier.Kind < ProcessCarrierKind::Player || carrier.Kind > ProcessCarrierKind::Device)
         throw std::invalid_argument("invalid trusted process carrier configuration");
     auto lower = WorldPoint({carrier.Scope.X, carrier.Scope.Y});
     auto upper = WorldPoint({carrier.Scope.X + carrier.Scope.Width, carrier.Scope.Y + carrier.Scope.Height});
@@ -313,6 +314,7 @@ bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, ui
     root->Carrier = carrier;
     root->Carrier.Origin = position;
     root->Version = version;
+    root->Resource = resource;
     root->Activation = request;
     root->Events.reserve(3);
     Data->Begin();
@@ -344,6 +346,11 @@ void ProcessHost::Clear() {
     Data->Diagnostics.clear();
     Data->Counters = {};
 }
+bool ProcessHost::HasCarrier(ProcessCarrierKind kind, uint64_t subject) const {
+    return std::any_of(Data->Roots.begin(), Data->Roots.end(), [&](const auto &root) {
+        return root->Carrier.Kind == kind && root->Carrier.Subject == subject;
+    });
+}
 void ProcessHost::CancelCarrier(ProcessCarrierKind kind, uint64_t subject) {
     Data->Effects.clear();
     for (auto &root : Data->Roots)
@@ -360,7 +367,7 @@ void ProcessHost::AppendProjectiles(std::vector<FormulaProjectile> &output, uint
     for (const auto &bolt : Data->Bolts) {
         const auto &root = Data->Owner(bolt.Request.Instance);
         output.push_back({epoch, bolt.Request.Instance, bolt.Request.Sequence, root.Version,
-            bolt.Position, FormulaWorldAdapter::BoltRadius, bolt.Damage, bolt.Velocity, 2});
+            bolt.Position, FormulaWorldAdapter::BoltRadius, bolt.Damage, bolt.Velocity, root.Resource});
     }
 }
 std::span<const FormulaEffectRecord> ProcessHost::Effects() const { return Data->Effects; }

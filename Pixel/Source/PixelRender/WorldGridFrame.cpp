@@ -147,14 +147,19 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
             character.Parameters[0] < 0 || character.Parameters[0] > 1)
             throw std::invalid_argument("character geometry and opaque colours must be finite and valid");
     }
-    for (const auto &draw : frame.FormulaDraws) {
-        const auto &geometry = draw.CenterRadius;
+    const auto validateShape = [](const auto &geometry, const auto &color) {
         if (std::any_of(geometry.begin(), geometry.end(), [](float value) { return !std::isfinite(value); }) ||
             geometry[2] <= 0 || geometry[3] <= 0 ||
             !std::isfinite(geometry[0] - geometry[2]) || !std::isfinite(geometry[0] + geometry[2]) ||
             !std::isfinite(geometry[1] - geometry[3]) || !std::isfinite(geometry[1] + geometry[3]) ||
-            draw.Color[3] != 1 || std::any_of(draw.Color.begin(), draw.Color.end(), [](float value) { return !std::isfinite(value) || value < 0 || value > 1; }))
-            throw std::invalid_argument("formula circles require finite geometry and opaque colours");
+            color[3] != 1 || std::any_of(color.begin(), color.end(), [](float value) { return !std::isfinite(value) || value < 0 || value > 1; }))
+            throw std::invalid_argument("scene shapes require finite geometry and opaque colours");
+    };
+    for (const auto &draw : frame.FormulaDraws)
+        validateShape(draw.CenterRadius, draw.Color);
+    for (const auto &draw : frame.DeviceDraws) {
+        validateShape(draw.CenterRadius, draw.Color);
+        validateShape(draw.OutputCenterRadius, draw.OutputColor);
     }
     switch (frame.DisplayMode) {
     case GridDisplayMode::Materials:

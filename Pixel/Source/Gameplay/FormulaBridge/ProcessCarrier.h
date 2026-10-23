@@ -3,10 +3,10 @@
 #include "World/WorldCoordinates.h"
 
 namespace pixel {
-enum class ProcessCarrierKind { Player, NaturalSource, FixedFixture };
+enum class ProcessCarrierKind { Player, NaturalSource, FixedFixture, Device };
 
 // Trusted host assembly, never supplied by a language program. Resources are
-// finite per-activation fixture credits, not the future Items inventory.
+// finite per-activation credits; the device owner pays its Items fuel before launch.
 struct ProcessCarrier {
     ProcessCarrierKind Kind = ProcessCarrierKind::Player;
     uint64_t Subject = 1;

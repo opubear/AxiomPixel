@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CommitStamp.h"
+#include "Devices/DeviceTypes.h"
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -49,7 +50,11 @@ struct ProgramEffectCause {
     std::optional<RequestKey> ActivationRequest;
     std::optional<FactId> ParentFact;
 };
-using FactCause = std::variant<RequestKey, ProgramEffectCause>;
+struct DeviceCause { uint64_t DeviceId = 0, InstanceId = 0; };
+using FactCause = std::variant<RequestKey, ProgramEffectCause, DeviceCause>;
+
+enum class DeviceEvent { Placed, Removed, Supplied, Enabled, StateChanged };
+struct DeviceChanged { DeviceSnapshot Device; DeviceEvent Event; };
 
 struct MaterialRemoved { Cell Target; uint32_t OldMaterial = 0, NewMaterial = 0; };
 struct MaterialPlaced { Cell Target; uint32_t OldMaterial = 0, NewMaterial = 0; };
@@ -72,7 +77,7 @@ struct MaterialRemovedInDisk {
     uint32_t Changed = 0, Blocked = 0, NotReady = 0;
 };
 using FactPayload = std::variant<MaterialRemoved, MaterialPlaced, ProgramActivated,
-                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk>;
+                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged>;
 struct DomainFact {
     FactId Id;
     CommitStamp CommittedAt;

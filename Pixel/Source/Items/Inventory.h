@@ -41,6 +41,8 @@ class Inventory {
     Inventory(const Inventory &) = delete;
     Inventory &operator=(const Inventory &) = delete;
     ContainerId Create(uint32_t capacity);
+    size_t Count() const { return Containers.size(); }
+    void Destroy(ContainerId container); // Trusted owner; must be empty and unreserved.
     void Clear(); // Expires all references without reusing container/reservation IDs.
     ContainerSnapshot Inspect(ContainerId container) const;
     ContainerRef Reference(ContainerId container) const;

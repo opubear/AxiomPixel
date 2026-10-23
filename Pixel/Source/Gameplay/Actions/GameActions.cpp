@@ -43,6 +43,13 @@ api::Reason Validate(const api::Action &action) {
         } else if constexpr (std::is_same_v<T, api::SelectWindStrategy>) {
             if (value.Kind < api::WindKind::Coarse || value.Kind > api::WindKind::Empty)
                 return api::Reason::Unsupported;
+        } else if constexpr (std::is_same_v<T, api::PlaceDevice>) {
+            if (!ValidCell(value.Target)) return api::Reason::InvalidArgument;
+        } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> ||
+                             std::is_same_v<T, api::SetDeviceEnabled>) {
+            if (!value.Device.Id || !value.Device.Version) return api::Reason::InvalidArgument;
+            if constexpr (std::is_same_v<T, api::SupplyDevice>)
+                if (!value.Quantity || value.Quantity > 64) return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::SetWindBoundary>) {
             if (!ValidCell({0, value.Y})) return api::Reason::InvalidArgument;
         }
@@ -177,7 +184,8 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                         case MiningStatus::NotReady: throw std::logic_error("resident mining became unavailable");
                         }
                     } else {
-                        if (before->Type != CellTypeId::Air || Characters.Occupies({value.Target.X, value.Target.Y})) {
+                        if (before->Type != CellTypeId::Air || Characters.Occupies({value.Target.X, value.Target.Y})
+                            || Machines.FindAt(value.Target.X, value.Target.Y)) {
                             receipt.Rejection = api::Reason::Blocked;
                         } else {
                             const std::array cost{items::ItemAmount{items::ItemId::Soil, 1}};
@@ -216,6 +224,11 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                         stats.Roots, stats.Projectiles, stats.Pending};
                 }
             }
+        } else if constexpr (std::is_same_v<T, api::PlaceDevice>) {
+            receipt = PlaceDevice(value.Target);
+        } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> ||
+                             std::is_same_v<T, api::SetDeviceEnabled>) {
+            receipt = ChangeDevice(value.Device, action);
         } else {
             if constexpr (std::is_same_v<T, api::SelectWindStrategy>) SelectWindStrategy(WorldWind(value.Kind));
             else SetWindBoundary(value.Y);
@@ -240,7 +253,13 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
             const bool changed = Formulas.Stats().Roots != 0;
             Formulas.Clear();
-            if (changed) CommitChange();
+            const auto stopped = StopDevices();
+            if (changed || !stopped.empty()) {
+                Simulation.CommitChange();
+                for (const auto &change : stopped)
+                    Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, 0}, change);
+                PublishCommit();
+            }
         } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld> || std::is_same_v<T, api::RecoverWorld>) {
             if constexpr (!std::is_same_v<T, api::RecoverWorld>) {
                 if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
@@ -302,7 +321,7 @@ ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula:
 }
 
 api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier) {
-    if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player)
+    if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player || carrier.Kind == ProcessCarrierKind::Device)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "Fixture requires native host assembly"};
     const auto reason = WriteRejection();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
@@ -317,7 +336,8 @@ api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const 
 }
 
 api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
-    if (caller == NativeCaller::Input) return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
+    if (caller == NativeCaller::Input || kind == ProcessCarrierKind::Device)
+        return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     const auto reason = WriteRejection();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.CancelCarrier(kind, subject);
@@ -326,7 +346,8 @@ api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, Proce
 }
 
 api::ControlReceipt GameSession::WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
-    if (caller == NativeCaller::Input) return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
+    if (caller == NativeCaller::Input || kind == ProcessCarrierKind::Device)
+        return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     const auto reason = WriteRejection();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.WakeCarrier(kind, subject);

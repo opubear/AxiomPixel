@@ -1,5 +1,6 @@
 #pragma once
 #include "Actors/Actors.h"
+#include "Devices/Devices.h"
 #include "SimulationCoordinator.h"
 #include "CommittedWorldView.h"
 #include "Actions/ActionValues.h"
@@ -50,6 +51,7 @@ class GameSession : public api::ObservationSource {
     void ClearPlayerInput() { Simulation.ClearInput(); }
     const World &GetWorld() const { return GameWorld; }
     const Actors &GetActors() const { return Characters; }
+    const Devices &GetDevices() const { return Machines; }
     const items::Inventory &GetInventory() const { return Inventory; }
     items::ContainerId PlayerInventory() const { return PlayerBag; }
     const Character *GetPlayer() const { return Characters.Player(); }
@@ -109,8 +111,15 @@ class GameSession : public api::ObservationSource {
     void RenewActionSessions();
     void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
     void RecordFormulaFacts();
+    void RecordFormulaFacts(std::span<const FormulaEffectRecord> effects);
+    api::ActionReceipt PlaceDevice(api::Cell target);
+    api::ActionReceipt ChangeDevice(DeviceRef device, const api::Action &action);
+    DeviceState DeviceEnvironment(const DeviceSnapshot &device) const;
+    void StepDevices(std::vector<FormulaEffectRecord> &effects, std::vector<api::DeviceChanged> &changes);
+    std::vector<api::DeviceChanged> StopDevices();
     World GameWorld{WorldWidth, WorldHeight};
     Actors Characters;
+    Devices Machines;
     items::Inventory Inventory;
     items::ContainerId PlayerBag;
     FormulaBridge Formulas;
@@ -121,7 +130,7 @@ class GameSession : public api::ObservationSource {
     ObservationProjector Observations;
     DomainFactBuffer Facts;
     std::vector<std::weak_ptr<CommittedWorldView>> ReadViews;
-    uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0, PublishedActorVersion = 0;
+    uint64_t PublishedMapVersion = 0, PublishedWindVersion = 0, PublishedActorVersion = 0, PublishedDeviceVersion = 0;
     void PublishCommit();
     void CommitChange();
     void ServiceStreaming();

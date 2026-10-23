@@ -71,7 +71,8 @@ void SendKey(Axiom &app, int code, bool down, int mods = 0) {
 }
 // Tab navigation gives the actual production item's rectangle. This avoids
 // duplicating row counts as optional solver diagnostics and memory rows change.
-ImVec2 ControlPoint(Axiom &app, const char *label, const char *owner = "Pixel Debug", const char *child = nullptr) {
+ImVec2 ControlPoint(Axiom &app, const char *label, const char *owner = "Pixel Debug", const char *child = nullptr,
+                   const char *scope = nullptr) {
     auto *window = ImGui::FindWindowByName(owner);
     if (window && child) {
         auto *root = window;
@@ -83,7 +84,7 @@ ImVec2 ControlPoint(Axiom &app, const char *label, const char *owner = "Pixel De
             }
     }
     Require(window && window->Active, "default Pixel Debug window is missing");
-    const auto id = window->GetID(label);
+    const auto id = scope ? ImHashStr(label, 0, window->GetID(scope)) : window->GetID(label);
     auto &context = *ImGui::GetCurrentContext();
     // The default Tab policy visits text inputs only. Enable full navigation
     // while locating controls, then restore production settings before clicking.
@@ -115,12 +116,13 @@ void SelectWindStrategy(Axiom &app, int selected) {
                 popup->Pos.y + style.WindowPadding.y + selected * (text + style.ItemSpacing.y) + text * .5f});
     Require(ImGui::GetCurrentContext()->OpenPopupStack.empty(), "strategy selection did not close the production combo");
 }
-void EnterBoundary(Axiom &app, const char *value) {
+void EnterScalar(Axiom &app, const char *label, const char *value, const char *scope = nullptr) {
     auto &engine = *app.Engine;
-    Click(app, ControlPoint(app, "Wind boundary Y"));
-    const auto id = ImGui::FindWindowByName("Pixel Debug")->GetID("Wind boundary Y");
+    Click(app, ControlPoint(app, label, "Pixel Debug", nullptr, scope));
+    auto *window = ImGui::FindWindowByName("Pixel Debug");
+    const auto id = scope ? ImHashStr(label, 0, window->GetID(scope)) : window->GetID(label);
     Require(ImGui::GetActiveID() == id && ImGui::GetInputTextState(id),
-            "click did not focus the production world-Y InputScalar");
+            "click did not focus the production InputScalar");
 
     // InputScalar is a text input. Exercise real platform keyboard shortcuts
     // and character events, rather than the removed slider temporary-input API.
@@ -136,6 +138,84 @@ void EnterBoundary(Axiom &app, const char *value) {
     Draw(app, 2);
     SendKey(app, GLFW_KEY_ENTER, true);
     SendKey(app, GLFW_KEY_ENTER, false);
+}
+void EnterBoundary(Axiom &app, const char *value) { EnterScalar(app, "Wind boundary Y", value); }
+
+void CheckDevicesPanel(Axiom &app, PixelGame &game) {
+    auto &session = game.GetSession();
+    auto &inventory = pixel::testing::SessionAccess::Inventory(session);
+    const auto bag = session.PlayerInventory();
+    const std::array resources{pixel::items::ItemAmount{pixel::items::ItemId::Stone, 4},
+                               pixel::items::ItemAmount{pixel::items::ItemId::CopperOre, 2},
+                               pixel::items::ItemAmount{pixel::items::ItemId::Coal, 1}};
+    Require(inventory.Add(inventory.Reference(bag), resources) == pixel::items::Result::Applied,
+            "device UI fixture could not add construction resources and coal");
+    const auto funded = inventory.Inspect(bag);
+    const auto original = CopyWorldCells(session.GetWorld());
+    const auto inputSequence = [&] {
+        const auto *receipt = session.LastAction(pixel::NativeCaller::Input);
+        return receipt ? receipt->Key.Sequence : uint64_t{0};
+    };
+    const auto inputBefore = inputSequence();
+    const auto *lastDebug = session.LastAction(pixel::NativeCaller::Debug);
+    auto debugSequence = lastDebug ? lastDebug->Key.Sequence : uint64_t{0};
+    const auto changed = [&](pixel::api::DeviceEvent event) {
+        const auto *receipt = session.LastAction(pixel::NativeCaller::Debug);
+        ++debugSequence;
+        Require(receipt && receipt->Applied() && receipt->Key.Sequence == debugSequence,
+                "device UI did not issue exactly one successful Debug action");
+        const auto *result = std::get_if<pixel::api::DeviceChanged>(&receipt->Result);
+        Require(result && result->Event == event, "device UI returned the wrong action result");
+        Require(inputSequence() == inputBefore, "device UI input leaked into the native gameplay action port");
+        return result->Device;
+    };
+    const auto deviceControl = [&](const char *label) {
+        return ControlPoint(app, label, "Pixel Debug", nullptr, "Devices");
+    };
+    auto *window = ImGui::FindWindowByName("Pixel Debug");
+    window->StateStorage.SetInt(window->GetID("Game actions"), 0);
+    window->StateStorage.SetInt(window->GetID("Environment"), 0);
+    window->StateStorage.SetInt(window->GetID("Wind appearance"), 0);
+    Draw(app, 2);
+    Click(app, ControlPoint(app, "Devices"));
+    Click(app, ControlPoint(app, "Place devices with left click (B)"));
+    Require(game.GetPresentation().DevicePlacementMode, "device UI checkbox did not enable the native placement tool");
+    EnterScalar(app, "Cell X", "100", "Devices");
+    EnterScalar(app, "Cell Y", "100", "Devices");
+    Click(app, deviceControl("Place wind emitter"));
+    const auto placed = changed(pixel::api::DeviceEvent::Placed);
+    Require(session.GetDevices().Count() == 1 && placed.X == 100 && placed.Y == 100 &&
+                !placed.Enabled && placed.Fuel == 0 && inventory.Inspect(bag).Quantity == funded.Quantity - 6,
+            "production device placement did not use the entered coordinates and construction cost");
+
+    // Right clicks over an actual device control must not activate formulas or
+    // toggle a device behind the panel, even while the placement tool is active.
+    ClickButton(app, deviceControl("Supply 1 coal"), GLFW_MOUSE_BUTTON_RIGHT);
+    Require(inputSequence() == inputBefore && !session.GetDevices().Find(placed.Ref.Id)->Value.Enabled &&
+                session.GetFormulaRuntime().Projectiles().empty(), "right click inside Devices leaked to gameplay");
+    Click(app, deviceControl("Supply 1 coal"));
+    const auto supplied = changed(pixel::api::DeviceEvent::Supplied);
+    Require(supplied.Ref.Id == placed.Ref.Id && supplied.Fuel == 1 &&
+                session.GetDevices().Find(placed.Ref.Id)->Value.Fuel == 1 && inventory.Inspect(bag).Quantity == funded.Quantity - 7,
+            "production device supply did not move exactly one coal from the player");
+    Click(app, deviceControl("Enable"));
+    const auto enabled = changed(pixel::api::DeviceEvent::Enabled);
+    Require(enabled.Ref.Id == placed.Ref.Id && enabled.Enabled && enabled.Fuel == 1 &&
+                session.GetDevices().Find(placed.Ref.Id)->Value.Enabled, "production Enable did not enable the selected device");
+    Click(app, deviceControl("Disable"));
+    const auto disabled = changed(pixel::api::DeviceEvent::Enabled);
+    Require(!disabled.Enabled && disabled.State == pixel::DeviceState::Stopped && disabled.Fuel == 1 &&
+                !session.GetDevices().Find(placed.Ref.Id)->Value.Enabled, "production Disable did not stop the selected device");
+    Click(app, deviceControl("Recycle"));
+    const auto removed = changed(pixel::api::DeviceEvent::Removed);
+    const auto refunded = inventory.Inspect(bag);
+    Require(removed.Ref.Id == placed.Ref.Id && session.GetDevices().Count() == 0 &&
+                refunded.Quantity == funded.Quantity && refunded.Stacks == funded.Stacks,
+            "production recycle did not remove the device and refund its materials and unused coal");
+    Click(app, ControlPoint(app, "Place devices with left click (B)"));
+    Require(!game.GetPresentation().DevicePlacementMode && inputSequence() == inputBefore &&
+                original == CopyWorldCells(session.GetWorld()), "Devices controls changed the world through leaked input");
+    Click(app, ControlPoint(app, "Devices"));
 }
 
 void CheckMemoryPanel(Axiom &app) {
@@ -284,6 +364,7 @@ void RunPixelDebugUISmoke() {
                 world.GetCell(520, 512).Type == pixel::CellTypeId::Dirt &&
                 pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory()).Quantity == 0,
             "production Debug placement did not use the action port");
+    CheckDevicesPanel(app, *pixel);
     debugWindow->StateStorage.SetInt(debugWindow->GetID("Game actions"), 0);
     debugWindow->StateStorage.SetInt(debugWindow->GetID("Environment"), 1);
     Draw(app, 2);
@@ -301,7 +382,7 @@ void RunPixelDebugUISmoke() {
     CheckMemoryPanel(app);
     app.Shutdown();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
-    std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, resize, memory collection/table, 2D-only lifecycle\n";
+    std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
 }
 
 void RunPixelFormulaUISmoke() {

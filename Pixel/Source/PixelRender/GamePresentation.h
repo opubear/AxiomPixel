@@ -14,6 +14,7 @@ class GamePresentation {
     PostProcessParameters Post;
     WindVisualSettings WindVisual;
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
+    bool DevicePlacementMode = false;
     void ToggleTint();
     void ToggleFieldView();
     // The consumer owns its snapshot. Session, camera and this object must be

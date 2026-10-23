@@ -168,6 +168,13 @@ FormulaWindResult FormulaWorldAdapter::Wind(World &world, WorldPosition position
     if (velocity.X == 0 && velocity.Y == 0)
         return FormulaWindResult::ZeroImpulse;
 
+    const auto available = WindAvailability(world, position);
+    if (available != FormulaWindResult::Applied) return available;
+    return world.AddWindImpulse(position, float(radius), {float(velocity.X), float(velocity.Y)})
+        ? FormulaWindResult::Applied : FormulaWindResult::Unavailable;
+}
+
+FormulaWindResult FormulaWorldAdapter::WindAvailability(const World &world, WorldPosition position) {
     const auto &simulation = world.GetEnvironment().GetWindSimulation();
     const auto &domain = simulation.GetDomain();
     if (!world.IsWindEnabled() || domain.Width == 0 || domain.Height == 0 || simulation.GetKind() == WindStrategyKind::Empty)
@@ -185,8 +192,7 @@ FormulaWindResult FormulaWorldAdapter::Wind(World &world, WorldPosition position
     const auto local = position.RelativeTo(domain.Origin);
     if (local[0] < 0 || local[1] < 0 || local[0] >= domain.Width || local[1] >= domain.Height)
         return FormulaWindResult::Unavailable;
-    return world.AddWindImpulse(position, float(radius), {float(velocity.X), float(velocity.Y)})
-        ? FormulaWindResult::Applied : FormulaWindResult::Unavailable;
+    return FormulaWindResult::Applied;
 }
 
 const char *FormulaWorldAdapter::WindResultName(FormulaWindResult result) {

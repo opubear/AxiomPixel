@@ -1,5 +1,6 @@
 #include "GamePresentation.h"
 #include "FormulaFrame.h"
+#include "DeviceFrame.h"
 #include "Assets/ArtAssets.h"
 #include <algorithm>
 #include <cmath>
@@ -72,6 +73,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             frame.SetSourceRegionVersion(0, 0);
             frame.Character.reset();
             frame.FormulaDraws.clear();
+            frame.DeviceDraws.clear();
             frame.HasWind = false;
             frame.MissingOutsideRegion = true;
             return;
@@ -86,6 +88,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         session.SynchronizeReadViews();
         frame.View = camera.GetView();
         frame.FormulaDraws.clear();
+        frame.DeviceDraws.clear();
         frame.SetRegion({region.X, region.Y}, region.Width, region.Height);
         frame.Post = Post;
         frame.MissingOutsideRegion = !snapshot->IsFinite();
@@ -94,6 +97,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         else {
             BuildWorldGridFrame(snapshot->ReadState(), Appearances, frame);
             BuildFormulaFrame(snapshot->Projectiles(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
+            BuildDeviceFrame(snapshot->GetDevices(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
         }
         BuildWindVisualFrame(*snapshot, WindVisual, float(std::fmod(snapshot->SimulationTime(), 2.0)), frame);
         if (snapshot->GetPlayer())

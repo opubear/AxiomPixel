@@ -326,7 +326,7 @@ void PixelRender::RecordWind(RHICommandList &commands, FrameResources &frame, co
     commands.EndPass();
     commands.TransitionTexture(*frame.WindColor, RHITextureState::FragmentSampledRead);
 }
-void PixelRender::RecordFormula(RHICommandList &commands, FrameResources &frame, std::span<const FormulaDraw> draws) {
+void PixelRender::RecordFormula(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input) {
     commands.TransitionTexture(*frame.FormulaColor, RHITextureState::ColorAttachment);
     commands.BeginColorPass(*frame.FormulaColor);
     SetFullViewport(commands);
@@ -334,23 +334,28 @@ void PixelRender::RecordFormula(RHICommandList &commands, FrameResources &frame,
     commands.BindDescriptorSet(*FormulaPipeline, frame.HasWind ? *frame.WindFormulaSet : *frame.FormulaSet, 0);
     FormulaConstants constants;
     commands.PushConstants(*FormulaPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
-    commands.DrawIndexed(6); // Copy the scene once, then preserve previous circles with discard.
-    constants.Mode[0] = 1;
-    for (const auto &draw : draws) {
-        const auto &g = draw.CenterRadius;
+    commands.DrawIndexed(6); // Copy once; subsequent opaque shapes preserve the surrounding scene.
+    const auto drawShape = [&](const std::array<float, 4> &g, const std::array<float, 4> &color, uint32_t mode) {
         const float left = std::max(0.f, std::floor(g[0] - g[2]));
         const float top = std::max(0.f, std::floor(g[1] - g[3]));
         const float right = std::min(float(Extent.Width), std::ceil(g[0] + g[2]));
         const float bottom = std::min(float(Extent.Height), std::ceil(g[1] + g[3]));
         if (right <= left || bottom <= top)
-            continue;
+            return;
         commands.SetViewport({left, top, right - left, bottom - top, 0, 1});
         commands.SetScissor({int32_t(left), int32_t(top), uint32_t(right - left), uint32_t(bottom - top)});
-        constants.CenterRadius = draw.CenterRadius;
-        constants.Color = draw.Color;
+        constants.CenterRadius = g;
+        constants.Color = color;
+        constants.Mode[0] = mode;
         commands.PushConstants(*FormulaPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
         commands.DrawIndexed(6);
+    };
+    for (const auto &device : input.DeviceDraws) {
+        drawShape(device.CenterRadius, device.Color, 2);
+        drawShape(device.OutputCenterRadius, device.OutputColor, 2);
     }
+    for (const auto &draw : input.FormulaDraws)
+        drawShape(draw.CenterRadius, draw.Color, 1);
     commands.EndPass();
     commands.TransitionTexture(*frame.FormulaColor, RHITextureState::FragmentSampledRead);
 }
@@ -390,7 +395,7 @@ void PixelRender::Draw() {
         PIXEL_PROFILE_SCOPE(Upload);
         PrepareGridUpload(frame, input);
     }
-    frame.HasFormula = !input.FormulaDraws.empty() && input.DisplayMode == GridDisplayMode::Materials;
+    frame.HasFormula = (!input.FormulaDraws.empty() || !input.DeviceDraws.empty()) && input.DisplayMode == GridDisplayMode::Materials;
     frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
         if (!MaterialsUploaded) {
@@ -407,7 +412,7 @@ void PixelRender::Draw() {
         if (frame.HasWind)
             RecordWind(commands, frame, input);
         if (frame.HasFormula)
-            RecordFormula(commands, frame, input.FormulaDraws);
+            RecordFormula(commands, frame, input);
         if (frame.HasCharacter)
             RecordCharacter(commands, frame, *input.Character);
         RecordPost(commands, frame, input.Post);

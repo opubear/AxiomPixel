@@ -18,13 +18,14 @@
 |---|---|
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
 | `Pixel/Source/GameAPI/` | 仅依赖标准库的类型化动作、回执与会话控制值 |
-| `Pixel/Source/Gameplay/` | GameSession持有世界、Actors、库存与构式实例，统一动作入口、同步去重，编排固定步与会话控制 |
+| `Pixel/Source/Gameplay/` | GameSession持有世界、Actors、库存、设备与构式实例，统一动作入口、同步去重，编排固定步与会话控制 |
 | `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore读取v2–v5、写入v5元数据、世界目录与current.txt |
 | `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
 | `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树和流式；Environment管理材料及风 |
 | `Pixel/Source/Actors/` | 玩家/Resident状态、值身份与代次句柄、只读地形碰撞与水体响应 |
 | `Pixel/Source/Items/` | 标准库物品定义、容器数量/容量、版本化转移与物料预留 |
+| `Pixel/Source/Devices/` | 有界设备集合、版本化身份、建造占用及工作状态值 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
 | `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
 | `Pixel/Source/PixelRender/` | 帧首区域快照、外观映射、每frame slot缓存及GPU上传 |
@@ -41,7 +42,9 @@
 
 角色身份与生命周期见 [Actors 合同](.awtcontext/GlobalDoc/Actors.md)：玩家已移出 World，Resident 验证第二对象的物理与生命周期；当前呈现仍仅玩家，v5 存档仍只保存既有玩家位置，多领域持久化留在 M4.6。
 
-M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，设备放置由M4.3接入。**库存尚未保存到磁盘，重启或R建新世界后为空**，持久化留M4.6，库存界面与观测留M4.7。
+M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，M4.3已接入设备放置。**库存尚未保存到磁盘，重启或R建新世界后为空**，持久化留M4.6，库存界面与观测留M4.7。
+
+M4.3 已加入[风发射器设备](.awtcontext/GlobalDoc/Devices.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2设备；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤启动一次Formula风脉冲并等待30成功tick，需Coarse风域覆盖设备中心（地表可将Wind boundary Y设为600），取消暂停或单步才工作。回收退建造物料与未用煤；背包满则拒绝整个回收。设备不提供角色/材料物理碰撞；动态材料进入时暂停工作。**设备和燃料尚未存盘**，跨区域暂停恢复也留后续任务。
 
 ## 构建和运行
 
@@ -86,7 +89,8 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | F3 | 切换自由调试相机，清理持续按键状态 |
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
 | 左键 | 消耗一份土料放置Dirt；先开采取得土料，不覆盖水或人物 |
-| 右键 / Shift＋右键 | 激活当前构式 / 开采可开采固体 |
+| 右键 / Shift＋右键 | 设备内启停 / 回收；其他位置激活当前构式 / 开采固体 |
+| B | 切换设备布置工具；开启时左键放置风发射器 |
 | F1 | 材料 / 合成力场方向视图 |
 | F2 | 显示或隐藏Pixel Debug |
 | F4 | 独立显示或隐藏Formula Editor |
@@ -96,7 +100,7 @@ Input、Debug和CPU driver的开采、放置与激活共用Session动作入口�
 
 启动和R后默认暂停。Environment的 `Pause simulation` 和 `Step 1/60 second` 控制运行；暂停冻结材料、风和动画，相机/加载仍工作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
 
-固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式一步才增加Tick，暂停编辑只增加CommitRevision，动作回执携带CommitStamp。预算等待期间呈现继续读取最后完整副本，流式加载与步首输入保持冻结；细节及后续边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
+固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式→设备一步才增加Tick，暂停编辑只增加CommitRevision，动作回执携带CommitStamp。预算等待期间呈现继续读取最后完整副本，流式加载与步首输入保持冻结；细节及后续边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
 
 `GameSession::Observe` 提供独立的有界领域投影：每个原生调用者保留一个最多64×64格范围，返回冻结材料、空气风速、玩家和构式摘要；观察不触发加载，预算等待只返回最后完整副本。动作回执关联因果事实，256条事实环在淘汰时明确报告缺口；风摘要分别报告驻留覆盖和空气样本分母。DTO与事实值库只依赖标准库。M2.5 已加入独立的 LLMView 权限、冻结分页、120服务帧租约与精确整数 JSON 接口；只读服务不加载世界，待交付数据在撤权后失效。合同、容量统计与性能入口见[有界领域观测与提交事实](.awtcontext/GlobalDoc/ObservationProjection.md)。
 
@@ -148,7 +152,7 @@ world.AddWindImpulse(100, 200, 64, {0, -120});
 
 粗NS是MAC平流/扩散/投影与有限泥土阻力；reference为逐像素MAC/PCG；程序风与Hybrid使用局部障碍模型；Adaptive是有限体积CPU原型；LBM为弱可压缩BGK并有稳定化计数。数值误差、迁移方法及适用边界见世界约定。复杂自适应、1:1和CPU LBM不承诺实时，也不实现完整移动壁面动量守恒。
 
-F1在格中心把合成速度单位方向映射为 `RGB=(.5+.5*dx, .5+.5*dy, .5)`；零向量灰色，颜色不表示强度，跳过人物、构式球与风效。普通视图顺序为世界 → 风效 → 构式球 → 人物 → 后处理 → UI。Wind appearance可选Off、Short trails、Air refraction，调可见度/折光/视觉流速不改变物理。
+F1在格中心把合成速度单位方向映射为 `RGB=(.5+.5*dx, .5+.5*dy, .5)`；零向量灰色，颜色不表示强度，跳过人物、构式球与风效。普通视图顺序为世界 → 风效 → 设备 → 构式球 → 人物 → 后处理 → UI。Wind appearance可选Off、Short trails、Air refraction，调可见度/折光/视觉流速不改变物理。
 
 发布只复制可见64格区域的变化版本，额外覆盖32格风回溯边界；每个frame slot独占动态尺寸纹理与版本。稳定材料区域不重复映射或上传；F1/外观切换、进入新区、加载/卸载及GPU重建分别失效。风纹理每分量signed16、单位1/32格/秒，固体特殊标记；shader和缓存均属于Pixel。本地引擎只增加通用纹理区域上传接口，保留整图入口。
 

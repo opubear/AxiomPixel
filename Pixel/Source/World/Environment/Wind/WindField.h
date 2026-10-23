@@ -41,6 +41,8 @@ class WindField {
     // A smooth velocity impulse; radius/position in world cells, delta in cells/s.
     // Open domains clip the impulse; periodic mode wraps it for numerical tests.
     void AddImpulse(float x, float y, float radius, WindVelocity delta);
+    // Whether a nonzero component reaches a MAC face, before velocity clamping.
+    bool ResolvesImpulse(float x, float y, float radius, WindVelocity delta) const;
     // Apply feedback once after a complete material step. No world storage is retained.
     void CoupleDirt(WorldMapView world, std::span<const DirtMotion> motion, float seconds);
     float RmsDivergence() const;
@@ -68,6 +70,7 @@ class WindField {
     bool Inflow(WindBoundarySide side) const { return IsWindInflow(side, Settings.Ambient); }
     float UFace(int x, int y) const;
     float VFace(int x, int y) const;
+    float ImpulseWeight(float x, float y, float radius, float faceX, float faceY) const;
     void PrescribeInflow();
     void ProjectOpen(std::span<const WindVelocity> mobility);
     void AccumulateDirt(uint32_t x, uint32_t y, float coverage, WindVelocity velocity);

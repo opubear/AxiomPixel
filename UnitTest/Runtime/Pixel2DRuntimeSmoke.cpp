@@ -738,8 +738,54 @@ void FormulaGameplayGpu() {
     session.Control(pixel::NativeCaller::Driver, pixel::api::ClearRunning{});
     Draw(app);
     Require(policy->PublishedFrame().FormulaDraws.empty(), "process GPU clear retained a sphere");
+    auto &inventory = pixel::testing::SessionAccess::Inventory(session);
+    const std::array cost{pixel::items::ItemAmount{pixel::items::ItemId::Stone, 4},
+                          pixel::items::ItemAmount{pixel::items::ItemId::CopperOre, 2},
+                          pixel::items::ItemAmount{pixel::items::ItemId::Coal, 1}};
+    Require(inventory.Add(inventory.Reference(session.PlayerInventory()), cost) == pixel::items::Result::Applied,
+            "device GPU fixture stock failed");
+    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::PlaceDevice{{520, 508}}).Applied(), "device GPU placement failed");
+    const auto deviceId = session.GetDevices().Snapshot().front().Ref.Id;
+    const auto currentDevice = [&] { return session.GetDevices().Find(deviceId)->Value; };
+    const auto verifyDevice = [&] {
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        const auto frame = policy->PublishedFrame();
+        Require(frame.DeviceDraws.size() == 1, "GPU publication lost device");
+        const auto &draw = frame.DeviceDraws.front();
+        const auto &scene = policy->SceneColor(token.Slot);
+        const auto pixels = ReadColor(scene);
+        const auto check = [&](const auto &bounds, const auto &color) {
+            const auto x = uint32_t(bounds[0]), y = uint32_t(bounds[1]);
+            Require(x < scene.Desc.Width && y < scene.Desc.Height, "GPU device fixture outside viewport");
+            for (size_t c = 0; c < 4; ++c)
+                Require(std::abs(int(pixels[(size_t(y) * scene.Desc.Width + x) * 4 + c]) - int(std::lround(color[c] * 255))) <= 1,
+                        "GPU device body or output color mismatch");
+        };
+        check(draw.CenterRadius, draw.Color);
+        check(draw.OutputCenterRadius, draw.OutputColor);
+    };
+    for (int slot = 0; slot < 4; ++slot) verifyDevice();
+    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::SupplyDevice{currentDevice().Ref}).Applied(), "GPU fuel failed");
+    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{600}).Applied() &&
+            session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse}).Applied() &&
+            session.Execute(pixel::NativeCaller::Input, pixel::api::SetDeviceEnabled{currentDevice().Ref, true}).Applied(),
+            "GPU device enable failed");
+    session.BeginFrame();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    input->Tick(1.f / 60);
+    Require(currentDevice().State == pixel::DeviceState::Running, "GPU device did not start");
+    verifyDevice();
+    input->GetPresentation().ToggleFieldView();
+    Draw(app);
+    Require(policy->PublishedFrame().DeviceDraws.empty() && session.GetDevices().Count() == 1, "F1 removed device state");
+    input->GetPresentation().ToggleFieldView();
+    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::RemoveDevice{currentDevice().Ref}).Applied(), "GPU device removal failed");
+    Draw(app);
+    Require(policy->PublishedFrame().DeviceDraws.empty() && session.GetFormulaRuntime().Stats().Roots == 0,
+            "GPU removal retained device or runtime");
     app.Shutdown();
-    std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize and clear\n";
+    std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize, device body/port readback and clear\n";
 }
 
 void BasicWorldGameplay() {

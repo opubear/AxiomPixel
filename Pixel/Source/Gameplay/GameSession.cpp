@@ -269,8 +269,13 @@ void GameSession::Tick(float duration, PlayerInput input) {
         Characters.Step(GameWorld.ReadState(), stepInput);
         if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
         Formulas.Step(GameWorld);
+        std::vector<FormulaEffectRecord> effects(Formulas.LastEffects().begin(), Formulas.LastEffects().end());
+        std::vector<api::DeviceChanged> changes;
+        StepDevices(effects, changes);
         const bool singleStep = Simulation.CommitStep();
-        RecordFormulaFacts();
+        RecordFormulaFacts(effects);
+        for (const auto &change : changes)
+            Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
         PublishCommit();
         if (singleStep) break;
     }
@@ -301,10 +306,11 @@ void GameSession::ReplacingWorld() {
     Observations.Reset();
     Facts.Reset(Epoch);
     Simulation = {};
-    PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = 0;
+    PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
     for (const auto &weak : ReadViews)
         if (auto view = weak.lock()) view->CommittedAt = {};
     Formulas.OnWorldReplaced();
+    Machines.Clear();
     Inventory.Clear();
     PlayerBag = Inventory.Create(4096);
     Formulas.BindPlayerInventory(Inventory, PlayerBag);

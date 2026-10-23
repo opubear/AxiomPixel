@@ -4,9 +4,78 @@
 #include "Performance/GameProfiler.h"
 #include "PixelRender/GamePresentation.h"
 #include "imgui.h"
+#include <algorithm>
 
 namespace pixel {
 namespace {
+void DrawDevices(GameSession &session, GamePresentation &presentation,
+                 std::array<int64_t, 2> &cell, uint64_t &selected) {
+    if (!ImGui::CollapsingHeader("Devices"))
+        return;
+    ImGui::Checkbox("Place devices with left click (B)", &presentation.DevicePlacementMode);
+    ImGui::TextUnformatted("Wind emitter: 2 x 2 cells, output to the right");
+    ImGui::TextUnformatted("Build: 4 stone + 2 copper ore; fuel: coal");
+    ImGui::TextWrapped("Right click: enable/disable; Shift+right: recycle");
+    ImGui::PushID("Devices");
+    ImGui::InputScalar("Cell X", ImGuiDataType_S64, &cell[0]);
+    ImGui::InputScalar("Cell Y", ImGuiDataType_S64, &cell[1]);
+    if (ImGui::Button("Place wind emitter")) {
+        session.Execute(NativeCaller::Debug, api::PlaceDevice{{cell[0], cell[1]}});
+        if (const auto *device = session.GetDevices().FindAt(cell[0], cell[1]))
+            selected = device->Value.Ref.Id;
+    }
+
+    const auto devices = session.GetDevices().Snapshot();
+    if (!session.GetDevices().Find(selected))
+        selected = devices.empty() ? 0 : devices.front().Ref.Id;
+    const auto label = selected ? "#" + std::to_string(selected) : "No devices";
+    if (ImGui::BeginCombo("Device", label.c_str())) {
+        for (const auto &device : devices) {
+            const auto item = "#" + std::to_string(device.Ref.Id) + " (" + std::to_string(device.X) + ", " + std::to_string(device.Y) + ")";
+            if (ImGui::Selectable(item.c_str(), selected == device.Ref.Id))
+                selected = device.Ref.Id;
+        }
+        ImGui::EndCombo();
+    }
+    if (const auto *record = session.GetDevices().Find(selected)) {
+        // Actions can replace/remove the record; retain only an owned value.
+        const auto device = record->Value;
+        ImGui::Text("State: %s; fuel: %u", DeviceStateName(device.State), device.Fuel);
+        ImGui::Text("Pulses: %llu; instance: %llu", static_cast<unsigned long long>(device.Pulses),
+                    static_cast<unsigned long long>(device.Instance));
+        if (ImGui::Button("Supply 1 coal"))
+            session.Execute(NativeCaller::Debug, api::SupplyDevice{device.Ref, 1});
+        ImGui::SameLine();
+        if (ImGui::Button(device.Enabled ? "Disable" : "Enable"))
+            session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device.Ref, !device.Enabled});
+        ImGui::SameLine();
+        if (ImGui::Button("Recycle"))
+            session.Execute(NativeCaller::Debug, api::RemoveDevice{device.Ref});
+    }
+    for (const auto caller : {NativeCaller::Input, NativeCaller::Debug})
+        if (const auto *receipt = session.LastAction(caller))
+            ImGui::TextWrapped("%s #%llu: %s %s", caller == NativeCaller::Input ? "Input" : "Debug",
+                static_cast<unsigned long long>(receipt->Key.Sequence), receipt->Applied() ? "Applied" : "Rejected",
+                receipt->Message.c_str());
+    ImGui::PopID();
+}
+
+void DrawDevicePlacement(const GameSession &session, const GamePresentation &presentation) {
+    if (!presentation.DevicePlacementMode)
+        return;
+    ImGui::SetNextWindowSize({std::max(200.f, std::min(520.f, ImGui::GetIO().DisplaySize.x - 32)), 0}, ImGuiCond_Always);
+    ImGui::SetNextWindowPos({16, ImGui::GetIO().DisplaySize.y - 16}, ImGuiCond_Always, {0, 1});
+    if (ImGui::Begin("Device placement", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        ImGui::TextUnformatted("DEVICE PLACEMENT (B to exit)");
+        ImGui::TextWrapped("Left click: wind emitter | Cost: 4 stone + 2 copper ore");
+        ImGui::TextWrapped("Right click device: enable/disable | Shift+right: recycle");
+        if (const auto *receipt = session.LastAction(NativeCaller::Input))
+            ImGui::TextWrapped("%s: %s", receipt->Applied() ? "Applied" : "Rejected", receipt->Message.c_str());
+    }
+    ImGui::End();
+}
+
 void DrawActions(GameSession &session, std::array<int64_t, 2> &cell) {
     if (!ImGui::CollapsingHeader("Game actions"))
         return;
@@ -143,9 +212,12 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
     if (Visible) {
         ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSizeConstraints({300, 120}, {std::max(300.f, ImGui::GetIO().DisplaySize.x - 32),
+                                                       std::max(120.f, ImGui::GetIO().DisplaySize.y - 32)});
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
             DrawGeneration(session);
             DrawActions(session, ActionCell);
+            DrawDevices(session, presentation, DeviceCell, SelectedDevice);
             DrawEnvironment(session, presentation);
             DrawWindAppearance(presentation);
             ImGui::Checkbox("Formula editor (F4)", &FormulaEditor.Visible);
@@ -162,6 +234,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
         ImGui::End();
     }
     FormulaEditor.Draw(session);
+    DrawDevicePlacement(session, presentation);
     return requestedMode;
 }
 } // namespace pixel

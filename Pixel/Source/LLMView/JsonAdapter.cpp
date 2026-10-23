@@ -96,6 +96,10 @@ Json FactCauseJson(const api::FactCause &cause) {
         [](const api::RequestKey &key) -> Json {
             return {{"kind", "request"}, {"request", RequestKeyJson(key)}};
         },
+        [](const api::DeviceCause &device) -> Json {
+            return {{"kind", "device"}, {"deviceId", std::to_string(device.DeviceId)},
+                    {"instanceId", std::to_string(device.InstanceId)}};
+        },
         [](const api::ProgramEffectCause &effect) -> Json {
             Json result{{"kind", "program_effect"}, {"instance", InstanceJson(effect.Instance)},
                         {"program", ProgramJson(effect.Program)},
@@ -113,6 +117,24 @@ Json WindConfigurationJson(const api::WindConfiguration &configuration) {
 
 Json FactPayloadJson(const api::FactPayload &payload) {
     return std::visit(Overload{
+        [](const api::DeviceChanged &value) -> Json {
+            const auto &d = value.Device;
+            const auto event = [&] {
+                switch (value.Event) {
+                case api::DeviceEvent::Placed: return "placed";
+                case api::DeviceEvent::Removed: return "removed";
+                case api::DeviceEvent::Supplied: return "supplied";
+                case api::DeviceEvent::Enabled: return "enabled";
+                case api::DeviceEvent::StateChanged: return "state_changed";
+                }
+                throw std::logic_error("unknown device event");
+            }();
+            return {{"kind", "DeviceChanged"}, {"event", event}, {"deviceId", std::to_string(d.Ref.Id)},
+                    {"version", std::to_string(d.Ref.Version)}, {"typeId", WindEmitterType},
+                    {"owner", std::to_string(d.Owner)}, {"target", CellJson({d.X, d.Y})},
+                    {"enabled", d.Enabled}, {"state", DeviceStateName(d.State)}, {"fuel", d.Fuel},
+                    {"instanceId", std::to_string(d.Instance)}, {"pulses", std::to_string(d.Pulses)}};
+        },
         [](const api::MaterialRemoved &value) -> Json {
             return {{"kind", "MaterialRemoved"}, {"target", CellJson(value.Target)},
                     {"oldMaterial", value.OldMaterial}, {"newMaterial", value.NewMaterial}};
@@ -460,6 +482,7 @@ Json ToJson(const api::ActionReceipt &receipt) {
                 {"message", receipt.Message}};
     std::visit(Overload{
         [&](const std::monostate &) {},
+        [&](const api::DeviceChanged &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::MaterialResult &value) {
             Json data{{"kind", "material"}, {"target", CellJson(value.Target)}, {"changed", value.Changed},
                       {"blocked", value.Blocked}, {"notReady", value.NotReady}};

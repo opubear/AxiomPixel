@@ -23,9 +23,11 @@ api::ObservationMetrics GameSession::ObservationStats() const {
     return result;
 }
 
-void GameSession::RecordFormulaFacts() {
+void GameSession::RecordFormulaFacts() { RecordFormulaFacts(Formulas.LastEffects()); }
+
+void GameSession::RecordFormulaFacts(std::span<const FormulaEffectRecord> effects) {
     const auto stamp = CurrentCommit();
-    for (const auto &effect : Formulas.LastEffects()) {
+    for (const auto &effect : effects) {
         api::ProgramEffectCause cause{{Epoch, effect.CastId}, {effect.ResourceId, effect.Version},
             effect.EmissionSequence, effect.ActivationRequest, {}};
         auto payload = effect.Payload;
@@ -49,6 +51,8 @@ void GameSession::RecordActionFacts(api::ActionReceipt &receipt, api::WindConfig
         RecordFormulaFacts();
     } else if (const auto *wind = std::get_if<api::WindResult>(&receipt.Result)) {
         Facts.Append(stamp, receipt.Key, api::WindConfigured{beforeWind, {wind->Kind, wind->BoundaryY}});
+    } else if (const auto *device = std::get_if<api::DeviceChanged>(&receipt.Result)) {
+        Facts.Append(stamp, receipt.Key, *device);
     } else {
         throw std::logic_error("applied action has no fact payload");
     }

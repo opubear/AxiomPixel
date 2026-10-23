@@ -3,6 +3,7 @@
 #include "FormulaBridge/FormulaBridge.h"
 #include "World/World.h"
 #include "Actors/Actors.h"
+#include "Devices/Devices.h"
 
 namespace pixel {
 // A host-owned, bounded projection refreshed only at complete commit boundaries.
@@ -21,6 +22,7 @@ class CommittedWorldView {
     uint32_t GetWindEndRow() const { return WindBounds.Height; }
     const std::optional<ActorSnapshot> &GetPlayer() const { return Player; }
     const std::vector<FormulaProjectile> &Projectiles() const { return Bolts; }
+    const std::vector<DeviceSnapshot> &GetDevices() const { return DeviceValues; }
     double SimulationTime() const { return CommittedAt.Tick / 60.0; }
     bool IsFinite() const { return Finite; }
     uint64_t ReservedBytes() const;
@@ -33,10 +35,11 @@ class CommittedWorldView {
     std::vector<WindVelocity> Air, Field;
     std::optional<ActorSnapshot> Player;
     std::vector<FormulaProjectile> Bolts;
+    std::vector<DeviceSnapshot> DeviceValues;
     api::CommitStamp CommittedAt;
     uint64_t WindVersion = 0;
     bool Finite = false;
     size_t Index(CellCoord cell) const;
-    void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, api::CommitStamp stamp);
+    void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices, api::CommitStamp stamp);
 };
 } // namespace pixel

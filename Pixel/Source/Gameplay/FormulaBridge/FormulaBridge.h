@@ -28,6 +28,10 @@ class FormulaBridge {
     api::ProgramRef AppliedProgram() const;
     bool CastCarrier(World &world, const ProcessCarrier &carrier,
                      std::optional<api::RequestKey> request = std::nullopt);
+    bool CastProcess(World &world, const formula::process::ProgramArtifact &program, api::ProgramRef identity,
+                     const ProcessCarrier &carrier, std::optional<api::RequestKey> request = std::nullopt);
+    bool HasCarrier(ProcessCarrierKind kind, uint64_t subject) const;
+    bool HasProcessWindCapacity() const;
     void CancelCarrier(ProcessCarrierKind kind, uint64_t subject);
     void WakeCarrier(ProcessCarrierKind kind, uint64_t subject);
     ProcessHostStats ProcessStats() const;

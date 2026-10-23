@@ -190,6 +190,36 @@ void FormulaInputAndContinuousAim() {
             "continuous old-size event lost distant fractional aim");
     Require(!f.Camera.PickWorldPosition({{800, 300}, {800, 600}, {800, 600}}), "outside continuous aim accepted");
 }
+
+void DeviceInput() {
+    Fixture f;
+    auto &inventory = pixel::testing::SessionAccess::Inventory(f.Session);
+    const std::array resources{pixel::items::ItemAmount{pixel::items::ItemId::Stone, 4},
+                               pixel::items::ItemAmount{pixel::items::ItemId::CopperOre, 2},
+                               pixel::items::ItemAmount{pixel::items::ItemId::Soil, 1}};
+    Require(inventory.Add(inventory.Reference(f.Session.PlayerInventory()), resources) == pixel::items::Result::Applied,
+            "device input fixture could not add building resources");
+    f.Camera.GetCamera().SetPosition({100, 100});
+    const MousePointerState target{{400, 300}, {800, 600}, {800, 600}};
+    const MousePointerState body{{416, 316}, {800, 600}, {800, 600}};
+    f.KeyEvent(Key::KEY_B);
+    f.KeyEvent(Key::KEY_B, ButtonAction::ACTION_REPEAT);
+    f.KeyEvent(Key::KEY_B, ButtonAction::ACTION_RELEASE);
+    Require(f.Presentation.DevicePlacementMode, "B must toggle placement once per press");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, target);
+    Require(f.Session.GetDevices().Count() == 1 && f.Session.LastAction(pixel::NativeCaller::Input)->Applied(),
+            "build mode left click did not place a device");
+    const auto device = f.Session.GetDevices().Snapshot().front();
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, body);
+    Require(f.Session.GetDevices().Snapshot().front().Enabled != device.Enabled &&
+                f.Session.GetFormulaRuntime().Projectiles().empty(), "device body right click did not toggle exclusively");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), body);
+    Require(f.Session.GetDevices().Count() == 0, "Shift+right click did not recycle device");
+    f.KeyEvent(Key::KEY_B);
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, target);
+    Require(!f.Presentation.DevicePlacementMode && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Dirt,
+            "leaving build mode did not restore material placement");
+}
 } // namespace
 int main() {
     try {
@@ -198,6 +228,7 @@ int main() {
         PendingResetKeepsView();
         MouseEditing();
         FormulaInputAndContinuousAim();
+        DeviceInput();
         std::cout << "Pixel input behavior passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

@@ -38,7 +38,7 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
     if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.RequestVisibleRegion(bounds);
     SynchronizeReadViews();
-    view.Update(GameWorld, Characters, Formulas, CurrentCommit());
+    view.Update(GameWorld, Characters, Formulas, Machines, CurrentCommit());
     GameWorld.SetPublicationBytes(&view, std::max(reserve, view.ReservedBytes()));
 }
 
@@ -47,13 +47,14 @@ void GameSession::PublishCommit() {
     Observations.Publish(GameWorld, Characters, Formulas, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
-            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, CurrentCommit());
+            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, CurrentCommit());
             ++it;
         } else {
             it = ReadViews.erase(it);
         }
     }
     PublishedActorVersion = Characters.Revision();
+    PublishedDeviceVersion = Machines.Revision();
     PublishedMapVersion = GameWorld.GetMap().GetVersion();
     PublishedWindVersion = GameWorld.GetEnvironment().GetWindSimulation().GetRevision();
 }
@@ -65,7 +66,8 @@ void GameSession::CommitChange() {
 
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
-    if (PublishedActorVersion != Characters.Revision()
+    if (PublishedDeviceVersion != Machines.Revision()
+        || PublishedActorVersion != Characters.Revision()
         || PublishedMapVersion != GameWorld.GetMap().GetVersion()
         || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision())
         CommitChange();

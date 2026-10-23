@@ -234,12 +234,16 @@ void FormulaBridge::ApplyProcess(const formula::process::ProgramArtifact &progra
 api::ProgramRef FormulaBridge::AppliedProgram() const { return {Data->ActiveProcess ? 2u : 1u, Data->Version}; }
 
 bool FormulaBridge::CastCarrier(World &world, const ProcessCarrier &carrier, std::optional<api::RequestKey> request) {
+    if (!Data->ActiveProcess) return Data->Reject("ProcessProgramRequired");
+    return CastProcess(world, *Data->ActiveProcess, AppliedProgram(), carrier, request);
+}
+bool FormulaBridge::CastProcess(World &world, const formula::process::ProgramArtifact &program, api::ProgramRef identity,
+                               const ProcessCarrier &carrier, std::optional<api::RequestKey> request) {
     Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget()) return Data->Reject("WaitingForBudget");
-    if (!Data->ActiveProcess) return Data->Reject("ProcessProgramRequired");
     if (Data->Accepted >= MaxActivations || Data->Statistics().Roots >= MaxRoots) return Data->Reject("ProcessActivationLimit");
     if (Data->NextCast == UINT64_MAX) throw std::overflow_error("formula activation identity exhausted");
-    if (!Data->Processes.Start(*Data->ActiveProcess, Data->NextCast, Data->Version, carrier, world, request, Data->Error))
+    if (!Data->Processes.Start(program, Data->NextCast, identity.Version, carrier, world, request, Data->Error, identity.ResourceId))
         return Data->Reject(Data->Error);
     ++Data->NextCast;
     ++Data->Accepted;
@@ -248,6 +252,8 @@ bool FormulaBridge::CastCarrier(World &world, const ProcessCarrier &carrier, std
     Data->Refresh();
     return true;
 }
+bool FormulaBridge::HasCarrier(ProcessCarrierKind kind, uint64_t subject) const { return Data->Processes.HasCarrier(kind, subject); }
+bool FormulaBridge::HasProcessWindCapacity() const { return Data->Processes.HasWindCapacity(); }
 void FormulaBridge::CancelCarrier(ProcessCarrierKind kind, uint64_t subject) {
     Data->EffectCount = 0;
     Data->Processes.CancelCarrier(kind, subject);

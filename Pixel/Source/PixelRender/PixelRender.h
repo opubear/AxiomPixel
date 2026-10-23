@@ -28,6 +28,9 @@ class PixelRender final : public RenderPolicyInterface {
     pixel::performance::MemoryUsage FormulaPresentationMemory() const {
         return Published ? Published->GetFormulaMemoryUsage() : pixel::performance::MemoryUsage{};
     }
+    pixel::performance::MemoryUsage DevicePresentationMemory() const {
+        return Published ? Published->GetDeviceMemoryUsage() : pixel::performance::MemoryUsage{};
+    }
     uint64_t FormulaTargetBytes() const { return uint64_t(Extent.Width) * Extent.Height * 4 * Frames.size(); }
     const RHITexture &SceneColor(uint32_t slot) const;
     const RHITexture &WorldColor(uint32_t slot) const;
@@ -77,7 +80,7 @@ class PixelRender final : public RenderPolicyInterface {
     void PrepareGridUpload(FrameResources &frame, const WorldGridFrameView &input);
     void RecordWorld(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input);
     void RecordWind(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input);
-    void RecordFormula(RHICommandList &commands, FrameResources &frame, std::span<const FormulaDraw> draws);
+    void RecordFormula(RHICommandList &commands, FrameResources &frame, const WorldGridFrameView &input);
     void RecordCharacter(RHICommandList &commands, FrameResources &frame, const CharacterDraw &character);
     void RecordPost(RHICommandList &commands, FrameResources &frame, const PostProcessParameters &parameters);
     void SetFullViewport(RHICommandList &commands);

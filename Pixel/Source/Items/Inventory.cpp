@@ -23,6 +23,10 @@ ContainerId Inventory::Create(uint32_t capacity) {
     return id;
 }
 void Inventory::Clear() { Reservations.clear(); Containers.clear(); }
+void Inventory::Destroy(ContainerId id) {
+    if (Containers.at(id).Quantity != 0) throw std::logic_error("destroying nonempty inventory");
+    Containers.erase(id);
+}
 ContainerSnapshot Inventory::Inspect(ContainerId id) const {
     const auto &container = Containers.at(id);
     ContainerSnapshot snapshot{{id, container.Version}, container.Capacity, container.Quantity};

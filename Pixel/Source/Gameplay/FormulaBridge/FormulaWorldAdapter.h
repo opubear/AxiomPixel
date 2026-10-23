@@ -25,6 +25,7 @@ class FormulaWorldAdapter {
     static FormulaDigResult Dig(World &world, WorldPosition position, double radius,
                                 const std::optional<MiningCollector> &collector = std::nullopt);
     static FormulaWindResult Wind(World &world, WorldPosition position, double radius, formula::Vec2 velocity);
+    static FormulaWindResult WindAvailability(const World &world, WorldPosition position);
     static const char *WindResultName(FormulaWindResult result);
     static WorldPosition Offset(WorldPosition anchor, formula::Vec2 displacement);
 };
