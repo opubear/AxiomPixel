@@ -1,5 +1,6 @@
 #pragma once
 #include "Actions.h"
+#include "Ecology/ForceGarden.h"
 #include <string_view>
 #include <vector>
 
@@ -58,6 +59,7 @@ struct GameplayObservation {
     std::vector<DeviceObservation> Devices;
     std::vector<ProcessObservation> Processes;
     std::vector<FieldSourceObservation> FieldSources;
+    std::optional<ForceGardenObservation> Garden;
     uint64_t RetainedBytes() const;
 };
 } // namespace pixel::api

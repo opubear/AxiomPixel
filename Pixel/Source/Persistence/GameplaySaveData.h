@@ -1,6 +1,7 @@
 #pragma once
 #include "Actors/Actors.h"
 #include "Devices/Devices.h"
+#include "Ecology/ForceGarden.h"
 #include "World/Environment/FieldSources.h"
 #include <string>
 #include <string_view>
@@ -17,6 +18,7 @@ struct GameplaySaveData {
     DevicesState Devices;
     FieldSourcesState FieldSources;
     std::string Programs;
+    ForceGardenState Garden;
 };
 std::string EncodeGameplayState(const GameplaySaveData &state);
 GameplaySaveData DecodeGameplayState(std::string_view payload);

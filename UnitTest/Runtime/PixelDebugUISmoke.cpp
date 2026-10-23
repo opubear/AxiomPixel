@@ -4,6 +4,7 @@
 #include "HAL/Platform/PlatformInterface.h"
 #include "InputManager.h"
 #include "Application/PixelGame.h"
+#include "Gameplay/Home/ForceGardenProgram.h"
 #include "Render/RenderGlobalContext.h"
 #include "SystemEnum.h"
 #include "DebugUI/ImguiManager.h"
@@ -91,8 +92,12 @@ ImVec2 ControlPoint(Axiom &app, const char *label, const char *owner = "Pixel De
     // while locating controls, then restore production settings before clicking.
     const auto originalFlags = context.IO.ConfigFlags;
     context.IO.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    const auto padding = ImGui::GetStyle().WindowPadding;
-    Click(app, {window->Pos.x + padding.x / 2, window->Pos.y + window->TitleBarHeight + padding.y / 2});
+    // Focus is fixture setup. Clicking a presumed empty padding strip can
+    // collapse a scrolled header, and title clicks can enter menu navigation.
+    // Locate the production item with Tab, then activate it with a real click.
+    ImGui::ClearActiveID();
+    ImGui::FocusWindow(window);
+    ImGui::NavInitWindow(window, true);
     for (int attempt = 0; attempt < 128; ++attempt) {
         if (context.NavWindow == window && context.NavId == id && context.NavIdIsAlive) {
             const auto rect = ImGui::WindowRectRelToAbs(window, window->NavRectRel[ImGuiNavLayer_Main]);
@@ -477,6 +482,112 @@ void RunPixelDebugUISmoke() {
     app.Shutdown();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
     std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
+}
+
+void RunPixelGardenUISmoke() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *pixel = game.get();
+    PixelSmokeApplication app(std::move(game), {true});
+    app.Initialize();
+    app.Begin();
+    Draw(app, 3);
+    auto *editor = ImGui::FindWindowByName("Formula Editor");
+    editor->Collapsed = true;
+    auto *window = ImGui::FindWindowByName("Pixel Debug");
+    for (const char *header : {"World generation", "Environment", "Wind appearance", "Game actions", "Devices"})
+        window->StateStorage.SetInt(window->GetID(header), 0);
+    window->StateStorage.SetInt(window->GetID("Force garden"), 1);
+    Draw(app, 2);
+    auto &session = pixel->GetSession();
+    const auto oldEpoch = session.CurrentCommit().WorldEpoch;
+    Click(app, ControlPoint(app, "Save and create force garden"));
+    const auto initial = *pixel->GetPresentation().PublishedGameplay();
+    Require(initial.Garden && initial.Stamp.WorldEpoch != oldEpoch && initial.Garden->State.Enabled,
+            "garden create UI did not replace the world and publish the scene");
+    const auto surface = initial.Garden->State.SurfaceY;
+    const auto initialText = CaptureUiText(app);
+    RequireUiText(initialText.find("Wild bed (484,") != std::string::npos &&
+            initialText.find("Home bed (540,") != std::string::npos &&
+            initialText.find("cells/s^2") != std::string::npos &&
+            initialText.find("Needs rightward force") != std::string::npos &&
+            initialText.find("Create garden: Applied.") != std::string::npos,
+            "garden UI omitted coordinates, measured units, condition or creation receipt", initialText);
+    Click(app, ControlPoint(app, "Apply crystal program"));
+    Require(session.GetFormulaRuntime().ActiveProcess() &&
+            session.GetFormulaRuntime().ActiveProcess()->Source() == pixel::ForceGardenSource,
+            "garden Apply did not install the natural crystal program");
+    // Position the player as a fixture, then exercise the actual platform input
+    // and GameInput aiming path. Activation must remain player-local.
+    pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromAbsolute(535, double(surface - 4)));
+    pixel::testing::SessionAccess::CommitFixtureChanges(session);
+    SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
+    SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
+    auto view = pixel->GetView();
+    view.WorldOriginCells = {520, surface - 20};
+    view.OriginPixels = {};
+    view.CellSizePixels = {8, 8};
+    pixel->SetView(view);
+    int ww, wh, fw, fh;
+    auto *platform = app.Engine->GetPlatform();
+    glfwGetWindowSize(platform->GetWindows(), &ww, &wh);
+    platform->GetFramebufferSize(fw, fh);
+    ClickButton(app, {float(20 * 8) * ww / fw, float(16 * 8) * wh / fh}, GLFW_MOUSE_BUTTON_RIGHT);
+    const auto *activation = session.LastAction(pixel::NativeCaller::Input);
+    Require(activation && activation->Applied() && std::holds_alternative<pixel::api::ActivationResult>(activation->Result),
+            "real garden right click did not activate the applied crystal program");
+    session.BeginFrame();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    pixel->Tick(1.f / 60);
+    Draw(app);
+    const auto playerGarden = *pixel->GetPresentation().PublishedGameplay();
+    Require(playerGarden.Garden->State.HomeGrowth > 0 &&
+            std::any_of(playerGarden.Processes.begin(), playerGarden.Processes.end(), [](const auto &process) {
+                return process.Carrier == pixel::api::CarrierKind::Player;
+            }), "player crystal program did not improve the home bed through real input");
+    SendKey(app, GLFW_KEY_F1, true); SendKey(app, GLFW_KEY_F1, false);
+    Require(pixel->GetPresentation().DisplayMode == GridDisplayMode::ForceField &&
+            pixel->GetPresentation().PublishedGameplay()->Garden->State.HomeGrowth == playerGarden.Garden->State.HomeGrowth,
+            "real F1 input did not preserve garden progress");
+    SendKey(app, GLFW_KEY_F1, true); SendKey(app, GLFW_KEY_F1, false);
+    SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
+    // The powered reproduction starts in a fresh garden, so its progress cannot
+    // be supplied by the earlier temporary player field.
+    Click(app, ControlPoint(app, "Save and create force garden"));
+    Click(app, ControlPoint(app, "Mine build materials"));
+    Click(app, ControlPoint(app, "Mine 16 coal"));
+    const auto &world = session.GetWorld();
+    for (int64_t x = 516; x < 538; ++x)
+        Require(world.GetCell(x, surface + 2).Type == pixel::CellTypeId::Air,
+                "garden supply button did not mine the actual deposit row");
+    Require(session.GetInventory().Inspect(session.PlayerInventory()).Quantity == 22,
+            "garden mining did not collect the finite construction and fuel stock");
+    Click(app, ControlPoint(app, "Build home emitter"));
+    Require(session.GetDevices().Count() == 1 && session.GetInventory().Inspect(session.PlayerInventory()).Quantity == 16,
+            "garden emitter construction did not consume four stone and two copper ore");
+    Click(app, ControlPoint(app, "Supply home 8 coal"));
+    Require(session.GetInventory().Inspect(session.PlayerInventory()).Quantity == 8,
+            "garden fuel button did not transfer eight real coal");
+    Click(app, ControlPoint(app, "Enable home emitter"));
+    session.BeginFrame();
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "garden UI step failed");
+    pixel->Tick(1.f / 60);
+    Draw(app);
+    const auto running = *pixel->GetPresentation().PublishedGameplay();
+    Require(running.Garden->Home.Condition == pixel::GardenCondition::Growing && running.Garden->State.HomeGrowth > 0,
+            "garden UI emitter did not provide a growing home environment");
+    const auto frozen = CaptureUiText(app, [&] {
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::ClearRunning{}).Succeeded(), "late garden clear failed");
+    });
+    RequireUiText(pixel->GetPresentation().PublishedGameplay()->Stamp == running.Stamp &&
+            frozen.find("disabled by Clear running") == std::string::npos &&
+            frozen.find("Growing: air, support and force are suitable.") != std::string::npos,
+            "garden UI read live state newer than the published world frame", frozen);
+    const auto stopped = CaptureUiText(app);
+    RequireUiText(stopped.find("disabled by Clear running") != std::string::npos &&
+            stopped.find("Needs rightward force") != std::string::npos,
+            "garden UI retained stale source status after the next publication", stopped);
+    app.Shutdown();
+    std::cout << "Garden ImGui passed: create, exact program Apply, real mining/build/fuel/enable, measured growth, receipts and frozen publication\n";
 }
 
 void RunPixelFormulaUISmoke() {

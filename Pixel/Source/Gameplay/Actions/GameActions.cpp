@@ -252,29 +252,44 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             const auto reason = WriteRejection();
             if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
             const bool changed = Formulas.Stats().Roots != 0;
+            const bool crystalStopped = Garden.Enabled && Garden.CrystalEnabled;
+            if (crystalStopped) Garden.CrystalEnabled = false;
             Formulas.Clear(GameWorld);
             const auto stopped = StopDevices();
-            if (changed || !stopped.empty()) {
+            if (changed || crystalStopped || !stopped.empty()) {
                 Simulation.CommitChange();
                 for (const auto &change : stopped)
                     Facts.Append(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, 0}, change);
                 PublishCommit();
             }
-        } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld> || std::is_same_v<T, api::RecoverWorld>) {
+        } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld>
+                             || std::is_same_v<T, api::CreateForceGarden> || std::is_same_v<T, api::RecoverWorld>) {
             if constexpr (!std::is_same_v<T, api::RecoverWorld>) {
                 if (!Ready) return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
                 if (Simulation.HasPendingStep())
                     return {api::ControlStatus::Deferred, api::Reason::WaitingForBudget,
                             "Save/reset deferred: simulation is waiting for storage budget. The session stays open; resolve the budget shortage, finish the step, then retry."};
             }
+            if constexpr (std::is_same_v<T, api::CreateForceGarden>) {
+                if (Store && StreamConfiguration.WindowEdge < 128)
+                    return {api::ControlStatus::Rejected, api::Reason::LimitExceeded,
+                            "Force garden requires a simulation window of at least 128 cells."};
+            }
             const bool success = [&] {
                 if constexpr (std::is_same_v<T, api::SaveWorld>) return TrySave();
                 else if constexpr (std::is_same_v<T, api::ResetWorld>) return TryReset();
+                else if constexpr (std::is_same_v<T, api::CreateForceGarden>) {
+                    CreateGardenOnReset = true;
+                    const bool created = TryReset();
+                    CreateGardenOnReset = false;
+                    return created;
+                }
                 else return TryRecover();
             }();
             if (!success) return {api::ControlStatus::Failed, api::Reason::StorageFailure, SaveError};
             if constexpr (std::is_same_v<T, api::SaveWorld>) return {api::ControlStatus::Saved};
-            if constexpr (std::is_same_v<T, api::ResetWorld>) return {api::ControlStatus::Replaced};
+            if constexpr (std::is_same_v<T, api::ResetWorld> || std::is_same_v<T, api::CreateForceGarden>)
+                return {api::ControlStatus::Replaced};
         } else if constexpr (std::is_same_v<T, api::SetNextGenerator>) {
             if (value.Kind != api::GeneratorKind::Flat && value.Kind != api::GeneratorKind::Natural)
                 return {api::ControlStatus::Rejected, api::Reason::Unsupported, "Unsupported"};
@@ -296,7 +311,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
         return {api::ControlStatus::Applied};
     }, control);
     if (std::holds_alternative<api::SaveWorld>(control) || std::holds_alternative<api::ResetWorld>(control)
-        || std::holds_alternative<api::RecoverWorld>(control))
+        || std::holds_alternative<api::CreateForceGarden>(control) || std::holds_alternative<api::RecoverWorld>(control))
         PersistenceResult = result;
     return result;
 }

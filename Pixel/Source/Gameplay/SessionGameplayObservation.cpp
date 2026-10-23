@@ -32,6 +32,9 @@ api::InventoryObservation ObserveContainer(const items::Inventory &inventory, it
 void GameSession::PublishGameplayObservation() {
     api::GameplayObservation result;
     result.Stamp = CurrentCommit();
+    if (Garden.Enabled)
+        result.Garden = ForceGardenObservation{Garden, SampleGarden(GardenWildX, Garden.WildGrowth),
+                                                     SampleGarden(GardenHomeX, Garden.HomeGrowth)};
     if (const auto player = Characters.PlayerSnapshot())
         result.Inventories.push_back(ObserveContainer(Inventory, PlayerBag, player->Id.Value, 0,
             ActionPosition(player->GetWorldPosition())));

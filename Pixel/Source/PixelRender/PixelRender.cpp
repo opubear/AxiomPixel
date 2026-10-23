@@ -354,6 +354,8 @@ void PixelRender::RecordFormula(RHICommandList &commands, FrameResources &frame,
         drawShape(device.CenterRadius, device.Color, 2);
         drawShape(device.OutputCenterRadius, device.OutputColor, 2);
     }
+    for (const auto &draw : input.GardenDraws)
+        drawShape(draw.CenterRadius, draw.Color, draw.Ellipse ? 1 : 2);
     for (const auto &draw : input.FormulaDraws)
         drawShape(draw.CenterRadius, draw.Color, 1);
     commands.EndPass();
@@ -395,7 +397,7 @@ void PixelRender::Draw() {
         PIXEL_PROFILE_SCOPE(Upload);
         PrepareGridUpload(frame, input);
     }
-    frame.HasFormula = (!input.FormulaDraws.empty() || !input.DeviceDraws.empty()) && input.DisplayMode == GridDisplayMode::Materials;
+    frame.HasFormula = (!input.FormulaDraws.empty() || !input.DeviceDraws.empty() || !input.GardenDraws.empty()) && input.DisplayMode == GridDisplayMode::Materials;
     frame.HasCharacter = input.Character.has_value() && input.DisplayMode == GridDisplayMode::Materials;
     RHI.RecordFrame([&](RHICommandList &commands) {
         if (!MaterialsUploaded) {

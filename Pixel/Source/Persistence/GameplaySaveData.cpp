@@ -37,7 +37,7 @@ WorldPosition ReadPosition(std::istream &in) {
 std::string EncodeGameplayState(const GameplaySaveData &state) {
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<double>::max_digits10);
-    out << "PixelGameplay 1\n" << state.Tick << ' ' << state.Revision << ' ' << state.PlayerBag.Value
+    out << "PixelGameplay 2\n" << state.Tick << ' ' << state.Revision << ' ' << state.PlayerBag.Value
         << ' ' << state.LastAim[0] << ' ' << state.LastAim[1] << '\n';
     out << state.Actors.NextId << ' ' << state.Actors.Records.size() << '\n';
     for (const auto &actor : state.Actors.Records) {
@@ -71,6 +71,8 @@ std::string EncodeGameplayState(const GameplaySaveData &state) {
             << s.Spec.Lifetime << ' ' << s.Remaining << ' ' << s.Suspended << '\n';
     }
     out << std::quoted(state.Programs) << '\n';
+    out << state.Garden.Enabled << ' ' << state.Garden.CrystalEnabled << ' ' << state.Garden.SurfaceY << ' '
+        << state.Garden.WildGrowth << ' ' << state.Garden.HomeGrowth << '\n';
     return out.str();
 }
 
@@ -80,7 +82,7 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
     std::string magic;
     unsigned version = 0;
     ReadAll(in, magic, version);
-    if (magic != "PixelGameplay" || version != 1) throw WorldStorageError("unsupported gameplay checkpoint");
+    if (magic != "PixelGameplay" || (version != 1 && version != 2)) throw WorldStorageError("unsupported gameplay checkpoint");
     GameplaySaveData state;
     ReadAll(in, state.Tick, state.Revision, state.PlayerBag.Value, state.LastAim[0], state.LastAim[1]);
     if (!state.Revision || state.Revision == UINT64_MAX || state.Tick == UINT64_MAX
@@ -128,6 +130,14 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
         ReadAll(in, s.Spec.Radius, s.Spec.Acceleration.X, s.Spec.Acceleration.Y, s.Spec.Lifetime, s.Remaining, s.Suspended);
     }
     if (!(in >> std::quoted(state.Programs)) || state.Programs.empty()) throw WorldStorageError("missing program checkpoint");
+    if (version >= 2) {
+        auto &garden = state.Garden;
+        ReadAll(in, garden.Enabled, garden.CrystalEnabled, garden.SurfaceY, garden.WildGrowth, garden.HomeGrowth);
+        if (garden.SurfaceY < INT64_MIN + 32 || garden.SurfaceY > INT64_MAX - 32
+            || garden.WildGrowth > GardenMatureSteps || garden.HomeGrowth > GardenMatureSteps
+            || (!garden.Enabled && (garden.WildGrowth || garden.HomeGrowth)))
+            throw WorldStorageError("invalid force garden checkpoint");
+    }
     in >> std::ws;
     if (!in.eof()) throw WorldStorageError("unexpected gameplay checkpoint data");
     return state;

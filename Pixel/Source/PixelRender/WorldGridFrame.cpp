@@ -91,7 +91,7 @@ bool WorldGridFrame::PrepareWindRegionVersions(uint64_t revision) {
 }
 
 pixel::performance::MemoryUsage WorldGridFrame::GetMemoryUsage() const {
-    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive);
+    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive, GardenDraws);
 }
 
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
@@ -161,6 +161,8 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
         validateShape(draw.CenterRadius, draw.Color);
         validateShape(draw.OutputCenterRadius, draw.OutputColor);
     }
+    for (const auto &draw : frame.GardenDraws)
+        validateShape(draw.CenterRadius, draw.Color);
     switch (frame.DisplayMode) {
     case GridDisplayMode::Materials:
         if (std::any_of(frame.Cells.begin(), frame.Cells.end(), [layers](uint32_t id) {

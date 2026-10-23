@@ -123,6 +123,12 @@ class GameSession : public api::ObservationSource {
     DeviceState DeviceEnvironment(const DeviceSnapshot &device) const;
     std::vector<api::DeviceChanged> SynchronizeDeviceActivity();
     void StepDevices(std::vector<FormulaEffectRecord> &effects, std::vector<api::DeviceChanged> &changes);
+    void InitializeForceGarden();
+    void StartGardenCrystal(std::vector<FormulaEffectRecord> &effects);
+    void StepForceGarden(std::vector<FormulaEffectRecord> &effects);
+    GardenSample SampleGarden(int64_t x, uint32_t growth) const;
+    ForceGardenState Garden;
+    bool CreateGardenOnReset = false;
     std::vector<api::DeviceChanged> StopDevices();
     World GameWorld{WorldWidth, WorldHeight};
     Actors Characters;

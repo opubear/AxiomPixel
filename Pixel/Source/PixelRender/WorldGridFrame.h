@@ -71,6 +71,14 @@ struct DeviceDraw {
     std::array<float, 4> OutputColor{1, 1, 1, 1};
     uint64_t DeviceId = 0;
 };
+enum class GardenObject { Crystal, WildPlant, HomePlant };
+// Garden geometry shares the opaque scene compositor, not projectile identity.
+struct GardenDraw {
+    std::array<float, 4> CenterRadius{};
+    std::array<float, 4> Color{};
+    GardenObject Object = GardenObject::Crystal;
+    bool Ellipse = false;
+};
 struct WorldGridFrameView {
     // Material layer IDs plus surface/strip bits, or packed linear RGB8 in ForceField mode.
     std::span<const uint32_t> Cells;
@@ -89,6 +97,7 @@ struct WorldGridFrameView {
     bool MissingOutsideRegion = false;
     std::span<const FormulaDraw> FormulaDraws;
     std::span<const DeviceDraw> DeviceDraws;
+    std::span<const GardenDraw> GardenDraws;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
@@ -106,7 +115,7 @@ class WorldGridFrame {
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
     std::span<uint32_t> WindCells() { return WindStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws}; }
     void SetRegion(std::array<int64_t, 2> origin, uint32_t width, uint32_t height);
     uint32_t GetWidth() const { return Width; }
     uint32_t GetHeight() const { return Height; }
@@ -150,6 +159,7 @@ class WorldGridFrame {
     bool MissingOutsideRegion = false;
     std::vector<FormulaDraw> FormulaDraws;
     std::vector<DeviceDraw> DeviceDraws;
+    std::vector<GardenDraw> GardenDraws;
 
   private:
     std::vector<uint32_t> CellStorage, WindStorage;

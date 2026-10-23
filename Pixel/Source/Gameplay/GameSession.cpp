@@ -95,6 +95,7 @@ void GameSession::InitializeScene() {
     WindStrategySettings wind;
     wind.Kind = WindKind;
     GameWorld.ConfigureWindDomain(generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88), wind);
+    if (CreateGardenOnReset) InitializeForceGarden();
 }
 
 void GameSession::Reset() {
@@ -301,6 +302,7 @@ void GameSession::Tick(float duration, PlayerInput input) {
         std::vector<FormulaEffectRecord> effects(Formulas.LastEffects().begin(), Formulas.LastEffects().end());
         std::vector<api::DeviceChanged> changes;
         StepDevices(effects, changes);
+        StepForceGarden(effects);
         const bool singleStep = Simulation.CommitStep();
         RecordFormulaFacts(effects);
         for (const auto &change : changes)
@@ -341,6 +343,7 @@ void GameSession::ReplacingWorld() {
         if (auto view = weak.lock()) view->CommittedAt = {};
     Formulas.OnWorldReplaced(GameWorld);
     Machines.Clear();
+    Garden = {};
     Inventory.Clear();
     PlayerBag = Inventory.Create(4096);
     Formulas.BindPlayerInventory(Inventory, PlayerBag);

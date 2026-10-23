@@ -835,6 +835,99 @@ void FormulaGameplayGpu() {
     std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize, device body/port and sustained field install/remove readback\n";
 }
 
+void ForceGardenGameplayGpu() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *input = game.get();
+    input->SetControlMode(PixelGame::ControlMode::DebugCamera);
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
+        policy = result.get();
+        return result;
+    };
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize();
+    app.Begin();
+    auto &session = input->GetSession();
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::CreateForceGarden{}).Succeeded(), "GPU garden creation failed");
+    Draw(app);
+    const auto surface = input->GetPresentation().PublishedGameplay()->Garden->State.SurfaceY;
+    int width, height;
+    app.Engine->GetPlatform()->GetFramebufferSize(width, height);
+    auto view = input->GetView();
+    const auto scale = uint32_t(std::max(1, std::min(width / 100, height / 40)));
+    view.CellSizePixels = {scale, scale};
+    view.WorldOriginCells = {460, surface - 20};
+    view.OriginPixels = {};
+    input->SetView(view);
+    const auto verifyGarden = [&](const char *name, bool mature) {
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        const auto frame = policy->PublishedFrame();
+        const auto &gameplay = input->GetPresentation().PublishedGameplay();
+        Require(gameplay && gameplay->Garden && gameplay->Stamp == session.CurrentCommit(),
+                "garden geometry and UI were not published from the committed scene");
+        Require(frame.GardenDraws.size() == (mature ? 11 : 9), "garden crystal or plant geometry is missing");
+        const auto &scene = policy->SceneColor(token.Slot);
+        const auto pixels = ReadColor(scene);
+        for (const auto object : {GardenObject::Crystal, GardenObject::WildPlant, GardenObject::HomePlant}) {
+            const auto part = std::find_if(frame.GardenDraws.rbegin(), frame.GardenDraws.rend(),
+                [&](const auto &draw) { return draw.Object == object; });
+            Require(part != frame.GardenDraws.rend(), "garden object has no visible geometry");
+            const auto x = uint32_t(part->CenterRadius[0]), y = uint32_t(part->CenterRadius[1]);
+            Require(x < scene.Desc.Width && y < scene.Desc.Height, "garden readback point is outside viewport");
+            for (size_t c = 0; c < 4; ++c)
+                Require(std::abs(int(pixels[(size_t(y) * scene.Desc.Width + x) * 4 + c]) - int(std::lround(part->Color[c] * 255))) <= 1,
+                        "GPU garden geometry did not survive scene composition");
+        }
+        if (const char *directory = std::getenv("PIXEL_GARDEN_CAPTURE_DIR")) {
+            std::filesystem::create_directories(directory);
+            std::ofstream file(std::filesystem::path(directory) / name, std::ios::binary);
+            file << "P6\n" << scene.Desc.Width << ' ' << scene.Desc.Height << "\n255\n";
+            for (size_t i = 0; i < pixels.size(); i += 4)
+                for (size_t c = 0; c < 3; ++c) {
+                    const float linear = pixels[i + c] / 255.f;
+                    file.put(char(uint8_t(std::lround(255 * (linear <= .0031308f ? 12.92f * linear
+                        : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f)))));
+                }
+        }
+    };
+    for (int slot = 0; slot < 4; ++slot) verifyGarden("garden-seedlings.ppm", false);
+    for (int64_t x = 516; x < 530; ++x)
+        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{x, surface + 2}, {}}).Applied(),
+                "GPU garden mining failed");
+    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::PlaceDevice{{pixel::GardenDeviceX, surface - 2}}).Applied(),
+            "GPU garden emitter construction failed");
+    auto device = session.GetDevices().Snapshot().front();
+    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SupplyDevice{device.Ref, 8}).Applied(), "GPU garden coal supply failed");
+    device = session.GetDevices().Snapshot().front();
+    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SetDeviceEnabled{device.Ref, true}).Applied(), "GPU garden enable failed");
+    for (uint32_t step = 0; step < pixel::GardenMatureSteps; ++step) {
+        session.BeginFrame();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "GPU garden step rejected");
+        session.Tick(1.f / 60, {});
+    }
+    for (int slot = 0; slot < 4; ++slot) verifyGarden("garden-mature.ppm", true);
+    const auto matureState = input->GetPresentation().PublishedGameplay()->Garden->State;
+    Require(matureState.WildGrowth == pixel::GardenMatureSteps && matureState.HomeGrowth == pixel::GardenMatureSteps,
+            "GPU mature geometry did not reflect successful ecology steps");
+    input->GetPresentation().ToggleFieldView();
+    const auto fieldToken = Draw(app);
+    app.Engine->GetRHI()->WaitIdle();
+    Require(policy->PublishedFrame().GardenDraws.empty() &&
+            input->GetPresentation().PublishedGameplay()->Garden->State == matureState,
+            "F1 must hide garden geometry and preserve ecology");
+    VerifyColor(policy->PublishedFrame(), policy->SceneColor(fieldToken.Slot));
+    input->GetPresentation().ToggleFieldView();
+    verifyGarden("garden-restored.ppm", true);
+    app.Shutdown();
+    std::cout << "Garden GPU passed: crystal/seedlings/mature blooms, real mining and fuel, three object readbacks, frame slots and F1 isolation\n";
+}
+
 void BasicWorldGameplay() {
     auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
@@ -1531,6 +1624,7 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
 } // namespace
 void RunPixelDebugUISmoke();
 void RunPixelFormulaUISmoke();
+void RunPixelGardenUISmoke();
 int main(int argc, char **argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--art-only") {
@@ -1551,6 +1645,11 @@ int main(int argc, char **argv) {
             RunPixelFormulaUISmoke();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--garden-only") {
+            ForceGardenGameplayGpu();
+            RunPixelGardenUISmoke();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--lifecycle-only") {
             Lifecycle(1);
             Lifecycle(2);
@@ -1565,6 +1664,8 @@ int main(int argc, char **argv) {
         RunPixelDebugUISmoke();
         FormulaGameplayGpu();
         RunPixelFormulaUISmoke();
+        ForceGardenGameplayGpu();
+        RunPixelGardenUISmoke();
         Lifecycle(1);
         Lifecycle(2);
         return 0;

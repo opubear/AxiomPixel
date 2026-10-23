@@ -9,13 +9,14 @@ GameplaySaveData GameSession::CaptureGameplayData() const {
     if (Simulation.HasPendingStep()) throw std::logic_error("capturing incomplete gameplay commit");
     return {Simulation.Tick(), Simulation.Revision(), PlayerBag, LastAim, Characters.CaptureState(),
             Inventory.CaptureState(), Machines.CaptureState(),
-            GameWorld.GetEnvironment().GetFieldSources().CaptureState(), Formulas.CaptureState()};
+            GameWorld.GetEnvironment().GetFieldSources().CaptureState(), Formulas.CaptureState(), Garden};
 }
 
 void GameSession::RestoreGameplayData(const GameplaySaveData &data) {
     Characters.RestoreState(data.Actors);
     Inventory.RestoreState(data.Inventory);
     Machines.RestoreState(data.Devices);
+    Garden = data.Garden;
     if (!Characters.Player() || !Inventory.Contains(data.PlayerBag))
         throw WorldStorageError("checkpoint missing player or player inventory");
     PlayerBag = data.PlayerBag;

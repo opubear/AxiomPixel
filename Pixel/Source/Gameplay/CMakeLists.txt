@@ -5,6 +5,7 @@ target_link_libraries(PixelObservationValues PUBLIC PixelDevices)
 add_library(PixelGameplay STATIC
     GameSession.cpp CommittedWorldView.cpp SessionPublication.cpp Actions/GameActions.cpp Actions/Mining.cpp
     Construction/DeviceActions.cpp Construction/DeviceRuntime.cpp
+    Home/ForceGarden.cpp
     FormulaBridge/FormulaBridge.cpp FormulaBridge/FormulaWorldAdapter.cpp FormulaBridge/ProcessHost.cpp
     SessionObservation.cpp SessionGameplayObservation.cpp SessionPersistence.cpp ../Observation/ObservationProjector.cpp
     ../Persistence/SessionStore.cpp ../Persistence/GameplaySaveData.cpp)

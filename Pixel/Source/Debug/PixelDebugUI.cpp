@@ -1,4 +1,5 @@
 #include "PixelDebugUI.h"
+#include "ForceGardenUI.h"
 #include "Camera/GameCamera.h"
 #include "Gameplay/GameSession.h"
 #include "Performance/GameProfiler.h"
@@ -333,6 +334,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
                                                        std::max(120.f, ImGui::GetIO().DisplaySize.y - 32)});
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
             DrawGeneration(session);
+            DrawForceGardenUI(session, presentation, GardenReceipt);
             DrawActions(session, ActionCell);
             DrawInventory(presentation);
             DrawDevices(session, presentation, DeviceCell, SelectedDevice);

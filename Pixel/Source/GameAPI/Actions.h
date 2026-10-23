@@ -67,8 +67,10 @@ struct RecoverWorld {};
 struct SetNextGenerator { GeneratorKind Kind; };
 struct SetNextSeed { uint64_t Seed; };
 struct ClearRunning {};
+// Saves the current world, then creates a separate playable scene.
+struct CreateForceGarden {};
 using SessionControl = std::variant<SetPaused, StepSimulation, SaveWorld, ResetWorld, RetryStreaming,
-                                    RecoverWorld, SetNextGenerator, SetNextSeed, ClearRunning>;
+                                    RecoverWorld, SetNextGenerator, SetNextSeed, ClearRunning, CreateForceGarden>;
 enum class ControlStatus { Applied, Saved, Replaced, Deferred, Failed, Rejected };
 struct ControlReceipt {
     ControlStatus Status = ControlStatus::Rejected;
