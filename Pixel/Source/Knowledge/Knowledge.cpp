@@ -6,6 +6,8 @@
 namespace pixel::knowledge {
 namespace {
 bool Important(const api::FactPayload &payload) {
+    if (std::holds_alternative<api::AuthorityChanged>(payload)
+        || std::holds_alternative<api::InterventionStopped>(payload)) return true;
     if (std::holds_alternative<api::MaterialRemoved>(payload) || std::holds_alternative<api::ForceObserved>(payload)) return true;
     if (const auto *disk = std::get_if<api::MaterialRemovedInDisk>(&payload)) return disk->Changed != 0;
     const auto *device = std::get_if<api::DeviceChanged>(&payload);

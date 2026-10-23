@@ -34,6 +34,9 @@ struct KnowledgeGrant {
 struct Policy {
     std::array<bool, size_t(api::Topic::Count)> Topics{};
     std::optional<api::Rect> Region;
+    // Dynamic region authority, bound by the host when registering an observer.
+    // Never decoded from JSON; SetPolicy cannot detach or replace this subject.
+    std::optional<uint64_t> AuthoritySubject;
     bool Facts = false; // Requires AllInventories + AllKnowledge for private facts.
     bool AllInventories = false;
     std::optional<InventoryGrant> InventoryOwner;

@@ -1,6 +1,6 @@
 # 发现知识、重要历史与派生记忆（M5.1）
 
-本轮为世界意志建立可解释的背景输入，尚未接入模型、祈祷或区域控制。世界已提交结果、玩家学到的内容和模型生成的解释分别归属，互不替代。
+本轮为世界意志建立可解释的背景输入，尚未接入模型或祈祷；后续M5.2区域控制见[Authority](Authority.md)。世界已提交结果、玩家学到的内容和模型生成的解释分别归属，互不替代。
 
 | 数据 | 所有者与入口 | 含义 |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ Knowledge和History是新增LLMView主题。视图冻结知识及历史副本，
 
 `DerivedMemoryStore::Remember(deliveredResponse, text, sources)` 只从成功交付的历史响应选择来源。内部凭据由ViewService生成并计入预算，公开构造Response或修改其公开payload不能伪造证据。引用包括WorldId、历史序号、原FactId和原CommitStamp。
 
-每条文本最多1024字节、1–8个不重复来源；总计最多16条和128KiB。没有来源、来源不在交付结果中或超限会明确拒绝。该验证只证明模型读过所引事实，不证明其解释正确。摘要没有Journal、动作入口或程序源码引用，不能增加事实、知识或权限。已交付数据形成的记忆不因之后撤权而假装被收回；后续模型动作仍须由未来动作权限裁决。
+每条文本最多1024字节、1–8个不重复来源；总计最多16条和128KiB。没有来源、来源不在交付结果中或超限会明确拒绝。该验证只证明模型读过所引事实，不证明其解释正确。摘要没有Journal、动作入口或程序源码引用，不能增加事实、知识或权限。已交付数据形成的记忆不因之后撤权而假装被收回；后续模型动作仍须由当前Authority动作权限裁决。
 
 ## 保存DTO与当前边界
 
@@ -75,3 +75,5 @@ ctest --test-dir build-cpu -R '^Pixel\.(Knowledge|KnowledgeView|LLMView|LLMJson)
 旧LLMJson用例已将Knowledge由unsupported改为可用的真实空集合，Temperature/Ecology仍检查unsupported；LLMView预算用例改为寻找实际DTO容量边界，继续验证可打开快照而查询响应超限的行为，没有扩大生产预算。
 
 本轮没有修改World、Formula或Axiom，也没有新增UI/GPU行为；未运行GPU smoke、AET、sanitizer或新的性能基准。运行时构建的既有CPM缓存路径/Bullet最低版本警告未阻断构建。保存验证仅为DTO往返和校验，不是磁盘保存重启。
+
+M5.2将AuthorityChanged和InterventionStopped纳入重要档案，原始来源为实际请求或Authority版本；保护变化、当前能力及撤销/租约到期原因可以追溯。磁盘边界不变。

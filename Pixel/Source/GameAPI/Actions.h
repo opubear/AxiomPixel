@@ -19,8 +19,13 @@ struct RemoveDevice { DeviceRef Device; };
 struct SupplyDevice { DeviceRef Device; uint32_t Quantity = 1; };
 struct SetDeviceEnabled { DeviceRef Device; bool Enabled; };
 struct ObserveForce { Cell Target; };
+// Protection is a native device module. Its rectangle is derived by the host.
+struct SetDeviceProtection { DeviceRef Device; bool Enabled; };
+// The host chooses capabilities, credits, lifetime and identity. A proposal
+// selects only an already approved program and a bounded execution rectangle.
+struct InstallIntervention { ProgramRef Program; Cell Origin; Rect Scope; };
 using Action = std::variant<MineRegion, PlaceMaterial, ActivateProgram, SelectWindStrategy, SetWindBoundary,
-                            PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce>;
+                            PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection, InstallIntervention>;
 struct ActionRequest {
     uint64_t WorldEpoch = 0, Sequence = 0;
     Action Payload;
@@ -46,7 +51,7 @@ struct ActivationResult {
     uint64_t RunningRoots = 0, Projectiles = 0, Pending = 0;
 };
 struct WindResult { WindKind Kind; int64_t BoundaryY; };
-using ActionResult = std::variant<std::monostate, MaterialResult, ActivationResult, WindResult, DeviceChanged, ForceObserved>;
+using ActionResult = std::variant<std::monostate, MaterialResult, ActivationResult, WindResult, DeviceChanged, ForceObserved, AuthorityChanged>;
 // Synchronous terminal result at a complete committed state.
 struct ActionReceipt {
     RequestKey Key;

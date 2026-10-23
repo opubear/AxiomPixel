@@ -69,13 +69,15 @@ void GameSession::CommitChange() {
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
     const auto deviceChanges = SynchronizeDeviceActivity();
+    const auto authorityChanges = ReconcileAuthority();
     const bool activityChanged = Formulas.SynchronizeActivity(GameWorld);
-    if (activityChanged || PublishedDeviceVersion != Machines.Revision()
+    if (!authorityChanges.empty() || activityChanged || PublishedDeviceVersion != Machines.Revision()
         || PublishedFieldSourceVersion != GameWorld.GetEnvironment().GetFieldSources().Revision()
         || PublishedActorVersion != Characters.Revision()
         || PublishedMapVersion != GameWorld.GetMap().GetVersion()
         || PublishedWindVersion != GameWorld.GetEnvironment().GetWindSimulation().GetRevision()) {
         Simulation.CommitChange();
+        RecordAuthorityFacts(authorityChanges);
         for (const auto &change : deviceChanges)
             RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
         PublishCommit();

@@ -5,12 +5,6 @@
 #include <vector>
 
 namespace pixel::api {
-struct Rect {
-    Cell Origin;
-    uint32_t Width = 0, Height = 0;
-    bool operator==(const Rect &) const = default;
-};
-
 enum class ObservationStatus { Available, NotSampled, SessionUnavailable, InvalidArgument, LimitExceeded };
 enum class Topic { Materials, AirVelocity, Player, Programs, Runtime, Temperature, Ecology, Items, Devices, Knowledge, FieldSources, History, Count };
 enum class Availability { Available, Partial, NotApplicable, Unknown, Unsupported };

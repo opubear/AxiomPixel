@@ -46,10 +46,13 @@ api::Reason Validate(const api::Action &action) {
         } else if constexpr (std::is_same_v<T, api::PlaceDevice> || std::is_same_v<T, api::ObserveForce>) {
             if (!ValidCell(value.Target)) return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> ||
-                             std::is_same_v<T, api::SetDeviceEnabled>) {
+                             std::is_same_v<T, api::SetDeviceEnabled> || std::is_same_v<T, api::SetDeviceProtection>) {
             if (!value.Device.Id || !value.Device.Version) return api::Reason::InvalidArgument;
             if constexpr (std::is_same_v<T, api::SupplyDevice>)
                 if (!value.Quantity || value.Quantity > 64) return api::Reason::InvalidArgument;
+        } else if constexpr (std::is_same_v<T, api::InstallIntervention>) {
+            if (!authority::Control::ValidRegion(value.Scope) || !ValidCell(value.Origin)
+                || !authority::Control::Contains(value.Scope, value.Origin)) return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::SetWindBoundary>) {
             if (!ValidCell({0, value.Y})) return api::Reason::InvalidArgument;
         }
@@ -87,8 +90,11 @@ void GameSession::RenewActionSessions() {
     for (size_t i = 0; i < Callers.size(); ++i) {
         Callers[i] = {};
         Callers[i].Id = NewIdentity();
-        Callers[i].Debug = i != size_t(NativeCaller::Input);
+        Callers[i].Debug = i == size_t(NativeCaller::Debug) || i == size_t(NativeCaller::Driver);
     }
+    Authority.Reset(WorldWillSession());
+    Interventions.clear();
+    NextIntervention = 1;
 }
 api::CallerSessionId GameSession::CallerSession(NativeCaller caller) const {
     return Callers.at(size_t(caller)).Id;
@@ -135,6 +141,7 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
     api::Reason reason = request.SchemaVersion != 1
         ? api::Reason::InvalidArgument : Validate(request.Payload);
     if (reason == api::Reason::None) reason = WriteRejection();
+    if (reason == api::Reason::None) reason = AuthorizeAction(caller, request.Payload);
     const bool wind = std::holds_alternative<api::SelectWindStrategy>(request.Payload) ||
                       std::holds_alternative<api::SetWindBoundary>(request.Payload);
     if (reason == api::Reason::None && wind && !state->Debug) reason = api::Reason::PermissionDenied;
@@ -146,7 +153,11 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
         receipt.Key = {request.WorldEpoch, caller, request.Sequence};
         if (receipt.Applied()) {
             Simulation.CommitChange();
+            // Preserve initial process effects before cancellation clears the bridge log.
             RecordActionFacts(receipt, beforeWind);
+            const auto authorityChanges = ReconcileAuthority();
+            RecordAuthorityFacts(authorityChanges);
+            receipt.Facts.Count = uint32_t(Facts.HighWatermark() - receipt.Facts.FirstSequence + 1);
             PublishCommit();
         }
         receipt.ResolvedAt = CurrentCommit();
@@ -224,6 +235,10 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                         stats.Roots, stats.Projectiles, stats.Pending};
                 }
             }
+        } else if constexpr (std::is_same_v<T, api::InstallIntervention>) {
+            receipt = InstallIntervention(value, request);
+        } else if constexpr (std::is_same_v<T, api::SetDeviceProtection>) {
+            receipt = SetDeviceProtection(value);
         } else if constexpr (std::is_same_v<T, api::ObserveForce>) {
             const auto player = Characters.PlayerSnapshot();
             const CellCoord cell{value.Target.X, value.Target.Y};
@@ -260,7 +275,7 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
 api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api::SessionControl &control) {
     const auto *state = FindCaller(caller);
     if (!state) return {api::ControlStatus::Rejected, api::Reason::CallerExpired, "CallerExpired"};
-    if (!state->Debug && !std::holds_alternative<api::ResetWorld>(control))
+    if (caller == WorldWillSession() || (!state->Debug && !std::holds_alternative<api::ResetWorld>(control)))
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     auto result = std::visit([&](const auto &value) -> api::ControlReceipt {
         using T = std::decay_t<decltype(value)>;
@@ -271,9 +286,12 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             const bool crystalStopped = Garden.Enabled && Garden.CrystalEnabled;
             if (crystalStopped) Garden.CrystalEnabled = false;
             Formulas.Clear(GameWorld);
+            Interventions.clear();
             const auto stopped = StopDevices();
+            const auto authorityChanges = ReconcileAuthority();
             if (changed || crystalStopped || !stopped.empty()) {
                 Simulation.CommitChange();
+                RecordAuthorityFacts(authorityChanges);
                 for (const auto &change : stopped)
                     RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, 0}, change);
                 PublishCommit();
@@ -290,6 +308,11 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
                 if (Store && StreamConfiguration.WindowEdge < 128)
                     return {api::ControlStatus::Rejected, api::Reason::LimitExceeded,
                             "Force garden requires a simulation window of at least 128 cells."};
+            }
+            if constexpr (!std::is_same_v<T, api::RecoverWorld>) {
+                if (Store && HasTransientAuthority())
+                    return {api::ControlStatus::Rejected, api::Reason::Unsupported,
+                        "Authority checkpoint support is pending; remove protection modules, stop interventions and restore default capabilities before saving."};
             }
             const bool success = [&] {
                 if constexpr (std::is_same_v<T, api::SaveWorld>) return TrySave();
@@ -352,7 +375,7 @@ ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula:
 }
 
 api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier) {
-    if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player || carrier.Kind == ProcessCarrierKind::Device)
+    if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player || carrier.Kind == ProcessCarrierKind::Device || carrier.Kind == ProcessCarrierKind::Intervention)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "Fixture requires native host assembly"};
     const auto reason = WriteRejection();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
@@ -372,7 +395,10 @@ api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, Proce
     const auto reason = WriteRejection();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.CancelCarrier(GameWorld, kind, subject);
-    CommitChange();
+    const auto authorityChanges = ReconcileAuthority();
+    Simulation.CommitChange();
+    RecordAuthorityFacts(authorityChanges);
+    PublishCommit();
     return {api::ControlStatus::Applied};
 }
 

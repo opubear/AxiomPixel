@@ -63,5 +63,6 @@
 | 设备库存与持续程序观测 | `context:GlobalDoc/GameplayObservation.md` | M4.7统一提交投影、库存授权与分页、设备状态与场源UI及验证 | |
 | 可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | M4.8天然晶体、真实资源、设备与植物条件响应、冻结存档、试玩和验证 | |
 | 发现知识、重要历史与派生记忆 | `context:GlobalDoc/KnowledgeAndHistory.md` | M5.1显式观测、来源档案、授权冻结查询、非权威摘要及保存DTO边界 | |
+| 区域控制与干预撤销 | `context:GlobalDoc/Authority.md` | M5.2主体能力、设备保护、持续来源清理、动态查询撤权与暂不支持的存档边界 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

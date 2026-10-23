@@ -254,6 +254,7 @@ SessionSaveData GameSession::CaptureSaveData() const {
 void GameSession::Save() {
     if (Simulation.HasPendingStep()) throw std::logic_error("save during pending simulation step");
     if (!Store) return;
+    if (HasTransientAuthority()) throw std::logic_error("authority state cannot yet be checkpointed");
     if (!Ready) throw std::logic_error("cannot save an incomplete world session");
     const auto saveStart = std::chrono::steady_clock::now();
     try {
@@ -305,6 +306,8 @@ void GameSession::Tick(float duration, PlayerInput input) {
         StepForceGarden(effects);
         const bool singleStep = Simulation.CommitStep();
         RecordFormulaFacts(effects);
+        const auto authorityChanges = ReconcileAuthority();
+        RecordAuthorityFacts(authorityChanges);
         for (const auto &change : changes)
             RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
         PublishCommit();

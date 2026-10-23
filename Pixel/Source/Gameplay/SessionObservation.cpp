@@ -64,6 +64,8 @@ void GameSession::RecordActionFacts(api::ActionReceipt &receipt, api::WindConfig
         RecordFact(stamp, receipt.Key, api::WindConfigured{beforeWind, {wind->Kind, wind->BoundaryY}});
     } else if (const auto *device = std::get_if<api::DeviceChanged>(&receipt.Result)) {
         RecordFact(stamp, receipt.Key, *device);
+    } else if (const auto *authority = std::get_if<api::AuthorityChanged>(&receipt.Result)) {
+        RecordFact(stamp, receipt.Key, *authority);
     } else if (const auto *observed = std::get_if<api::ForceObserved>(&receipt.Result)) {
         RecordFact(stamp, receipt.Key, *observed);
     } else {

@@ -95,6 +95,9 @@ void ValidatePolicy(const Policy &policy) {
     if (policy.Region && (!ValidRect(*policy.Region) || policy.Facts
         || policy.Topics[size_t(api::Topic::Programs)] || policy.Topics[size_t(api::Topic::Runtime)]))
         throw std::invalid_argument("spatial observer cannot grant session-wide summaries or facts");
+    if (policy.AuthoritySubject && (!*policy.AuthoritySubject || !policy.Region
+        || policy.Topics[size_t(api::Topic::History)]))
+        throw std::invalid_argument("authority observer requires a subject, region and spatial topics");
 }
 
 bool HistoryAllowed(const Policy &policy) {
@@ -155,6 +158,32 @@ void AuthorizeGameplay(api::ObservationSnapshot &snapshot, const Policy &policy)
         if (!InventoryAllowed(policy, snapshot.Stamp.WorldEpoch, device.OwnerActor)) device.Fuel.reset();
 }
 
+void AuthorizeRegion(api::ObservationSnapshot &snapshot, const Policy &policy) {
+    if (!policy.AuthoritySubject) return;
+    // Dynamic observers retain only spatially authorized records. This also
+    // prevents service storage metrics from counting hidden global objects.
+    snapshot.FactHighWatermark = 0;
+    snapshot.Programs = {};
+    std::vector<api::ProjectileObservation>{}.swap(snapshot.Projectiles);
+    if (!policy.Topics[size_t(api::Topic::Player)] || (snapshot.Player
+        && !PositionInside(snapshot.Scope, snapshot.Player->Location))) snapshot.Player.reset();
+    auto &gameplay = snapshot.Gameplay;
+    std::vector<api::ProcessObservation>{}.swap(gameplay.Processes);
+    gameplay.Garden.reset();
+    std::vector<api::DeviceObservation> devices;
+    if (policy.Topics[size_t(api::Topic::Devices)]) {
+        for (const auto &device : gameplay.Devices)
+            if (Contains(snapshot.Scope, {device.Anchor, 1, 1})) devices.push_back(device);
+    }
+    gameplay.Devices = std::move(devices);
+    std::vector<api::FieldSourceObservation> sources;
+    if (policy.Topics[size_t(api::Topic::FieldSources)]) {
+        for (const auto &source : gameplay.FieldSources)
+            if (PositionInside(snapshot.Scope, source.Center)) sources.push_back(source);
+    }
+    gameplay.FieldSources = std::move(sources);
+}
+
 uint64_t Allocate(uint64_t &next) {
     if (next == UINT64_MAX) throw std::overflow_error("view service identity exhausted");
     return next++;
@@ -181,6 +210,7 @@ struct ViewService::State {
     struct View {
         ViewDescriptor Descriptor;
         uint64_t AuthorizationVersion = 0;
+        uint64_t SourceAuthorizationVersion = 0;
         api::ObservationSnapshot Snapshot;
         std::array<Cursor, Limits::MaximumCursors> Cursors;
         uint32_t CursorCount = 0;
@@ -215,12 +245,27 @@ struct ViewService::State {
         for (auto &observer : Observers) if (id && observer.Id == id) return &observer;
         return nullptr;
     }
+    api::ObservationAuthorization Authorization(const Observer &observer) const {
+        const auto &grant = observer.Grant;
+        return grant.AuthoritySubject
+            ? Source.AuthorizeObservation(*grant.AuthoritySubject, *grant.Region)
+            : api::ObservationAuthorization{0, true};
+    }
+    void Revoke(Observer &observer) {
+        if (observer.Active) observer.RevokedView = observer.Active->Descriptor.Id;
+        observer.Release();
+    }
     Status Check(Observer &observer, ViewId id) {
         if (id && id == observer.RevokedView) return Status::ViewRevoked;
         if (!observer.Active || observer.Active->Descriptor.Id != id) return Status::ViewExpired;
         auto &view = *observer.Active;
         if (view.AuthorizationVersion != observer.AuthorizationVersion)
             throw std::logic_error("stale authorization retained by view service");
+        const auto authorization = Authorization(observer);
+        if (!authorization.Allowed || authorization.Version != view.SourceAuthorizationVersion) {
+            Revoke(observer);
+            return Status::ViewRevoked;
+        }
         if (Frame >= view.Descriptor.ExpiresAtServiceFrame
             || Source.ObservationService().LastCommitted.WorldEpoch != view.Descriptor.Stamp.WorldEpoch) {
             observer.Release();
@@ -271,10 +316,11 @@ void ViewService::SetPolicy(ObserverId id, Policy policy) {
     ValidatePolicy(policy);
     auto *observer = Data->Find(id);
     if (!observer) throw std::invalid_argument("unknown host observer");
+    if (observer->Grant.AuthoritySubject && policy.AuthoritySubject != observer->Grant.AuthoritySubject)
+        throw std::invalid_argument("authority observer subject cannot be detached or replaced");
     if (observer->AuthorizationVersion == UINT64_MAX) throw std::overflow_error("observer authorization exhausted");
     ++observer->AuthorizationVersion;
-    if (observer->Active) observer->RevokedView = observer->Active->Descriptor.Id;
-    observer->Release();
+    Data->Revoke(*observer);
     observer->Grant = std::move(policy);
 }
 
@@ -294,8 +340,10 @@ void ViewService::AdvanceServiceFrame() {
 }
 
 Capabilities ViewService::DescribeCapabilities(ObserverId id) const {
-    const auto *observer = Data->Find(id);
-    if (!observer) return {Status::PermissionDenied};
+    auto *observer = Data->Find(id);
+    if (observer && observer->Grant.AuthoritySubject && observer->Active)
+        Data->Check(*observer, observer->Active->Descriptor.Id);
+    if (!observer || !Data->Authorization(*observer).Allowed) return {Status::PermissionDenied};
     Capabilities result;
     result.Region = observer->Grant.Region;
     result.Facts = observer->Grant.Facts;
@@ -317,6 +365,10 @@ OpenResult ViewService::OpenView(ObserverId id, api::Rect scope) {
     if (!ValidRect(scope)) return {Status::InvalidArgument};
     if (scope.Width > Limits::MaximumEdge || scope.Height > Limits::MaximumEdge) return {Status::LimitExceeded};
     if (observer->Grant.Region && !Contains(*observer->Grant.Region, scope)) return {Status::PermissionDenied};
+    const auto authorization = Data->Authorization(*observer);
+    if (observer->Grant.AuthoritySubject && observer->Active)
+        Data->Check(*observer, observer->Active->Descriptor.Id);
+    if (!authorization.Allowed) return {Status::PermissionDenied};
     auto capture = Data->Source.CaptureObservation(scope);
     if (capture.Status != api::ObservationStatus::Available) return {CaptureStatus(capture.Status)};
     if (!capture.Snapshot || capture.Snapshot->Scope != scope
@@ -324,6 +376,7 @@ OpenResult ViewService::OpenView(ObserverId id, api::Rect scope) {
         throw std::logic_error("observation source violated bounded snapshot contract");
     AuthorizeGameplay(*capture.Snapshot, observer->Grant);
     AuthorizeKnowledge(*capture.Snapshot, observer->Grant);
+    AuthorizeRegion(*capture.Snapshot, observer->Grant);
     if (capture.Snapshot->RetainedBytes() + sizeof(State::View) + sizeof(State::Observer)
         + capture.Snapshot->Stamp.WorldId.capacity() + 1 > Limits::MaximumViewBytes)
         return {Status::LimitExceeded};
@@ -333,6 +386,7 @@ OpenResult ViewService::OpenView(ObserverId id, api::Rect scope) {
     auto view = std::make_unique<State::View>();
     view->Snapshot = std::move(*capture.Snapshot);
     view->AuthorizationVersion = observer->AuthorizationVersion;
+    view->SourceAuthorizationVersion = authorization.Version;
     if (Data->Frame > UINT64_MAX - Limits::LeaseFrames) throw std::overflow_error("view lease exhausted");
     view->Descriptor = {Allocate(Data->NextView), 1, view->Snapshot.Stamp, scope, Data->Frame + Limits::LeaseFrames, {}};
     if (observer->Grant.Facts) view->Descriptor.FactHighWatermark = view->Snapshot.FactHighWatermark;

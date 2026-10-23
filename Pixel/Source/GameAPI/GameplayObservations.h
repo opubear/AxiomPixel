@@ -30,7 +30,7 @@ struct DeviceObservation {
 };
 std::string_view DeviceStateReason(DeviceState state);
 
-enum class CarrierKind { Player, NaturalSource, FixedFixture, Device };
+enum class CarrierKind { Player, NaturalSource, FixedFixture, Device, Intervention };
 enum class ProcessPhase { Ready, Sleeping, Awaiting, Ended };
 struct ProcessObservation {
     uint64_t InstanceId = 0, Subject = 0;

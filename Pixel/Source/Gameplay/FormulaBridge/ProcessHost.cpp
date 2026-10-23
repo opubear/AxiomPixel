@@ -367,7 +367,7 @@ bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, ui
         || carrier.Scope.Empty() || carrier.Scope.Width > 2048 || carrier.Scope.Height > 2048
         || carrier.Scope.X > INT64_MAX - carrier.Scope.Width || carrier.Scope.Y > INT64_MAX - carrier.Scope.Height
         || carrier.Limits.Outputs > 16 || carrier.Limits.Work > 256 || carrier.Limits.Queries > 8
-        || carrier.Kind < ProcessCarrierKind::Player || carrier.Kind > ProcessCarrierKind::Device)
+        || carrier.Kind < ProcessCarrierKind::Player || carrier.Kind > ProcessCarrierKind::Intervention)
         throw std::invalid_argument("invalid trusted process carrier configuration");
     auto lower = WorldPoint({carrier.Scope.X, carrier.Scope.Y});
     auto upper = WorldPoint({carrier.Scope.X + carrier.Scope.Width, carrier.Scope.Y + carrier.Scope.Height});
@@ -603,7 +603,7 @@ void ProcessHost::RestoreState(std::string_view encoded) {
     const auto receipts = in.Count(MaximumReceipts);
     for (size_t i = 0; i < receipts; ++i) {
         ProcessReceipt receipt;
-        in.Numbers(receipt.At, receipt.Request.Instance, receipt.Request.Sequence); receipt.Carrier = in.Enum(ProcessCarrierKind::Device);
+        in.Numbers(receipt.At, receipt.Request.Instance, receipt.Request.Sequence); receipt.Carrier = in.Enum(ProcessCarrierKind::Intervention);
         receipt.Subject = in.Number<uint64_t>(); receipt.Outcome = in.Enum(process::Outcome::Timeout);
         receipt.Refusal = in.Enum(ProcessRefusal::InvalidHandle); receipt.ChangedCells = in.Number<uint32_t>();
         Require(receipt.At <= restored->At && receipt.Request.Instance && receipt.Request.Sequence && receipt.Subject

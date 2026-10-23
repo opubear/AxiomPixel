@@ -26,6 +26,7 @@
 | `Pixel/Source/Actors/` | 玩家/Resident状态、值身份与代次句柄、只读地形碰撞与水体响应 |
 | `Pixel/Source/Items/` | 标准库物品定义、容器数量/容量、版本化转移与物料预留 |
 | `Pixel/Source/Devices/` | 有界设备集合、版本化身份、建造占用及工作状态值 |
+| `Pixel/Source/Authority/` | 世界意志能力、设备矩形保护与当前授权版本 |
 | `Pixel/Source/Knowledge/` | 有来源的重要历史、玩家发现、有界保留和版本化保存DTO |
 | `Pixel/Source/LLMView/` | 授权冻结查询、JSON交付及与权威事实分离的模型派生摘要 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
@@ -51,6 +52,8 @@ M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSou
 M4.8 提供可保存的「力场育圃」小场景：F2展开 `Force garden`，点击 `Save and create force garden` 保存旧世界并创建独立场景。观察左侧晶体和野生植株，应用同一个构式并走近右侧育圃试验；开采面板标出的真实石头、铜和煤，建造、供煤并启用推力设备，取消暂停后观察开花。成长按实际水平加速度与地形条件累计，离开活动区冻结，保存重启接续。创建需要至少128格模拟窗口；R仍创建普通世界。操作、规则与验证见[力场育圃贯穿场景](.awtcontext/GlobalDoc/ForceGarden.md)。
 
 M5.1 已建立[发现知识与重要历史](.awtcontext/GlobalDoc/KnowledgeAndHistory.md)：显式ObserveForce动作记录32格内的真实加速度，只授予“已观测”；重要开采、设备操作和首次发现保留原始来源。LLMView增加独立授权的Knowledge/History冻结查询，模型摘要另存并引用已交付历史。当前提供CPU入口和版本化保存DTO，尚无知识UI、模型连接或知识磁盘存档；重启会清空新增知识与历史，不影响M4既有存档领域。
+
+M5.2 已建立[区域控制与干预撤销](.awtcontext/GlobalDoc/Authority.md)：宿主分配世界意志身份，设备保护模块阻断区域观察与干预，撤权清理实例、后续事件和实际场源，同时使旧查询与待交付结果失效。当前为CPU动作接口，无新UI或模型网络；保护模块、活跃干预及非默认能力尚不支持磁盘保存，持久会话会明确拒绝保存/重置，清理后可保存。
 
 ## 构建和运行
 

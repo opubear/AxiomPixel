@@ -8,6 +8,7 @@
 #include "Observation/ObservationProjector.h"
 #include "Observation/DomainFactBuffer.h"
 #include "Knowledge/Knowledge.h"
+#include "Authority/Authority.h"
 #include "GameAPI/ObservationSource.h"
 #include "Persistence/SessionStore.h"
 #include "World/World.h"
@@ -38,6 +39,11 @@ class GameSession : public api::ObservationSource {
     uint64_t WorldEpoch() const { return Epoch; }
     api::ProgramRef AppliedProgram() const { return Formulas.AppliedProgram(); }
     api::CallerSessionId CallerSession(NativeCaller caller) const;
+    // Trusted host binding for the future model adapter; never decoded from JSON.
+    api::CallerSessionId WorldWillSession() const { return Callers[3].Id; }
+    api::ControlReceipt SetWorldWillCapabilities(NativeCaller caller, authority::Capabilities capabilities);
+    api::ObservationAuthorization AuthorizeObservation(uint64_t subject, api::Rect scope) const override;
+    const authority::Control &GetAuthority() const { return Authority; }
     api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request);
     api::ActionReceipt Execute(NativeCaller caller, api::Action action);
     const api::ActionReceipt *LastAction(NativeCaller caller) const;
@@ -111,12 +117,25 @@ class GameSession : public api::ObservationSource {
         std::deque<api::ActionReceipt> Receipts;
     };
     uint64_t Epoch = 0;
-    std::array<CallerState, 3> Callers;
+    std::array<CallerState, 4> Callers;
     CallerState *FindCaller(api::CallerSessionId caller);
     api::Reason WriteRejection() const;
     api::ActionReceipt Dispatch(const api::Action &action, api::RequestKey request);
     api::Reason ActivateAt(WorldPosition target, api::RequestKey request);
     void RenewActionSessions();
+    api::Reason AuthorizeAction(api::CallerSessionId caller, const api::Action &action) const;
+    api::ActionReceipt InstallIntervention(const api::InstallIntervention &action, api::RequestKey request);
+    api::ActionReceipt SetDeviceProtection(const api::SetDeviceProtection &action);
+    std::vector<api::FactPayload> ReconcileAuthority();
+    void RecordAuthorityFacts(std::span<const api::FactPayload> changes);
+    bool HasTransientAuthority() const;
+    struct Intervention {
+        uint64_t Id = 0, Subject = 0, ExpiresAtTick = 0;
+        api::Rect Scope;
+    };
+    authority::Control Authority;
+    uint64_t NextIntervention = 1;
+    std::vector<Intervention> Interventions;
     void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
     api::FactId RecordFact(const api::CommitStamp &stamp, api::FactCause cause, api::FactPayload payload);
     void RecordFormulaFacts();

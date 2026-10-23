@@ -14,6 +14,11 @@ struct Cell {
     int64_t X = 0, Y = 0;
     bool operator==(const Cell &) const = default;
 };
+struct Rect {
+    Cell Origin;
+    uint32_t Width = 0, Height = 0;
+    bool operator==(const Rect &) const = default;
+};
 struct Position {
     Cell AnchorCell;
     std::array<double, 2> Offset{}; // Normalized to [0,1), in cells.
@@ -51,7 +56,8 @@ struct ProgramEffectCause {
     std::optional<FactId> ParentFact;
 };
 struct DeviceCause { uint64_t DeviceId = 0, InstanceId = 0; };
-using FactCause = std::variant<RequestKey, ProgramEffectCause, DeviceCause>;
+struct AuthorityCause { uint64_t Version = 0; };
+using FactCause = std::variant<RequestKey, ProgramEffectCause, DeviceCause, AuthorityCause>;
 
 enum class DeviceEvent { Placed, Removed, Supplied, Enabled, StateChanged };
 struct DeviceChanged { DeviceSnapshot Device; DeviceEvent Event; };
@@ -86,8 +92,20 @@ struct ForceObserved {
     Cell Location;
     std::array<double, 2> AccelerationCellsPerSecondSquared{};
 };
+struct AuthorityChanged {
+    uint64_t Version = 0, DeviceId = 0;
+    Rect Region;
+    bool Protected = false;
+    bool ObservationAllowed = true, InterventionAllowed = true;
+};
+enum class InterventionStopReason { ControlRevoked, LeaseExpired };
+struct InterventionStopped {
+    InstanceRef Instance;
+    CallerSessionId Subject = 0;
+    InterventionStopReason Reason = InterventionStopReason::ControlRevoked;
+};
 using FactPayload = std::variant<MaterialRemoved, MaterialPlaced, ProgramActivated,
-                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged, FieldSourceChanged, ForceObserved>;
+                                 WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged, FieldSourceChanged, ForceObserved, AuthorityChanged, InterventionStopped>;
 struct DomainFact {
     FactId Id;
     CommitStamp CommittedAt;

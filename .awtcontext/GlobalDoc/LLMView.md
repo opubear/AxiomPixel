@@ -51,7 +51,7 @@ Statistics 计入容器 capacity、字符串 capacity、固定对象、游标和
 
 风只支持 resolutionCells=1 或16。16格按世界原点对齐、负坐标向下取整；先截取查询范围，再调用纯值 SummarizeWind。每箱记录 requested、resident、air、nonAir、unknown 数量，均值只用 air 分母。缺失不当作零，非空气不进入平均；没有空气且没有未知时为 not_applicable。风元数据保留后端、合同版本、域、求解网格间距等，1格输出不承诺1格求解器。
 
-Player 用角色锚点是否位于查询范围决定可见性；程序返回已应用版本、会话数量和范围内持续过程的状态/等待，Runtime 另外返回冻结暂停状态及范围内弹体。运行时 live waiting/ready 状态仍单独走 Source.ObservationService，不混入冻结页。M4.7已实现Items、Devices、FieldSources主题及按记录分页；私有库存先过滤再统计，未授权Fuel缺省。温度、生态、知识仍Unsupported；JSON不输出虚假采样值。
+Player 用角色锚点是否位于查询范围决定可见性；程序返回已应用版本、会话数量和范围内持续过程的状态/等待，Runtime 另外返回冻结暂停状态及范围内弹体。运行时 live waiting/ready 状态仍单独走 Source.ObservationService，不混入冻结页。M4.7已实现Items、Devices、FieldSources主题及按记录分页；私有库存先过滤再统计，未授权Fuel缺省。温度、生态仍Unsupported；JSON不输出虚假采样值。
 
 所有页共享 view 的完整 CommitStamp。页范围/覆盖、来源、单位、availability/reason、最早/最新实际采样 revision 与 nextCursor 都在结果中。事实响应另外携带 FactView 描述符，保留 cause 的 RequestKey 或程序实例/激活请求链。环淘汰返回 Gap 与 FirstAvailableSequence；消费者需要重新打开快照，不能从缺口拼出完整历史。
 
@@ -105,4 +105,8 @@ cmake --build build-region-release --target PixelLLMViewBenchmark -j4
 
 三活动 view 加单个待交付页峰值520,121 bytes；全部主体回收后2520 bytes固定服务状态，宿主外部采样槽始终释放。每128帧分别输出125,864,853和126,105,672 bytes JSON。主要成本是每帧12,288格完整文本化，约7.7 ms；这是压力负载，不应视为每帧轮询策略。实际宿主空闲时不创建观察者、快照或JSON；已打开view只消费自己的冻结值，按需请求摘要和有限页即可。
 
-M2 至此形成不依赖真实模型的完整只读切片。后续 Authority、异步模型接入和行动能力仍属于后续任务；本轮没有启动这些工作。
+M2 至此形成不依赖真实模型的完整只读切片。此处为M2历史记录；M5.2已接入动态Authority授权，异步模型接入仍待后续任务。
+
+## M5.2 当前授权
+
+Policy.AuthoritySubject 将区域观察者绑定宿主主体；Open/Query/ReadFacts/ReadHistory/Deliver及服务推进使用ObservationSource实时授权版本。撤权或版本变化释放旧视图和pending并返回ViewRevoked；区域主体不能取得全局事实/历史/运行统计。具体设备保护、动态与静态策略边界见[区域控制与干预撤销](Authority.md)。

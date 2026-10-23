@@ -4,7 +4,7 @@
 #include <vector>
 
 namespace pixel {
-enum class ProcessCarrierKind { Player, NaturalSource, FixedFixture, Device };
+enum class ProcessCarrierKind { Player, NaturalSource, FixedFixture, Device, Intervention };
 
 // Trusted host assembly, never supplied by a language program. Resources are
 // finite per-activation credits; the device owner pays its Items fuel before launch.

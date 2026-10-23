@@ -96,6 +96,9 @@ Json FactCauseJson(const api::FactCause &cause) {
         [](const api::RequestKey &key) -> Json {
             return {{"kind", "request"}, {"request", RequestKeyJson(key)}};
         },
+        [](const api::AuthorityCause &authority) -> Json {
+            return {{"kind", "authority"}, {"version", std::to_string(authority.Version)}};
+        },
         [](const api::DeviceCause &device) -> Json {
             return {{"kind", "device"}, {"deviceId", std::to_string(device.DeviceId)},
                     {"instanceId", std::to_string(device.InstanceId)}};
@@ -117,6 +120,17 @@ Json WindConfigurationJson(const api::WindConfiguration &configuration) {
 
 Json FactPayloadJson(const api::FactPayload &payload) {
     return std::visit(Overload{
+        [](const api::AuthorityChanged &value) -> Json {
+            return {{"kind", "AuthorityChanged"}, {"version", std::to_string(value.Version)},
+                {"deviceId", std::to_string(value.DeviceId)}, {"region", RectJson(value.Region)},
+                {"protected", value.Protected}, {"observationAllowed", value.ObservationAllowed},
+                {"interventionAllowed", value.InterventionAllowed}};
+        },
+        [](const api::InterventionStopped &value) -> Json {
+            return {{"kind", "InterventionStopped"}, {"instance", InstanceJson(value.Instance)},
+                {"subject", std::to_string(value.Subject)}, {"reason", value.Reason == api::InterventionStopReason::ControlRevoked
+                    ? "control_revoked" : "lease_expired"}};
+        },
         [](const api::ForceObserved &value) -> Json {
             return {{"kind", "ForceObserved"}, {"actorId", std::to_string(value.ActorId)},
                     {"location", CellJson(value.Location)},
@@ -258,6 +272,7 @@ const char *CarrierName(api::CarrierKind carrier) {
     case api::CarrierKind::NaturalSource: return "natural_source";
     case api::CarrierKind::FixedFixture: return "fixed_fixture";
     case api::CarrierKind::Device: return "device";
+    case api::CarrierKind::Intervention: return "intervention";
     }
     throw std::logic_error("unknown process carrier");
 }
@@ -669,6 +684,7 @@ Json ToJson(const api::ActionReceipt &receipt) {
         [&](const std::monostate &) {},
         [&](const api::DeviceChanged &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::ForceObserved &value) { result["result"] = FactPayloadJson(value); },
+        [&](const api::AuthorityChanged &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::MaterialResult &value) {
             Json data{{"kind", "material"}, {"target", CellJson(value.Target)}, {"changed", value.Changed},
                       {"blocked", value.Blocked}, {"notReady", value.NotReady}};
