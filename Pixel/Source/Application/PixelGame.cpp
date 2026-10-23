@@ -67,7 +67,7 @@ void PixelGame::Initialize() {
     Input.ResetView();
     if (auto *ui = GAxiom->GetDebugUI())
         ui->SetFrameContent([this] {
-            if (const auto mode = DebugUI.Draw(Session, Camera, Presentation, GetControlMode(), Performance))
+            if (const auto mode = DebugUI.Draw(Session, Camera, Presentation, GetControlMode(), Performance, WorldWill))
                 SetControlMode(*mode);
         });
     spdlog::info("{}", pixel::GameInput::ControlsDescription());

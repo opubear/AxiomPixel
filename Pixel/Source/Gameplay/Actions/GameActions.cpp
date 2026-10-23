@@ -313,11 +313,6 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
                     return {api::ControlStatus::Rejected, api::Reason::LimitExceeded,
                             "Force garden requires a simulation window of at least 128 cells."};
             }
-            if constexpr (!std::is_same_v<T, api::RecoverWorld>) {
-                if (Store && HasTransientAuthority())
-                    return {api::ControlStatus::Rejected, api::Reason::Unsupported,
-                        "Authority checkpoint support is pending; remove protection modules, stop interventions and restore default capabilities before saving."};
-            }
             const bool success = [&] {
                 if constexpr (std::is_same_v<T, api::SaveWorld>) return TrySave();
                 else if constexpr (std::is_same_v<T, api::ResetWorld>) return TryReset();

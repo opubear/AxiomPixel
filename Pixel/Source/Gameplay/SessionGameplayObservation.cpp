@@ -32,6 +32,12 @@ api::InventoryObservation ObserveContainer(const items::Inventory &inventory, it
 void GameSession::PublishGameplayObservation() {
     api::GameplayObservation result;
     result.Stamp = CurrentCommit();
+    result.WorldWill = WillMemory;
+    result.Protections = Authority.Regions();
+    result.AuthorityVersion = Authority.Version();
+    result.InterventionSlots = Authority.Resources();
+    result.AllowObservation = Authority.CapabilitiesGranted().Observe;
+    result.AllowIntervention = Authority.CapabilitiesGranted().Intervene;
     if (Garden.Enabled)
         result.Garden = ForceGardenObservation{Garden, SampleGarden(GardenWildX, Garden.WildGrowth),
                                                      SampleGarden(GardenHomeX, Garden.HomeGrowth)};

@@ -51,11 +51,13 @@ M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSou
 
 M4.8 提供可保存的「力场育圃」小场景：F2展开 `Force garden`，点击 `Save and create force garden` 保存旧世界并创建独立场景。观察左侧晶体和野生植株，应用同一个构式并走近右侧育圃试验；开采面板标出的真实石头、铜和煤，建造、供煤并启用推力设备，取消暂停后观察开花。成长按实际水平加速度与地形条件累计，离开活动区冻结，保存重启接续。创建需要至少128格模拟窗口；R仍创建普通世界。操作、规则与验证见[力场育圃贯穿场景](.awtcontext/GlobalDoc/ForceGarden.md)。
 
-M5.1 已建立[发现知识与重要历史](.awtcontext/GlobalDoc/KnowledgeAndHistory.md)：显式ObserveForce动作记录32格内的真实加速度，只授予“已观测”；重要开采、设备操作和首次发现保留原始来源。LLMView增加独立授权的Knowledge/History冻结查询，模型摘要另存并引用已交付历史。当前提供CPU入口和版本化保存DTO，尚无知识UI、模型连接或知识磁盘存档；重启会清空新增知识与历史，不影响M4既有存档领域。
+M5.1 已建立[发现知识与重要历史](.awtcontext/GlobalDoc/KnowledgeAndHistory.md)：显式ObserveForce动作记录32格内的真实加速度，只授予“已观测”；重要开采、设备操作和首次发现保留原始来源。LLMView增加独立授权的Knowledge/History冻结查询，模型摘要另存并引用已交付历史。M5.4已把知识和重要历史接入磁盘检查点；尚无独立知识UI或网络模型。
 
-M5.2 已建立[区域控制与干预撤销](.awtcontext/GlobalDoc/Authority.md)：宿主分配世界意志身份，设备保护模块阻断区域观察与干预，撤权清理实例、后续事件和实际场源，同时使旧查询与待交付结果失效。当前为CPU动作接口，无新UI或模型网络；保护模块、活跃干预及非默认能力尚不支持磁盘保存，持久会话会明确拒绝保存/重置，清理后可保存。
+M5.2 已建立[区域控制与干预撤销](.awtcontext/GlobalDoc/Authority.md)：宿主分配世界意志身份，设备保护模块阻断区域观察与干预，撤权清理实例、后续事件和实际场源，同时使旧查询与待交付结果失效。M5.4已保存保护模块、活跃/冻结干预、剩余租约及非默认能力，提供育圃保护按钮。
 
-M5.3 已建立[异步 WorldWill 与离线模型闭环](.awtcontext/GlobalDoc/WorldWill.md)：授权观测复制给有界 worker，主线程在安全边界核验设备、程序和干预资源，保留真实回执与事实。当前通过 CPU demo 演示，应用已接服务帧和关闭生命周期，尚无自动祈祷、新 UI 或网络模型。
+M5.3 已建立[异步 WorldWill 与离线模型闭环](.awtcontext/GlobalDoc/WorldWill.md)：授权观测复制给有界 worker，主线程在安全边界核验设备、程序和干预资源，保留真实回执与事实。应用已接服务帧和关闭生命周期，不自动发起祈祷，也没有网络模型。
+
+M5.4 的[持久援助与自主权](.awtcontext/GlobalDoc/PersistentInterventions.md)提供试玩入口：F2创建力场育圃，开采并建造家园设备后，点击 `Pray for home aid (offline)`，恢复模拟即可让离线提案经正式动作入口产生临时推力。安装保护并启用设备会撤销援助；已积累成长、援助次数、自主选择及带来源的祈祷档案可保存。未完成推理加载后标为Interrupted，不自动重放。模型说明与实际动作、实例和历史证据分别展示。
 
 ## 构建和运行
 

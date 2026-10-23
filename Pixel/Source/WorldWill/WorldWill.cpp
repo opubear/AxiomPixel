@@ -25,6 +25,7 @@ const char *DecisionStateName(DecisionState state) {
         WILL_STATE(Thinking); WILL_STATE(Ready); WILL_STATE(Applied); WILL_STATE(Rejected);
         WILL_STATE(NoAction); WILL_STATE(TimedOut); WILL_STATE(StaleEpoch); WILL_STATE(ViewRevoked);
         WILL_STATE(ModelUnavailable); WILL_STATE(InvalidProposal); WILL_STATE(Closed);
+        WILL_STATE(Interrupted);
 #undef WILL_STATE
     }
     throw std::logic_error("unknown decision state");
@@ -50,7 +51,10 @@ void WorldWill::Finish(size_t index, DecisionState state, std::optional<api::Act
     DecisionResult result{pending.Id, state, pending.ObservedAt, std::move(receipt), {}};
     if (pending.Reply && pending.Reply->Explanation.size() <= Limits::ExplanationBytes)
         result.Explanation = std::move(pending.Reply->Explanation);
-    Model.Cancel(pending.Id);
+    const auto host = Host.WorldWillStatus();
+    if (pending.PrayerId && host.Stamp.WorldEpoch == pending.ObservedAt.WorldEpoch && host.Ready && !host.Pending)
+        Host.ResolvePrayer(pending.PrayerId, state, result.Explanation, result.Action);
+    if (!pending.ModelCancelled) Model.Cancel(pending.Id);
     if (Completed.size() == Limits::Results) Completed.pop_front();
     Completed.push_back(std::move(result));
     Active.erase(Active.begin() + index);
@@ -124,6 +128,7 @@ RequestResult WorldWill::Request(Goal goal, Clock::time_point now) {
     Pending pending{input.Id, input.ObservedAt, status.Caller, authorization.Version, goal,
         status.Program, status.Resources, input.Devices, now + Timeout, {}};
     if (!Model.TryStart(std::move(input))) return {RequestStatus::ModelBusy};
+    pending.PrayerId = Host.BeginPrayer(pending.ObservedAt, goal.Scope);
     Active.push_back(std::move(pending));
     return {RequestStatus::Accepted, Active.back().Id};
 }
@@ -167,6 +172,14 @@ void WorldWill::Service(Clock::time_point now) {
         const auto authorization = Host.AuthorizeObservation(pending.Caller, pending.Intent.Scope);
         if (status.Stamp.WorldEpoch != pending.ObservedAt.WorldEpoch || status.Caller != pending.Caller) {
             Finish(i, DecisionState::StaleEpoch);
+        } else if (!status.Ready || status.Pending) {
+            // Keep the terminal result pending until it can share a complete
+            // game commit, but never extend the worker's wall-clock deadline.
+            if (now >= pending.Deadline && !pending.ModelCancelled) {
+                Model.Cancel(pending.Id);
+                pending.ModelCancelled = true;
+            }
+            ++i;
         } else if (!authorization.Allowed || authorization.Version != pending.AuthorizationVersion) {
             Finish(i, DecisionState::ViewRevoked);
         } else if (now >= pending.Deadline) {
@@ -180,7 +193,7 @@ void WorldWill::Service(Clock::time_point now) {
             Finish(i, DecisionState::InvalidProposal);
         } else if (pending.Reply->Choice.Kind == ProposalKind::None) {
             Finish(i, DecisionState::NoAction);
-        } else if (!status.Ready || status.Pending || status.Paused) { ++i; }
+        } else if (status.Paused) { ++i; }
         else if (const auto action = ActionFor(pending)) {
             // No equality check against the global revision: the action owns
             // program/device/resource preconditions and rechecks current control.

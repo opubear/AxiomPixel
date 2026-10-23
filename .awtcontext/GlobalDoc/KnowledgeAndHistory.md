@@ -1,11 +1,11 @@
 # 发现知识、重要历史与派生记忆（M5.1）
 
-本轮为世界意志建立可解释的背景输入，尚未接入模型或祈祷；后续M5.2区域控制见[Authority](Authority.md)。世界已提交结果、玩家学到的内容和模型生成的解释分别归属，互不替代。
+M5.1 为世界意志建立可解释的背景输入；区域控制见[Authority](Authority.md)，现已接通的离线祈祷及存档见[持久援助](PersistentInterventions.md)。世界已提交结果、玩家学到的内容和模型生成的解释分别归属，互不替代。
 
 | 数据 | 所有者与入口 | 含义 |
 | --- | --- | --- |
 | DomainFact | Session的RecordFact；256条短期环 | 已发生的实际结果，包含请求/程序/设备原因和完整提交版本 |
-| HistoryRecord | Knowledge/Journal；最近128条重要记录 | 选取真实开采、设备放置/回收/补给/启停、首次显式力场观察；保留原始事实和版本 |
+| HistoryRecord | Knowledge/Journal；最近128条重要记录 | 选取真实开采、设备放置/回收/补给/启停、首次显式力场观察、程序激活及控制权变化；保留原始事实和版本 |
 | Discovery | Knowledge/Journal；最多128个玩家与位置组合 | 玩家曾观测此处合成加速度；首次证据不变，不代表当前读数或完整理解 |
 | DerivedMemory | LLMView/DerivedMemoryStore；最多16条 | 模型对已交付历史的非权威解释，强制带来源并标记model_derived |
 
@@ -54,7 +54,7 @@ Knowledge和History是新增LLMView主题。视图冻结知识及历史副本，
 
 Restore校验版本、数量、连续保留后缀、发现去重与证据、当前运行来源顺序以及revision/tick/sequence水位。RuntimeFirstSequence分隔当前运行历史后缀；BeginRuntime即使收到重用的epoch数值也清空来源消费水位，历史身份继续增长。内部Capture不能把未来来源放进较早截面。
 
-**本任务只提供后续checkpoint所需的DTO和版本，没有将知识接入PixelGameplay磁盘编码。** 当前Save world不保存本轮新增知识/历史；重启或Reset清空它们。后续M5持久贯穿场景需在一致检查点中接入这些DTO，不能把本轮导入导出测试表述为磁盘恢复。
+M5.4已通过 `PixelKnowledge 1` 接入 `PixelGameplay 3` 的同提交磁盘检查点。恢复保留稳定历史/发现身份，验证WorldId与提交上界，再重建运行来源消费边界。`ProgramActivated`也进入重要档案，为持久祈祷结果提供稳定证据；模型说明另存，不成为事实。下文M5.1记录仍是历史DTO验证范围，新增磁盘恢复与故障验证见[持久援助](PersistentInterventions.md)。新建世界Reset仍清空这些状态。
 
 ## 验证
 
@@ -76,4 +76,4 @@ ctest --test-dir build-cpu -R '^Pixel\.(Knowledge|KnowledgeView|LLMView|LLMJson)
 
 本轮没有修改World、Formula或Axiom，也没有新增UI/GPU行为；未运行GPU smoke、AET、sanitizer或新的性能基准。运行时构建的既有CPM缓存路径/Bullet最低版本警告未阻断构建。保存验证仅为DTO往返和校验，不是磁盘保存重启。
 
-M5.2将AuthorityChanged和InterventionStopped纳入重要档案，原始来源为实际请求或Authority版本；保护变化、当前能力及撤销/租约到期原因可以追溯。磁盘边界不变。
+M5.2将AuthorityChanged和InterventionStopped纳入重要档案，原始来源为实际请求或Authority版本；保护变化、当前能力及撤销/租约到期原因可以追溯。M5.4已持久化这些记录。

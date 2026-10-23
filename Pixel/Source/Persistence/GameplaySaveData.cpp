@@ -1,5 +1,7 @@
 #include "GameplaySaveData.h"
 #include "World/WorldStorageError.h"
+#include "KnowledgeCodec.h"
+#include "WorldWillCodec.h"
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -37,7 +39,7 @@ WorldPosition ReadPosition(std::istream &in) {
 std::string EncodeGameplayState(const GameplaySaveData &state) {
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<double>::max_digits10);
-    out << "PixelGameplay 2\n" << state.Tick << ' ' << state.Revision << ' ' << state.PlayerBag.Value
+    out << "PixelGameplay 3\n" << state.Tick << ' ' << state.Revision << ' ' << state.PlayerBag.Value
         << ' ' << state.LastAim[0] << ' ' << state.LastAim[1] << '\n';
     out << state.Actors.NextId << ' ' << state.Actors.Records.size() << '\n';
     for (const auto &actor : state.Actors.Records) {
@@ -73,6 +75,22 @@ std::string EncodeGameplayState(const GameplaySaveData &state) {
     out << std::quoted(state.Programs) << '\n';
     out << state.Garden.Enabled << ' ' << state.Garden.CrystalEnabled << ' ' << state.Garden.SurfaceY << ' '
         << state.Garden.WildGrowth << ' ' << state.Garden.HomeGrowth << '\n';
+    const auto &authority = state.Authority;
+    out << authority.Version << ' ' << authority.Grants.Observe << ' ' << authority.Grants.Intervene << ' '
+        << authority.Influence.Version << ' ' << authority.Influence.Available << ' ' << authority.Protections.size() << '\n';
+    for (const auto &protection : authority.Protections) {
+        const auto region = protection.Region;
+        out << protection.DeviceId << ' ' << protection.Active << ' ' << region.Origin.X << ' ' << region.Origin.Y
+            << ' ' << region.Width << ' ' << region.Height << '\n';
+    }
+    out << authority.NextIntervention << ' ' << authority.Interventions.size() << '\n';
+    for (const auto &intervention : authority.Interventions) {
+        const auto region = intervention.Scope;
+        out << intervention.Id << ' ' << intervention.ExpiresAtTick << ' ' << region.Origin.X << ' ' << region.Origin.Y
+            << ' ' << region.Width << ' ' << region.Height << '\n';
+    }
+    out << std::quoted(EncodeKnowledgeState(state.Knowledge)) << '\n'
+        << std::quoted(EncodeWorldWillState(state.WorldWill)) << '\n';
     return out.str();
 }
 
@@ -82,7 +100,7 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
     std::string magic;
     unsigned version = 0;
     ReadAll(in, magic, version);
-    if (magic != "PixelGameplay" || (version != 1 && version != 2)) throw WorldStorageError("unsupported gameplay checkpoint");
+    if (magic != "PixelGameplay" || version < 1 || version > 3) throw WorldStorageError("unsupported gameplay checkpoint");
     GameplaySaveData state;
     ReadAll(in, state.Tick, state.Revision, state.PlayerBag.Value, state.LastAim[0], state.LastAim[1]);
     if (!state.Revision || state.Revision == UINT64_MAX || state.Tick == UINT64_MAX
@@ -137,6 +155,24 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
             || garden.WildGrowth > GardenMatureSteps || garden.HomeGrowth > GardenMatureSteps
             || (!garden.Enabled && (garden.WildGrowth || garden.HomeGrowth)))
             throw WorldStorageError("invalid force garden checkpoint");
+    }
+    if (version >= 3) {
+        auto &authority = state.Authority;
+        ReadAll(in, authority.Version, authority.Grants.Observe, authority.Grants.Intervene,
+                authority.Influence.Version, authority.Influence.Available);
+        authority.Protections.resize(Count(in, Devices::MaximumCount));
+        for (auto &protection : authority.Protections)
+            ReadAll(in, protection.DeviceId, protection.Active, protection.Region.Origin.X, protection.Region.Origin.Y,
+                    protection.Region.Width, protection.Region.Height);
+        Read(in, authority.NextIntervention);
+        authority.Interventions.resize(Count(in, 4));
+        for (auto &intervention : authority.Interventions)
+            ReadAll(in, intervention.Id, intervention.ExpiresAtTick, intervention.Scope.Origin.X, intervention.Scope.Origin.Y,
+                    intervention.Scope.Width, intervention.Scope.Height);
+        std::string knowledge, will;
+        if (!(in >> std::quoted(knowledge) >> std::quoted(will))) throw WorldStorageError("missing social checkpoint");
+        state.Knowledge = DecodeKnowledgeState(knowledge);
+        state.WorldWill = DecodeWorldWillState(will);
     }
     in >> std::ws;
     if (!in.eof()) throw WorldStorageError("unexpected gameplay checkpoint data");

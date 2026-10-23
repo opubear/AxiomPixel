@@ -2,6 +2,8 @@
 
 2026-10-23。GameSession在完整提交点捕获世界、角色、库存、设备、程序和场源；新一代文件全部写好后才发布 `checkpoint.current`。这是会话内区域冻结恢复之后的磁盘保存入口。World没有Formula/设备依赖，语言格式由独立Formula运行时定义，引擎未改动。
 
+M5.4现扩展为 `PixelGameplay 3`，在同一捕获点加入Knowledge、Authority和持久祈祷档案，支持活跃/冻结干预和非默认权限。旧版本1/2继续读取；新增恢复与校验合同见[持久援助](PersistentInterventions.md)，下文保留基础检查点的原始验证记录。
+
 ## 文件与发布
 
 每个世界保持 `Saves/current.txt` 选中的稳定世界目录。在其中：

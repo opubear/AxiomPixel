@@ -309,6 +309,25 @@ void HoldUntilSafeBoundary() {
     timeout.Service(5s);
     Check(timeout.Result(waiting).State == will::DecisionState::TimedOut && timeout.Source.Submissions == 0,
         "paused ready proposal escaped deadline");
+
+    for (const bool pendingStep : {true, false}) {
+        Fixture blocked;
+        const auto blockedId = blocked.Request();
+        blocked.Source.Pending = pendingStep;
+        blocked.Source.NotReady = !pendingStep;
+        blocked.Service(5s);
+        Check(blocked.Model.Cancelled == std::vector<will::DecisionId>{blockedId}
+            && blocked.Will.Results().empty(), "unsafe boundary delayed worker cancellation or published a terminal result");
+        blocked.Model.Reply(blockedId);
+        blocked.Service();
+        Check(blocked.Source.Submissions == 0 && blocked.Model.Cancelled.size() == 1,
+            "late reply escaped the blocked deadline or cancelled twice");
+        blocked.Source.Pending = blocked.Source.NotReady = false;
+        blocked.Service();
+        Check(blocked.Result(blockedId).State == will::DecisionState::TimedOut
+            && blocked.Source.Submissions == 0 && blocked.Model.Cancelled.size() == 1,
+            "safe boundary revived an expired decision or cancelled twice");
+    }
 }
 
 void MalformedAndUnavailableResults() {

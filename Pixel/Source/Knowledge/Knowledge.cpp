@@ -6,6 +6,7 @@
 namespace pixel::knowledge {
 namespace {
 bool Important(const api::FactPayload &payload) {
+    if (std::holds_alternative<api::ProgramActivated>(payload)) return true;
     if (std::holds_alternative<api::AuthorityChanged>(payload)
         || std::holds_alternative<api::InterventionStopped>(payload)) return true;
     if (std::holds_alternative<api::MaterialRemoved>(payload) || std::holds_alternative<api::ForceObserved>(payload)) return true;

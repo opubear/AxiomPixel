@@ -316,7 +316,7 @@ void DrawWindAppearance(GamePresentation &presentation) {
 } // namespace
 std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &camera,
                                                GamePresentation &presentation, ControlMode mode,
-                                               performance::GameProfiler &performance) {
+                                               performance::GameProfiler &performance, will::WorldWill &worldWill) {
     PIXEL_PROFILE_SCOPE(DebugUI);
     std::optional<ControlMode> requestedMode;
     // A declined close/reset remains visible even when the debug panel is hidden.
@@ -334,7 +334,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
                                                        std::max(120.f, ImGui::GetIO().DisplaySize.y - 32)});
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
             DrawGeneration(session);
-            DrawForceGardenUI(session, presentation, GardenReceipt);
+            DrawForceGardenUI(session, presentation, worldWill, GardenReceipt);
             DrawActions(session, ActionCell);
             DrawInventory(presentation);
             DrawDevices(session, presentation, DeviceCell, SelectedDevice);

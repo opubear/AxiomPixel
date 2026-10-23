@@ -1,6 +1,7 @@
 #include "Authority.h"
 #include <algorithm>
 #include <stdexcept>
+#include <set>
 
 namespace pixel::authority {
 namespace {
@@ -31,6 +32,37 @@ void Control::Reset(api::CallerSessionId subject) {
     Influence = {};
     Grants = {};
     Protections.clear();
+}
+SaveData Control::CaptureState() const {
+    SaveData data;
+    data.Version = Revision;
+    data.Grants = Grants;
+    data.Influence = Influence;
+    data.Protections = Protections;
+    return data;
+}
+
+void Control::RestoreState(const SaveData &data, api::CallerSessionId subject, std::span<const DeviceSnapshot> devices) {
+    if (!subject || !data.Version || data.Version == UINT64_MAX || !data.Influence.Version
+        || data.Influence.Version == UINT64_MAX || data.Influence.Available > MaximumInterventions
+        || data.Interventions.size() != MaximumInterventions - data.Influence.Available
+        || data.Protections.size() > 64)
+        throw std::invalid_argument("invalid authority checkpoint ledger");
+    std::set<uint64_t> seen;
+    for (const auto &protection : data.Protections) {
+        const auto found = std::find_if(devices.begin(), devices.end(),
+            [&](const auto &device) { return device.Ref.Id == protection.DeviceId; });
+        if (found == devices.end() || !seen.insert(protection.DeviceId).second
+            || !ValidRegion(protection.Region)
+            || protection.Region != api::Rect{{found->X - 16, found->Y - 16}, DeviceWidth + 32, DeviceHeight + 32}
+            || protection.Active != found->Enabled)
+            throw std::invalid_argument("authority protection and device disagree");
+    }
+    Subject = subject;
+    Revision = data.Version;
+    Influence = data.Influence;
+    Grants = data.Grants;
+    Protections = data.Protections;
 }
 void Control::ReserveIntervention() {
     if (!Influence.Available) throw std::logic_error("intervention reserved without influence capacity");

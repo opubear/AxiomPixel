@@ -1,18 +1,9 @@
 #pragma once
-#include "GameAPI/Facts.h"
+#include "AuthorityState.h"
 #include <span>
 #include <vector>
 
 namespace pixel::authority {
-struct Capabilities {
-    bool Observe = true, Intervene = true;
-    bool operator==(const Capabilities &) const = default;
-};
-struct Protection {
-    uint64_t DeviceId = 0;
-    api::Rect Region;
-    bool Active = false;
-};
 // One world-will subject and player-owned protection modules. These are game
 // rules, not caller-provided roles or a general authorization registry.
 class Control {
@@ -21,6 +12,9 @@ class Control {
     void Reset(api::CallerSessionId subject);
     uint64_t Version() const { return Revision; }
     const api::InterventionResources &Resources() const { return Influence; }
+    Capabilities CapabilitiesGranted() const { return Grants; }
+    SaveData CaptureState() const;
+    void RestoreState(const SaveData &data, api::CallerSessionId subject, std::span<const DeviceSnapshot> devices);
     void ReserveIntervention();
     void ReleaseIntervention();
     bool CanObserve(api::CallerSessionId subject, api::Rect scope) const;

@@ -231,7 +231,7 @@ inline void Write(Writer &out, const ProcessCarrier &value) {
 }
 inline ProcessCarrier ReadCarrier(Reader &in) {
     ProcessCarrier value;
-    value.Kind = in.Enum(ProcessCarrierKind::Device); value.Subject = in.Number<uint64_t>(); value.Origin = ReadWorldPosition(in);
+    value.Kind = in.Enum(ProcessCarrierKind::Intervention); value.Subject = in.Number<uint64_t>(); value.Origin = ReadWorldPosition(in);
     in.Numbers(value.Scope.X, value.Scope.Y, value.Scope.Width, value.Scope.Height,
         value.AngleDegrees, value.MaximumRadius, value.ActivityRadius, value.Credits, value.Grants,
         value.Limits.Work, value.Limits.Queries, value.Limits.Outputs);

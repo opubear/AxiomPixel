@@ -4,5 +4,6 @@
 namespace pixel {
 class GameSession;
 class GamePresentation;
-void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, std::string &receipt);
+namespace will { class WorldWill; }
+void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, will::WorldWill &worldWill, std::string &receipt);
 } // namespace pixel

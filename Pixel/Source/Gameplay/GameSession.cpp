@@ -215,11 +215,11 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
         if (gameplay) {
             if (data.CommittedTime != gameplay->Tick * SimulationCoordinator::StepSeconds)
                 throw WorldStorageError("checkpoint metadata and gameplay clocks disagree");
-            RestoreGameplayData(*gameplay);
+            Simulation.RestoreCheckpoint(gameplay->Tick, gameplay->Revision, data.TimeRemainder);
+            RestoreGameplayData(*gameplay, directory.filename().string());
             if (GetPlayer()->GetWorldPosition().Chunk != data.Player.Chunk
                 || GetPlayer()->GetWorldPosition().Local != data.Player.Local)
                 throw WorldStorageError("checkpoint metadata and player position disagree");
-            Simulation.RestoreCheckpoint(gameplay->Tick, gameplay->Revision, data.TimeRemainder);
         }
         GameWorld.RestorePendingEnvironmentStep(Simulation.Time(), false);
     } catch (const std::invalid_argument &error) {
@@ -254,7 +254,6 @@ SessionSaveData GameSession::CaptureSaveData() const {
 void GameSession::Save() {
     if (Simulation.HasPendingStep()) throw std::logic_error("save during pending simulation step");
     if (!Store) return;
-    if (HasTransientAuthority()) throw std::logic_error("authority state cannot yet be checkpointed");
     if (!Ready) throw std::logic_error("cannot save an incomplete world session");
     const auto saveStart = std::chrono::steady_clock::now();
     try {
@@ -341,6 +340,7 @@ void GameSession::ReplacingWorld() {
     Facts.Reset(Epoch);
     Knowledge.Reset();
     Knowledge.BeginRuntime(Epoch);
+    WillMemory = {};
     Simulation = {};
     PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
     PublishedFieldSourceVersion = 0;

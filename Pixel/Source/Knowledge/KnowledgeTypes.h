@@ -35,7 +35,7 @@ struct HistoryRead {
 };
 HistoryRead ReadHistory(const Snapshot &snapshot, uint64_t after, uint32_t limit);
 
-// Owning, versioned checkpoint contract. Disk wiring is a later M5 task.
+// Owning, versioned checkpoint contract, encoded by Persistence/KnowledgeCodec.
 struct SaveData {
     uint32_t Version = SchemaVersion;
     std::string WorldId;

@@ -1,6 +1,8 @@
 #pragma once
 #include "Actions.h"
 #include "Ecology/ForceGarden.h"
+#include "Authority/AuthorityState.h"
+#include "WorldWillState.h"
 #include <string_view>
 #include <vector>
 
@@ -60,6 +62,11 @@ struct GameplayObservation {
     std::vector<ProcessObservation> Processes;
     std::vector<FieldSourceObservation> FieldSources;
     std::optional<ForceGardenObservation> Garden;
+    WorldWillMemory WorldWill;
+    std::vector<authority::Protection> Protections;
+    uint64_t AuthorityVersion = 1;
+    InterventionResources InterventionSlots;
+    bool AllowObservation = true, AllowIntervention = true;
     uint64_t RetainedBytes() const;
 };
 } // namespace pixel::api

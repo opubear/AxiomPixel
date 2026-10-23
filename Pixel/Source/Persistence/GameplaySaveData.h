@@ -3,6 +3,9 @@
 #include "Devices/Devices.h"
 #include "Ecology/ForceGarden.h"
 #include "World/Environment/FieldSources.h"
+#include "Authority/AuthorityState.h"
+#include "Knowledge/KnowledgeTypes.h"
+#include "GameAPI/WorldWillState.h"
 #include <string>
 #include <string_view>
 
@@ -19,6 +22,9 @@ struct GameplaySaveData {
     FieldSourcesState FieldSources;
     std::string Programs;
     ForceGardenState Garden;
+    authority::SaveData Authority;
+    knowledge::SaveData Knowledge;
+    api::WorldWillMemory WorldWill;
 };
 std::string EncodeGameplayState(const GameplaySaveData &state);
 GameplaySaveData DecodeGameplayState(std::string_view payload);

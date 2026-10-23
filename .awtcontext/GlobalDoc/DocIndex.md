@@ -59,11 +59,12 @@
 | 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
 | 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 持续来源、区域冻结、驻留失效及M4.6归属持久化 | |
 | 区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | M4.5本地活动时间与身份续接；M4.6磁盘恢复另见Checkpoints | |
-| 多领域一致检查点与程序持久化 | `context:GlobalDoc/Checkpoints.md` | M4.6不可变世代、各域和程序恢复、旧档导入；80项回归、chunk64及停顿与RSS实测 | |
+| 多领域一致检查点与程序持久化 | `context:GlobalDoc/Checkpoints.md` | 不可变世代与程序恢复；M5.4扩展知识、权限和祈祷同提交保存 | |
 | 设备库存与持续程序观测 | `context:GlobalDoc/GameplayObservation.md` | M4.7统一提交投影、库存授权与分页、设备状态与场源UI及验证 | |
 | 可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | M4.8天然晶体、真实资源、设备与植物条件响应、冻结存档、试玩和验证 | |
-| 发现知识、重要历史与派生记忆 | `context:GlobalDoc/KnowledgeAndHistory.md` | M5.1显式观测、来源档案、授权冻结查询、非权威摘要及保存DTO边界 | |
-| 区域控制与干预撤销 | `context:GlobalDoc/Authority.md` | M5.2能力与设备保护；M5.3资源槽和设备锚点裁决；持续撤权及存档边界 | |
-| 异步WorldWill与离线模型闭环 | `context:GlobalDoc/WorldWill.md` | M5.3有界决策、真实worker、授权观测、动作前置条件和离线演示 | |
+| 发现知识、重要历史与派生记忆 | `context:GlobalDoc/KnowledgeAndHistory.md` | 有来源档案与授权查询；M5.4知识存档和祈祷激活证据 | |
+| 区域控制与干预撤销 | `context:GlobalDoc/Authority.md` | 能力、保护与租约；M5.4同提交存档、重载核验和设备保护UI | |
+| 异步WorldWill与离线模型闭环 | `context:GlobalDoc/WorldWill.md` | M5.3有界异步决策与资源裁决；M5.4接持久祈祷档案和育圃入口 | |
+| 持久援助、祈祷档案与自主权 | `context:GlobalDoc/PersistentInterventions.md` | M5.4离线育圃援助、保护撤销、同提交知识与权限存档、恢复和来源证据 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

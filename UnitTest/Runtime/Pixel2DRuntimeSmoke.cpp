@@ -8,6 +8,7 @@
 #include "InputManager.h"
 #include "Application/PixelGame.h"
 #include "Gameplay/FormulaBridge/ProcessExample.h"
+#include "Gameplay/Home/GardenAidProgram.h"
 #include "Asset/Loaders/AssetLoader.h"
 #include "Assets/ArtAssets.h"
 #include "PixelRender/BackgroundView.h"
@@ -835,7 +836,7 @@ void FormulaGameplayGpu() {
     std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize, device body/port and sustained field install/remove readback\n";
 }
 
-void ForceGardenGameplayGpu() {
+void ForceGardenGameplayGpu(bool aid = false) {
     auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
@@ -903,9 +904,24 @@ void ForceGardenGameplayGpu() {
     Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::PlaceDevice{{pixel::GardenDeviceX, surface - 2}}).Applied(),
             "GPU garden emitter construction failed");
     auto device = session.GetDevices().Snapshot().front();
-    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SupplyDevice{device.Ref, 8}).Applied(), "GPU garden coal supply failed");
-    device = session.GetDevices().Snapshot().front();
-    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SetDeviceEnabled{device.Ref, true}).Applied(), "GPU garden enable failed");
+    if (aid) {
+        Require(bool(session.ApplyProcess(pixel::NativeCaller::Driver, pixel::GardenAidProgram())), "GPU aid program apply failed");
+        const pixel::api::Rect scope{{device.X - 16, device.Y - 16}, 34, 34};
+        Require(input->GetWorldWill().Request({scope, {device.X, device.Y}, device.Ref.Id}).Status == pixel::will::RequestStatus::Accepted,
+            "GPU home prayer rejected");
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "GPU aid resume failed");
+        for (int attempt = 0; attempt < 100 && input->GetWorldWill().Results().empty(); ++attempt) {
+            Draw(app);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Require(!input->GetWorldWill().Results().empty() && input->GetWorldWill().Results().back().State == pixel::will::DecisionState::Applied,
+            "GPU offline prayer did not apply");
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true}).Succeeded(), "GPU aid pause failed");
+    } else {
+        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SupplyDevice{device.Ref, 8}).Applied(), "GPU garden coal supply failed");
+        device = session.GetDevices().Snapshot().front();
+        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SetDeviceEnabled{device.Ref, true}).Applied(), "GPU garden enable failed");
+    }
     for (uint32_t step = 0; step < pixel::GardenMatureSteps; ++step) {
         session.BeginFrame();
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "GPU garden step rejected");
@@ -925,7 +941,8 @@ void ForceGardenGameplayGpu() {
     input->GetPresentation().ToggleFieldView();
     verifyGarden("garden-restored.ppm", true);
     app.Shutdown();
-    std::cout << "Garden GPU passed: crystal/seedlings/mature blooms, real mining and fuel, three object readbacks, frame slots and F1 isolation\n";
+    std::cout << "Garden GPU passed: crystal/seedlings/mature blooms, " << (aid ? "offline aid without device fuel" : "real mining and fuel")
+              << ", three object readbacks, frame slots and F1 isolation\n";
 }
 
 void BasicWorldGameplay() {
@@ -1625,6 +1642,7 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
 void RunPixelDebugUISmoke();
 void RunPixelFormulaUISmoke();
 void RunPixelGardenUISmoke();
+void RunPixelGardenAidUISmoke();
 int main(int argc, char **argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--art-only") {
@@ -1643,6 +1661,11 @@ int main(int argc, char **argv) {
         if (argc == 2 && std::string_view(argv[1]) == "--formula-only") {
             FormulaGameplayGpu();
             RunPixelFormulaUISmoke();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--garden-aid-only") {
+            ForceGardenGameplayGpu(true);
+            RunPixelGardenAidUISmoke();
             return 0;
         }
         if (argc == 2 && std::string_view(argv[1]) == "--garden-only") {
@@ -1666,6 +1689,8 @@ int main(int argc, char **argv) {
         RunPixelFormulaUISmoke();
         ForceGardenGameplayGpu();
         RunPixelGardenUISmoke();
+        ForceGardenGameplayGpu(true);
+        RunPixelGardenAidUISmoke();
         Lifecycle(1);
         Lifecycle(2);
         return 0;

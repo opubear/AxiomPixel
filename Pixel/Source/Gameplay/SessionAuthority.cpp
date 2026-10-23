@@ -48,6 +48,7 @@ api::ActionReceipt GameSession::SetDeviceProtection(const api::SetDeviceProtecti
         result.Rejection = api::Reason::InvalidArgument;
     } else {
         result.Result = Authority.SetProtection(device->Value, action.Enabled);
+        if (action.Enabled) WillMemory.AutonomyChosen = true;
     }
     return result;
 }
@@ -94,7 +95,7 @@ api::ActionReceipt GameSession::InstallIntervention(const api::InstallInterventi
         return result;
     }
     const auto id = Formulas.LastActivationId();
-    Interventions.push_back({carrier.Subject, request.Caller, Simulation.Tick() + 600, action.Scope});
+    Interventions.push_back({carrier.Subject, Simulation.Tick() + 600, action.Scope});
     Authority.ReserveIntervention();
     const auto stats = Formulas.Stats();
     result.Result = api::ActivationResult{Epoch, id, AppliedProgram(), stats.Roots, stats.Projectiles, stats.Pending};
@@ -134,11 +135,11 @@ std::vector<api::FactPayload> GameSession::ReconcileAuthority() {
             it = Interventions.erase(it);
             continue;
         }
-        const bool permitted = Authority.CanIntervene(it->Subject, it->Scope);
+        const bool permitted = Authority.CanIntervene(WorldWillSession(), it->Scope);
         const bool expired = Simulation.Tick() >= it->ExpiresAtTick;
         if (!permitted || expired) {
             Formulas.CancelCarrier(GameWorld, ProcessCarrierKind::Intervention, it->Id);
-            changes.emplace_back(api::InterventionStopped{{Epoch, process->State.Id}, it->Subject,
+            changes.emplace_back(api::InterventionStopped{{Epoch, process->State.Id}, WorldWillSession(),
                 permitted ? api::InterventionStopReason::LeaseExpired : api::InterventionStopReason::ControlRevoked});
             Authority.ReleaseIntervention();
             it = Interventions.erase(it);
@@ -152,7 +153,4 @@ void GameSession::RecordAuthorityFacts(std::span<const api::FactPayload> changes
         RecordFact(CurrentCommit(), api::AuthorityCause{Authority.Version()}, change);
 }
 
-bool GameSession::HasTransientAuthority() const {
-    return Authority.HasProtection() || !Interventions.empty() || !Authority.DefaultCapabilities();
-}
 } // namespace pixel

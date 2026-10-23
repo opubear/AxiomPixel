@@ -311,9 +311,8 @@ void PendingAndPersistence() {
         api::InstallIntervention{session.AppliedProgram(), {600, 500}, scope, session.GetAuthority().Resources().Version}};
     Check(session.Submit(subject, proposal).Applied(), "persistent intervention start");
     const auto epoch = session.WorldEpoch();
-    Check(session.Control(NativeCaller::Driver, api::SaveWorld{}).Rejection == api::Reason::Unsupported
-        && session.Control(NativeCaller::Driver, api::ResetWorld{}).Rejection == api::Reason::Unsupported
-        && session.WorldEpoch() == epoch, "transient authority silently entered checkpoint");
+    Check(session.Control(NativeCaller::Driver, api::SaveWorld{}).Succeeded()
+        && session.WorldEpoch() == epoch, "active authority checkpoint failed");
 
     auto &world = testing::SessionAccess::World(session);
     WindStrategySettings wind;
@@ -376,7 +375,12 @@ void PendingAndPersistence() {
         && restored.GetWorld().GetEnvironment().GetFieldSources().Sources().empty(), "checkpoint revived transient intervention");
     const auto device = Device(restored, {580, 490});
     Check(restored.Execute(NativeCaller::Input, api::SetDeviceProtection{device, true}).Applied(), "persistent module install");
-    Check(restored.Control(NativeCaller::Driver, api::SaveWorld{}).Rejection == api::Reason::Unsupported, "checkpoint silently dropped module");
+    Check(restored.Control(NativeCaller::Driver, api::SaveWorld{}).Succeeded(), "protected checkpoint failed");
+    {
+        GameSession protectedLoad(true);
+        Check(protectedLoad.GetAuthority().Regions().size() == 1
+            && protectedLoad.GetAuthority().Regions().front().DeviceId == device.Id, "checkpoint dropped module");
+    }
     Check(restored.Execute(NativeCaller::Input, api::SetDeviceProtection{device, false}).Applied(), "module removal");
     Check(restored.Control(NativeCaller::Driver, api::SaveWorld{}).Succeeded(), "removed module prevented checkpoint");
 }

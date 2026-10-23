@@ -590,6 +590,103 @@ void RunPixelGardenUISmoke() {
     std::cout << "Garden ImGui passed: create, exact program Apply, real mining/build/fuel/enable, measured growth, receipts and frozen publication\n";
 }
 
+void RunPixelGardenAidUISmoke() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *pixel = game.get();
+    PixelSmokeApplication app(std::move(game), {true});
+    app.Initialize();
+    app.Begin();
+    Draw(app, 3);
+    ImGui::FindWindowByName("Formula Editor")->Collapsed = true;
+    auto *window = ImGui::FindWindowByName("Pixel Debug");
+    for (const char *header : {"World generation", "Environment", "Wind appearance", "Game actions", "Devices"})
+        window->StateStorage.SetInt(window->GetID(header), 0);
+    window->StateStorage.SetInt(window->GetID("Force garden"), 1);
+    Draw(app, 2);
+    auto &session = pixel->GetSession();
+    const auto observation = [&]() -> const pixel::api::GameplayObservation & {
+        return *pixel->GetPresentation().PublishedGameplay();
+    };
+    Click(app, ControlPoint(app, "Save and create force garden"));
+    Click(app, ControlPoint(app, "Mine build materials"));
+    Click(app, ControlPoint(app, "Build home emitter"));
+    Click(app, ControlPoint(app, "Install home protection"));
+    Require(observation().Protections.size() == 1 && !observation().Protections.front().Active &&
+            observation().WorldWill.AutonomyChosen, "disabled emitter protection should record autonomy without active coverage");
+    Click(app, ControlPoint(app, "Enable home emitter"));
+    Require(observation().Protections.front().Active, "enabled emitter did not activate installed protection");
+    Click(app, ControlPoint(app, "Pray for home aid (offline)"));
+    const auto denied = CaptureUiText(app);
+    RequireUiText(observation().WorldWill.Records.empty() && denied.find("Home prayer: ObservationDenied") != std::string::npos,
+        "protected prayer did not report observation denial", denied);
+    Click(app, ControlPoint(app, "Remove home protection"));
+    const auto beforePrayer = observation().Stamp;
+    Click(app, ControlPoint(app, "Pray for home aid (offline)"));
+    Require(session.IsPaused() && observation().Stamp.Tick == beforePrayer.Tick &&
+            observation().WorldWill.Records.size() == 1 && observation().WorldWill.AidAccepted == 0 &&
+            observation().Garden->State.HomeGrowth == 0,
+            "prayer button advanced or resumed simulation, applied while paused, or omitted the persistent request");
+    const auto queued = CaptureUiText(app);
+    RequireUiText(queued.find("Resume simulation to submit") != std::string::npos &&
+        queued.find("No committed game action.") != std::string::npos,
+        "paused prayer UI did not distinguish the proposal from a committed action", queued);
+
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "aid smoke resume failed");
+    for (int attempt = 0; attempt < 100 && observation().WorldWill.AidAccepted == 0; ++attempt) {
+        Draw(app);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Require(observation().WorldWill.AidAccepted == 1 && observation().WorldWill.Records.back().State == pixel::api::DecisionState::Applied,
+        "offline fake worker did not install a real intervention through the production button");
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true}).Succeeded(), "aid smoke pause failed");
+    for (int step = 0; step < 2; ++step) {
+        session.BeginFrame();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "aid smoke step failed");
+        pixel->Tick(1.f / 60);
+    }
+    Draw(app);
+    const auto running = observation();
+    const auto instance = running.WorldWill.Records.back().InstanceId;
+    Require(instance && running.WorldWill.Records.back().Facts.Count && running.InterventionSlots.Available == 3 &&
+        running.Garden->Home.Condition == pixel::GardenCondition::Growing && running.Garden->State.HomeGrowth > 0 &&
+        running.Devices.front().Fuel == 0 &&
+        std::any_of(running.FieldSources.begin(), running.FieldSources.end(), [&](const auto &source) {
+            return source.OwnerInstance == instance && source.Contributing && source.RadiusCells == 16;
+        }), "aid did not produce a real field and growth independent of device fuel");
+    const auto applied = CaptureUiText(app);
+    RequireUiText(applied.find("Model explanation:") != std::string::npos && applied.find("Created instance #") != std::string::npos &&
+        applied.find("History evidence #") != std::string::npos &&
+        applied.find("Aid accepted: 1; autonomy: chosen") != std::string::npos && applied.find("Aid field #") != std::string::npos,
+        "aid UI mixed model prose with facts or omitted the actual lease and relationship", applied);
+
+    const auto frozen = CaptureUiText(app, [&] {
+        Require(session.Execute(pixel::NativeCaller::Driver,
+            pixel::api::SetDeviceProtection{running.Devices.front().Ref, true}).Applied(), "late aid protection install failed");
+    });
+    RequireUiText(observation().Stamp == running.Stamp && frozen.find("Home protection: absent; coverage inactive") != std::string::npos &&
+        frozen.find("Aid field #") != std::string::npos,
+        "aid UI read live authority or lease state newer than its published frame", frozen);
+    const auto protectedText = CaptureUiText(app);
+    RequireUiText(observation().Protections.front().Active && observation().InterventionSlots.Available == 4 &&
+        std::none_of(observation().FieldSources.begin(), observation().FieldSources.end(), [&](const auto &source) {
+            return source.OwnerInstance == instance;
+        }) && protectedText.find("Home protection: installed; coverage active") != std::string::npos &&
+        protectedText.find("Aid lease: no live instance.") != std::string::npos,
+        "protection did not revoke the aid field and publish the actual result", protectedText);
+    const auto growth = observation().Garden->State.HomeGrowth;
+    session.BeginFrame();
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "protected aid step failed");
+    pixel->Tick(1.f / 60);
+    Draw(app);
+    Require(observation().Garden->State.HomeGrowth == growth && observation().Garden->Home.Condition == pixel::GardenCondition::NeedsForce,
+        "revoked aid continued to supply force to the home bed");
+    Click(app, ControlPoint(app, "Remove home protection"));
+    Require(observation().Protections.empty() && observation().WorldWill.AutonomyChosen && observation().WorldWill.AidAccepted == 1,
+        "protection removal erased durable relationship choices");
+    app.Shutdown();
+    std::cout << "Garden aid ImGui passed: real prayer/protection controls, paused proposal, offline worker, committed instance/field/growth, revocation and frozen publication\n";
+}
+
 void RunPixelFormulaUISmoke() {
     auto game = std::make_unique<PixelGame>(false);
     auto *pixel = game.get();

@@ -45,6 +45,9 @@ class GameSession : public api::WorldWillHost {
     api::ObservationAuthorization AuthorizeObservation(uint64_t subject, api::Rect scope) const override;
     const authority::Control &GetAuthority() const { return Authority; }
     api::WorldWillHostStatus WorldWillStatus() const override;
+    uint64_t BeginPrayer(const api::CommitStamp &observed, api::Rect scope) override;
+    void ResolvePrayer(uint64_t id, api::DecisionState state, std::string explanation,
+                       const std::optional<api::ActionReceipt> &receipt) override;
     api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request) override;
     api::ActionReceipt Execute(NativeCaller caller, api::Action action);
     const api::ActionReceipt *LastAction(NativeCaller caller) const;
@@ -130,14 +133,10 @@ class GameSession : public api::WorldWillHost {
     api::ActionReceipt SetDeviceProtection(const api::SetDeviceProtection &action);
     std::vector<api::FactPayload> ReconcileAuthority();
     void RecordAuthorityFacts(std::span<const api::FactPayload> changes);
-    bool HasTransientAuthority() const;
-    struct Intervention {
-        uint64_t Id = 0, Subject = 0, ExpiresAtTick = 0;
-        api::Rect Scope;
-    };
     authority::Control Authority;
     uint64_t NextIntervention = 1;
-    std::vector<Intervention> Interventions;
+    std::vector<authority::Intervention> Interventions;
+    api::WorldWillMemory WillMemory;
     void RecordActionFacts(api::ActionReceipt &receipt, api::WindConfiguration beforeWind);
     api::FactId RecordFact(const api::CommitStamp &stamp, api::FactCause cause, api::FactPayload payload);
     void RecordFormulaFacts();
@@ -188,7 +187,8 @@ class GameSession : public api::WorldWillHost {
     void LoadDirectory(const std::filesystem::path &directory);
     SessionSaveData CaptureSaveData() const;
     GameplaySaveData CaptureGameplayData() const;
-    void RestoreGameplayData(const GameplaySaveData &data);
+    void RestoreGameplayData(const GameplaySaveData &data, const std::string &worldId);
+    void RestoreSocialData(const GameplaySaveData &data, const std::string &worldId);
     CheckpointMetrics SaveMetrics;
     void ReplacingWorld();
 };

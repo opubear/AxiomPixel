@@ -1,5 +1,7 @@
 #include "ForceGardenUI.h"
 #include "Gameplay/Home/ForceGardenProgram.h"
+#include "Gameplay/Home/GardenAidProgram.h"
+#include "WorldWill/WorldWill.h"
 #include "PixelRender/GamePresentation.h"
 #include "imgui.h"
 #include <algorithm>
@@ -47,9 +49,101 @@ void MineSupply(GameSession &session, int64_t first, int64_t last, int64_t y, st
     }
     status = "Mining: Applied. Collected " + std::to_string(collected) + " resource cells into player inventory.";
 }
+const char *RequestStatusName(will::RequestStatus status) {
+    switch (status) {
+    case will::RequestStatus::Accepted: return "Accepted";
+    case will::RequestStatus::Closed: return "Closed";
+    case will::RequestStatus::Capacity: return "Capacity";
+    case will::RequestStatus::NotReady: return "NotReady";
+    case will::RequestStatus::InvalidGoal: return "InvalidGoal";
+    case will::RequestStatus::ObservationDenied: return "ObservationDenied";
+    case will::RequestStatus::ModelBusy: return "ModelBusy";
+    }
+    throw std::logic_error("unknown world will request status");
+}
+
+void DrawPrayer(const api::PrayerRecord &prayer) {
+    ImGui::Text("Prayer #%llu: %s", static_cast<unsigned long long>(prayer.Id), will::DecisionStateName(prayer.State));
+    ImGui::TextDisabled("Observed tick %llu / revision %llu; resolved tick %llu / revision %llu",
+        static_cast<unsigned long long>(prayer.ObservedAt.Tick), static_cast<unsigned long long>(prayer.ObservedAt.Revision),
+        static_cast<unsigned long long>(prayer.ResolvedAt.Tick), static_cast<unsigned long long>(prayer.ResolvedAt.Revision));
+    ImGui::Text("Scope: (%lld, %lld), %u x %u cells", static_cast<long long>(prayer.Scope.Origin.X),
+        static_cast<long long>(prayer.Scope.Origin.Y), prayer.Scope.Width, prayer.Scope.Height);
+    if (!prayer.Explanation.empty()) ImGui::TextWrapped("Model explanation: %s", prayer.Explanation.c_str());
+    if (prayer.Action) {
+        ImGui::Text("Action request #%llu: %s", static_cast<unsigned long long>(prayer.Action->Sequence),
+            prayer.State == api::DecisionState::Applied ? "Applied" : api::ReasonName(prayer.Rejection));
+        if (prayer.State == api::DecisionState::Applied) {
+            ImGui::Text("Created instance #%llu; facts #%llu + %u", static_cast<unsigned long long>(prayer.InstanceId),
+                static_cast<unsigned long long>(prayer.Facts.FirstSequence), prayer.Facts.Count);
+            ImGui::Text("History evidence #%llu", static_cast<unsigned long long>(prayer.EvidenceSequence));
+        }
+    } else ImGui::TextDisabled("No committed game action.");
+}
+
+void DrawWorldWillState(const api::GameplayObservation &published) {
+    const auto &memory = published.WorldWill;
+    ImGui::Text("Aid accepted: %llu; autonomy: %s", static_cast<unsigned long long>(memory.AidAccepted),
+        memory.AutonomyChosen ? "chosen" : "not chosen");
+    ImGui::Text("Authority v%llu; free aid slots: %u", static_cast<unsigned long long>(published.AuthorityVersion),
+        published.InterventionSlots.Available);
+    ImGui::Text("Global permission: observe %s / intervene %s", published.AllowObservation ? "yes" : "no",
+        published.AllowIntervention ? "yes" : "no");
+    if (!memory.Records.empty()) {
+        DrawPrayer(memory.Records.back());
+        if (memory.Records.size() > 1 && ImGui::TreeNode("Earlier prayers")) {
+            for (size_t i = 0; i + 1 < memory.Records.size(); ++i) DrawPrayer(memory.Records[i]);
+            ImGui::TreePop();
+        }
+    }
+    size_t instances = 0;
+    for (const auto &process : published.Processes) {
+        if (process.Carrier != api::CarrierKind::Intervention) continue;
+        ++instances;
+        ImGui::Text("Aid lease instance #%llu: %s; active %llu steps", static_cast<unsigned long long>(process.InstanceId),
+            process.Suspended ? "suspended" : "running", static_cast<unsigned long long>(process.ActiveSteps));
+        for (const auto &source : published.FieldSources) {
+            if (source.OwnerInstance != process.InstanceId) continue;
+            ImGui::Text("Aid field #%llu: %s; radius %.1f; remaining %llu steps",
+                static_cast<unsigned long long>(source.Handle), source.Contributing ? "active" : "inactive",
+                source.RadiusCells, static_cast<unsigned long long>(source.RemainingSteps));
+            ImGui::Text("Aid acceleration: (%+.1f, %+.1f) cells/s^2", source.AccelerationCellsPerSecondSquared[0],
+                source.AccelerationCellsPerSecondSquared[1]);
+        }
+    }
+    if (!instances) ImGui::TextDisabled("Aid lease: no live instance.");
+}
+
+void DrawHomeAid(GameSession &session, will::WorldWill &worldWill, const api::GameplayObservation &published,
+                 const api::DeviceObservation &device, std::string &receipt) {
+    ImGui::Separator();
+    ImGui::TextWrapped("5. Request temporary offline help at this emitter, or install protection to choose autonomy. Protection blocks observation and intervention only while the emitter is enabled; it also revokes an existing aid lease.");
+    if (ImGui::Button("Pray for home aid (offline)")) {
+        const auto applied = session.ApplyProcess(NativeCaller::Debug, GardenAidProgram());
+        if (!applied) receipt = "Home prayer: program rejected. " + applied.Message;
+        else {
+            const api::Rect scope{{device.Anchor.X - 16, device.Anchor.Y - 16}, 34, 34};
+            const auto request = worldWill.Request({scope, device.Anchor, device.Ref.Id});
+            receipt = std::string("Home prayer: ") + RequestStatusName(request.Status) + ".";
+            if (request.Status == will::RequestStatus::Accepted)
+                receipt += " Offline model is preparing a proposal. Resume simulation to submit it; a proposal is not an applied action.";
+        }
+    }
+    const auto protection = std::find_if(published.Protections.begin(), published.Protections.end(),
+        [&](const auto &value) { return value.DeviceId == device.Ref.Id; });
+    const bool installed = protection != published.Protections.end();
+    ImGui::Text("Home protection: %s; coverage %s", installed ? "installed" : "absent",
+        installed && protection->Active ? "active" : "inactive");
+    if (ImGui::Button(installed ? "Remove home protection" : "Install home protection"))
+        RecordAction(receipt, "Home protection", session.Execute(NativeCaller::Debug, api::SetDeviceProtection{device.Ref, !installed}));
+    if (installed)
+        ImGui::Text("Protection: (%lld, %lld), %u x %u cells", static_cast<long long>(protection->Region.Origin.X),
+            static_cast<long long>(protection->Region.Origin.Y), protection->Region.Width, protection->Region.Height);
+}
 } // namespace
 
-void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, std::string &receipt) {
+void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, will::WorldWill &worldWill,
+                      std::string &receipt) {
     if (!ImGui::CollapsingHeader("Force garden"))
         return;
     ImGui::TextWrapped("Observe the wild crystal, reproduce its force at the home bed, then sustain growth with a coal-powered emitter.");
@@ -104,7 +198,9 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
                 RecordAction(receipt, "Supply home 8 coal", session.Execute(NativeCaller::Debug, api::SupplyDevice{device->Ref, 8}));
             if (ImGui::Button(device->Enabled ? "Disable home emitter" : "Enable home emitter"))
                 RecordAction(receipt, "Toggle home emitter", session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device->Ref, !device->Enabled}));
+            DrawHomeAid(session, worldWill, *published, *device, receipt);
         }
+        DrawWorldWillState(*published);
         ImGui::TextWrapped("Leaving the active island freezes both beds and their sources. Clear running also disables the natural crystal; create a new garden to restart it.");
     } else {
         ImGui::TextDisabled("Create a garden to begin. The current world is saved first.");

@@ -3,10 +3,7 @@
 #include <deque>
 
 namespace pixel::will {
-enum class DecisionState {
-    Thinking, Ready, Applied, Rejected, NoAction, TimedOut, StaleEpoch,
-    ViewRevoked, ModelUnavailable, InvalidProposal, Closed
-};
+using DecisionState = api::DecisionState;
 const char *DecisionStateName(DecisionState state);
 enum class RequestStatus { Accepted, Closed, Capacity, NotReady, InvalidGoal, ObservationDenied, ModelBusy };
 struct RequestResult {
@@ -48,6 +45,8 @@ class WorldWill {
         std::vector<api::DeviceObservation> Devices;
         Clock::time_point Deadline;
         std::optional<ModelReply> Reply;
+        uint64_t PrayerId = 0;
+        bool ModelCancelled = false;
     };
     api::WorldWillHost &Host;
     ModelPort &Model;
