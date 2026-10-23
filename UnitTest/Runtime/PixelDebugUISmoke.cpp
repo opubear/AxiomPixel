@@ -170,6 +170,10 @@ void RunPixelDebugUISmoke() {
     auto &engine = *app.Engine;
     app.Initialize();
     app.Begin();
+    auto &world = pixel::testing::SessionAccess::World(pixel->GetSession());
+    Require(pixel->GetSession().Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{520, 512}, {}}).Applied(),
+            "UI capture fixture could not obtain soil");
+    const auto inventoryBefore = pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory());
     Draw(app, 3);
     auto *formulaWindow = ImGui::FindWindowByName("Formula Editor");
     Require(formulaWindow && formulaWindow->Active, "default Formula Editor is missing");
@@ -180,7 +184,6 @@ void RunPixelDebugUISmoke() {
     Require(ImGui::GetDrawData()->TotalVtxCount > 0 && app.GetDebugUI()->FrameBuffers.LiveBufferCount() > 0,
             "debug UI did not upload GPU geometry");
     Require(app.GetDebugUI()->pushConstBlock.scale.X() > 0, "Pixel present pass did not record the UI overlay");
-    auto &world = pixel::testing::SessionAccess::World(pixel->GetSession());
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty && world.GetWindEndRow() == 424,
             "default UI must preserve empty wind and world Y = 424");
     SelectWindStrategy(app, int(pixel::WindStrategyKind::Coarse));
@@ -207,6 +210,8 @@ void RunPixelDebugUISmoke() {
             "default boundary button did not restore world Y = 424");
     Require(original == CopyWorldCells(world),
             "editing UI placed/removed dirt or altered the base force field");
+    Require(pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory()) == inventoryBefore,
+            "editing UI consumed inventory through leaked gameplay input");
     Require(pixel->GetView().OriginPixels == originalOrigin, "typing in UI moved the gameplay view");
 
     // Exercise the production combo with real input on a one-row wind domain;
@@ -221,6 +226,8 @@ void RunPixelDebugUISmoke() {
                 "UI strategy switch changed independent force storage");
         Require(original == CopyWorldCells(world),
                 "strategy combo input changed materials");
+        Require(pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory()) == inventoryBefore,
+                "strategy combo input changed inventory");
     }
     world.SetBaseForce(2, 2, {0, 3600});
     EnterBoundary(app, "424");
@@ -274,7 +281,8 @@ void RunPixelDebugUISmoke() {
             "production Debug mining did not use the action port");
     Click(app, ControlPoint(app, "Place dirt"));
     Require(pixel->GetSession().LastAction(pixel::NativeCaller::Debug)->Applied() &&
-                world.GetCell(520, 512).Type == pixel::CellTypeId::Dirt,
+                world.GetCell(520, 512).Type == pixel::CellTypeId::Dirt &&
+                pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory()).Quantity == 0,
             "production Debug placement did not use the action port");
     debugWindow->StateStorage.SetInt(debugWindow->GetID("Game actions"), 0);
     debugWindow->StateStorage.SetInt(debugWindow->GetID("Environment"), 1);

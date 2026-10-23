@@ -1,4 +1,5 @@
 #include "GameSession.h"
+#include "Construction/DeviceCosts.h"
 #include "World/WorldStorageError.h"
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
@@ -51,6 +52,7 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
 GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
     : NextGeneration(generation) {
     ValidateGenerationSettings(generation);
+    items::ValidateCost(WindEmitterCost());
     if (persistent) {
         const auto edge = RuntimeNumber("PIXEL_SIMULATION_WINDOW", storage::DefaultWindowEdge);
         if (edge > 2048)
@@ -303,6 +305,9 @@ void GameSession::ReplacingWorld() {
     for (const auto &weak : ReadViews)
         if (auto view = weak.lock()) view->CommittedAt = {};
     Formulas.OnWorldReplaced();
+    Inventory.Clear();
+    PlayerBag = Inventory.Create(4096);
+    Formulas.BindPlayerInventory(Inventory, PlayerBag);
     LastAim = {1, 0};
     FormulaError.clear();
     Characters.Clear();

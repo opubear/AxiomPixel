@@ -30,6 +30,8 @@ M2.4已在完整提交边界加入独立的 `ObservationProjector`：三槽有�
 
 M3 已完成独立 process/1 语言、有界运行时和 `Gameplay/FormulaBridge/` 三承载者接线；固定批次查询/碰撞、下一边界回执和清理规则见 [FormulaBridge](GlobalDoc/FormulaBridge.md)。M3.4 新增程序/实例 DTO 与 fake host 挂起恢复、效果所有权验证；F4 可编辑过程源码、Compile/Apply 并查看实例版本与剩余等待，旧树编辑器短期并存。真实库存、设备实体、游戏区域恢复及跨领域磁盘存档仍留 M4，详见 [状态与编辑合同](GlobalDoc/FormulaStateAndEditing.md)。
 
+M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数量容量、版本化转移及显式预留/释放/消费。玩家直接开采和构式开采收进同一背包，满包保留地形；放土消耗 soil。首个设备成本已用开采所得验证，放置由 M4.3 实现。库存尚不落盘，加载/恢复/R 后为空；一致存档和库存观测仍分别留给 M4.6/M4.7，详见[物品库存合同](GlobalDoc/Items.md)。
+
 ## 世界与现有玩法
 
 世界现支持策略化Natural与Superflat：游戏新建默认自然土岩、洞穴、五矿种、湖泊/地下积水和干燥草皮；调试Flat保留y<512空气、其他泥土。旧v2存档映射到Flat，当前metadata v4持久化生成器/种子/版本及可重试固定步时钟（兼容v2/v3），不重涂已有块。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。自然生成额外scratch单独预留。

@@ -19,7 +19,7 @@ class ProcessHost {
                const ProcessCarrier &carrier, const World &world,
                std::optional<api::RequestKey> request, std::string &error);
     void Prepare(const World &world);
-    void Commit(World &world);
+    void Commit(World &world, const std::optional<MiningCollector> &playerCollector = std::nullopt);
     void Clear();
     void CancelCarrier(ProcessCarrierKind kind, uint64_t subject);
     void WakeCarrier(ProcessCarrierKind kind, uint64_t subject);

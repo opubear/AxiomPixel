@@ -168,22 +168,38 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                         receipt.Rejection = api::Reason::PreconditionFailed;
                 }
                 if (receipt.Rejection == api::Reason::None) {
-                    const auto edited = [&] {
-                        if constexpr (std::is_same_v<T, api::MineRegion>)
-                            return GameWorld.TryRemoveMaterial(value.Target.X, value.Target.Y);
-                        else {
-                            if (Characters.Occupies({value.Target.X, value.Target.Y})) return CellEditResult::Blocked;
-                            return GameWorld.TryPlaceDirt(value.Target.X, value.Target.Y);
+                    if constexpr (std::is_same_v<T, api::MineRegion>) {
+                        const auto mined = MineCell(GameWorld, {value.Target.X, value.Target.Y}, MiningCollector{Inventory, PlayerBag});
+                        switch (mined.Status) {
+                        case MiningStatus::Applied: result.Collected = mined.Yield; break;
+                        case MiningStatus::Blocked: receipt.Rejection = api::Reason::Blocked; break;
+                        case MiningStatus::InventoryFull: receipt.Rejection = api::Reason::InventoryFull; break;
+                        case MiningStatus::NotReady: throw std::logic_error("resident mining became unavailable");
                         }
-                    }();
-                    if (edited == CellEditResult::Applied) {
+                    } else {
+                        if (before->Type != CellTypeId::Air || Characters.Occupies({value.Target.X, value.Target.Y})) {
+                            receipt.Rejection = api::Reason::Blocked;
+                        } else {
+                            const std::array cost{items::ItemAmount{items::ItemId::Soil, 1}};
+                            const auto reserved = Inventory.Reserve(Inventory.Reference(PlayerBag), cost);
+                            if (reserved.Status == items::Result::InsufficientItems)
+                                receipt.Rejection = api::Reason::InsufficientItems;
+                            else if (reserved.Status == items::Result::ReservationLimit)
+                                receipt.Rejection = api::Reason::LimitExceeded;
+                            else {
+                                if (reserved.Status != items::Result::Applied ||
+                                    GameWorld.TryPlaceDirt(value.Target.X, value.Target.Y) != CellEditResult::Applied ||
+                                    Inventory.Consume(reserved.Id) != items::Result::Applied)
+                                    throw std::logic_error("preflighted material placement failed");
+                                result.Consumed = cost.front();
+                            }
+                        }
+                    }
+                    if (receipt.Rejection == api::Reason::None) {
                         result.Changed = 1;
                         result.After = uint32_t(GameWorld.GetCell(value.Target.X, value.Target.Y).Type);
-                    } else if (edited == CellEditResult::Blocked) {
-                        receipt.Rejection = api::Reason::Blocked;
+                    } else if (receipt.Rejection == api::Reason::Blocked) {
                         result.Blocked = 1;
-                    } else {
-                        throw std::logic_error("resident material disappeared during synchronous action");
                     }
                 }
             }

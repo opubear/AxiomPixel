@@ -761,6 +761,14 @@ void BasicWorldGameplay() {
     app.Begin();
     auto &world = pixel::testing::SessionAccess::World(input->GetSession());
     VerifyDefaultWorldField(world);
+    const auto supplySoil = [&] {
+        auto &session = input->GetSession();
+        auto &inventory = pixel::testing::SessionAccess::Inventory(session);
+        const std::array stock{pixel::items::ItemAmount{pixel::items::ItemId::Soil, 64}};
+        Require(inventory.Add(inventory.Reference(session.PlayerInventory()), stock) == pixel::items::Result::Applied,
+                "GPU click fixture could not supply soil");
+    };
+    supplySoil();
     Require(input->GetSession().IsPaused(), "application must preserve the default paused session");
     const auto initialWind = world.GetWind().Sample(512.5f, 200.5f);
     std::vector<uint32_t> expectedCells(Grid2D::CellCount);
@@ -1003,6 +1011,7 @@ void BasicWorldGameplay() {
     world.AddWindImpulse(512, 200, 64, {0, -120});
     input->OnKeyEvent(Key::KEY_R, 0, ButtonAction::ACTION_PRESS, Mod{});
     Require(input->GetSession().IsPaused(), "reset must pause the session");
+    supplySoil();
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     VerifyDefaultWorldField(world);
     Require(input->GetSession().GetPlayer() && input->GetSession().GetPlayer()->X == 511 && input->GetSession().GetPlayer()->Y == 508, "R must reset player");

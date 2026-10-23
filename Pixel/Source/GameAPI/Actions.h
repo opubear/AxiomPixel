@@ -1,5 +1,6 @@
 #pragma once
 #include "Facts.h"
+#include "Items/Item.h"
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -23,13 +24,15 @@ enum class ActionStatus { Applied, Rejected };
 enum class Reason {
     None, InvalidArgument, Unsupported, StaleEpoch, CallerExpired, DuplicateExpired,
     SessionUnavailable, WaitingForBudget, PermissionDenied, NotReady, Blocked,
-    PreconditionFailed, StaleProgram, LaunchBlocked, LimitExceeded, StorageFailure, InvalidProgram
+    PreconditionFailed, StaleProgram, LaunchBlocked, LimitExceeded, StorageFailure, InvalidProgram,
+    InventoryFull, InsufficientItems
 };
 const char *ReasonName(Reason reason);
 struct MaterialResult {
     Cell Target;
     std::optional<uint32_t> Before, After;
     uint32_t Changed = 0, Blocked = 0, NotReady = 0;
+    std::optional<items::ItemAmount> Collected, Consumed;
 };
 struct ActivationResult {
     uint64_t WorldEpoch = 0, ActivationId = 0;

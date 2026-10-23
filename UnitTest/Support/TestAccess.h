@@ -8,6 +8,7 @@ namespace pixel::testing {
 struct SessionAccess {
     static pixel::World &World(GameSession &session) { return session.GameWorld; }
     static pixel::Actors &Actors(GameSession &session) { return session.Characters; }
+    static items::Inventory &Inventory(GameSession &session) { return session.Inventory; }
     static void SetPlayerPosition(GameSession &session, WorldPosition position) {
         session.Characters.SetPlayerPosition(position);
         session.GameWorld.SetSimulationFocus(position);

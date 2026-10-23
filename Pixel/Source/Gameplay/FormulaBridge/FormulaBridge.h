@@ -19,6 +19,8 @@ class FormulaBridge {
     static constexpr size_t MaximumEffects = 512;
     FormulaBridge();
     ~FormulaBridge();
+    // Host assembly at world replacement, before any instance can run.
+    void BindPlayerInventory(items::Inventory &inventory, items::ContainerId container);
     FormulaBridge(const FormulaBridge &) = delete;
     FormulaBridge &operator=(const FormulaBridge &) = delete;
     bool Apply(const formula::Formula &description);

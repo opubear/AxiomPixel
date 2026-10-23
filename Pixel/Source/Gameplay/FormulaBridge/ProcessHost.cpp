@@ -229,18 +229,20 @@ struct ProcessHost::State {
         if (Effects.size() == MaximumEffects) throw std::logic_error("process effect record bound violated");
         Effects.push_back({request.Id.Instance, root.Version, request.Id.Sequence, root.Activation, std::move(payload), 2});
     }
-    void Apply(Running &root, size_t index, World &world) {
+    void Apply(Running &root, size_t index, World &world, const std::optional<MiningCollector> &playerCollector) {
         const auto &request = root.Slice.Requests[index];
         auto refusal = Validate(root, request, world);
         const auto origin = WorldPoint(request.Origin);
         uint32_t changed = 0;
         if (refusal == ProcessRefusal::None) {
             if (const auto *dig = std::get_if<process::Dig>(&request.Description)) {
-                const auto result = FormulaWorldAdapter::Dig(world, origin, dig->Radius);
+                const auto result = FormulaWorldAdapter::Dig(world, origin, dig->Radius,
+                    root.Carrier.Kind == ProcessCarrierKind::Player ? playerCollector : std::nullopt);
                 changed = result.Applied;
                 if (changed) RecordEffect(root, request, api::MaterialRemovedInDisk{PublicPosition(request.Origin), dig->Radius,
                     result.Applied, result.Blocked, result.NotReady});
-                else refusal = result.NotReady ? ProcessRefusal::NotReady : ProcessRefusal::Blocked;
+                else refusal = result.InventoryFull ? ProcessRefusal::Capacity :
+                    result.NotReady ? ProcessRefusal::NotReady : ProcessRefusal::Blocked;
             } else if (const auto *wind = std::get_if<process::Wind>(&request.Description)) {
                 if (WindCallsThisFrame == 16) refusal = ProcessRefusal::Capacity;
                 auto result = FormulaWindResult::Unavailable;
@@ -325,10 +327,10 @@ void ProcessHost::Prepare(const World &world) {
     for (auto &root : Data->Roots) Data->Evaluate(*root, world);
     Data->Sweep(world);
 }
-void ProcessHost::Commit(World &world) {
+void ProcessHost::Commit(World &world, const std::optional<MiningCollector> &playerCollector) {
     for (auto &root : Data->Roots) {
         if (!root->Prepared) continue;
-        for (size_t i = 0; i < root->Slice.Count; ++i) Data->Apply(*root, i, world);
+        for (size_t i = 0; i < root->Slice.Count; ++i) Data->Apply(*root, i, world, playerCollector);
         root->Prepared = false;
         if (root->Slice.End) Data->RemoveOwned(*root);
     }

@@ -123,7 +123,8 @@ FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from
     return first;
 }
 
-FormulaDigResult FormulaWorldAdapter::Dig(World &world, WorldPosition position, double radius) {
+FormulaDigResult FormulaWorldAdapter::Dig(World &world, WorldPosition position, double radius,
+                                         const std::optional<MiningCollector> &collector) {
     position.Normalize();
     if (!std::isfinite(radius) || radius < 0 || radius > 16)
         throw std::invalid_argument("invalid formula dig radius");
@@ -145,10 +146,11 @@ FormulaDigResult FormulaWorldAdapter::Dig(World &world, WorldPosition position, 
                 ++result.NotReady;
                 continue;
             }
-            switch (world.TryRemoveMaterial(cell.X, cell.Y)) {
-            case CellEditResult::Applied: ++result.Applied; break;
-            case CellEditResult::Blocked: ++result.Blocked; break;
-            case CellEditResult::NotReady: ++result.NotReady; break;
+            switch (MineCell(world, cell, collector).Status) {
+            case MiningStatus::Applied: ++result.Applied; break;
+            case MiningStatus::Blocked: ++result.Blocked; break;
+            case MiningStatus::NotReady: ++result.NotReady; break;
+            case MiningStatus::InventoryFull: ++result.InventoryFull; break;
             }
         }
     }

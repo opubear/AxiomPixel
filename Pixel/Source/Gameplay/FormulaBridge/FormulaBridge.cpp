@@ -32,6 +32,7 @@ api::Position PublicPosition(const WorldPosition &position) {
 
 struct FormulaBridge::State {
     ProcessHost Processes;
+    std::optional<MiningCollector> PlayerCollector;
     std::optional<formula::process::ProgramArtifact> ActiveProcess;
     formula::Formula Active = formula::Formula::Bolt();
     formula::validation::Analysis ActiveBudget;
@@ -153,12 +154,12 @@ struct FormulaBridge::State {
             const auto position = FormulaWorldAdapter::Offset(root.Anchor, event.Position);
             if (const auto *dig = std::get_if<formula::DigArea>(&event.Data)) {
                 const auto emission = NextEffectEmission(root);
-                const auto result = FormulaWorldAdapter::Dig(world, position, dig->Radius);
+                const auto result = FormulaWorldAdapter::Dig(world, position, dig->Radius, PlayerCollector);
                 if (result.Applied != 0)
                     RecordEffect(root, emission, api::MaterialRemovedInDisk{PublicPosition(position), dig->Radius,
                         result.Applied, result.Blocked, result.NotReady});
                 Record(root.Id, event.At, "Dig applied=" + std::to_string(result.Applied) + " blocked=" + std::to_string(result.Blocked)
-                    + " notReady=" + std::to_string(result.NotReady));
+                    + " notReady=" + std::to_string(result.NotReady) + " inventoryFull=" + std::to_string(result.InventoryFull));
             } else if (const auto *wind = std::get_if<formula::WindImpulse>(&event.Data)) {
                 const auto emission = NextEffectEmission(root);
                 const auto result = FormulaWorldAdapter::Wind(world, position, wind->Radius, wind->Velocity);
@@ -202,6 +203,12 @@ struct FormulaBridge::State {
 FormulaBridge::FormulaBridge() : Data(std::make_unique<State>()) {}
 FormulaBridge::~FormulaBridge() = default;
 
+void FormulaBridge::BindPlayerInventory(items::Inventory &inventory, items::ContainerId container) {
+    if (Data->Statistics().Roots != 0) throw std::logic_error("cannot rebind running formula inventory");
+    inventory.Reference(container);
+    Data->PlayerCollector.emplace(MiningCollector{inventory, container});
+}
+
 bool FormulaBridge::Apply(const formula::Formula &description) {
     if (Data->Version == UINT64_MAX)
         throw std::overflow_error("formula program version exhausted");
@@ -236,7 +243,7 @@ bool FormulaBridge::CastCarrier(World &world, const ProcessCarrier &carrier, std
         return Data->Reject(Data->Error);
     ++Data->NextCast;
     ++Data->Accepted;
-    Data->Processes.Commit(world);
+    Data->Processes.Commit(world, Data->PlayerCollector);
     Data->CollectProcessEffects();
     Data->Refresh();
     return true;
@@ -323,7 +330,7 @@ void FormulaBridge::Step(World &world) {
     Data->Processes.Prepare(world);
     for (auto &root : Data->Roots)
         Data->Commit(*root, world);
-    Data->Processes.Commit(world);
+    Data->Processes.Commit(world, Data->PlayerCollector);
     Data->CollectProcessEffects();
     Data->Refresh();
 }

@@ -2,8 +2,8 @@ add_library(PixelObservationValues STATIC ../GameAPI/Actions.cpp ../GameAPI/Obse
 target_include_directories(PixelObservationValues PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
 add_library(PixelGameplay STATIC
-    GameSession.cpp CommittedWorldView.cpp SessionPublication.cpp Actions/GameActions.cpp
+    GameSession.cpp CommittedWorldView.cpp SessionPublication.cpp Actions/GameActions.cpp Actions/Mining.cpp
     FormulaBridge/FormulaBridge.cpp FormulaBridge/FormulaWorldAdapter.cpp FormulaBridge/ProcessHost.cpp
     SessionObservation.cpp ../Observation/ObservationProjector.cpp
     ../Persistence/SessionStore.cpp)
-target_link_libraries(PixelGameplay PUBLIC PixelActors PixelFormulaValidation PixelFormulaProcess PixelObservationValues)
+target_link_libraries(PixelGameplay PUBLIC PixelActors PixelItems PixelFormulaValidation PixelFormulaProcess PixelObservationValues)

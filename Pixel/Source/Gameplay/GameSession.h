@@ -50,6 +50,8 @@ class GameSession : public api::ObservationSource {
     void ClearPlayerInput() { Simulation.ClearInput(); }
     const World &GetWorld() const { return GameWorld; }
     const Actors &GetActors() const { return Characters; }
+    const items::Inventory &GetInventory() const { return Inventory; }
+    items::ContainerId PlayerInventory() const { return PlayerBag; }
     const Character *GetPlayer() const { return Characters.Player(); }
     bool IsReady() const { return Ready; }
     bool CanEditWorld() const { return Ready && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
@@ -109,6 +111,8 @@ class GameSession : public api::ObservationSource {
     void RecordFormulaFacts();
     World GameWorld{WorldWidth, WorldHeight};
     Actors Characters;
+    items::Inventory Inventory;
+    items::ContainerId PlayerBag;
     FormulaBridge Formulas;
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;

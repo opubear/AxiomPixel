@@ -18,12 +18,13 @@
 |---|---|
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
 | `Pixel/Source/GameAPI/` | 仅依赖标准库的类型化动作、回执与会话控制值 |
-| `Pixel/Source/Gameplay/` | GameSession持有世界、Actors与构式运行实例，统一动作入口、同步去重，编排固定步与会话控制 |
+| `Pixel/Source/Gameplay/` | GameSession持有世界、Actors、库存与构式实例，统一动作入口、同步去重，编排固定步与会话控制 |
 | `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore读取v2–v5、写入v5元数据、世界目录与current.txt |
 | `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
 | `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树和流式；Environment管理材料及风 |
 | `Pixel/Source/Actors/` | 玩家/Resident状态、值身份与代次句柄、只读地形碰撞与水体响应 |
+| `Pixel/Source/Items/` | 标准库物品定义、容器数量/容量、版本化转移与物料预留 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
 | `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
 | `Pixel/Source/PixelRender/` | 帧首区域快照、外观映射、每frame slot缓存及GPU上传 |
@@ -39,6 +40,8 @@
 核心依赖为 `PixelGameplay → PixelActors → PixelWorld` 以及 `PixelGameplay → PixelFormulaValidation/PixelFormulaProcess → PixelFormula`；`PixelFormulaEditing` 也使用共享的 `PixelFormulaValidation`，Gameplay不链接编辑器。World链接 `PixelPerformance` 和 `Axiom::Core` 使用容器及对齐allocator，不依赖Formula、窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
 
 角色身份与生命周期见 [Actors 合同](.awtcontext/GlobalDoc/Actors.md)：玩家已移出 World，Resident 验证第二对象的物理与生命周期；当前呈现仍仅玩家，v5 存档仍只保存既有玩家位置，多领域持久化留在 M4.6。
+
+M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，设备放置由M4.3接入。**库存尚未保存到磁盘，重启或R建新世界后为空**，持久化留M4.6，库存界面与观测留M4.7。
 
 ## 构建和运行
 
@@ -82,7 +85,7 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | A / D，Space | 标准模式移动、跳跃/水中上浮；相机平滑跟随 |
 | F3 | 切换自由调试相机，清理持续按键状态 |
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
-| 左键 | 放置Dirt；不覆盖水或人物 |
+| 左键 | 消耗一份土料放置Dirt；先开采取得土料，不覆盖水或人物 |
 | 右键 / Shift＋右键 | 激活当前构式 / 开采可开采固体 |
 | F1 | 材料 / 合成力场方向视图 |
 | F2 | 显示或隐藏Pixel Debug |

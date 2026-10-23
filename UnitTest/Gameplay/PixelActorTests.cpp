@@ -163,6 +163,7 @@ void SessionOccupancyAndPublication() {
     const auto blocked = session.Execute(NativeCaller::Driver, api::PlaceMaterial{{100, 101}});
     Require(blocked.Rejection == api::Reason::Blocked && session.CurrentCommit() == before, "placing material ignored resident occupancy");
     actors.Remove(resident);
+    Require(session.Execute(NativeCaller::Driver, api::MineRegion{{520, 512}, {}}).Applied(), "fixture mining failed");
     Require(session.Execute(NativeCaller::Driver, api::PlaceMaterial{{100, 101}}).Applied(), "removed actor still blocks placement");
     testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(513.125, 508));
     testing::SessionAccess::PublishFixtureChanges(session);

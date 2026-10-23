@@ -80,6 +80,7 @@ void RequestLifetimeAndValidation() {
             "caller or epoch leaked across sessions");
     Require(session.Control(NativeCaller::Input, ResetWorld{}).Status == ControlStatus::Replaced, "reset control failed");
     Require(session.Submit(caller, request).Rejection == Reason::CallerExpired, "reset did not expire callers");
+    Require(session.Execute(NativeCaller::Input, MineRegion{{520, 512}, {}}).Applied(), "new bag could not collect soil");
     Require(session.Execute(NativeCaller::Input, PlaceMaterial{{1, 1}}).Applied(), "native caller did not renew after reset");
 }
 void ProgramAndControls() {

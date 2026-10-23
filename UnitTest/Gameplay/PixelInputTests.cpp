@@ -135,6 +135,8 @@ void PendingResetKeepsView() {
 }
 void MouseEditing() {
     Fixture f;
+    Require(f.Session.Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{520, 512}, {}}).Applied(),
+            "mouse fixture needs one soil item");
     auto &world = pixel::testing::SessionAccess::World(f.Session);
     f.Camera.GetCamera().SetPosition({100, 100});
     f.Camera.SetFramebufferSize({1600, 1200});
