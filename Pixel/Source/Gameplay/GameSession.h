@@ -14,6 +14,11 @@
 #include <string>
 
 namespace pixel {
+struct GameplaySaveData;
+struct CheckpointMetrics {
+    double CaptureMicroseconds = 0, WriteMicroseconds = 0, TotalMicroseconds = 0;
+    uint64_t PayloadBytes = 0;
+};
 // Native callers are host assembly credentials, never fields in an external payload.
 enum class NativeCaller { Input, Debug, Driver };
 
@@ -85,6 +90,7 @@ class GameSession : public api::ObservationSource {
     void RefreshReadView(CommittedWorldView &view, WorldRect bounds);
     WindStrategyKind GetSelectedWindStrategy() const { return WindKind; }
     const std::filesystem::path &GetSaveDirectory() const { return SaveDirectory; }
+    const CheckpointMetrics &LastCheckpointMetrics() const { return SaveMetrics; }
 
   private:
     friend class GamePresentation; // Snapshot ownership, residency and publication budgets only.
@@ -148,6 +154,9 @@ class GameSession : public api::ObservationSource {
     bool Load();
     void LoadDirectory(const std::filesystem::path &directory);
     SessionSaveData CaptureSaveData() const;
+    GameplaySaveData CaptureGameplayData() const;
+    void RestoreGameplayData(const GameplaySaveData &data);
+    CheckpointMetrics SaveMetrics;
     void ReplacingWorld();
 };
 } // namespace pixel

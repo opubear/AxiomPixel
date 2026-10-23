@@ -1,8 +1,10 @@
 #include "GameSession.h"
 #include "Construction/DeviceCosts.h"
+#include "Persistence/GameplaySaveData.h"
 #include "World/WorldStorageError.h"
 #include "Performance/FrameProfiler.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -118,14 +120,14 @@ void GameSession::Reset() {
         StreamConfiguration.Generation = NextGeneration;
         StreamConfiguration.SurfaceY = NextGeneration.SurfaceY;
         auto stream = StreamConfiguration;
-        stream.Directory = candidate;
+        stream.Directory = Store->CreateWorkingDirectory(candidate);
         const auto surface = CreateWorldGenerator(NextGeneration)->SurfaceHeight(512);
         const auto position = WorldPosition::FromAbsolute(511, double(surface - int64_t(Character::Height)));
         ReplacingWorld();
         GameWorld.EnableStreaming(stream, InitialWindow(position, stream.WindowEdge));
         InitializeScene();
         GameWorld.Save();
-        Store->WriteMetadata(SaveDirectory, CaptureSaveData());
+        Store->PublishCheckpoint(SaveDirectory, stream.Directory, CaptureSaveData(), EncodeGameplayState(CaptureGameplayData()));
         Store->SelectWorld(candidate);
         Ready = true;
         SaveError.clear();
@@ -184,13 +186,20 @@ bool GameSession::Load() {
 }
 
 void GameSession::LoadDirectory(const std::filesystem::path &directory) {
-    const auto data = Store->ReadMetadata(directory);
+    const auto checkpoint = Store->ResolveCheckpoint(directory);
+    const auto data = Store->ReadMetadata(checkpoint);
+    std::optional<GameplaySaveData> gameplay;
+    if (checkpoint != directory) {
+        try { gameplay = DecodeGameplayState(Store->ReadGameplayState(checkpoint)); }
+        catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
+        catch (const std::out_of_range &error) { throw WorldStorageError(error.what()); }
+    }
     auto stream = StreamConfiguration;
     if (!std::getenv("PIXEL_SIMULATION_WINDOW")) stream.WindowEdge = data.WindowEdge;
     if (!std::getenv("PIXEL_WORLD_BUDGET_MIB")) stream.BudgetBytes = data.BudgetBytes;
     stream.Generation = data.Generation;
     stream.SurfaceY = data.Generation.SurfaceY;
-    stream.Directory = directory;
+    stream.Directory = Store->CreateWorkingDirectory(directory, checkpoint);
     Ready = false;
     ReplacingWorld();
     // These parameters came from disk; invalid settings are corrupt save data.
@@ -202,6 +211,15 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
         GameWorld.LoadSimulationNow();
         GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
         Simulation.Restore(data.CommittedTime, data.TimeRemainder);
+        if (gameplay) {
+            if (data.CommittedTime != gameplay->Tick * SimulationCoordinator::StepSeconds)
+                throw WorldStorageError("checkpoint metadata and gameplay clocks disagree");
+            RestoreGameplayData(*gameplay);
+            if (GetPlayer()->GetWorldPosition().Chunk != data.Player.Chunk
+                || GetPlayer()->GetWorldPosition().Local != data.Player.Local)
+                throw WorldStorageError("checkpoint metadata and player position disagree");
+            Simulation.RestoreCheckpoint(gameplay->Tick, gameplay->Revision, data.TimeRemainder);
+        }
         GameWorld.RestorePendingEnvironmentStep(Simulation.Time(), false);
     } catch (const std::invalid_argument &error) {
         throw WorldStorageError(error.what());
@@ -213,6 +231,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     Simulation.SetPaused(data.Paused);
     WindKind = data.Wind.Kind;
     Ready = true;
+    SynchronizeReadViews();
     PublishCommit();
 }
 
@@ -235,6 +254,7 @@ void GameSession::Save() {
     if (Simulation.HasPendingStep()) throw std::logic_error("save during pending simulation step");
     if (!Store) return;
     if (!Ready) throw std::logic_error("cannot save an incomplete world session");
+    const auto saveStart = std::chrono::steady_clock::now();
     try {
         GameWorld.Save();
     } catch (const WorldStorageError &) {
@@ -244,7 +264,16 @@ void GameSession::Save() {
         throw;
     }
     SynchronizeReadViews();
-    Store->WriteMetadata(SaveDirectory, CaptureSaveData());
+    const auto captureStart = std::chrono::steady_clock::now();
+    const auto metadata = CaptureSaveData();
+    const auto gameplay = CaptureGameplayData();
+    const auto payload = EncodeGameplayState(gameplay);
+    const auto captureEnd = std::chrono::steady_clock::now();
+    Store->PublishCheckpoint(SaveDirectory, GameWorld.GetStreamer()->Settings().Directory, metadata, payload);
+    const auto writeEnd = std::chrono::steady_clock::now();
+    SaveMetrics = {std::chrono::duration<double, std::micro>(captureEnd - captureStart).count(),
+                   std::chrono::duration<double, std::micro>(writeEnd - captureEnd).count(),
+                   std::chrono::duration<double, std::micro>(writeEnd - saveStart).count(), payload.size()};
     SaveError.clear();
 }
 

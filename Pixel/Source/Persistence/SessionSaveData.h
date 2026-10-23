@@ -5,8 +5,8 @@
 #include "World/WorldCoordinates.h"
 
 namespace pixel {
-// The v5 committed metadata contract. Legacy v2-v4 files are decoded into this form;
-// chunks remain owned by WorldStreamer, and live Formula instances are not saved.
+// The v5 world/configuration part of checkpoint/1. Legacy v2-v4 files decode into
+// this form; GameplaySaveData carries actors, inventory and runtime state.
 struct SessionSaveData {
     static constexpr uint32_t CurrentVersion = 5;
 

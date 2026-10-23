@@ -5,6 +5,7 @@
 #include <array>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace pixel {
 class Environment;
@@ -30,6 +31,10 @@ struct FieldSourceSnapshot {
     uint64_t Remaining = 0;
     bool Suspended = false;
 };
+struct FieldSourcesState {
+    uint64_t NextId = 1;
+    std::vector<FieldSourceSnapshot> Sources;
+};
 
 // Environment owns all mutation. Stable ID order also defines floating-point
 // addition order; removals preserve it and installation always appends.
@@ -42,6 +47,7 @@ class FieldSources {
     uint64_t Revision() const;
     std::span<const FieldSourceSnapshot> Sources() const { return {Values.data(), Count}; }
     static bool Fits(const FieldSourceSpec &spec, WorldRect bounds);
+    FieldSourcesState CaptureState() const { return {NextId, {Values.begin(), Values.begin() + Count}}; }
 
   private:
     friend class Environment;
@@ -63,5 +69,6 @@ class FieldSources {
     void WakeActive(WorldMap &map, WorldRect bounds) const;
     void CompleteStep(WorldMap &map, WorldRect bounds);
     void Remove(size_t index, WorldMap &map);
+    void RestoreState(const FieldSourcesState &state, WorldMap &map);
 };
 } // namespace pixel

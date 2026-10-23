@@ -1,4 +1,5 @@
 #include "ProcessHost.h"
+#include "CheckpointCodec.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -471,9 +472,152 @@ ProcessHostStats ProcessHost::Stats() const {
 std::vector<ProcessInspection> ProcessHost::Inspect() const {
     std::vector<ProcessInspection> result;
     result.reserve(Data->Roots.size());
-    for (const auto &root : Data->Roots)
-        result.push_back({root->Instance->Program().Identity(), root->Instance->State(), root->Version,
-            root->Carrier.Kind, root->Carrier.Subject, root->Carrier.Credits, root->Suspended});
+    for (const auto &root : Data->Roots) {
+        ProcessInspection item{root->Instance->Program().Identity(), root->Instance->State(), root->Version,
+            root->Carrier.Kind, root->Carrier.Subject, root->Carrier.Credits, root->Suspended,
+            root->Resource, root->Carrier, {}};
+        const auto add = [&](process::EffectHandle handle) {
+            if (handle.Id && std::find(item.ReferencedFieldHandles.begin(), item.ReferencedFieldHandles.end(), handle.Id)
+                == item.ReferencedFieldHandles.end()) item.ReferencedFieldHandles.push_back(handle.Id);
+        };
+        const auto snapshot = root->Instance->ExportState();
+        add(snapshot.State.LastEffectHandle);
+        for (const auto &local : snapshot.Locals) {
+            if (!local) continue;
+            if (const auto *handle = std::get_if<process::EffectHandle>(&*local)) add(*handle);
+            if (const auto *effect = std::get_if<process::Effect>(&*local)) {
+                if (const auto *update = std::get_if<process::UpdateField>(effect)) add(update->Handle);
+                if (const auto *stop = std::get_if<process::StopField>(effect)) add(stop->Handle);
+            }
+        }
+        for (const auto *event : {&snapshot.Receipt, &snapshot.Impact, &snapshot.Wake}) if (*event) add((*event)->Handle);
+        for (const auto &event : root->Events) add(event.Handle);
+        result.push_back(std::move(item));
+    }
     return result;
+}
+
+std::string ProcessHost::CaptureState() const {
+    checkpoint::Writer out;
+    out.String("Pixel.ProcessHost"); out.Numbers(1, Data->At, Data->Roots.size());
+    for (const auto &root : Data->Roots) {
+        if (root->Prepared) throw std::logic_error("cannot checkpoint uncommitted process effects");
+        checkpoint::Write(out, root->Instance->Program());
+        checkpoint::Write(out, root->Instance->ExportState());
+        checkpoint::Write(out, root->Carrier);
+        out.Numbers(root->Version, root->Resource, root->NextEvent, root->Suspended, bool(root->Activation));
+        if (root->Activation) out.Numbers(root->Activation->WorldEpoch, root->Activation->Caller, root->Activation->Sequence);
+        out.Numbers(root->Events.size());
+        for (const auto &event : root->Events) checkpoint::Write(out, event);
+    }
+    out.Numbers(Data->Bolts.size());
+    for (const auto &bolt : Data->Bolts) {
+        out.Numbers(bolt.Request.Instance, bolt.Request.Sequence); checkpoint::Write(out, bolt.Position);
+        out.Numbers(bolt.Velocity.X, bolt.Velocity.Y, bolt.Damage, bolt.Remaining);
+    }
+    out.Numbers(Data->Receipts.size());
+    for (const auto &receipt : Data->Receipts) {
+        out.Numbers(receipt.At, receipt.Request.Instance, receipt.Request.Sequence); out.Enum(receipt.Carrier);
+        out.Numbers(receipt.Subject); out.Enum(receipt.Outcome); out.Enum(receipt.Refusal); out.Numbers(receipt.ChangedCells);
+    }
+    out.Numbers(Data->Diagnostics.size());
+    for (const auto &diagnostic : Data->Diagnostics) {
+        out.Numbers(diagnostic.WorldEpoch, diagnostic.CastId, diagnostic.Tick); out.String(diagnostic.Message);
+    }
+    return out.Finish();
+}
+
+void ProcessHost::RestoreState(std::string_view encoded) {
+    if (!Data->Roots.empty()) throw std::logic_error("process restore requires an empty host");
+    checkpoint::Reader in(encoded);
+    using checkpoint::Require;
+    Require(in.String(32) == "Pixel.ProcessHost" && in.Number<uint32_t>() == 1, "unsupported process host checkpoint");
+    auto restored = std::make_unique<State>();
+    restored->At = in.Number<uint64_t>();
+    Require(restored->At != UINT64_MAX, "exhausted checkpoint process boundary");
+    const auto count = in.Count(MaximumInstances);
+    uint64_t previousId = 0;
+    for (size_t i = 0; i < count; ++i) {
+        auto program = checkpoint::ReadProgram(in);
+        const auto snapshot = checkpoint::ReadInstance(in);
+        auto root = std::make_unique<Running>();
+        root->Carrier = checkpoint::ReadCarrier(in);
+        in.Numbers(root->Version, root->Resource, root->NextEvent); root->Suspended = in.Boolean();
+        Require(root->Version != 0 && root->Resource != 0 && root->NextEvent > snapshot.EventSequence
+            && root->NextEvent != UINT64_MAX && snapshot.State.Id > previousId && snapshot.State.Id != UINT64_MAX
+            && snapshot.LastBoundary > 0 && snapshot.LastBoundary <= restored->At
+            && snapshot.State.ActiveSteps <= snapshot.LastBoundary && snapshot.Limits.Work == root->Carrier.Limits.Work
+            && snapshot.Limits.Queries == root->Carrier.Limits.Queries && snapshot.Limits.Outputs == root->Carrier.Limits.Outputs,
+            "inconsistent checkpoint process identity, clock or budget");
+        previousId = snapshot.State.Id;
+        if (in.Boolean()) {
+            api::RequestKey request; in.Numbers(request.WorldEpoch, request.Caller, request.Sequence);
+            Require(request.WorldEpoch && request.Caller && request.Sequence, "invalid checkpoint activation request");
+            root->Activation = request;
+        }
+        auto instance = process::Instance::Restore(std::move(program), snapshot, root->Carrier.Grants);
+        if (const auto *error = std::get_if<process::Diagnostic>(&instance)) throw std::invalid_argument(error->Message);
+        root->Instance = std::move(std::get<std::unique_ptr<process::Instance>>(instance));
+        const auto events = in.Count(3);
+        root->Events.reserve(3);
+        uint64_t previousEvent = snapshot.EventSequence;
+        for (size_t j = 0; j < events; ++j) {
+            const auto event = checkpoint::ReadEvent(in);
+            const bool requestEvent = event.Request.Sequence != 0;
+            Require(event.Target == snapshot.State.Id && event.Sequence > previousEvent && event.Sequence < root->NextEvent
+                && event.CommittedAt >= snapshot.LastBoundary && event.CommittedAt <= restored->At && Observable(*root, event)
+                && (requestEvent ? event.WakeSubscription == process::Subscription{} : event.Request == process::RequestId{})
+                && (requestEvent ? event.Result >= process::Outcome::Applied && event.Result <= process::Outcome::Cancelled
+                                 : event.Result == process::Outcome::Wake)
+                && (!event.Handle.Id || (requestEvent && event.Result == process::Outcome::Applied)),
+                "invalid checkpoint pending process event");
+            const bool admission = event.Result == process::Outcome::Applied || event.Result == process::Outcome::Rejected;
+            for (const auto &old : root->Events) {
+                const bool oldAdmission = old.Result == process::Outcome::Applied || old.Result == process::Outcome::Rejected;
+                Require(old.Request != event.Request || old.WakeSubscription != event.WakeSubscription || oldAdmission != admission,
+                    "duplicate checkpoint process notification");
+            }
+            previousEvent = event.Sequence;
+            root->Events.push_back(event);
+        }
+        restored->Roots.push_back(std::move(root));
+    }
+    const auto bolts = in.Count(MaximumProjectiles);
+    for (size_t i = 0; i < bolts; ++i) {
+        Projectile bolt;
+        in.Numbers(bolt.Request.Instance, bolt.Request.Sequence); bolt.Position = checkpoint::ReadWorldPosition(in);
+        in.Numbers(bolt.Velocity.X, bolt.Velocity.Y, bolt.Damage, bolt.Remaining);
+        const auto owner = std::find_if(restored->Roots.begin(), restored->Roots.end(), [&](const auto &root) {
+            return root->Instance->State().Id == bolt.Request.Instance;
+        });
+        Require(owner != restored->Roots.end() && bolt.Request.Sequence > 0
+            && bolt.Request.Sequence <= (*owner)->Instance->State().LastRequest.Sequence
+            && bolt.Remaining > 0 && bolt.Remaining <= 3600 && bolt.Damage >= 0 && bolt.Damage <= 1e6
+            && std::hypot(bolt.Velocity.X, bolt.Velocity.Y) <= 600.000000000001
+            && ContainsDisk((*owner)->Carrier.Scope, bolt.Position, FormulaWorldAdapter::BoltRadius),
+            "invalid checkpoint projectile ownership, geometry or lifetime");
+        for (const auto &old : restored->Bolts) Require(old.Request != bolt.Request, "duplicate checkpoint projectile identity");
+        restored->Bolts.push_back(bolt);
+    }
+    const auto receipts = in.Count(MaximumReceipts);
+    for (size_t i = 0; i < receipts; ++i) {
+        ProcessReceipt receipt;
+        in.Numbers(receipt.At, receipt.Request.Instance, receipt.Request.Sequence); receipt.Carrier = in.Enum(ProcessCarrierKind::Device);
+        receipt.Subject = in.Number<uint64_t>(); receipt.Outcome = in.Enum(process::Outcome::Timeout);
+        receipt.Refusal = in.Enum(ProcessRefusal::InvalidHandle); receipt.ChangedCells = in.Number<uint32_t>();
+        Require(receipt.At <= restored->At && receipt.Request.Instance && receipt.Request.Sequence && receipt.Subject
+            && (receipt.Outcome == process::Outcome::Applied || receipt.Outcome == process::Outcome::Rejected)
+            && ((receipt.Outcome == process::Outcome::Applied) == (receipt.Refusal == ProcessRefusal::None)),
+            "invalid checkpoint receipt history");
+        restored->Receipts.push_back(receipt);
+    }
+    const auto diagnostics = in.Count(MaximumReceipts);
+    for (size_t i = 0; i < diagnostics; ++i) {
+        FormulaRuntimeDiagnostic diagnostic;
+        in.Numbers(diagnostic.WorldEpoch, diagnostic.CastId, diagnostic.Tick); diagnostic.Message = in.String(16384);
+        restored->Diagnostics.push_back(std::move(diagnostic));
+    }
+    in.End();
+    Data = std::move(restored);
 }
 } // namespace pixel

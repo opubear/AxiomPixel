@@ -3,6 +3,16 @@
 #include <cmath>
 
 namespace pixel {
+void Character::RestoreState(CharacterState state) {
+    if (!std::isfinite(state.VerticalSpeed)) throw std::invalid_argument("invalid actor velocity");
+    state.Position.Normalize();
+    OriginChunk = state.Position.Chunk;
+    X = state.Position.Local[0];
+    Y = state.Position.Local[1];
+    VerticalSpeed = state.VerticalSpeed;
+    Grounded = state.Grounded;
+}
+
 bool Character::Occupies(int64_t x, int64_t y) const {
     const auto origin = CellOrigin();
     const double localX = double(x - origin.X), localY = double(y - origin.Y);

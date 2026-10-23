@@ -1,4 +1,5 @@
 #include "../Support/TestAccess.h"
+#include "../Support/CheckpointFiles.h"
 #include "Gameplay/GameSession.h"
 #include <chrono>
 #include <cstdlib>
@@ -90,7 +91,7 @@ void NaturalPersistenceAndStrategySelection() {
                 "strategy selection modified the old world instead of creating a new one");
         Require(pixel::testing::SessionAccess::World(restored).GetCell(40, 511).Type == CellTypeId::Air && pixel::testing::SessionAccess::World(restored).GetCell(40, 512).Type == CellTypeId::Dirt,
                 "debug superflat boundary changed");
-        Require(std::filesystem::exists(original / "world.meta"), "reset removed the old world");
+        Require(std::filesystem::exists(testing::CheckpointDirectory(original) / "world.meta"), "reset removed the old world");
     }
 }
 
@@ -103,6 +104,7 @@ void LegacyFlatAndResetFailure() {
         Require(flat.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
     // v2 has neither a generation descriptor nor the v5 committed-clock row.
+    testing::ExportLegacyFixture(original);
     ConvertToLegacyMetadata(original / "world.meta", 2);
     WorldGenerationSettings natural;
     natural.Kind = WorldGeneratorKind::Natural;
@@ -128,9 +130,8 @@ void FailedRecoveryIsIsolatedAndRetryable() {
     world.SetCell(32, 10, {CellTypeId::Dirt});
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     const auto directory = session.GetSaveDirectory();
-    const auto chunk = directory / "chunks" / "0_0.bin";
-    const auto backup = files.Path / "saved-chunk.bin";
-    std::filesystem::copy_file(chunk, backup);
+    const auto goodCheckpoint = testing::CheckpointDirectory(directory);
+    const auto chunk = world.GetStreamer()->Settings().Directory / "chunks" / "0_0.bin";
     { std::ofstream corrupt(chunk, std::ios::trunc); corrupt << "damaged"; }
     const auto pointer = files.Path / "current.txt";
     std::filesystem::remove(pointer);
@@ -148,10 +149,12 @@ void FailedRecoveryIsIsolatedAndRetryable() {
     world.WaitForStreaming();
     Require(session.GetSimulationTime() == time && world.GetMap().ChunkCount() == 0 && !session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(),
             "Failed session advanced, loaded chunks, or saved");
-    std::filesystem::copy_file(backup, chunk, std::filesystem::copy_options::overwrite_existing);
+    SessionStore store(files.Path);
+    const auto repaired = store.PublishCheckpoint(directory, goodCheckpoint, store.ReadMetadata(goodCheckpoint),
+                                                 store.ReadGameplayState(goodCheckpoint));
     std::filesystem::remove(pointer);
     { std::ofstream current(pointer); current << directory.filename().string() << '\n'; }
-    const auto metadata = directory / "world.meta";
+    const auto metadata = repaired / "world.meta";
     std::ifstream savedMetadata(metadata);
     std::ostringstream savedText;
     savedText << savedMetadata.rdbuf();
@@ -163,7 +166,7 @@ void FailedRecoveryIsIsolatedAndRetryable() {
     { std::ofstream output(metadata); output << corruptText; }
     const auto corruption = session.Control(pixel::NativeCaller::Driver, pixel::api::RecoverWorld{});
     Require(corruption.Status == pixel::api::ControlStatus::Failed && !session.IsReady()
-                && corruption.Message.find("generation coordinate exceeds supported range") != std::string::npos,
+                && corruption.Message.find("checkpoint file checksum mismatch") != std::string::npos,
             "corrupt generation must keep a recoverable session and explicit storage diagnosis");
     { std::ofstream output(metadata); output << savedText.str(); }
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::RecoverWorld{}).Succeeded() && session.IsReady() && session.GetSaveDirectory() == directory,
@@ -180,6 +183,7 @@ void Version3GenerationRemainsReadable() {
     {
         GameSession session(true, natural);
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
+        testing::ExportLegacyFixture(session.GetSaveDirectory());
         metadata = session.GetSaveDirectory() / "world.meta";
     }
     ConvertToLegacyMetadata(metadata, 3);

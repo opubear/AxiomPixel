@@ -33,6 +33,8 @@ class ProcessHost {
     const std::deque<FormulaRuntimeDiagnostic> &Diagnostics() const;
     ProcessHostStats Stats() const;
     std::vector<ProcessInspection> Inspect() const;
+    std::string CaptureState() const;
+    void RestoreState(std::string_view encoded);
 
   private:
     struct State;

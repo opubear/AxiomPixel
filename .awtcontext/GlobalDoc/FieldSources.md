@@ -74,4 +74,4 @@ cmake --build build-region-release --target PixelFieldSourceBenchmark -j6
 ./build-region-release/bin/Release/PixelFieldSourceBenchmark /private/tmp/pixel-fields.csv
 ```
 
-本轮未跑sanitizer、完整长GPU smoke或AET；引擎未修改，Vulkan validation layer不可用。游戏来源、设备和库存仍未存盘；跨域checkpoint属于M4.6，当前重启清空。没有实现水/角色受推力、设备碰撞或完整观察topic。
+本轮未跑sanitizer、完整长GPU smoke或AET；引擎未修改，Vulkan validation layer不可用。上述为M4.4验收边界；后续M4.6已接[跨域checkpoint](Checkpoints.md)，来源、设备和库存现可保存恢复。没有实现水/角色受推力、设备碰撞或完整观察topic。

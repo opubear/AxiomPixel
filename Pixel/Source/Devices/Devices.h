@@ -6,6 +6,10 @@
 
 namespace pixel {
 struct DeviceRecord { DeviceSnapshot Value; items::ContainerId FuelContainer; };
+struct DevicesState {
+    uint64_t NextId = 1;
+    std::vector<DeviceRecord> Records;
+};
 class Devices {
   public:
     static constexpr size_t MaximumCount = 64;
@@ -19,6 +23,8 @@ class Devices {
     void Update(DeviceSnapshot value);
     void Remove(DeviceRef reference);
     void Clear();
+    DevicesState CaptureState() const;
+    void RestoreState(const DevicesState &state);
 
   private:
     std::map<uint64_t, DeviceRecord> Records;

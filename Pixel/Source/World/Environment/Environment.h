@@ -48,6 +48,7 @@ class Environment {
     bool StopFieldSource(World &world, uint64_t owner, FieldSourceHandle handle);
     void StopFieldSources(World &world, uint64_t owner);
     void SuspendFieldSources(World &world, uint64_t owner, bool suspended);
+    void RestoreFieldSources(World &world, const FieldSourcesState &state);
     void StepMaterials(World &world);
     void ProposeRegion(World &world, WorldRect region);
     void ResolveConflicts(World &world, WorldRect bounds);

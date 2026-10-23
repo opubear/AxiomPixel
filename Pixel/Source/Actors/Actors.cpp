@@ -39,6 +39,30 @@ uint64_t NewOwner() {
 
 Actors::Actors() : Owner(NewOwner()) {}
 
+ActorsState Actors::CaptureState() const {
+    ActorsState state{NextId};
+    for (const auto &slot : Slots)
+        if (slot.Actor) state.Records.push_back(*slot.Actor);
+    return state;
+}
+
+void Actors::RestoreState(const ActorsState &state) {
+    if (!state.NextId || state.Records.size() > MaximumCount)
+        throw std::invalid_argument("invalid actors checkpoint");
+    Actors candidate;
+    for (const auto &record : state.Records) {
+        if (record.Id.Value >= state.NextId || (record.Kind == ActorKind::Player && candidate.Player()))
+            throw std::invalid_argument("invalid actors checkpoint identity");
+        candidate.Restore(record);
+    }
+    Slots = std::move(candidate.Slots);
+    Owner = candidate.Owner;
+    PlayerHandle = candidate.PlayerHandle;
+    LiveCount = candidate.LiveCount;
+    NextId = state.NextId;
+    Changed();
+}
+
 void Actors::Changed() {
     if (ChangeRevision == UINT64_MAX) throw std::overflow_error("actor revision exhausted");
     ++ChangeRevision;

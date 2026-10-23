@@ -1,10 +1,10 @@
 # 构式程序状态与编辑合同
 
-2026-10-22，M3.4。独立语言仍只有标准库依赖，游戏接入见 [FormulaBridge](FormulaBridge.md)。本阶段完成程序与运行状态 DTO、fake host 挂起/恢复验证及游戏源码编辑入口。M4.5已接[游戏区域冻结恢复](RegionActivity.md)，跨领域磁盘 checkpoint、配方库与设备实体存档仍属于 M4.6；现有 SessionStore 仍不保存程序、草稿或运行实例。
+2026-10-22，M3.4。独立语言仍只有标准库依赖，游戏接入见 [FormulaBridge](FormulaBridge.md)。本阶段完成程序与运行状态 DTO、fake host 挂起/恢复验证及游戏源码编辑入口。M4.5已接[游戏区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)，保存已应用程序、实例和设备。未应用草稿与配方库不在当前保存范围。
 
 ## 程序资源与版本
 
-`ProgramArtifact::Export()` 返回 `ProgramRecord`：格式版本 1、完整 `ProgramIdentity` 和源码。身份包含资源名称、源码 SHA-256、语言语义版本与宿主合同版本。`ImportProgram` 先拒绝不支持的版本，再按编译器容量限制重新编译并核对内容身份。DTO 不保存 C++ 指针、编译器容器或原生字节码；未定义磁盘编码。
+`ProgramArtifact::Export()` 返回 `ProgramRecord`：格式版本 1、完整 `ProgramIdentity` 和源码。身份包含资源名称、源码 SHA-256、语言语义版本与宿主合同版本。`ImportProgram` 先拒绝不支持的版本，再按编译器容量限制重新编译并核对内容身份。DTO 不保存 C++ 指针、编译器容器或原生字节码；磁盘编码由M4.6游戏Persistence/FormulaBridge适配，独立语言不依赖文件系统。
 
 `Instance::Restore` 必须使用与快照完全相同的程序身份，不自动迁移、重新开始或改绑当前资源。编辑同一资源生成新的不可变产物，旧实例及挂起胶囊继续保留原源码与身份。游戏 `ProgramRef` 的 ResourceId=2 和递增会话 Version 是激活选择器；完整语言身份由产物及调试视图提供，两种版本不可互相替代。
 

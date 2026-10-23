@@ -28,7 +28,7 @@ Session 的 `GetPlayer` 是同步只读借用；渲染使用 `CommittedWorldView
 
 PlayerObservation 新增世界内 `ActorId`，LLMView JSON 的 `actorId` 使用十进制字符串，避免超过 2^53 时丢精度。观测仍按玩家矩形是否与 scope 相交决定返回；当前没有将整个 Actors 集合暴露为新查询 topic。
 
-本步 `ActorRecord` 的 Restore 是可信运行态边界，并非磁盘格式。当前 v5 会话存档仍只保存既有玩家位置，不保存 ActorId、ID 分配高水位、第二角色或完整角色动力状态；加载/重建会话后须通过新的 epoch 重新查询引用。M4.6 的多领域检查点需要保存世界身份、所有 ActorRecord 对应的显式值数据及 next-ID 高水位，且不可序列化内存句柄。不能把本步称为已实现居民落盘。
+M4.6通过 `ActorsState` 保存所有角色的持久ID、next-ID、分段位置、垂直速度和着地状态。恢复重建Owner与slot，不恢复内存句柄；会话epoch和调用者身份更新。磁盘损坏在载入边界报告，具体见[一致检查点](Checkpoints.md)。
 
 ## 验证入口
 

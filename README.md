@@ -19,7 +19,7 @@
 | `Pixel/Source/Application/` | 应用装配、引擎输入转接、生命周期与运行时渲染策略 |
 | `Pixel/Source/GameAPI/` | 仅依赖标准库的类型化动作、回执与会话控制值 |
 | `Pixel/Source/Gameplay/` | GameSession持有世界、Actors、库存、设备与构式实例，统一动作入口、同步去重，编排固定步与会话控制 |
-| `Pixel/Source/Persistence/` | SessionSaveData保存值契约；SessionStore读取v2–v5、写入v5元数据、世界目录与current.txt |
+| `Pixel/Source/Persistence/` | 领域保存DTO；SessionStore导入v2–v5、不可变checkpoint/1世代与原子指针发布 |
 | `Pixel/Source/FormulaValidation/` | 仅依赖Formula的游戏参数、结构额度和后代工作量分析 |
 | `Pixel/Source/FormulaEditing/` | 纯CPU树形构式草稿、结构操作、编译及分析诊断到编辑节点的映射 |
 | `Pixel/Source/World/` | 纯CPU WorldMap、分块/四叉树和流式；Environment管理材料及风 |
@@ -40,11 +40,11 @@
 
 核心依赖为 `PixelGameplay → PixelActors → PixelWorld` 以及 `PixelGameplay → PixelFormulaValidation/PixelFormulaProcess → PixelFormula`；`PixelFormulaEditing` 也使用共享的 `PixelFormulaValidation`，Gameplay不链接编辑器。World链接 `PixelPerformance` 和 `Axiom::Core` 使用容器及对齐allocator，不依赖Formula、窗口、RHI或UI。PixelPresentation在CPU上转换快照；只有运行时层接入引擎和ImGui。模块边界沿用 [模块化系统设计](Docs/Architecture/PixelModularDesign.docx)，其旧世界所有权细节以新世界约定为准。
 
-角色身份与生命周期见 [Actors 合同](.awtcontext/GlobalDoc/Actors.md)：玩家已移出 World，Resident 验证第二对象的物理与生命周期；当前呈现仍仅玩家，v5 存档仍只保存既有玩家位置，多领域持久化留在 M4.6。
+角色身份与生命周期见 [Actors 合同](.awtcontext/GlobalDoc/Actors.md)：玩家已移出 World，Resident 验证第二对象的物理与生命周期；当前呈现仍仅玩家；M4.6检查点已保存所有角色的身份和完整运动状态。
 
-M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，M4.3已接入设备放置。**库存尚未保存到磁盘，重启或R建新世界后为空**，持久化留M4.6，库存界面与观测留M4.7。
+M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，M4.3已接入设备放置。M4.6已保存库存及身份高水位，R创建的新世界仍从空背包开始；库存界面与观测留M4.7。
 
-M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。**设备、燃料和来源尚未存盘**，[M4.5区域冻结恢复](.awtcontext/GlobalDoc/RegionActivity.md)已实现：离开后保留剩余周期，返回接续且不重扣煤；跨域保存留M4.6。
+M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、状态和回执。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。设备、燃料和来源通过[M4.6一致检查点](.awtcontext/GlobalDoc/Checkpoints.md)保存；[M4.5区域冻结恢复](.awtcontext/GlobalDoc/RegionActivity.md)已实现：离开后保留剩余周期，返回接续且不重扣煤，重启后继续已支付周期。
 
 ## 构建和运行
 
@@ -65,7 +65,7 @@ git submodule update --init --recursive
 
 M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。Pixel 在该钩子中保存；保存失败或 Deferred 时拒绝本次退出并保留会话，显式重试才会再次保存。
 
-游戏默认从运行目录的 `Saves/current.txt` 恢复当前世界；首次生成新世界。每块文件位于 `Saves/<world-id>/chunks/`，正常退出和面板 `Save world` 写盘；R先保存再创建新世界，旧目录保留。存档已加入忽略规则。可在启动前覆盖：
+游戏默认从运行目录的 `Saves/current.txt` 恢复当前世界；首次生成新世界。流式块写入独立 `working/session-*/chunks/`，正常退出和面板 `Save world` 发布完整不可变 `checkpoints/checkpoint-*/`，由 `checkpoint.current` 选择；R先保存再创建新世界，旧目录保留。存档已加入忽略规则。可在启动前覆盖：
 
 ```sh
 (cd Pixel && PIXEL_SAVE_ROOT=/private/tmp/pixel-saves \
@@ -73,9 +73,9 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
   ../build/bin/Debug/Pixel)
 ```
 
-窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告原因。模拟步等待容量时，Save/正常退出/R 返回 Deferred，不写会话元数据、不自行推进或自动重试；完成该步后需再次发起操作。提示独立于 F2 面板显示。本版没有跨文件崩溃恢复。
+窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告原因。模拟步等待容量时，Save/正常退出/R 返回 Deferred，不写会话元数据、不自行推进或自动重试；完成该步后需再次发起操作。提示独立于 F2 面板显示。中断写入保留上一完整检查点；尚未加入fsync，不保证系统断电持久性。
 
-`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World；GameSession 在完整提交边界先保存块、再写 v5 元数据，新世界首存成功后才替换 `current.txt`。v5 只保存已提交时间和完整余量，不保存半步标记；旧 v2/v3/v4 导入时保留地图/角色/已提交物理时间和全部余量，在已提交时刻重建风，欠步由协调器完整执行一次。迁移细节见[保存边界](Docs/Architecture/SessionSaveBoundary.md)。`Pixel.SessionStore` 验证格式兼容及文件边界，现有 Persistence/GenerationSession 回归覆盖恢复与失败重试。
+`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World。GameSession在完整提交点捕获所有领域，文件全部写入并生成校验清单后才原子发布检查点；已卸载的脏块也包含在新代，旧代不被流式覆盖。v2–v5导入时保留原文件与完整余量，下一次保存升级为checkpoint/1。当前全量复制块、同步保存，成本随存档规模增长。格式、验证与边界见[一致检查点](.awtcontext/GlobalDoc/Checkpoints.md)和[保存退出边界](Docs/Architecture/SessionSaveBoundary.md)。
 
 ## 世界与操作
 
@@ -206,7 +206,7 @@ Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置�
 
 F2只控制Pixel Debug，F4独立控制 `Formula Editor`，主面板的 `Formula editor (F4)` 也可重新打开编辑器；隐藏普通调试面板不影响编辑器使用。结构树支持选择节点、修改参数、包裹/解包、增删、复制和顺序调整；右侧选择新节点类型，再操作选中节点。预设只改变草稿，点击 `Apply` 后用于下一次右键；已有弹体及其延迟/命中子构式保持旧版本。`Revert to applied` 恢复已应用结构，`Clear running` 无触发清除全部实例与排队任务。
 
-默认仍暂停：右键可生成当前tick的球，使用Environment的单步或取消暂停推进。构式、角色和材料共享成功提交的60Hz固定步；预算等待不推进构式，并拒绝新激活和地形编辑。新存档为v5，可恢复单步后保留的完整时间余量，继续读取v2/v3/v4。配方、草稿和运行实例不保存；实际材料改变、风配置和时钟沿用世界存档，动态风扰动不保存。
+默认仍暂停：右键可生成当前tick的球，使用Environment的单步或取消暂停推进。构式、角色和材料共享成功提交的60Hz固定步；预算等待不推进构式，并拒绝新激活和地形编辑。checkpoint/1保存完整时间余量、已应用程序及process/1运行实例，继续导入v2–v5。未应用编辑草稿不保存；有活跃旧树实例时明确拒绝保存，须完成或Clear running。动态风仍按配置和相位重建，不保存扰动。
 
 基础版支持既有全部节点：序列、伤害/速度修改、延迟、重复、散射、命中载荷，以及挖掘和风脉冲。伤害目前是元数据。风效果仅适配启用的Coarse后端且网格至多1024 cells；其他策略、域外、零/极小半径有明确诊断并跳过风，不取消同根其他效果。草稿至多64节点/16层，每根至多64个效果、会话至多16根/256个预留效果，窗口显示拒绝原因及运行日志。黄色球独立于地图材料，F1隐藏实体表现但不改变执行。
 
@@ -225,7 +225,7 @@ M3.2 的 `PixelFormulaProcessDemo` 使用新的 `process 1;` 入口，包含不�
 
 F4 编辑器展开 `Process source`，载入三脉冲草稿或直接编辑源码，依次点击 `Compile process` 和 `Apply process` 后右键使用新过程。编辑会撤销旧编译结果，错误显示行列；Apply 只影响新实例。展开 `Process: three carriers`，`Start natural source` 和 `Start fixed fixture` 从玩家附近启动同一程序，并查看各实例的版本、PC、活动计时与剩余等待。三脉冲示例会发球、命中挖掘并延时重复，需取消暂停或单步推进。固定装置只是有限夹具；示例额度每次激活独立，天然源6、固定装置4、玩家64，每个成功效果扣1。`Clear running` 统一清理，树形 `Apply` 切回旧程序，既有实例保留旧版本。领域效果与边界见 [FormulaBridge](.awtcontext/GlobalDoc/FormulaBridge.md)。
 
-M3.4 已实现独立程序与实例状态 DTO，在 fake host 验证挂起后重建解释器、剩余延迟/事件/效果寿命接续及不重放已提交请求。具体见[状态与编辑合同](.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。M4.5游戏区域离开会冻结程序与归属效果，返回后按剩余活动时间续接；过程、草稿和承载者尚不保存到磁盘；跨领域 checkpoint 属于 M4。
+M3.4 已实现独立程序与实例状态 DTO，在 fake host 验证挂起后重建解释器、剩余延迟/事件/效果寿命接续及不重放已提交请求。具体见[状态与编辑合同](.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。M4.5游戏区域离开会冻结程序与归属效果，返回后按剩余活动时间续接；M4.6已保存过程、承载者与归属效果；未应用编辑草稿不保存。
 
 CPU行为测试包括 `Pixel.FormulaValidation`、`Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。前者只链接共享验证和独立Formula，FormulaGameplay也不链接编辑器或ImGui。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
 

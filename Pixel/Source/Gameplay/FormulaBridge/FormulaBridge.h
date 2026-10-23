@@ -54,6 +54,10 @@ class FormulaBridge {
     const std::deque<FormulaRuntimeDiagnostic> &Diagnostics() const;
     FormulaRuntimeStats Stats() const;
     uint64_t WorldEpoch() const;
+    // Complete committed process state. Restore is side-effect free and requires
+    // an empty bridge; the session restores owned world sources separately.
+    std::string CaptureState() const;
+    void RestoreState(std::string_view encoded);
 
   private:
     struct State;

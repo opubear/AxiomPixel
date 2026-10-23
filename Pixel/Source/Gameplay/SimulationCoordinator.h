@@ -78,6 +78,14 @@ class SimulationCoordinator {
         StepRequested = false;
     }
 
+    void RestoreCheckpoint(uint64_t tick, uint64_t revision, double remainder) {
+        if (tick == UINT64_MAX || !revision || revision == UINT64_MAX)
+            throw std::invalid_argument("invalid checkpoint clock identity");
+        Restore(tick * StepSeconds, remainder);
+        CompletedTicks = tick;
+        CommitRevision = revision;
+    }
+
   private:
     uint64_t CompletedTicks = 0, CommitRevision = 1;
     double TimeRemainder = 0;

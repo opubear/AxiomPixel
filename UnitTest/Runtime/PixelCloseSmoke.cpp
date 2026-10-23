@@ -1,4 +1,5 @@
 #include "../Support/TestAccess.h"
+#include "../Support/CheckpointFiles.h"
 #include "PixelSmokeApplication.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
@@ -71,7 +72,7 @@ void CloseAtSaveBoundary() {
     auto &session = game.GetSession();
     auto &world = pixel::testing::SessionAccess::World(session);
     auto *platform = app.Engine->GetPlatform();
-    const auto metadata = session.GetSaveDirectory() / "world.meta";
+    const auto metadata = session.GetSaveDirectory() / "checkpoint.current";
     const auto before = Read(metadata);
     const auto stamp = session.CurrentCommit();
     pixel::testing::SessionAccess::RestoreClock(session, 0, 1.0 / 60, true);
@@ -107,7 +108,7 @@ void CloseAtSaveBoundary() {
     Require(app.ProcessCloseRequest() && session.LastPersistenceResult().Status == pixel::api::ControlStatus::Saved,
             "explicit Escape retry did not save and accept closing");
     const auto saved = Read(metadata);
-    Require(saved != before && saved.starts_with("AxiomPixelWorld 5 "), "accepted close did not persist the committed clock");
+    Require(saved != before && saved.starts_with("AxiomPixelCheckpoint 1"), "accepted close did not persist the committed clock");
     // A second save from GameEnd would fail here. Teardown must only clean up.
     std::filesystem::create_directory(temporary);
     app.Shutdown();

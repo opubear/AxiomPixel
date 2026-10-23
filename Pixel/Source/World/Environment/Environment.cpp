@@ -144,6 +144,11 @@ void Environment::SuspendFieldSources(World &world, uint64_t owner, bool suspend
     }
 }
 
+void Environment::RestoreFieldSources(World &world, const FieldSourcesState &state) {
+    RequireSourceMutation();
+    Sources.RestoreState(state, world.GetMutableMap());
+}
+
 void Environment::RestorePendingStep(double seconds, bool deferredStep) {
     Wind.SetSimulationTime(seconds + (deferredStep ? FieldResponse::StepSeconds : 0));
     PendingSeconds = seconds;

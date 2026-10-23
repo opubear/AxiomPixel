@@ -44,7 +44,7 @@
 | 统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | M1动作去重、只读公开访问、内部早失败、存储错误边界与M2待办 | |
 | 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 固定步时钟、等待冻结和提交副本；M4.1由Session编排World与Actors | |
 | 正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | M2.2 Application钩子、请求消费与拒绝后继续、AET默认行为及M2.3保存接入边界 | |
-| 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | M2.3 Deferred、v5 与旧 v2-v4 导入、关闭协商和持久化验证入口 | |
+| 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | Deferred和关闭协商；M4.6多域检查点、v2-v5导入与验证入口 | |
 | 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2观测DTO与因果事实、外部捕获槽；M4.1玩家ActorId与提交快照 | |
 | 领域观测Release基准原始数据 | `context:GlobalDoc/ObservationBenchmark-2026-10-22.csv` | M2.4三轮128帧静态与动态风有无投影的P50/P95、导出字节及容量 | |
 | LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | M2.5授权与交付、冻结分页、租约、JSON协议、离线样例和最终验证性能 | |
@@ -52,12 +52,13 @@
 | 构式语言最小语义选择与可执行对照 | `context:GlobalDoc/FormulaSemanticsExperiment.md` | M3.1五场景原型、过程语义、成本测量及M3.2边界；未替换游戏运行时 | |
 | 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
 | 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | M3.2文本编译产物、绑定实例、宿主终态与预算清理；含CLI和新旧兼容范围 | |
-| FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 宿主接线、作用范围和额度、批次碰撞、区域冻结与三承载样例 | |
-| 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 程序实例DTO、效果归属与源码Apply；M4.5会话区域冻结和磁盘保存边界 | |
-| Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | M4.1角色集合、持久ID与代次句柄、宿主推进及观测呈现和后续保存边界 | |
-| 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | M4.2稳定物品ID、容量版本、转移预留、开采与建造成本及后续保存边界 | |
-| 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | M4.5推力设备、资源原子操作、持续场与区域冻结续接及后续保存边界 | |
-| 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 来源所有权、单位与寿命、M4.5冻结和驻留失效、既有CPU GPU性能验证 | |
-| 区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | M4.5活动时间、身份和资源续接；CPU78项、ChunkEdge64、GPU与独立审查证据 | |
+| FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 宿主接线、作用范围和额度、批次碰撞、区域冻结与跨进程程序恢复 | |
+| 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 独立运行DTO、源码编辑及M4.6程序产物/continuation磁盘恢复 | |
+| Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 角色身份、运动和地形边界；M4.6完整状态与next-ID持久化 | |
+| 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 稳定物品与容器、资源操作；M4.6库存检查点与短期预留边界 | |
+| 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 推力设备、燃料周期、区域冻结及M4.6一致检查点 | |
+| 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 持续来源、区域冻结、驻留失效及M4.6归属持久化 | |
+| 区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | M4.5本地活动时间与身份续接；M4.6磁盘恢复另见Checkpoints | |
+| 多领域一致检查点与程序持久化 | `context:GlobalDoc/Checkpoints.md` | M4.6不可变世代、各域和程序恢复、旧档导入；80项回归、chunk64及停顿与RSS实测 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

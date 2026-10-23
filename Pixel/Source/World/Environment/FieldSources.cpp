@@ -5,6 +5,28 @@
 #include <stdexcept>
 
 namespace pixel {
+void FieldSources::RestoreState(const FieldSourcesState &state, WorldMap &map) {
+    if (!state.NextId || state.Sources.size() > Capacity)
+        throw std::invalid_argument("invalid field sources checkpoint");
+    uint64_t previous = 0;
+    for (const auto &source : state.Sources) {
+        Validate(source.Owner, source.Spec);
+        if (source.Handle.Id <= previous || source.Handle.Id >= state.NextId
+            || !source.Remaining || source.Remaining > source.Spec.Lifetime)
+            throw std::invalid_argument("invalid saved field source identity or lifetime");
+        previous = source.Handle.Id;
+    }
+    for (const auto &source : Sources()) map.Wake(Bounds(source.Spec));
+    Values = {};
+    Count = state.Sources.size();
+    std::copy(state.Sources.begin(), state.Sources.end(), Values.begin());
+    NextId = state.NextId;
+    Resident = {};
+    CachedSourceVersion = CachedResidencyVersion = 0;
+    ++Version;
+    for (const auto &source : Sources()) map.Wake(Bounds(source.Spec));
+}
+
 FieldSourceSpec FieldSources::Validate(uint64_t owner, FieldSourceSpec spec) {
     if (!owner || !std::isfinite(spec.Radius) || spec.Radius <= 0 || spec.Radius > 16
         || !std::isfinite(spec.Acceleration.X) || !std::isfinite(spec.Acceleration.Y)

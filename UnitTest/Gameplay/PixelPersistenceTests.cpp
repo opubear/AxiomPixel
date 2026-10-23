@@ -1,4 +1,5 @@
 #include "../Support/TestAccess.h"
+#include "../Support/CheckpointFiles.h"
 #include "Camera/GameCamera.h"
 #include "Gameplay/GameSession.h"
 #include "PixelRender/GamePresentation.h"
@@ -86,7 +87,7 @@ void SessionRoundTrip() {
         Require(std::abs(restoredWind.X - savedWind.X) < 1e-5 && std::abs(restoredWind.Y - savedWind.Y) < 1e-5 && restored.GetSimulationTime() == savedPhysicsTime && restored.GetTimeRemainder() == savedRemainder,
                 "saved procedural wind phase and fixed-step remainder diverged");
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
-        Require(restored.GetSaveDirectory() != original && std::filesystem::exists(original / "world.meta"),
+        Require(restored.GetSaveDirectory() != original && std::filesystem::exists(pixel::testing::CheckpointDirectory(original) / "world.meta"),
                 "reset must create a new world and preserve old save files");
     }
 }
@@ -97,7 +98,9 @@ void PublicationBudgetAndOwnership() {
     auto &world = pixel::testing::SessionAccess::World(session);
     pixel::WorldStreamSettings settings;
     settings.Directory = session.GetSaveDirectory();
-    settings.BudgetBytes = 50ull * 1024 * 1024;
+    // A 1024-cell viewport needs 256 resident chunks in the chunk64 build;
+    // their per-chunk I/O reservations alone leave too little of 50 MiB.
+    settings.BudgetBytes = (pixel::storage::ChunkEdge == 64 ? 128ull : 50ull) * 1024 * 1024;
     world.EnableStreaming(settings);
     world.RequestVisibleRegion({0, 0, 1024, 1024});
     pixel::GameCamera camera;
@@ -142,7 +145,7 @@ void PendingRefusesPersistence() {
     session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "initial save failed");
     const auto directory = session.GetSaveDirectory();
-    const auto metadata = ReadText(directory / "world.meta");
+    const auto metadata = ReadText(directory / "checkpoint.current");
     const auto pointer = ReadText(root.Path / "current.txt");
     const auto worldCount = std::distance(std::filesystem::directory_iterator(root.Path), std::filesystem::directory_iterator{});
     world.WaitForStreaming();
@@ -170,14 +173,14 @@ void PendingRefusesPersistence() {
                     && SamePosition(session.GetPlayer()->GetWorldPosition(), player) && world.SampleWind(100.5, 100.5) == wind
                     && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt,
                 "deferred request or persistent budget shortage advanced/replaced the session");
-        Require(ReadText(directory / "world.meta") == metadata && ReadText(root.Path / "current.txt") == pointer
-                    && !std::filesystem::exists(directory / "world.meta.tmp")
+        Require(ReadText(directory / "checkpoint.current") == metadata && ReadText(root.Path / "current.txt") == pointer
+                    && !std::filesystem::exists(directory / "checkpoint.current.tmp")
                     && std::distance(std::filesystem::directory_iterator(root.Path), std::filesystem::directory_iterator{}) == worldCount,
                 "deferred request wrote metadata or allocated a replacement world");
     }
     world.SetPublicationBytes(0);
     session.Tick(1.f / 60, {});
-    Require(session.CurrentCommit().Tick == stamp.Tick + 1 && ReadText(directory / "world.meta") == metadata,
+    Require(session.CurrentCommit().Tick == stamp.Tick + 1 && ReadText(directory / "checkpoint.current") == metadata,
             "finishing a step must not automatically retry a deferred save");
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Status == pixel::api::ControlStatus::Saved,
             "explicit save retry did not succeed at the committed boundary");
@@ -202,6 +205,7 @@ void LegacyPendingImportsAtCommittedTime() {
         }
         // Build a legacy half-step record from the committed chunk files. The
         // obsolete wall time is deliberately different from the committed time.
+        pixel::testing::ExportLegacyFixture(directory);
         const auto metadata = directory / "world.meta";
         std::istringstream input(ReadText(metadata));
         std::string header, generation, player, clock;
@@ -244,7 +248,7 @@ void LegacyPendingImportsAtCommittedTime() {
         restored.Tick(.2f, {});
         Require(restored.CurrentCommit().Tick == 9, "paused legacy backlog replayed without a request");
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded()
-                    && ReadText(metadata).starts_with("AxiomPixelWorld 5 "), "legacy import did not upgrade to v5");
+                    && ReadText(pixel::testing::CheckpointDirectory(directory) / "world.meta").starts_with("AxiomPixelWorld 5 "), "legacy import did not upgrade to v5");
     }
 }
 
@@ -253,8 +257,7 @@ void ManualSaveFailureCanRetry() {
     pixel::GameSession session(true);
     auto &world = pixel::testing::SessionAccess::World(session);
     world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
-    const auto metadata = session.GetSaveDirectory() / "world.meta";
-    std::filesystem::remove(metadata);
+    const auto metadata = session.GetSaveDirectory() / "checkpoint.current.tmp";
     std::filesystem::create_directory(metadata);
     Require(!session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded() && !session.GetSaveError().empty() && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt,
             "manual save failure escaped the session or lost resident data");
@@ -269,7 +272,7 @@ void SavePublishesAcceptedLoads() {
         auto &world = pixel::testing::SessionAccess::World(session);
         world.WaitForStreaming();
         world.SetCell(32, 10, {pixel::CellTypes::Dirt, {0, 1}});
-        const auto failedWrite = session.GetSaveDirectory() / "chunks" / "0_0.bin.tmp";
+        const auto failedWrite = world.GetStreamer()->Settings().Directory / "chunks" / "0_0.bin.tmp";
         if (failChunkWrite) std::filesystem::create_directory(failedWrite);
         auto view = session.CreateReadView();
         constexpr int64_t distantX = 100 * pixel::storage::ChunkEdge;
@@ -384,6 +387,10 @@ void SuccessfulSingleStepBacklogRoundTrip() {
         Require(!world.GetEnvironment().IsWaitingForBudget()
                     && std::abs(session.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
                 "single-step did not preserve unadvanced backlog");
+        Require(!session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded()
+                    && session.GetSaveError().find("legacy") != std::string::npos,
+                "unsupported live legacy execution was silently dropped");
+        pixel::testing::SessionAccess::Runtime(session).Clear(world);
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
     pixel::GameSession loaded(true);

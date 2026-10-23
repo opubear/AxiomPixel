@@ -6,6 +6,6 @@ add_library(PixelGameplay STATIC
     GameSession.cpp CommittedWorldView.cpp SessionPublication.cpp Actions/GameActions.cpp Actions/Mining.cpp
     Construction/DeviceActions.cpp Construction/DeviceRuntime.cpp
     FormulaBridge/FormulaBridge.cpp FormulaBridge/FormulaWorldAdapter.cpp FormulaBridge/ProcessHost.cpp
-    SessionObservation.cpp ../Observation/ObservationProjector.cpp
-    ../Persistence/SessionStore.cpp)
+    SessionObservation.cpp SessionPersistence.cpp ../Observation/ObservationProjector.cpp
+    ../Persistence/SessionStore.cpp ../Persistence/GameplaySaveData.cpp)
 target_link_libraries(PixelGameplay PUBLIC PixelActors PixelDevices PixelItems PixelFormulaValidation PixelFormulaProcess PixelObservationValues)

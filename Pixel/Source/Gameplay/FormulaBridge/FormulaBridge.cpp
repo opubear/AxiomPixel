@@ -1,6 +1,8 @@
 #include "FormulaBridge.h"
 #include "ProcessHost.h"
+#include "CheckpointCodec.h"
 #include "FormulaValidation/FormulaAnalysis.h"
+#include "World/WorldStorageError.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -396,4 +398,46 @@ std::span<const FormulaEffectRecord> FormulaBridge::LastEffects() const {
     return {Data->Effects.data(), Data->EffectCount};
 }
 FormulaRuntimeStats FormulaBridge::Stats() const { return Data->Statistics(); }
+
+std::string FormulaBridge::CaptureState() const {
+    if (!Data->Roots.empty())
+        throw WorldStorageError("cannot save live legacy formula instances; clear or finish them before saving");
+    checkpoint::Writer out;
+    out.String("Pixel.FormulaBridge"); out.Numbers(1, Data->Version, Data->Epoch, Data->NextCast);
+    checkpoint::Write(out, Data->Active);
+    out.Numbers(bool(Data->ActiveProcess));
+    if (Data->ActiveProcess) checkpoint::Write(out, *Data->ActiveProcess);
+    out.String(Data->Processes.CaptureState());
+    return out.Finish();
+}
+
+void FormulaBridge::RestoreState(std::string_view encoded) {
+    if (!Data->Roots.empty() || Data->Processes.Stats().Instances != 0)
+        throw std::logic_error("formula restore requires an empty bridge");
+    checkpoint::Reader in(encoded);
+    checkpoint::Require(in.String(32) == "Pixel.FormulaBridge" && in.Number<uint32_t>() == 1,
+        "unsupported formula bridge checkpoint");
+    auto restored = std::make_unique<State>();
+    in.Numbers(restored->Version, restored->Epoch, restored->NextCast);
+    checkpoint::Require(restored->Version && restored->Epoch && restored->NextCast,
+        "invalid checkpoint bridge identity");
+    size_t nodes = 0;
+    restored->Active = checkpoint::ReadFormula(in, nodes);
+    const auto analysis = formula::validation::Analyze(restored->Active);
+    checkpoint::Require(bool(analysis), "invalid checkpoint legacy formula description");
+    restored->ActiveBudget = analysis.Budget;
+    if (in.Boolean()) restored->ActiveProcess = checkpoint::ReadProgram(in);
+    restored->Processes.RestoreState(in.String(checkpoint::MaximumBytes));
+    in.End();
+    for (const auto &instance : restored->Processes.Inspect())
+        checkpoint::Require(instance.State.Id < restored->NextCast, "checkpoint activation identity would be reused");
+    for (const auto &receipt : restored->Processes.Receipts())
+        checkpoint::Require(receipt.Request.Instance < restored->NextCast, "checkpoint receipt exceeds activation identity");
+    for (const auto &diagnostic : restored->Processes.Diagnostics())
+        checkpoint::Require(diagnostic.CastId < restored->NextCast, "checkpoint diagnostic exceeds activation identity");
+    // Inventory ownership belongs to Session and has already been rebound.
+    if (Data->PlayerCollector) restored->PlayerCollector.emplace(*Data->PlayerCollector);
+    restored->Refresh();
+    Data = std::move(restored);
+}
 } // namespace pixel

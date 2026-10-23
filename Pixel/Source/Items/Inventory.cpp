@@ -23,6 +23,40 @@ ContainerId Inventory::Create(uint32_t capacity) {
     return id;
 }
 void Inventory::Clear() { Reservations.clear(); Containers.clear(); }
+
+InventoryState Inventory::CaptureState() const {
+    if (!Reservations.empty()) throw std::logic_error("checkpoint during inventory reservation");
+    InventoryState state{NextContainer, NextReservation};
+    for (const auto &[id, container] : Containers) state.Containers.push_back(Inspect(id));
+    return state;
+}
+
+void Inventory::RestoreState(const InventoryState &state) {
+    if (!state.NextContainer || !state.NextReservation || state.Containers.size() > MaximumContainers)
+        throw std::invalid_argument("invalid inventory checkpoint");
+    std::map<ContainerId, Container> restored;
+    for (const auto &saved : state.Containers) {
+        if (!saved.Ref.Id.Value || saved.Ref.Id.Value >= state.NextContainer || !saved.Ref.Version
+            || saved.Ref.Version == UINT64_MAX || !saved.Capacity || saved.Stacks.size() > Definitions().size())
+            throw std::invalid_argument("invalid saved container");
+        Container container{saved.Ref.Version, saved.Capacity, saved.Quantity};
+        uint64_t total = 0;
+        for (const auto &stack : saved.Stacks) {
+            if (!IsKnown(stack.Item) || !stack.Quantity || stack.Reserved
+                || !container.Stacks.emplace(stack.Item, stack).second)
+                throw std::invalid_argument("invalid saved item stack");
+            total += stack.Quantity;
+        }
+        if (total != saved.Quantity || total > saved.Capacity || !restored.emplace(saved.Ref.Id, std::move(container)).second)
+            throw std::invalid_argument("invalid saved inventory contents");
+    }
+    Clear();
+    Inventory fresh;
+    Owner = fresh.Owner;
+    Containers = std::move(restored);
+    NextContainer = state.NextContainer;
+    NextReservation = state.NextReservation;
+}
 void Inventory::Destroy(ContainerId id) {
     if (Containers.at(id).Quantity != 0) throw std::logic_error("destroying nonempty inventory");
     Containers.erase(id);

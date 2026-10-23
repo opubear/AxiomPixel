@@ -22,6 +22,10 @@ struct ActorRecord {
     ActorKind Kind;
     Character Body;
 };
+struct ActorsState {
+    uint64_t NextId = 1;
+    std::vector<ActorRecord> Records;
+};
 // Presentation/observation values contain no velocity state or storage handle.
 struct ActorSnapshot {
     ActorId Id;
@@ -55,6 +59,8 @@ class Actors {
     bool Occupies(CellCoord cell) const;
     size_t Count() const { return LiveCount; }
     uint64_t Revision() const { return ChangeRevision; }
+    ActorsState CaptureState() const;
+    void RestoreState(const ActorsState &state);
 
   private:
     struct Slot { uint64_t Generation = 1; std::optional<ActorRecord> Actor; };

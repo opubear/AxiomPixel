@@ -31,6 +31,10 @@ struct ContainerSnapshot {
     std::vector<Stack> Stacks;
     bool operator==(const ContainerSnapshot &) const = default;
 };
+struct InventoryState {
+    uint64_t NextContainer = 1, NextReservation = 1;
+    std::vector<ContainerSnapshot> Containers;
+};
 
 // Single writer. Reservations protect existing stock; it still occupies capacity.
 // Cross-domain callers reserve, preflight their other domain, then consume/release.
@@ -51,6 +55,9 @@ class Inventory {
     ReservationResult Reserve(ContainerRef container, std::span<const ItemAmount> amounts);
     Result Release(ReservationId reservation);
     Result Consume(ReservationId reservation);
+    InventoryState CaptureState() const;
+    void RestoreState(const InventoryState &state);
+    bool Contains(ContainerId id) const { return Containers.contains(id); }
 
   private:
     struct Container {

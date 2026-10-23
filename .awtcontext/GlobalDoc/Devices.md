@@ -1,6 +1,6 @@
 # 设备放置、端口与最小工作状态（M4.5更新）
 
-设备属于 Pixel，不编码进 CellType，也不进入 Axiom。M4.3 建立建造和供煤路径，M4.4 将唯一设备更新为局部推力发生器（类型3001），以持续FieldSource验证程序承载。当前设备与来源仅在会话内存中存在；M4.5已接[区域冻结恢复](RegionActivity.md)，M4.6接跨领域保存，M4.7接完整库存/设备 UI 与 LLMView投影。
+设备属于 Pixel，不编码进 CellType，也不进入 Axiom。M4.3 建立建造和供煤路径，M4.4 将唯一设备更新为局部推力发生器（类型3001），以持续FieldSource验证程序承载。M4.5已接[区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)保存设备/燃料/程序/来源，M4.7接完整库存/设备 UI 与 LLMView投影。
 
 ## 领域与身份
 

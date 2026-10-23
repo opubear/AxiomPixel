@@ -1,6 +1,7 @@
 #pragma once
 #include "Formula/Process/Runtime.h"
 #include "World/WorldCoordinates.h"
+#include <vector>
 
 namespace pixel {
 enum class ProcessCarrierKind { Player, NaturalSource, FixedFixture, Device };
@@ -48,5 +49,10 @@ struct ProcessInspection {
     uint64_t Subject = 0;
     int64_t Credits = 0;
     bool Suspended = false;
+    uint64_t ResourceId = 2;
+    ProcessCarrier Configuration;
+    // Missing handles may have expired or been stopped. An existing source
+    // referenced here must belong to this instance, never another owner.
+    std::vector<uint64_t> ReferencedFieldHandles;
 };
 } // namespace pixel

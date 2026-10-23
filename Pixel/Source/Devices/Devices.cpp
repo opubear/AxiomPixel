@@ -69,4 +69,28 @@ void Devices::Remove(DeviceRef ref) {
     Changed();
 }
 void Devices::Clear() { Records.clear(); Changed(); }
+
+DevicesState Devices::CaptureState() const {
+    DevicesState state{NextId};
+    for (const auto &[id, record] : Records) state.Records.push_back(record);
+    return state;
+}
+
+void Devices::RestoreState(const DevicesState &state) {
+    if (!state.NextId || state.Records.size() > MaximumCount)
+        throw std::invalid_argument("invalid devices checkpoint");
+    Devices candidate;
+    for (const auto &record : state.Records) {
+        const auto &d = record.Value;
+        if (!d.Ref.Id || d.Ref.Id >= state.NextId || !d.Ref.Version || d.Ref.Version == UINT64_MAX
+            || !d.Owner || !record.FuelContainer.Value || d.X > INT64_MAX - DeviceWidth
+            || d.Y > INT64_MAX - DeviceHeight || int(d.State) < 0 || d.State > DeviceState::WaitingForCapacity
+            || (!d.Enabled && d.Instance) || candidate.Overlaps(d.X, d.Y)
+            || !candidate.Records.emplace(d.Ref.Id, record).second)
+            throw std::invalid_argument("invalid saved device");
+    }
+    Records = std::move(candidate.Records);
+    NextId = state.NextId;
+    Changed();
+}
 } // namespace pixel
