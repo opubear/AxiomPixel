@@ -24,10 +24,15 @@ struct Limits {
 // Host-owned configuration, never decoded from an external request. A bounded
 // region cannot grant session-wide Programs/Runtime/Facts; those have no spatial
 // projection contract yet. Topic denial also hides its capability catalogue.
+struct InventoryGrant {
+    uint64_t WorldEpoch = 0, OwnerActor = 0;
+};
 struct Policy {
-    std::array<bool, 10> Topics{};
+    std::array<bool, size_t(api::Topic::Count)> Topics{};
     std::optional<api::Rect> Region;
-    bool Facts = false;
+    bool Facts = false; // Requires AllInventories: facts contain private device fuel.
+    bool AllInventories = false;
+    std::optional<InventoryGrant> InventoryOwner;
     static Policy FullAccess();
 };
 struct Capability {
@@ -40,6 +45,8 @@ struct Capabilities {
     std::vector<Capability> Topics;
     std::optional<api::Rect> Region;
     bool Facts = false;
+    bool AllInventories = false;
+    std::optional<InventoryGrant> InventoryOwner;
 };
 struct ViewDescriptor {
     ViewId Id = 0;
@@ -82,6 +89,12 @@ struct QueryPage {
     std::optional<api::ProgramObservation> Programs;
     std::optional<bool> Paused;
     std::vector<api::ProjectileObservation> Projectiles;
+    // Counts include only authorized records inside Query.Scope, before paging.
+    uint32_t TotalRecords = 0;
+    std::vector<api::InventoryObservation> Inventories; // One entire container per record.
+    std::vector<api::DeviceObservation> Devices;
+    std::vector<api::ProcessObservation> Processes;
+    std::vector<api::FieldSourceObservation> FieldSources;
     uint64_t RetainedBytes() const;
 };
 struct Response {

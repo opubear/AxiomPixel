@@ -4,6 +4,7 @@
 #include "World/World.h"
 #include "Actors/Actors.h"
 #include "Devices/Devices.h"
+#include "GameAPI/GameplayObservations.h"
 
 namespace pixel {
 // A host-owned, bounded projection refreshed only at complete commit boundaries.
@@ -24,6 +25,7 @@ class CommittedWorldView {
     const std::optional<ActorSnapshot> &GetPlayer() const { return Player; }
     const std::vector<FormulaProjectile> &Projectiles() const { return Bolts; }
     const std::vector<DeviceSnapshot> &GetDevices() const { return DeviceValues; }
+    const api::GameplayObservation &Gameplay() const { return GameplayValues; }
     double SimulationTime() const { return CommittedAt.Tick / 60.0; }
     bool IsFinite() const { return Finite; }
     uint64_t ReservedBytes() const;
@@ -37,10 +39,12 @@ class CommittedWorldView {
     std::optional<ActorSnapshot> Player;
     std::vector<FormulaProjectile> Bolts;
     std::vector<DeviceSnapshot> DeviceValues;
+    api::GameplayObservation GameplayValues;
     api::CommitStamp CommittedAt;
     uint64_t WindVersion = 0, FieldSourceVersion = 0;
     bool Finite = false;
     size_t Index(CellCoord cell) const;
-    void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices, api::CommitStamp stamp);
+    void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices,
+                const api::GameplayObservation &gameplay, api::CommitStamp stamp);
 };
 } // namespace pixel

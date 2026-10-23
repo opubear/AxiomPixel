@@ -20,6 +20,9 @@ struct SessionAccess {
         session.GameWorld.RestorePendingEnvironmentStep(session.Simulation.Time(), deferred);
     }
     static void PublishFixtureChanges(GameSession &session) { session.SynchronizeReadViews(); }
+    // Direct fixture mutations such as Inventory.Add bypass domain revision
+    // detection. Publish them explicitly at an already complete step boundary.
+    static void CommitFixtureChanges(GameSession &session) { session.CommitChange(); }
     static FormulaBridge &Runtime(GameSession &session) { return session.Formulas; }
     static WorldGenerationSettings &NextGeneration(GameSession &session) { return session.NextGeneration; }
 };

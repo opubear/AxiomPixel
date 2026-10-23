@@ -2,12 +2,12 @@
 
 namespace pixel {
 api::ObservationResult GameSession::Observe(NativeCaller observer, api::Rect scope) {
-    return Observations.Capture(size_t(observer), scope, GameWorld, Characters, Formulas, CurrentCommit(),
+    return Observations.Capture(size_t(observer), scope, GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(),
         Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
 }
 
 api::ObservationResult GameSession::CaptureObservation(api::Rect scope) {
-    auto result = Observations.Capture(3, scope, GameWorld, Characters, Formulas, CurrentCommit(),
+    auto result = Observations.Capture(3, scope, GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(),
         Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
     // LLMView owns its frozen copy. No abandoned external cache keeps sampling
     // every commit after its view is closed or its lease expires.
@@ -18,8 +18,8 @@ api::ObservationResult GameSession::CaptureObservation(api::Rect scope) {
 api::ObservationMetrics GameSession::ObservationStats() const {
     auto result = Observations.Metrics();
     const auto effects = Formulas.Stats().EffectRecordBytes;
-    result.RetainedBytes += Facts.RetainedBytes() + effects;
-    result.MaximumRetainedBytes += DomainFactBuffer::MaximumRetainedBytes + effects;
+    result.RetainedBytes += Facts.RetainedBytes() + effects + GameplayValues.RetainedBytes();
+    result.MaximumRetainedBytes += DomainFactBuffer::MaximumRetainedBytes + effects + api::GameplayObservation::MaximumRetainedBytes;
     return result;
 }
 

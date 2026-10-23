@@ -48,11 +48,13 @@ class FakeSource final : public api::ObservationSource {
         Snapshot.ResidentCellCount = uint32_t(Snapshot.Cells.size());
         Snapshot.ObjectSampledAtRevision = Snapshot.Stamp.Revision;
         Snapshot.Programs.Applied = {42, 5};
+        Snapshot.Gameplay.Stamp = Snapshot.Stamp;
     }
 
     void Commit(uint64_t revision, uint64_t tick = 0) {
         Snapshot.Stamp.Revision = revision;
         Snapshot.Stamp.Tick = tick;
+        Snapshot.Gameplay.Stamp = Snapshot.Stamp;
         for (auto &cell : Snapshot.Cells) {
             cell.MaterialSampledAtRevision = revision;
             cell.WindSampledAtRevision = revision;
@@ -517,7 +519,8 @@ void RealSessionMiningEpochAndNoLoading() {
                 && newCell.Page->View.Stamp.Revision == session.CurrentCommit().Revision,
             "new session view did not observe committed mining");
 
-    const int64_t far = int64_t{1} << 55;
+    // Keep room below the 49-bit chunk-coordinate limit when ChunkEdge is 64.
+    const int64_t far = (int64_t{1} << 55) - 8192;
     const auto chunksBefore = session.GetWorld().GetMap().ChunkCount();
     const auto farView = service.OpenView(observer, {{far, -far}, 8, 8});
     Require(farView.Result == llm::Status::Ok && farView.View
@@ -574,6 +577,7 @@ void CursorAndByteBudgets() {
         "replaying a page consumed another cursor or invalidated the existing cursor");
 
     source.Snapshot.Stamp.WorldId.assign(llm::Limits::MaximumViewBytes, 'x');
+    source.Snapshot.Gameplay.Stamp = source.Snapshot.Stamp;
     Require(service.OpenView(observer, FullScope()).Result == llm::Status::LimitExceeded,
         "oversized snapshot was retained");
     Require(service.Query(observer, opened.View->Id, Materials()).Result == llm::Status::Ok,
@@ -582,7 +586,8 @@ void CursorAndByteBudgets() {
     Require(service.CloseView(observer, opened.View->Id) == llm::Status::Ok, "budget fixture close failed");
     Require(service.Statistics().RetainedBytes == idleBytes, "closed view retained dynamic allocations");
 
-    source.Snapshot.Stamp.WorldId = std::string(300 * 1024, 'w');
+    source.Snapshot.Stamp.WorldId = std::string(220 * 1024, 'w');
+    source.Snapshot.Gameplay.Stamp = source.Snapshot.Stamp;
     const auto large = service.OpenView(observer, FullScope());
     Require(large.View.has_value(), "valid large metadata snapshot exceeded its budget");
     Require(service.Query(observer, large.View->Id, Materials()).Result == llm::Status::LimitExceeded
@@ -592,11 +597,210 @@ void CursorAndByteBudgets() {
         && service.Statistics().RetainedBytes < idleBytes + llm::Limits::MaximumViewBytes,
         "rejected response remained retained");
 }
+
+void PopulateGameplay(FakeSource &source) {
+    auto &values = source.Snapshot.Gameplay;
+    values.Inventories = {
+        {101, 1, 11, 0, {{1, 1}, {0, 0}}, 20, 6, {{41, 1, 6, 2}}},
+        {102, 1, 22, 12, {{2, 1}, {0, 0}}, 20, 9, {{42, 1, 9, 0}}},
+        {103, 1, 11, 13, {{3, 1}, {0, 0}}, 20, 4, {{43, 2, 4, 1}}},
+        {104, 1, 11, 14, {{64, 1}, {0, 0}}, 20, 7, {{44, 1, 7, 0}}},
+        {105, 1, 11, 15, {{20, 1}, {0, 0}}, 20, 8, {{45, 1, 8, 0}}}
+    };
+    values.Devices = {
+        {{12, 1}, ForceEmitterType, 22, {2, 1}, true, DeviceState::Running, 202, 4, 9},
+        {{13, 1}, ForceEmitterType, 11, {3, 1}, true, DeviceState::NeedsFuel, 203, 5, 4},
+        {{14, 1}, ForceEmitterType, 11, {64, 1}, false, DeviceState::Stopped, 204, 6, 7}
+    };
+    values.Processes = {
+        {202, 12, {42, 5}, api::CarrierKind::Device, {{2, 1}, {0, 0}}, api::ProcessPhase::Ready, false, 5, 9},
+        {203, 13, {43, 6}, api::CarrierKind::Device, {{3, 1}, {0, 0}}, api::ProcessPhase::Sleeping, true, 8, 11},
+        {204, 14, {44, 7}, api::CarrierKind::NaturalSource, {{64, 1}, {0, 0}}, api::ProcessPhase::Awaiting, false, 2, 12}
+    };
+    values.FieldSources = {
+        {301, 202, 202, 12, {{2, 1}, {.5, .5}}, 3.5, {1.25, -.5}, 12, false, true},
+        {302, 203, 203, 13, {{3, 1}, {.5, .5}}, 4.5, {2.25, -.75}, 14, true, false},
+        {303, 204, 204, 14, {{64, 1}, {.5, .5}}, 5.5, {3.25, -1.5}, 16, false, false}
+    };
+}
+
+llm::QuerySpec GameplayQuery(api::Topic topic, uint32_t pageSize = 1) {
+    return {topic, {{0, 0}, 8, 8}, 1, pageSize};
+}
+
+void InventoryOwnershipAndEpochPrivacy() {
+    FakeSource source;
+    PopulateGameplay(source);
+    llm::Policy policy;
+    policy.Topics[size_t(api::Topic::Items)] = true;
+    policy.Topics[size_t(api::Topic::Devices)] = true;
+    llm::ViewService service(source);
+    const auto publicObserver = service.RegisterObserver(policy);
+    const auto publicView = service.OpenView(publicObserver, FullScope());
+    auto items = Deliver(service, publicObserver,
+        service.Query(publicObserver, publicView.View->Id, GameplayQuery(api::Topic::Items)));
+    Require(items.Page && items.Page->Inventories.empty() && !items.Page->TotalRecords && !items.Page->NextCursor,
+        "items topic grant disclosed private inventory values or cardinality");
+    auto devices = Deliver(service, publicObserver,
+        service.Query(publicObserver, publicView.View->Id, GameplayQuery(api::Topic::Devices, 16)));
+    Require(devices.Page && devices.Page->Devices.size() == 2 && !devices.Page->Devices[0].Fuel
+        && !devices.Page->Devices[1].Fuel && devices.Page->Devices[1].State == DeviceState::NeedsFuel,
+        "public device status lost its state or disclosed private fuel");
+
+    policy.InventoryOwner = llm::InventoryGrant{7, 11};
+    const auto owner = service.RegisterObserver(policy);
+    const auto opened = service.OpenView(owner, FullScope());
+    const auto query = GameplayQuery(api::Topic::Items);
+    auto first = Deliver(service, owner, service.Query(owner, opened.View->Id, query));
+    Require(first.Page && first.Page->TotalRecords == 2 && first.Page->Inventories.size() == 1
+        && first.Page->Inventories[0].ContainerId == 101 && first.Page->Inventories[0].Stacks[0].Reserved == 2
+        && first.Page->NextCursor,
+        "owner inventory paging included another owner or out-of-scope containers");
+    const auto cursor = first.Page->NextCursor;
+    auto second = Deliver(service, owner, service.Query(owner, opened.View->Id, query, cursor));
+    Require(second.Page && second.Page->Inventories[0].ContainerId == 103 && !second.Page->NextCursor,
+        "container pagination omitted or split an authorized inventory");
+    auto ownedDevices = Deliver(service, owner,
+        service.Query(owner, opened.View->Id, GameplayQuery(api::Topic::Devices, 16)));
+    Require(ownedDevices.Page && !ownedDevices.Page->Devices[0].Fuel && ownedDevices.Page->Devices[1].Fuel == 4,
+        "device fuel authorization disagreed with inventory ownership");
+    Require(service.ReadFacts(owner, opened.View->Id, 0).Result == llm::Status::PermissionDenied,
+        "owner-only observer obtained full-session device facts");
+    bool rejectedFacts = false;
+    try {
+        auto invalid = policy;
+        invalid.Facts = true;
+        service.RegisterObserver(invalid);
+    } catch (const std::invalid_argument &) { rejectedFacts = true; }
+    Require(rejectedFacts, "session facts did not require an explicit full private grant");
+
+    auto prepared = service.Query(owner, opened.View->Id, query, cursor);
+    Require(prepared.Result == llm::Status::Ok, "private inventory delivery was not prepared");
+    policy.InventoryOwner.reset();
+    service.SetPolicy(owner, policy);
+    Require(service.Deliver(owner, prepared.Delivery).Result == llm::Status::ViewRevoked
+        && service.Query(owner, opened.View->Id, query, cursor).Result == llm::Status::ViewRevoked,
+        "inventory grant revocation preserved a prepared value or cursor");
+    policy.InventoryOwner = llm::InventoryGrant{7, 11};
+    service.SetPolicy(owner, policy);
+    source.Snapshot.Stamp.WorldEpoch = 8;
+    source.Commit(2);
+    const auto changedEpoch = service.OpenView(owner, FullScope());
+    auto staleGrant = Deliver(service, owner, service.Query(owner, changedEpoch.View->Id, query));
+    Require(staleGrant.Page && staleGrant.Page->Inventories.empty() && !staleGrant.Page->TotalRecords,
+        "owner actor identity reused across epochs inherited a private inventory grant");
+    auto staleFuel = Deliver(service, owner,
+        service.Query(owner, changedEpoch.View->Id, GameplayQuery(api::Topic::Devices, 16)));
+    Require(staleFuel.Page && !staleFuel.Page->Devices[1].Fuel, "stale-epoch grant exposed device fuel");
+
+    service.SetPolicy(owner, llm::Policy::FullAccess());
+    const auto all = service.OpenView(owner, FullScope());
+    auto allInventories = Deliver(service, owner,
+        service.Query(owner, all.View->Id, GameplayQuery(api::Topic::Items, 16)));
+    Require(allInventories.Page && allInventories.Page->TotalRecords == 3 && allInventories.Page->Inventories.size() == 3,
+        "FullAccess did not grant all in-scope inventories");
+    const auto factResponse = service.ReadFacts(owner, all.View->Id, 0);
+    Require(factResponse.Result == llm::Status::Ok, "full private observer could not read session facts");
+    auto restricted = llm::Policy::FullAccess();
+    restricted.Facts = false;
+    restricted.AllInventories = false;
+    service.SetPolicy(owner, restricted);
+    Require(service.Deliver(owner, factResponse.Delivery).Result == llm::Status::ViewRevoked,
+        "private fact delivery survived full inventory grant revocation");
+}
+
+void GameplayValuesRemainFrozenAcrossCommits() {
+    FakeSource source;
+    PopulateGameplay(source);
+    llm::ViewService service(source);
+    const auto observer = service.RegisterObserver(llm::Policy::FullAccess());
+    const auto opened = service.OpenView(observer, FullScope());
+    const auto itemQuery = GameplayQuery(api::Topic::Items);
+    auto items = Deliver(service, observer, service.Query(observer, opened.View->Id, itemQuery));
+    const auto cursor = items.Page->NextCursor;
+    auto devicePage = Deliver(service, observer,
+        service.Query(observer, opened.View->Id, GameplayQuery(api::Topic::Devices)));
+    const auto deviceCursor = devicePage.Page->NextCursor;
+    auto processPage = Deliver(service, observer,
+        service.Query(observer, opened.View->Id, GameplayQuery(api::Topic::Programs)));
+    const auto processCursor = processPage.Page->NextCursor;
+    auto fieldPage = Deliver(service, observer,
+        service.Query(observer, opened.View->Id, GameplayQuery(api::Topic::FieldSources)));
+    const auto fieldCursor = fieldPage.Page->NextCursor;
+    Require(items.Page->TotalRecords == 3 && devicePage.Page->TotalRecords == 2
+        && processPage.Page->TotalRecords == 2 && fieldPage.Page->TotalRecords == 2,
+        "spatial gameplay filtering did not precede counts and paging");
+    auto boundary = GameplayQuery(api::Topic::FieldSources, 16);
+    boundary.Scope.Width = 2;
+    auto overlappingFields = Deliver(service, observer, service.Query(observer, opened.View->Id, boundary));
+    Require(overlappingFields.Page->FieldSources.empty() && !overlappingFields.Page->TotalRecords,
+        "field radius overlap bypassed center-based query scope filtering");
+    source.Snapshot.Gameplay.Inventories.erase(source.Snapshot.Gameplay.Inventories.begin() + 1);
+    source.Snapshot.Gameplay.Devices[1].State = DeviceState::Stopped;
+    source.Snapshot.Gameplay.Devices[1].Fuel = 0;
+    source.Snapshot.Gameplay.Processes[1].Phase = api::ProcessPhase::Ended;
+    source.Snapshot.Gameplay.FieldSources.clear();
+    source.Commit(2, 10);
+    auto frozenItems = Deliver(service, observer, service.Query(observer, opened.View->Id, itemQuery, cursor));
+    auto frozenDevices = Deliver(service, observer,
+        service.Query(observer, opened.View->Id, GameplayQuery(api::Topic::Devices), deviceCursor));
+    auto frozenProcesses = Deliver(service, observer,
+        service.Query(observer, opened.View->Id, GameplayQuery(api::Topic::Programs), processCursor));
+    auto frozenFields = Deliver(service, observer,
+        service.Query(observer, opened.View->Id, GameplayQuery(api::Topic::FieldSources), fieldCursor));
+    Require(frozenItems.Page->Inventories[0].ContainerId == 102 && frozenItems.Page->TotalRecords == 3
+        && frozenDevices.Page->Devices[0].State == DeviceState::NeedsFuel && frozenDevices.Page->Devices[0].Fuel == 4
+        && frozenProcesses.Page->Processes[0].Phase == api::ProcessPhase::Sleeping
+        && frozenFields.Page->FieldSources[0].Handle == 302 && frozenFields.Page->FieldSources[0].OwnerInstance == 203
+        && frozenFields.Page->FieldSources[0].AccelerationCellsPerSecondSquared == std::array<double, 2>{2.25, -.75}
+        && frozenFields.Page->View.Stamp.Revision == 1 && frozenItems.Page->View.Stamp.Revision == 1,
+        "paging an old view mixed deleted or changed gameplay values from another commit");
+    const auto fresh = service.OpenView(observer, FullScope());
+    auto newItems = Deliver(service, observer,
+        service.Query(observer, fresh.View->Id, GameplayQuery(api::Topic::Items, 16)));
+    auto newDevices = Deliver(service, observer,
+        service.Query(observer, fresh.View->Id, GameplayQuery(api::Topic::Devices, 16)));
+    auto newProcesses = Deliver(service, observer,
+        service.Query(observer, fresh.View->Id, GameplayQuery(api::Topic::Programs, 16)));
+    auto newFields = Deliver(service, observer,
+        service.Query(observer, fresh.View->Id, GameplayQuery(api::Topic::FieldSources, 16)));
+    Require(newItems.Page->TotalRecords == 2 && newItems.Page->View.Stamp.Revision == 2
+        && newDevices.Page->Devices[1].State == DeviceState::Stopped && newDevices.Page->Devices[1].Fuel == 0
+        && newProcesses.Page->Processes[1].Phase == api::ProcessPhase::Ended
+        && newFields.Page->FieldSources.empty() && !newFields.Page->TotalRecords,
+        "new gameplay view did not observe the committed deletion and state changes");
+    Require(service.Query(observer, fresh.View->Id, itemQuery, cursor).Result == llm::Status::InvalidCursor,
+        "inventory cursor was reused across committed views");
+}
+
+void PrivateValuesAreRemovedBeforeRetention() {
+    FakeSource source;
+    PopulateGameplay(source);
+    llm::Policy policy;
+    policy.Topics[size_t(api::Topic::Items)] = true;
+    policy.Topics[size_t(api::Topic::Devices)] = true;
+    llm::ViewService service(source);
+    const auto observer = service.RegisterObserver(policy);
+    Require(service.OpenView(observer, FullScope()).View.has_value(), "public fixture did not open");
+    const auto before = service.Statistics().RetainedBytes;
+    source.Snapshot.Gameplay.Inventories[0].Stacks.resize(100000);
+    Require(service.OpenView(observer, FullScope()).View.has_value()
+        && service.Statistics().RetainedBytes == before,
+        "private inventory allocation was retained or influenced the external view byte budget");
+    source.Snapshot.Gameplay.Stamp.Revision++;
+    bool rejected = false;
+    try { service.OpenView(observer, FullScope()); }
+    catch (const std::logic_error &) { rejected = true; }
+    Require(rejected, "mixed-commit gameplay capture did not fail fast");
+}
 } // namespace
 
 int main() {
     try {
         FrozenViewsAndCursorBinding();
+        InventoryOwnershipAndEpochPrivacy();
+        GameplayValuesRemainFrozenAcrossCommits();
+        PrivateValuesAreRemovedBeforeRetention();
         BoundsCapabilitiesAndRevocation();
         ObserverCapacityEpochAndLease();
         FixedFactsAndPendingDeliveryLimits();

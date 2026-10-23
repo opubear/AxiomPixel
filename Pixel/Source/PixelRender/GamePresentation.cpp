@@ -26,7 +26,8 @@ CellAppearanceTable DefaultAppearances() {
 uint64_t PublicationCapacity(WorldRect region) {
     const uint64_t cells = uint64_t(region.Width) * region.Height;
     const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
-    return CommittedWorldView::CapacityFor(region) + cells * 2 * sizeof(uint32_t) + regions * 512 + 2048;
+    return CommittedWorldView::CapacityFor(region) + cells * 2 * sizeof(uint32_t) + regions * 512 + 2048
+        + 2 * api::GameplayObservation::MaximumRetainedBytes;
 }
 
 WorldRect LimitPublication(WorldRect region, uint64_t budget) {
@@ -50,7 +51,7 @@ void GamePresentation::ToggleTint() { Post.Values[1] = Post.Values[1] == 1 ? .35
 void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
 }
-std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera) const {
+std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera) {
     auto snapshot = session.CreateReadView();
     return [this, &session, &camera, snapshot = std::move(snapshot)](WorldGridFrame &frame) {
         auto &world = session.GameWorld;
@@ -76,12 +77,14 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             frame.DeviceDraws.clear();
             frame.HasWind = false;
             frame.MissingOutsideRegion = true;
+            GameplayFrame.reset();
             return;
         }
         const auto region = snapshot->Bounds();
         const uint64_t cells = uint64_t(region.Width) * region.Height;
         const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
-        const uint64_t capacity = cells * 8 + regions * 512 + 2048;
+        const uint64_t capacity = cells * 8 + regions * 512 + 2048
+            + snapshot->Gameplay().RetainedBytes() + (GameplayFrame ? GameplayFrame->RetainedBytes() : 0);
         const bool resizing = frame.GetWidth() != region.Width || frame.GetHeight() != region.Height;
         const auto previous = world.PublicationBytesFor(&frame);
         if (!world.ReservePublicationBytes(&frame, capacity + (resizing ? previous : 0))) return;
@@ -102,7 +105,11 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         BuildWindVisualFrame(*snapshot, WindVisual, float(std::fmod(snapshot->SimulationTime(), 2.0)), frame);
         if (snapshot->GetPlayer())
             BuildCharacterFrame(*snapshot->GetPlayer(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
-        world.SetPublicationBytes(&frame, frame.GetMemoryUsage().ReservedBytes());
+        // Move an exact copy into the cache so retained vector capacities stay
+        // bounded; UI reads these same commit values even if an action follows.
+        auto gameplay = snapshot->Gameplay();
+        GameplayFrame = std::move(gameplay);
+        world.SetPublicationBytes(&frame, frame.GetMemoryUsage().ReservedBytes() + GameplayFrame->RetainedBytes());
     };
 }
 

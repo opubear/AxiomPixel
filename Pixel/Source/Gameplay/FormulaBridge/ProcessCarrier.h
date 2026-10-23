@@ -54,5 +54,6 @@ struct ProcessInspection {
     // Missing handles may have expired or been stopped. An existing source
     // referenced here must belong to this instance, never another owner.
     std::vector<uint64_t> ReferencedFieldHandles;
+    formula::process::AwaitKind WaitingFor = formula::process::AwaitKind::Result;
 };
 } // namespace pixel

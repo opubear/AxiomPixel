@@ -22,7 +22,7 @@ struct FixtureSource final : api::ObservationSource {
     api::CommitStamp Stamp{"json-fixture", Identity, Identity - 1, Identity - 2};
     api::Rect LastScope;
     uint32_t Captures = 0;
-    bool ThrowOnCapture = false;
+    bool ThrowOnCapture = false, DeviceFacts = false;
 
     api::ObservationResult CaptureObservation(api::Rect scope) override {
         ++Captures;
@@ -30,6 +30,7 @@ struct FixtureSource final : api::ObservationSource {
         LastScope = scope;
         api::ObservationSnapshot snapshot;
         snapshot.Stamp = Stamp;
+        snapshot.Gameplay.Stamp = Stamp;
         snapshot.Scope = scope;
         snapshot.FactHighWatermark = Identity + 6;
         snapshot.Paused = false;
@@ -60,6 +61,26 @@ struct FixtureSource final : api::ObservationSource {
         snapshot.Projectiles.push_back({Identity - 7, Identity - 8, snapshot.Programs.Applied,
                                         {scope.Origin, {.25, .75}}, {12.5, -0.125}, .35});
         snapshot.ObjectSampledAtRevision = Identity - 9;
+        snapshot.Gameplay.Inventories = {
+            {Identity - 21, Identity - 22, Identity - 20, Identity - 23,
+             {scope.Origin, {.125, .875}}, 30, 7, {{3101, 2, 7, 3}}},
+            {Identity - 31, Identity - 32, Identity - 30, Identity - 33,
+             {{scope.Origin.X + 1, scope.Origin.Y}, {0, 0}}, 20, 4, {{3102, 3, 4, 0}}}
+        };
+        snapshot.Gameplay.Devices = {
+            {{Identity - 23, Identity - 24}, ForceEmitterType, Identity - 20, scope.Origin,
+             true, DeviceState::WaitingForEnvironment, Identity - 25, Identity - 26, 7},
+            {{Identity - 33, Identity - 34}, ForceEmitterType, Identity - 30,
+             {scope.Origin.X + 1, scope.Origin.Y}, true, DeviceState::Running, Identity - 35, Identity - 36, 4}
+        };
+        snapshot.Gameplay.Processes = {
+            {Identity - 25, Identity - 23, {Identity - 5, Identity - 6}, api::CarrierKind::Device,
+             {scope.Origin, {.25, .75}}, api::ProcessPhase::Awaiting, true, Identity - 27, Identity - 28, "result"}
+        };
+        snapshot.Gameplay.FieldSources = {
+            {Identity - 40, Identity - 25, Identity - 25, Identity - 23, {scope.Origin, {.25, .75}},
+             4.5, {2.25, -3.5}, Identity - 41, true, false}
+        };
         return {api::ObservationStatus::Available, std::move(snapshot)};
     }
 
@@ -70,7 +91,7 @@ struct FixtureSource final : api::ObservationSource {
         const api::ProgramEffectCause effect{{Identity, Identity - 12}, {Identity - 13, Identity - 14},
                                              Identity - 15, request, api::FactId{Identity, Identity - 16}};
         const api::Position position{{Far, -Far}, {.125, .875}};
-        const std::array<api::FactPayload, 6> payloads{
+        std::array<api::FactPayload, 6> payloads{
             api::MaterialRemoved{{Far, -Far}, 10, 0},
             api::MaterialPlaced{{Far, -Far}, 0, 30},
             api::ProgramActivated{{Identity - 13, Identity - 14}, Identity - 17},
@@ -78,6 +99,9 @@ struct FixtureSource final : api::ObservationSource {
             api::WindPulseSubmitted{position, 3.25, {12.5, -6.25}, {Identity, Identity - 12}},
             api::MaterialRemovedInDisk{position, 4.5, 3, 2, 1}
         };
+        if (DeviceFacts) payloads[0] = api::DeviceChanged{
+            {{Identity - 33, Identity - 34}, Identity - 30, Far, -Far,
+             true, DeviceState::Running, Identity - 35, Identity - 36, 4}, api::DeviceEvent::StateChanged};
         api::FactReadResult result;
         result.WorldEpoch = epoch;
         result.HighWatermark = high;
@@ -282,7 +306,7 @@ void WindMetadataAndUnsupportedTopics() {
                 && capabilities["limits"]["maximumRequestBytes"] == llm::JsonAdapter::MaximumRequestBytes
                 && capabilities["topics"][1]["resolutionCells"] == Json::array({1, 16}),
             "capability catalogue omitted enforced limits or supported wind resolutions");
-    for (const auto *topic : {"temperature", "ecology", "items", "devices", "knowledge"}) {
+    for (const auto *topic : {"temperature", "ecology", "knowledge"}) {
         const auto response = fixture.Send(fixture.Query(topic));
         const auto &page = response["page"];
         Require(page["availability"] == "unsupported" && page["reason"] == "unsupported"
@@ -424,11 +448,128 @@ void ActionReceiptUsesTheSameIntegerContract() {
     Require(json["result"]["boundaryY"] == std::to_string(-Far) && json["result"]["backendKind"] == "lbm",
             "wind action receipt lost backend or signed boundary precision");
 }
+
+void GameplayJsonPreservesValuesAndHidesInternals() {
+    Harness fixture;
+    fixture.Open();
+    auto request = fixture.Query("items");
+    request["pageSize"] = 1;
+    auto first = fixture.Send(request)["page"];
+    const auto &inventory = first["inventories"][0];
+    Require(first["totalRecords"] == 2 && first["inventories"].size() == 1 && first["nextCursor"] != "0"
+        && inventory["containerId"] == std::to_string(Identity - 21)
+        && inventory["version"] == std::to_string(Identity - 22)
+        && inventory["ownerActor"] == std::to_string(Identity - 20)
+        && inventory["deviceId"] == std::to_string(Identity - 23)
+        && inventory["location"]["anchorCell"]["x"] == std::to_string(Far)
+        && inventory["capacity"] == 30 && inventory["quantity"] == 7
+        && inventory["stacks"] == Json::array({{{"itemId", 3101}, {"definitionVersion", 2}, {"quantity", 7}, {"reserved", 3}}}),
+        "inventory JSON lost private stack values, container paging or uint64 precision");
+    request["cursor"] = first["nextCursor"];
+    auto second = fixture.Send(request)["page"];
+    Require(second["inventories"][0]["containerId"] == std::to_string(Identity - 31)
+        && second["nextCursor"] == "0" && second["commitStamp"] == first["commitStamp"],
+        "container JSON cursor changed commit or failed to advance");
+    auto narrow = fixture.Query("items");
+    narrow["scope"] = ScopeJson({fixture.Scope.Origin, 1, 1});
+    const auto clipped = fixture.Send(narrow)["page"];
+    Require(clipped["totalRecords"] == 1 && clipped["inventories"].size() == 1,
+        "inventory JSON counted a container outside the query scope");
+
+    const auto devices = fixture.Send(fixture.Query("devices"))["page"];
+    const auto &device = devices["devices"][0];
+    Require(devices["totalRecords"] == 2 && device["deviceId"] == std::to_string(Identity - 23)
+        && device["version"] == std::to_string(Identity - 24) && device["ownerActor"] == std::to_string(Identity - 20)
+        && device["instanceId"] == std::to_string(Identity - 25) && device["cycles"] == std::to_string(Identity - 26)
+        && device["state"] == DeviceStateName(DeviceState::WaitingForEnvironment)
+        && device["reason"] == api::DeviceStateReason(DeviceState::WaitingForEnvironment)
+        && device["fuel"] == 7 && device["enabled"] == true && device["typeId"] == ForceEmitterType,
+        "device JSON lost its public state, reason, owned fuel or uint64 identity");
+    const auto programs = fixture.Send(fixture.Query("programs"))["page"];
+    const auto &process = programs["processes"][0];
+    Require(programs["totalRecords"] == 1 && process["instanceId"] == std::to_string(Identity - 25)
+        && process["subject"] == std::to_string(Identity - 23)
+        && process["program"] == Json({{"resourceId", std::to_string(Identity - 5)}, {"version", std::to_string(Identity - 6)}})
+        && process["carrier"] == "device" && process["phase"] == "awaiting" && process["suspended"] == true
+        && process["activeSteps"] == std::to_string(Identity - 27)
+        && process["remainingSteps"] == std::to_string(Identity - 28)
+        && !process.contains("source") && !process.contains("locals") && !process.contains("pc")
+        && !process.contains("instructionPointer") && !process.contains("recipe")
+        && process["waitingFor"] == "result" && process.size() == 10,
+        "process JSON leaked program internals or lost lifecycle values");
+    const auto fields = fixture.Send(fixture.Query("field_sources"))["page"];
+    const auto &field = fields["fieldSources"][0];
+    Require(fields["totalRecords"] == 1 && fields["unit"] == "cell/second^2"
+        && field["handle"] == std::to_string(Identity - 40) && field["ownerId"] == std::to_string(Identity - 25)
+        && field["ownerInstance"] == std::to_string(Identity - 25) && field["deviceId"] == std::to_string(Identity - 23)
+        && field["center"]["anchorCell"]["x"] == std::to_string(Far) && field["radiusCells"] == 4.5
+        && field["accelerationCellsPerSecondSquared"] == Json::array({2.25, -3.5})
+        && field["remainingSteps"] == std::to_string(Identity - 41)
+        && field["suspended"] == true && field["contributing"] == false
+        && fields["commitStamp"] == first["commitStamp"] && fields["commitStamp"] == programs["commitStamp"],
+        "field-source JSON lost ownership, contribution, acceleration or frozen commit values");
+    const auto capabilities = fixture.Send({{"method", "DescribeCapabilities"}});
+    for (const auto &topic : capabilities["topics"]) {
+        if (topic["topic"] == "items")
+            Require(topic["availability"] == "available" && topic["pageUnit"] == "container"
+                && topic["inventoryAccess"]["kind"] == "all", "inventory capability is not truthful");
+        if (topic["topic"] == "field_sources")
+            Require(topic["availability"] == "available" && topic["unit"] == "cell/second^2",
+                "field source capability is missing or has the wrong unit");
+        Require(!topic.contains("recipes") && !topic.contains("programSource"), "capabilities disclosed hidden programs");
+    }
+}
+
+void JsonInventoryAndFactPrivacy() {
+    Harness fixture;
+    llm::Policy policy;
+    policy.Topics[size_t(api::Topic::Items)] = true;
+    policy.Topics[size_t(api::Topic::Devices)] = true;
+    fixture.Service.SetPolicy(fixture.Observer, policy);
+    fixture.Open();
+    const auto publicItems = fixture.Send(fixture.Query("items"))["page"];
+    const auto publicDevices = fixture.Send(fixture.Query("devices"))["page"];
+    Require(publicItems["inventories"].empty() && publicItems["totalRecords"] == 0 && publicItems["nextCursor"] == "0"
+        && !publicDevices["devices"][0].contains("fuel") && !publicDevices["devices"][1].contains("fuel"),
+        "topic-only JSON observer received inventory values or fuel");
+    auto capabilities = fixture.Send({{"method", "DescribeCapabilities"}});
+    Require(capabilities["topics"][0]["inventoryAccess"]["kind"] == "none" && capabilities["facts"] == false,
+        "topic-only capabilities advertised private access");
+    policy.InventoryOwner = llm::InventoryGrant{Identity, Identity - 20};
+    fixture.Service.SetPolicy(fixture.Observer, policy);
+    fixture.Open();
+    const auto ownedItems = fixture.Send(fixture.Query("items"))["page"];
+    const auto ownedDevices = fixture.Send(fixture.Query("devices"))["page"];
+    Require(ownedItems["totalRecords"] == 1 && ownedItems["inventories"].size() == 1
+        && ownedDevices["devices"][0]["fuel"] == 7 && !ownedDevices["devices"][1].contains("fuel"),
+        "owner JSON grant leaked another actor's inventory or fuel");
+    capabilities = fixture.Send({{"method", "DescribeCapabilities"}});
+    Require(capabilities["topics"][0]["inventoryAccess"]["kind"] == "owner"
+        && capabilities["topics"][0]["inventoryAccess"]["worldEpoch"] == std::to_string(Identity)
+        && capabilities["topics"][0]["inventoryAccess"]["ownerActor"] == std::to_string(Identity - 20),
+        "owner capability lost its epoch binding or integer precision");
+    fixture.Source.DeviceFacts = true;
+    Require(fixture.Send({{"method", "ReadFacts"}, {"viewId", fixture.View}, {"after", std::to_string(Identity)}})
+        == Json({{"status", "PermissionDenied"}}), "owner JSON observer leaked private device facts");
+    fixture.Service.SetPolicy(fixture.Observer, llm::Policy::FullAccess());
+    fixture.Open();
+    const auto facts = fixture.Send({{"method", "ReadFacts"}, {"viewId", fixture.View}, {"after", std::to_string(Identity)}});
+    Require(facts["facts"]["facts"][0]["payload"]["kind"] == "DeviceChanged"
+        && facts["facts"]["facts"][0]["payload"]["fuel"] == 4,
+        "explicit full private grant lost the complete device fact payload");
+    policy.InventoryOwner = llm::InventoryGrant{Identity - 1, Identity - 20};
+    fixture.Service.SetPolicy(fixture.Observer, policy);
+    fixture.Open();
+    Require(fixture.Send(fixture.Query("items"))["page"]["totalRecords"] == 0,
+        "JSON inventory grant crossed the epoch boundary");
+}
 } // namespace
 
 int main() {
     try {
         LargeIntegerCoordinatesAndPagination();
+        GameplayJsonPreservesValuesAndHidesInternals();
+        JsonInventoryAndFactPrivacy();
         StrictInputsStayAtTheBoundary();
         WindMetadataAndUnsupportedTopics();
         FactsPreserveEveryCauseAndPayload();

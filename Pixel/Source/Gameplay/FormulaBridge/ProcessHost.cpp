@@ -481,6 +481,7 @@ std::vector<ProcessInspection> ProcessHost::Inspect() const {
                 == item.ReferencedFieldHandles.end()) item.ReferencedFieldHandles.push_back(handle.Id);
         };
         const auto snapshot = root->Instance->ExportState();
+        item.WaitingFor = snapshot.WaitingFor;
         add(snapshot.State.LastEffectHandle);
         for (const auto &local : snapshot.Locals) {
             if (!local) continue;

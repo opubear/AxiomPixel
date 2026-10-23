@@ -22,7 +22,7 @@ GameSession 保留原生 Input/Debug/Driver 三个观察槽，另用第四槽完
 | Deliver | 再检查主体、授权版本、epoch、租约后移交数据；每编号仅交付一次 |
 | CloseView | 释放冻结副本、游标与待交付数据 |
 
-Policy.Topics 为显式授权集合，默认全拒绝；Region 可限制空间矩形。先验证请求完全位于授权区和 view 区内，再切片和聚合。当前 Programs、Runtime 的数量是全会话统计，Facts 也只支持全会话授权；带 Region 的策略不得授予这些能力，错误宿主配置直接抛异常。局部观察者只能获取已授权的空间主题，不收到隐藏的总数或 factHighWatermark。源码和动作权限没有隐含授权。
+Policy.Topics 为显式授权集合，默认全拒绝；Region 可限制空间矩形。先验证请求完全位于授权区和 view 区内，再切片和聚合。当前 Programs、Runtime 的数量是全会话统计，Facts 也只支持全会话授权；带 Region 的策略不得授予这些能力，错误宿主配置直接抛异常。局部观察者只能获取已授权的空间主题，不收到隐藏的总数或 factHighWatermark。源码和动作权限没有隐含授权。M4.7的库存数量另需显式AllInventories或绑定epoch的OwnerActor授权；Facts包含私有设备煤数，现要求AllInventories，完整规则见[设备库存观测](GameplayObservation.md)。
 
 SetPolicy 每次增加版本，即使更新后权限更宽，也撤销旧活动 view、游标和未交付结果（ViewRevoked）。epoch 更换、关闭、成功替换或第120个服务帧到达后旧 view 返回 ViewExpired。移除主体后凭据无效，统一 PermissionDenied。已交付值无法追溯收回。
 
@@ -51,7 +51,7 @@ Statistics 计入容器 capacity、字符串 capacity、固定对象、游标和
 
 风只支持 resolutionCells=1 或16。16格按世界原点对齐、负坐标向下取整；先截取查询范围，再调用纯值 SummarizeWind。每箱记录 requested、resident、air、nonAir、unknown 数量，均值只用 air 分母。缺失不当作零，非空气不进入平均；没有空气且没有未知时为 not_applicable。风元数据保留后端、合同版本、域、求解网格间距等，1格输出不承诺1格求解器。
 
-Player 用角色锚点是否位于查询范围决定可见性；程序只返回已应用版本与数量，Runtime 另外返回冻结暂停状态及范围内弹体。运行时 live waiting/ready 状态仍单独走 Source.ObservationService，不混入冻结页。温度、生态、物品、设备、知识当前 Unsupported；JSON 不输出这些系统的虚假覆盖、库存或采样值。
+Player 用角色锚点是否位于查询范围决定可见性；程序返回已应用版本、会话数量和范围内持续过程的状态/等待，Runtime 另外返回冻结暂停状态及范围内弹体。运行时 live waiting/ready 状态仍单独走 Source.ObservationService，不混入冻结页。M4.7已实现Items、Devices、FieldSources主题及按记录分页；私有库存先过滤再统计，未授权Fuel缺省。温度、生态、知识仍Unsupported；JSON不输出虚假采样值。
 
 所有页共享 view 的完整 CommitStamp。页范围/覆盖、来源、单位、availability/reason、最早/最新实际采样 revision 与 nextCursor 都在结果中。事实响应另外携带 FactView 描述符，保留 cause 的 RequestKey 或程序实例/激活请求链。环淘汰返回 Gap 与 FirstAvailableSequence；消费者需要重新打开快照，不能从缺口拼出完整历史。
 

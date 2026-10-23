@@ -84,6 +84,13 @@ bool FieldSources::Active(size_t index, WorldRect bounds) const {
     return Resident[index] && !source.Suspended && Fits(source.Spec, bounds);
 }
 
+bool FieldSources::Contributes(FieldSourceHandle handle, WorldRect bounds) const {
+    RefreshResidency();
+    for (size_t index = 0; index < Count; ++index)
+        if (Values[index].Handle == handle) return Active(index, bounds);
+    throw std::logic_error("unknown field source in committed projection");
+}
+
 ForceVector FieldSources::Sample(CellCoord cell, WorldRect bounds) const {
     ForceVector result;
     if (!bounds.Contains(cell)) return result;

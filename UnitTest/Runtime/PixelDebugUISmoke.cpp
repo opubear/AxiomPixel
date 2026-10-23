@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <thread>
 
@@ -141,6 +142,39 @@ void EnterScalar(Axiom &app, const char *label, const char *value, const char *s
 }
 void EnterBoundary(Axiom &app, const char *value) { EnterScalar(app, "Wind boundary Y", value); }
 
+// Capture text submitted by the actual production ImGui callbacks. The optional
+// action runs after render publication and before UI, exposing accidental live reads.
+std::string CaptureUiText(Axiom &app, std::function<void()> afterPublication = {}) {
+    struct Capture { std::string Text; std::function<void()> Action; } capture{{}, std::move(afterPublication)};
+    auto *context = ImGui::GetCurrentContext();
+    ImGuiContextHook begin;
+    begin.Type = ImGuiContextHookType_NewFramePost;
+    begin.UserData = &capture;
+    begin.Callback = [](ImGuiContext *, ImGuiContextHook *hook) {
+        auto &state = *static_cast<Capture *>(hook->UserData);
+        if (state.Action) state.Action();
+        ImGui::LogToBuffer(0);
+    };
+    ImGuiContextHook end;
+    end.Type = ImGuiContextHookType_EndFramePre;
+    end.UserData = &capture;
+    end.Callback = [](ImGuiContext *context, ImGuiContextHook *hook) {
+        static_cast<Capture *>(hook->UserData)->Text = context->LogBuffer.c_str();
+        ImGui::LogFinish();
+    };
+    const auto beginId = ImGui::AddContextHook(context, &begin);
+    const auto endId = ImGui::AddContextHook(context, &end);
+    Draw(app);
+    ImGui::RemoveContextHook(context, beginId);
+    ImGui::RemoveContextHook(context, endId);
+    return capture.Text;
+}
+
+void RequireUiText(bool value, const char *message, const std::string &text) {
+    if (!value)
+        throw std::runtime_error(std::string(message) + "\nCaptured production UI:\n" + text);
+}
+
 void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     auto &session = game.GetSession();
     auto &inventory = pixel::testing::SessionAccess::Inventory(session);
@@ -150,6 +184,7 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
                                pixel::items::ItemAmount{pixel::items::ItemId::Coal, 1}};
     Require(inventory.Add(inventory.Reference(bag), resources) == pixel::items::Result::Applied,
             "device UI fixture could not add construction resources and coal");
+    pixel::testing::SessionAccess::CommitFixtureChanges(session);
     const auto funded = inventory.Inspect(bag);
     const auto original = CopyWorldCells(session.GetWorld());
     const auto inputSequence = [&] {
@@ -176,6 +211,14 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     window->StateStorage.SetInt(window->GetID("Game actions"), 0);
     window->StateStorage.SetInt(window->GetID("Environment"), 0);
     window->StateStorage.SetInt(window->GetID("Wind appearance"), 0);
+    window->StateStorage.SetInt(window->GetID("Inventory"), 1);
+    Draw(app, 2);
+    const auto inventoryText = CaptureUiText(app);
+    RequireUiText(inventoryText.find("Player inventory: 7 / 4096") != std::string::npos &&
+            inventoryText.find("stone: 4") != std::string::npos && inventoryText.find("copper ore: 2") != std::string::npos &&
+            inventoryText.find("coal: 1") != std::string::npos,
+            "production inventory summary omitted committed contents/capacity", inventoryText);
+    window->StateStorage.SetInt(window->GetID("Inventory"), 0);
     Draw(app, 2);
     Click(app, ControlPoint(app, "Devices"));
     Click(app, ControlPoint(app, "Place devices with left click (B)"));
@@ -187,6 +230,12 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     Require(session.GetDevices().Count() == 1 && placed.X == 100 && placed.Y == 100 &&
                 !placed.Enabled && placed.Fuel == 0 && inventory.Inspect(bag).Quantity == funded.Quantity - 6,
             "production device placement did not use the entered coordinates and construction cost");
+    const auto stoppedText = CaptureUiText(app);
+    RequireUiText(stoppedText.find("Fuel: 0 / 64 coal") != std::string::npos &&
+            stoppedText.find(std::string(pixel::api::DeviceStateReason(pixel::DeviceState::Stopped))) != std::string::npos &&
+            stoppedText.find("Program: no running instance") != std::string::npos &&
+            stoppedText.find("Field: no source") != std::string::npos,
+            "production device panel omitted stopped reason, fuel capacity or inactive program/source", stoppedText);
 
     // Right clicks over an actual device control must not activate formulas or
     // toggle a device behind the panel, even while the placement tool is active.
@@ -212,6 +261,51 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     Require(removed.Ref.Id == placed.Ref.Id && session.GetDevices().Count() == 0 &&
                 refunded.Quantity == funded.Quantity && refunded.Stacks == funded.Stacks,
             "production recycle did not remove the device and refund its materials and unused coal");
+
+    Click(app, deviceControl("Place force emitter"));
+    const auto operating = changed(pixel::api::DeviceEvent::Placed);
+    Click(app, deviceControl("Enable"));
+    changed(pixel::api::DeviceEvent::Enabled);
+    const auto step = [&] {
+        session.BeginFrame();
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "device UI step failed");
+        session.Tick(1.f / 60, {});
+    };
+    step();
+    const auto emptyText = CaptureUiText(app);
+    RequireUiText(emptyText.find(std::string(pixel::api::DeviceStateReason(pixel::DeviceState::NeedsFuel))) != std::string::npos,
+            "production device panel did not explain an enabled device waiting for fuel", emptyText);
+    Click(app, deviceControl("Supply 1 coal"));
+    changed(pixel::api::DeviceEvent::Supplied);
+    step();
+    const auto awaitingText = CaptureUiText(app);
+    RequireUiText(awaitingText.find("awaiting condition (active)") != std::string::npos &&
+            awaitingText.find("Wait: result; remaining 1 ticks") != std::string::npos,
+            "production device UI omitted the pending effect result wait", awaitingText);
+    step();
+    const auto runningText = CaptureUiText(app);
+    const auto running = *game.GetPresentation().PublishedGameplay();
+    RequireUiText(running.Devices.size() == 1 && running.Processes.size() == 1 && running.FieldSources.size() == 1 &&
+            running.Devices.front().State == pixel::DeviceState::Running &&
+            runningText.find("waiting (active)") != std::string::npos && runningText.find("Wait: delay; remaining 29 ticks") != std::string::npos &&
+            runningText.find("radius 16.0 cells") != std::string::npos &&
+            runningText.find("Acceleration: (3600.0, 0.0) cells/s^2") != std::string::npos &&
+            runningText.find("device #" + std::to_string(operating.Ref.Id)) != std::string::npos,
+            "production device UI omitted running wait, field geometry, acceleration or ownership", runningText);
+    const auto frozenText = CaptureUiText(app, [&] {
+        Require(session.Execute(pixel::NativeCaller::Driver,
+            pixel::api::SetDeviceEnabled{running.Devices.front().Ref, false}).Applied(), "late UI fixture disable failed");
+    });
+    RequireUiText(game.GetPresentation().PublishedGameplay()->Stamp == running.Stamp &&
+            frozenText.find("waiting (active)") != std::string::npos && frozenText.find("radius 16.0 cells") != std::string::npos,
+            "device UI read live process/source state newer than the terrain frame", frozenText);
+    const auto disabledText = CaptureUiText(app);
+    RequireUiText(disabledText.find("Field: no source") != std::string::npos &&
+            disabledText.find("Program: no running instance") != std::string::npos &&
+            game.GetPresentation().PublishedGameplay()->Stamp.Revision > running.Stamp.Revision,
+            "next published device UI retained the stopped program/source", disabledText);
+    Click(app, deviceControl("Recycle"));
+    changed(pixel::api::DeviceEvent::Removed);
     Click(app, ControlPoint(app, "Place devices with left click (B)"));
     Require(!game.GetPresentation().DevicePlacementMode && inputSequence() == inputBefore &&
                 original == CopyWorldCells(session.GetWorld()), "Devices controls changed the world through leaked input");

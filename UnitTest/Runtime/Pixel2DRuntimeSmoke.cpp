@@ -753,6 +753,10 @@ void FormulaGameplayGpu() {
         const auto frame = policy->PublishedFrame();
         Require(frame.DeviceDraws.size() == 1, "GPU publication lost device");
         const auto &draw = frame.DeviceDraws.front();
+        const auto &gameplay = input->GetPresentation().PublishedGameplay();
+        Require(gameplay && gameplay->Stamp == session.CurrentCommit() && gameplay->Devices.size() == 1 &&
+                gameplay->Devices.front().Ref.Id == draw.DeviceId && gameplay->Devices.front().State == currentDevice().State,
+                "GPU body/port and gameplay panel did not share the committed device");
         const auto &scene = policy->SceneColor(token.Slot);
         const auto pixels = ReadColor(scene);
         const auto check = [&](const auto &bounds, const auto &color) {
@@ -776,6 +780,16 @@ void FormulaGameplayGpu() {
         app.Engine->GetRHI()->WaitIdle();
         const auto frame = policy->PublishedFrame();
         Require(frame.DisplayMode == GridDisplayMode::ForceField && frame.DeviceDraws.empty(), "F1 field projection invalid");
+        const auto &gameplay = input->GetPresentation().PublishedGameplay();
+        Require(gameplay && gameplay->Stamp == session.CurrentCommit() && gameplay->FieldSources.size() == (active ? 1 : 0),
+                "GPU force field and source observation were published from different commits");
+        if (active) {
+            const auto &source = gameplay->FieldSources.front();
+            Require(source.Contributing && !source.Suspended && source.DeviceId == deviceId &&
+                    source.OwnerInstance == gameplay->Devices.front().InstanceId && source.RadiusCells == 16 &&
+                    source.AccelerationCellsPerSecondSquared == std::array<double, 2>{3600, 0},
+                    "GPU field source lost radius, acceleration or device ownership");
+        }
         Require(fieldWorld.GetForce(522, 505).X == (active ? 3600 : 0), "actual local acceleration disagrees with device state");
         for (uint32_t y = 0; y < frame.Height; ++y)
             for (uint32_t x = 0; x < frame.Width; ++x) {

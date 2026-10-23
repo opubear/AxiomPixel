@@ -34,6 +34,8 @@ const char *TopicName(api::Topic topic) {
     case api::Topic::Items: return "items";
     case api::Topic::Devices: return "devices";
     case api::Topic::Knowledge: return "knowledge";
+    case api::Topic::FieldSources: return "field_sources";
+    case api::Topic::Count: break;
     }
     throw std::logic_error("unknown observation topic");
 }
@@ -42,13 +44,20 @@ Policy Policy::FullAccess() {
     Policy policy;
     policy.Topics.fill(true);
     policy.Facts = true;
+    policy.AllInventories = true;
     return policy;
 }
 
 uint64_t QueryPage::RetainedBytes() const {
-    return sizeof(*this) + View.Stamp.WorldId.capacity() + 1
+    uint64_t bytes = sizeof(*this) + View.Stamp.WorldId.capacity() + 1
         + Cells.capacity() * sizeof(CellSample) + WindSummaries.capacity() * sizeof(api::WindSummary)
-        + Projectiles.capacity() * sizeof(api::ProjectileObservation);
+        + Projectiles.capacity() * sizeof(api::ProjectileObservation)
+        + Inventories.capacity() * sizeof(api::InventoryObservation)
+        + Devices.capacity() * sizeof(api::DeviceObservation)
+        + Processes.capacity() * sizeof(api::ProcessObservation)
+        + FieldSources.capacity() * sizeof(api::FieldSourceObservation);
+    for (const auto &inventory : Inventories) bytes += inventory.RetainedBytes() - sizeof(inventory);
+    return bytes;
 }
 
 uint64_t Response::RetainedBytes() const {
@@ -64,9 +73,36 @@ uint64_t Response::RetainedBytes() const {
 
 namespace {
 void ValidatePolicy(const Policy &policy) {
+    if (policy.Facts && !policy.AllInventories)
+        throw std::invalid_argument("session facts require an explicit full inventory grant");
+    if (policy.InventoryOwner && (!policy.InventoryOwner->WorldEpoch || !policy.InventoryOwner->OwnerActor))
+        throw std::invalid_argument("inventory owner grant requires a nonzero epoch and actor");
     if (policy.Region && (!ValidRect(*policy.Region) || policy.Facts
         || policy.Topics[size_t(api::Topic::Programs)] || policy.Topics[size_t(api::Topic::Runtime)]))
         throw std::invalid_argument("spatial observer cannot grant session-wide summaries or facts");
+}
+
+bool InventoryAllowed(const Policy &policy, uint64_t epoch, uint64_t owner) {
+    return policy.AllInventories || (policy.InventoryOwner
+        && policy.InventoryOwner->WorldEpoch == epoch && policy.InventoryOwner->OwnerActor == owner);
+}
+
+void AuthorizeGameplay(api::ObservationSnapshot &snapshot, const Policy &policy) {
+    auto &gameplay = snapshot.Gameplay;
+    if (gameplay.Stamp != snapshot.Stamp)
+        throw std::logic_error("gameplay observations do not belong to the snapshot commit");
+    // Rebuild rather than retaining unauthorized container allocations in the
+    // external view. Topic access alone never grants inventory values.
+    std::vector<api::InventoryObservation> inventories;
+    if (policy.Topics[size_t(api::Topic::Items)]) {
+        for (auto &inventory : gameplay.Inventories)
+            if (InventoryAllowed(policy, snapshot.Stamp.WorldEpoch, inventory.OwnerActor)
+                && PositionInside(snapshot.Scope, inventory.Location))
+                inventories.push_back(std::move(inventory));
+    }
+    gameplay.Inventories = std::move(inventories);
+    for (auto &device : gameplay.Devices)
+        if (!InventoryAllowed(policy, snapshot.Stamp.WorldEpoch, device.OwnerActor)) device.Fuel.reset();
 }
 
 uint64_t Allocate(uint64_t &next) {
@@ -199,6 +235,8 @@ Capabilities ViewService::DescribeCapabilities(ObserverId id) const {
     Capabilities result;
     result.Region = observer->Grant.Region;
     result.Facts = observer->Grant.Facts;
+    result.AllInventories = observer->Grant.AllInventories;
+    result.InventoryOwner = observer->Grant.InventoryOwner;
     for (size_t i = 0; i < observer->Grant.Topics.size(); ++i)
         if (observer->Grant.Topics[i]) result.Topics.push_back({api::Topic(i), api::TopicSupport(api::Topic(i))});
     return result;
@@ -217,6 +255,7 @@ OpenResult ViewService::OpenView(ObserverId id, api::Rect scope) {
     if (!capture.Snapshot || capture.Snapshot->Scope != scope
         || capture.Snapshot->Cells.size() != size_t(scope.Width) * scope.Height)
         throw std::logic_error("observation source violated bounded snapshot contract");
+    AuthorizeGameplay(*capture.Snapshot, observer->Grant);
     if (capture.Snapshot->RetainedBytes() + sizeof(State::View) + sizeof(State::Observer)
         + capture.Snapshot->Stamp.WorldId.capacity() + 1 > Limits::MaximumViewBytes)
         return {Status::LimitExceeded};
@@ -247,10 +286,9 @@ PreparedResponse ViewService::Query(ObserverId id, ViewId viewId, QuerySpec quer
     if (!Contains(snapshot.Scope, query.Scope)) return {Status::PermissionDenied};
     if (query.ResolutionCells != 1 && !(query.Topic == api::Topic::AirVelocity && query.ResolutionCells == 16))
         return {Status::Unsupported};
-    const bool paged = query.ResolutionCells == 1
-        && (query.Topic == api::Topic::Materials || query.Topic == api::Topic::AirVelocity);
-    const uint32_t total = paged ? query.Scope.Width * query.Scope.Height : 0;
-    if (paged && (total + query.PageSize - 1) / query.PageSize > Limits::MaximumPages) return {Status::LimitExceeded};
+    const uint32_t total = QueryRecordCount(snapshot, query);
+    if ((uint64_t(total) + query.PageSize - 1) / query.PageSize > Limits::MaximumPages)
+        return {Status::LimitExceeded};
     auto &view = *observer->Active;
     uint32_t offset = 0;
     if (cursorId) {
@@ -259,7 +297,8 @@ PreparedResponse ViewService::Query(ObserverId id, ViewId viewId, QuerySpec quer
         if (cursor == view.Cursors.begin() + view.CursorCount || cursor->Query != query) return {Status::InvalidCursor};
         offset = cursor->Offset;
     }
-    const bool more = paged && total - offset > query.PageSize;
+    if (offset > total) throw std::logic_error("cursor offset exceeds frozen record count");
+    const bool more = total - offset > query.PageSize;
     State::Cursor *next = nullptr;
     if (more) {
         // Replaying a page reuses its cursor instead of consuming more storage.

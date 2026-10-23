@@ -17,7 +17,35 @@ bool Contains(api::Rect outer, api::Rect inner) {
         && inner.Origin.Y + inner.Height <= outer.Origin.Y + outer.Height;
 }
 
+bool PositionInside(api::Rect scope, const api::Position &position) {
+    return Contains(scope, {position.AnchorCell, 1, 1});
+}
+
 namespace {
+template<class Value, class Location>
+uint32_t CountInside(const std::vector<Value> &values, api::Rect scope, Location location) {
+    return uint32_t(std::count_if(values.begin(), values.end(), [&](const auto &value) {
+        return PositionInside(scope, location(value));
+    }));
+}
+
+template<class Value, class Location>
+void ProjectRecords(std::vector<Value> &result, const std::vector<Value> &values,
+                    const QuerySpec &query, uint32_t offset, Location location) {
+    uint32_t selected = 0;
+    for (const auto &value : values) {
+        if (!PositionInside(query.Scope, location(value))) continue;
+        if (selected++ < offset) continue;
+        if (result.size() == query.PageSize) break;
+        result.push_back(value);
+    }
+}
+
+api::Position DeviceLocation(const api::DeviceObservation &device) { return {device.Anchor, {0, 0}}; }
+api::Position InventoryLocation(const api::InventoryObservation &inventory) { return inventory.Location; }
+api::Position ProcessLocation(const api::ProcessObservation &process) { return process.Location; }
+api::Position FieldCenter(const api::FieldSourceObservation &source) { return source.Center; }
+
 const api::ObservedCell &At(const api::ObservationSnapshot &snapshot, api::Cell cell) {
     return snapshot.Cells[size_t(cell.Y - snapshot.Scope.Origin.Y) * snapshot.Scope.Width
                           + size_t(cell.X - snapshot.Scope.Origin.X)];
@@ -91,16 +119,26 @@ void ProjectWindSummary(QueryPage &page, const api::ObservationSnapshot &snapsho
     }
 }
 
-bool PositionInside(api::Rect scope, const api::Position &position) {
-    return Contains(scope, {position.AnchorCell, 1, 1});
-}
 } // namespace
+
+uint32_t QueryRecordCount(const api::ObservationSnapshot &snapshot, const QuerySpec &query) {
+    switch (query.Topic) {
+    case api::Topic::Materials: return query.Scope.Width * query.Scope.Height;
+    case api::Topic::AirVelocity: return query.ResolutionCells == 1 ? query.Scope.Width * query.Scope.Height : 0;
+    case api::Topic::Items: return CountInside(snapshot.Gameplay.Inventories, query.Scope, InventoryLocation);
+    case api::Topic::Devices: return CountInside(snapshot.Gameplay.Devices, query.Scope, DeviceLocation);
+    case api::Topic::Programs: return CountInside(snapshot.Gameplay.Processes, query.Scope, ProcessLocation);
+    case api::Topic::FieldSources: return CountInside(snapshot.Gameplay.FieldSources, query.Scope, FieldCenter);
+    default: return 0;
+    }
+}
 
 QueryPage ProjectQuery(const api::ObservationSnapshot &snapshot, const ViewDescriptor &view,
                        QuerySpec query, uint32_t offset) {
     QueryPage page;
     page.View = view;
     page.Query = query;
+    page.TotalRecords = QueryRecordCount(snapshot, query);
     if (api::TopicSupport(query.Topic) == api::Availability::Unsupported) {
         page.Availability = api::Availability::Unsupported;
         page.Reason = "unsupported";
@@ -127,7 +165,23 @@ QueryPage ProjectQuery(const api::ObservationSnapshot &snapshot, const ViewDescr
     case api::Topic::Programs:
         page.Unit = "count";
         page.Programs = snapshot.Programs;
+        ProjectRecords(page.Processes, snapshot.Gameplay.Processes, query, offset, ProcessLocation);
         page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.ObjectSampledAtRevision;
+        break;
+    case api::Topic::Items:
+        page.Unit = "item";
+        ProjectRecords(page.Inventories, snapshot.Gameplay.Inventories, query, offset, InventoryLocation);
+        page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.Gameplay.Stamp.Revision;
+        break;
+    case api::Topic::Devices:
+        page.Unit = "device";
+        ProjectRecords(page.Devices, snapshot.Gameplay.Devices, query, offset, DeviceLocation);
+        page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.Gameplay.Stamp.Revision;
+        break;
+    case api::Topic::FieldSources:
+        page.Unit = "cell/second^2";
+        ProjectRecords(page.FieldSources, snapshot.Gameplay.FieldSources, query, offset, FieldCenter);
+        page.OldestSampledAtRevision = page.NewestSampledAtRevision = snapshot.Gameplay.Stamp.Revision;
         break;
     case api::Topic::Runtime:
         page.Unit = "count";

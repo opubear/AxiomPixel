@@ -38,16 +38,17 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
     if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.RequestVisibleRegion(bounds);
     SynchronizeReadViews();
-    view.Update(GameWorld, Characters, Formulas, Machines, CurrentCommit());
+    view.Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
     GameWorld.SetPublicationBytes(&view, std::max(reserve, view.ReservedBytes()));
 }
 
 void GameSession::PublishCommit() {
     if (Simulation.HasPendingStep()) throw std::logic_error("publication during pending step");
-    Observations.Publish(GameWorld, Characters, Formulas, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
+    PublishGameplayObservation();
+    Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
-            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, CurrentCommit());
+            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
             ++it;
         } else {
             it = ReadViews.erase(it);

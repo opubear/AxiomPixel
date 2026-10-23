@@ -30,7 +30,7 @@ M2.4已在完整提交边界加入独立的 `ObservationProjector`：三槽有�
 
 M3 已完成独立 process/1 语言、有界运行时和 `Gameplay/FormulaBridge/` 三承载者接线；固定批次查询/碰撞、下一边界回执和清理规则见 [FormulaBridge](GlobalDoc/FormulaBridge.md)。M3.4 新增程序/实例 DTO 与 fake host 挂起恢复、效果所有权验证；F4 可编辑过程源码、Compile/Apply 并查看实例版本与剩余等待，旧树编辑器短期并存。真实库存、设备实体与持续来源已由M4.2–M4.4接入，M4.5已实现游戏区域冻结恢复，M4.6已接跨领域磁盘存档，详见 [状态与编辑合同](GlobalDoc/FormulaStateAndEditing.md)。
 
-M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数量容量、版本化转移及显式预留/释放/消费。玩家直接开采和构式开采收进同一背包，满包保留地形；放土消耗 soil。首个设备成本已用开采所得验证，放置由 M4.3 实现。M4.6已保存库存，R建新世界仍为空；库存观测留给M4.7，详见[物品库存合同](GlobalDoc/Items.md)。
+M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数量容量、版本化转移及显式预留/释放/消费。玩家直接开采和构式开采收进同一背包，满包保留地形；放土消耗 soil。首个设备成本已用开采所得验证，放置由 M4.3 实现。M4.6已保存库存，R建新世界仍为空；M4.7已接库存/设备/程序/场源的授权观测与同帧UI，详见[物品库存合同](GlobalDoc/Items.md)。
 
 ## 世界与现有玩法
 

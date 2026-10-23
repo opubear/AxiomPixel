@@ -2,6 +2,7 @@
 #include "PixelRender/DeviceFrame.h"
 #include "PixelRender/GamePresentation.h"
 #include <iostream>
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <set>
@@ -54,7 +55,8 @@ void DeviceProjection() {
 void PublisherIsolation() {
     GameSession session;
     auto &inventory = testing::SessionAccess::Inventory(session);
-    const std::array cost{items::ItemAmount{items::ItemId::Stone, 4}, items::ItemAmount{items::ItemId::CopperOre, 2}};
+    const std::array cost{items::ItemAmount{items::ItemId::Stone, 4}, items::ItemAmount{items::ItemId::CopperOre, 2},
+                          items::ItemAmount{items::ItemId::Coal, 2}};
     Check(inventory.Add(inventory.Reference(session.PlayerInventory()), cost) == items::Result::Applied,
           "could not fund device presentation fixture");
     Check(session.Execute(NativeCaller::Driver, api::PlaceDevice{{20, 20}}).Applied(), "could not place fixture device");
@@ -62,20 +64,67 @@ void PublisherIsolation() {
     GameCamera camera;
     camera.SetFramebufferSize({160, 120});
     camera.GetCamera().SetPosition({20, 20});
-    GamePresentation presentation;
-    auto publishFirst = presentation.CreateFramePublisher(session, camera);
-    auto publishSecond = presentation.CreateFramePublisher(session, camera);
+    GamePresentation firstPresentation, secondPresentation;
+    auto publishFirst = firstPresentation.CreateFramePublisher(session, camera);
+    auto publishSecond = secondPresentation.CreateFramePublisher(session, camera);
     WorldGridFrame first, second;
     publishFirst(first);
     publishSecond(second);
     Check(first.DeviceDraws.size() == 1 && second.DeviceDraws.size() == 1, "committed device was not published");
-    Check(session.Execute(NativeCaller::Driver, api::RemoveDevice{device.Ref}).Applied(), "could not remove fixture device");
+    const auto stopped = *firstPresentation.PublishedGameplay();
+    Check(stopped.Stamp == session.CurrentCommit() && stopped.Devices.size() == 1 &&
+          stopped.Devices.front().State == DeviceState::Stopped && stopped.Inventories.size() == 2,
+          "device, inventory and terrain publication did not share a commit");
+    const auto fuel = std::find_if(stopped.Inventories.begin(), stopped.Inventories.end(),
+        [&](const auto &value) { return value.DeviceId == device.Ref.Id; });
+    Check(fuel != stopped.Inventories.end() && fuel->Quantity == 0 && fuel->Capacity == 64,
+          "committed device fuel capacity missing");
+
+    Check(session.Execute(NativeCaller::Driver, api::SupplyDevice{device.Ref, 2}).Applied(), "could not fuel fixture device");
+    const auto fueled = session.GetDevices().Find(device.Ref.Id)->Value;
+    Check(session.Execute(NativeCaller::Driver, api::SetDeviceEnabled{fueled.Ref, true}).Applied(), "could not enable fixture device");
+    session.BeginFrame();
+    Check(session.Control(NativeCaller::Driver, api::StepSimulation{}).Succeeded(), "could not step fixture device");
+    session.Tick(1.f / 60, {});
+    Check(firstPresentation.PublishedGameplay()->Stamp == stopped.Stamp &&
+          secondPresentation.PublishedGameplay()->Devices.front().State == DeviceState::Stopped,
+          "live actions mutated a published UI observation");
     publishSecond(second);
-    Check(first.DeviceDraws.size() == 1 && second.DeviceDraws.empty(), "device removal mutated another published frame");
+    const auto running = *secondPresentation.PublishedGameplay();
+    Check(running.Stamp == session.CurrentCommit() && running.Stamp.Revision > stopped.Stamp.Revision &&
+          running.Devices.front().State == DeviceState::Running && running.Devices.front().Fuel == 1 &&
+          second.DeviceDraws.front().Color != first.DeviceDraws.front().Color,
+          "running device geometry and observation were published from different states");
+    Check(running.Processes.size() == 1 && running.Processes.front().InstanceId == running.Devices.front().InstanceId &&
+          running.Processes.front().Carrier == api::CarrierKind::Device && !running.Processes.front().Suspended &&
+          running.Processes.front().ActiveSteps > 0 && running.Processes.front().RemainingSteps > 0 &&
+          running.Processes.front().WaitingFor == "result",
+          "device program wait was not published with its device");
+    Check(running.FieldSources.size() == 1 && running.FieldSources.front().DeviceId == device.Ref.Id &&
+          running.FieldSources.front().OwnerInstance == running.Devices.front().InstanceId &&
+          running.FieldSources.front().Contributing && !running.FieldSources.front().Suspended &&
+          running.FieldSources.front().RadiusCells == 16 &&
+          running.FieldSources.front().AccelerationCellsPerSecondSquared == std::array<double, 2>{3600, 0},
+          "field source geometry or ownership was not published with its device");
+    Check(firstPresentation.PublishedGameplay()->Stamp == stopped.Stamp &&
+          firstPresentation.PublishedGameplay()->FieldSources.empty(), "second consumer mutated first consumer gameplay");
+
+    Check(session.Execute(NativeCaller::Driver, api::RemoveDevice{running.Devices.front().Ref}).Applied(), "could not remove fixture device");
+    Check(secondPresentation.PublishedGameplay()->Stamp == running.Stamp && second.DeviceDraws.size() == 1,
+          "device removal changed UI values before frame publication");
+    publishSecond(second);
+    const auto &removed = *secondPresentation.PublishedGameplay();
+    Check(first.DeviceDraws.size() == 1 && second.DeviceDraws.empty() && removed.Stamp == session.CurrentCommit() &&
+          removed.Devices.empty() && removed.Processes.empty() && removed.FieldSources.empty() && removed.Inventories.size() == 1,
+          "device removal retained published gameplay or mutated another frame");
+    Check(stopped.Devices.front().State == DeviceState::Stopped && running.FieldSources.size() == 1 &&
+          firstPresentation.PublishedGameplay()->Stamp == stopped.Stamp, "retained observations alias new commit values");
     Check(session.Execute(NativeCaller::Driver, api::PlaceDevice{{20, 20}}).Applied(), "could not replace fixture device");
-    presentation.DisplayMode = GridDisplayMode::ForceField;
+    firstPresentation.DisplayMode = GridDisplayMode::ForceField;
     publishFirst(first);
-    Check(first.DeviceDraws.empty(), "F1 retained stale device geometry");
+    Check(first.DeviceDraws.empty() && firstPresentation.PublishedGameplay()->Devices.size() == 1 &&
+          firstPresentation.PublishedGameplay()->Stamp == session.CurrentCommit(),
+          "F1 retained stale geometry or lost committed device observations");
 }
 
 void DeviceValidation() {

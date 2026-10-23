@@ -13,16 +13,18 @@ uint64_t CommittedWorldView::CapacityFor(WorldRect bounds) {
     return uint64_t(bounds.Width) * bounds.Height * 2 * sizeof(WindVelocity)
         + columns * rows * (storage::RegionEdge * storage::RegionEdge * sizeof(CellState) + 1024) + 4096
         + 2 * FormulaBridge::MaximumEffects * sizeof(FormulaProjectile)
-        + Devices::MaximumCount * sizeof(DeviceSnapshot);
+        + Devices::MaximumCount * sizeof(DeviceSnapshot) + api::GameplayObservation::MaximumRetainedBytes;
 }
 
 uint64_t CommittedWorldView::ReservedBytes() const {
     return sizeof(*this) + Materials.GetMemoryUsage().ReservedBytes()
         + (Air.capacity() + Field.capacity()) * sizeof(WindVelocity)
-        + Bolts.capacity() * sizeof(FormulaProjectile) + DeviceValues.capacity() * sizeof(DeviceSnapshot);
+        + Bolts.capacity() * sizeof(FormulaProjectile) + DeviceValues.capacity() * sizeof(DeviceSnapshot)
+        + GameplayValues.RetainedBytes() - sizeof(api::GameplayObservation);
 }
 
-void CommittedWorldView::Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices, api::CommitStamp stamp) {
+void CommittedWorldView::Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices,
+                                const api::GameplayObservation &gameplay, api::CommitStamp stamp) {
     if (world.GetEnvironment().IsWaitingForBudget())
         throw std::logic_error("cannot publish a prepared environment step");
     const auto count = size_t(RequestedBounds.Width) * RequestedBounds.Height;
@@ -61,6 +63,8 @@ void CommittedWorldView::Update(const World &world, const Actors &actors, const 
     Player = actors.PlayerSnapshot();
     Bolts = formulas.Projectiles();
     DeviceValues = devices.Snapshot();
+    if (gameplay.Stamp != stamp) throw std::logic_error("gameplay projection has a different commit");
+    GameplayValues = gameplay;
     WindBounds = world.GetWindBounds();
     Finite = world.GetMap().IsFinite();
     CommittedAt = std::move(stamp);

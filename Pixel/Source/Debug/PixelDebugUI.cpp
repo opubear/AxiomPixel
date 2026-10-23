@@ -5,53 +5,169 @@
 #include "PixelRender/GamePresentation.h"
 #include "imgui.h"
 #include <algorithm>
+#include <stdexcept>
 
 namespace pixel {
 namespace {
+void DrawCommit(const api::GameplayObservation &gameplay) {
+    ImGui::TextDisabled("Frame: epoch %llu / tick %llu / revision %llu",
+        static_cast<unsigned long long>(gameplay.Stamp.WorldEpoch),
+        static_cast<unsigned long long>(gameplay.Stamp.Tick),
+        static_cast<unsigned long long>(gameplay.Stamp.Revision));
+}
+
+const char *ProcessPhaseName(api::ProcessPhase phase) {
+    switch (phase) {
+    case api::ProcessPhase::Ready: return "ready";
+    case api::ProcessPhase::Sleeping: return "waiting";
+    case api::ProcessPhase::Awaiting: return "awaiting condition";
+    case api::ProcessPhase::Ended: return "ended";
+    }
+    throw std::logic_error("unknown process presentation phase");
+}
+
+void DrawProcess(const api::ProcessObservation &process) {
+    ImGui::Text("Program #%llu v%llu: %s (%s)",
+        static_cast<unsigned long long>(process.Program.ResourceId),
+        static_cast<unsigned long long>(process.Program.Version), ProcessPhaseName(process.Phase),
+        process.Suspended ? "suspended" : process.Phase == api::ProcessPhase::Ended ? "inactive" : "active");
+    ImGui::Text("Instance #%llu; active %llu ticks",
+        static_cast<unsigned long long>(process.InstanceId),
+        static_cast<unsigned long long>(process.ActiveSteps));
+    ImGui::Text("Wait: %.*s; remaining %llu ticks", int(process.WaitingFor.size()), process.WaitingFor.data(),
+        static_cast<unsigned long long>(process.RemainingSteps));
+}
+
+void DrawFieldSource(const api::FieldSourceObservation &source) {
+    ImGui::Text("Field #%llu: %s; radius %.1f cells", static_cast<unsigned long long>(source.Handle),
+        source.Suspended ? "suspended" : source.Contributing ? "active" : "inactive", source.RadiusCells);
+    ImGui::Text("Acceleration: (%.1f, %.1f) cells/s^2; remaining %llu ticks",
+        source.AccelerationCellsPerSecondSquared[0], source.AccelerationCellsPerSecondSquared[1],
+        static_cast<unsigned long long>(source.RemainingSteps));
+    ImGui::Text("Owner #%llu; instance #%llu; device #%llu",
+        static_cast<unsigned long long>(source.OwnerId), static_cast<unsigned long long>(source.OwnerInstance),
+        static_cast<unsigned long long>(source.DeviceId));
+}
+
+void DrawInventory(const GamePresentation &presentation) {
+    if (!ImGui::CollapsingHeader("Inventory"))
+        return;
+    const auto &published = presentation.PublishedGameplay();
+    if (!published) {
+        ImGui::TextDisabled("Waiting for a committed frame.");
+        return;
+    }
+    DrawCommit(*published);
+    for (const auto &inventory : published->Inventories) {
+        if (inventory.DeviceId)
+            ImGui::Text("Device #%llu fuel: %u / %u", static_cast<unsigned long long>(inventory.DeviceId),
+                        inventory.Quantity, inventory.Capacity);
+        else
+            ImGui::Text("Player inventory: %u / %u", inventory.Quantity, inventory.Capacity);
+        ImGui::TextDisabled("Container #%llu v%llu; owner #%llu",
+            static_cast<unsigned long long>(inventory.ContainerId), static_cast<unsigned long long>(inventory.Version),
+            static_cast<unsigned long long>(inventory.OwnerActor));
+        if (inventory.Stacks.empty())
+            ImGui::TextDisabled("Empty");
+        for (const auto &stack : inventory.Stacks) {
+            std::string name(items::Definition(items::ItemId(stack.ItemId)).Name);
+            std::replace(name.begin(), name.end(), '_', ' ');
+            ImGui::BulletText("%s: %u (%u reserved)", name.c_str(), stack.Quantity, stack.Reserved);
+        }
+    }
+}
+
+void DrawProgramsAndFields(const GamePresentation &presentation) {
+    if (!ImGui::CollapsingHeader("Programs and fields"))
+        return;
+    const auto &published = presentation.PublishedGameplay();
+    if (!published) {
+        ImGui::TextDisabled("Waiting for a committed frame.");
+        return;
+    }
+    DrawCommit(*published);
+    ImGui::Text("Programs: %zu; field sources: %zu", published->Processes.size(), published->FieldSources.size());
+    for (const auto &process : published->Processes)
+        DrawProcess(process);
+    for (const auto &source : published->FieldSources)
+        DrawFieldSource(source);
+}
+
 void DrawDevices(GameSession &session, GamePresentation &presentation,
                  std::array<int64_t, 2> &cell, uint64_t &selected) {
     if (!ImGui::CollapsingHeader("Devices"))
         return;
     ImGui::Checkbox("Place devices with left click (B)", &presentation.DevicePlacementMode);
-    ImGui::TextUnformatted("Force emitter: 2 x 2 cells, pushes dirt to the right");
+    ImGui::TextUnformatted("Force emitter: 2 x 2 cells, right-side output port");
     ImGui::TextUnformatted("Build: 4 stone + 2 copper ore; 1 coal / 30 active ticks");
-    ImGui::TextUnformatted("F1: inspect local force direction (radius 16 cells)");
-    ImGui::TextWrapped("Right click: enable/disable; Shift+right: recycle");
+    ImGui::TextWrapped("F1: local force direction | Right click: enable/disable; Shift+right: recycle");
+    const auto &published = presentation.PublishedGameplay();
+    if (!published) {
+        ImGui::TextDisabled("Waiting for a committed frame.");
+        return;
+    }
+    const auto &gameplay = *published;
+    DrawCommit(gameplay);
+    const auto findSelected = [&] {
+        return std::find_if(gameplay.Devices.begin(), gameplay.Devices.end(),
+                            [&](const auto &device) { return device.Ref.Id == selected; });
+    };
+    if (findSelected() == gameplay.Devices.end())
+        selected = gameplay.Devices.empty() ? 0 : gameplay.Devices.front().Ref.Id;
+
     ImGui::PushID("Devices");
     ImGui::InputScalar("Cell X", ImGuiDataType_S64, &cell[0]);
     ImGui::InputScalar("Cell Y", ImGuiDataType_S64, &cell[1]);
     if (ImGui::Button("Place force emitter")) {
-        session.Execute(NativeCaller::Debug, api::PlaceDevice{{cell[0], cell[1]}});
-        if (const auto *device = session.GetDevices().FindAt(cell[0], cell[1]))
-            selected = device->Value.Ref.Id;
+        const auto receipt = session.Execute(NativeCaller::Debug, api::PlaceDevice{{cell[0], cell[1]}});
+        if (receipt.Applied())
+            if (const auto *placed = std::get_if<api::DeviceChanged>(&receipt.Result))
+                selected = placed->Device.Ref.Id;
     }
 
-    const auto devices = session.GetDevices().Snapshot();
-    if (!session.GetDevices().Find(selected))
-        selected = devices.empty() ? 0 : devices.front().Ref.Id;
     const auto label = selected ? "#" + std::to_string(selected) : "No devices";
     if (ImGui::BeginCombo("Device", label.c_str())) {
-        for (const auto &device : devices) {
-            const auto item = "#" + std::to_string(device.Ref.Id) + " (" + std::to_string(device.X) + ", " + std::to_string(device.Y) + ")";
+        for (const auto &device : gameplay.Devices) {
+            const auto item = "#" + std::to_string(device.Ref.Id) + " (" + std::to_string(device.Anchor.X) + ", " + std::to_string(device.Anchor.Y) + ")";
             if (ImGui::Selectable(item.c_str(), selected == device.Ref.Id))
                 selected = device.Ref.Id;
         }
         ImGui::EndCombo();
     }
-    if (const auto *record = session.GetDevices().Find(selected)) {
-        // Actions can replace/remove the record; retain only an owned value.
-        const auto device = record->Value;
-        ImGui::Text("State: %s; fuel: %u", DeviceStateName(device.State), device.Fuel);
-        ImGui::Text("Cycles: %llu; instance: %llu", static_cast<unsigned long long>(device.Cycles),
-                    static_cast<unsigned long long>(device.Instance));
+    const auto device = findSelected();
+    if (device != gameplay.Devices.end()) {
+        ImGui::Text("State: %s", DeviceStateName(device->State));
+        const auto reason = api::DeviceStateReason(device->State);
+        ImGui::TextWrapped("Reason: %.*s", int(reason.size()), reason.data());
+        const auto fuel = std::find_if(gameplay.Inventories.begin(), gameplay.Inventories.end(),
+            [&](const auto &inventory) { return inventory.DeviceId == device->Ref.Id; });
+        if (fuel != gameplay.Inventories.end())
+            ImGui::Text("Fuel: %u / %u coal", fuel->Quantity, fuel->Capacity);
+        else if (device->Fuel)
+            ImGui::Text("Fuel: %u coal", *device->Fuel);
+        else
+            ImGui::TextDisabled("Fuel: not observable");
+        ImGui::Text("Cycles: %llu; owner #%llu", static_cast<unsigned long long>(device->Cycles),
+                    static_cast<unsigned long long>(device->OwnerActor));
         if (ImGui::Button("Supply 1 coal"))
-            session.Execute(NativeCaller::Debug, api::SupplyDevice{device.Ref, 1});
+            session.Execute(NativeCaller::Debug, api::SupplyDevice{device->Ref, 1});
         ImGui::SameLine();
-        if (ImGui::Button(device.Enabled ? "Disable" : "Enable"))
-            session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device.Ref, !device.Enabled});
+        if (ImGui::Button(device->Enabled ? "Disable" : "Enable"))
+            session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device->Ref, !device->Enabled});
         ImGui::SameLine();
         if (ImGui::Button("Recycle"))
-            session.Execute(NativeCaller::Debug, api::RemoveDevice{device.Ref});
+            session.Execute(NativeCaller::Debug, api::RemoveDevice{device->Ref});
+        const auto process = std::find_if(gameplay.Processes.begin(), gameplay.Processes.end(),
+            [&](const auto &value) { return value.InstanceId == device->InstanceId; });
+        if (process != gameplay.Processes.end()) DrawProcess(*process);
+        else ImGui::TextDisabled("Program: no running instance");
+        bool hasSource = false;
+        for (const auto &source : gameplay.FieldSources)
+            if (source.DeviceId == device->Ref.Id) {
+                DrawFieldSource(source);
+                hasSource = true;
+            }
+        if (!hasSource) ImGui::TextDisabled("Field: no source");
     }
     for (const auto caller : {NativeCaller::Input, NativeCaller::Debug})
         if (const auto *receipt = session.LastAction(caller))
@@ -218,7 +334,9 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
             DrawGeneration(session);
             DrawActions(session, ActionCell);
+            DrawInventory(presentation);
             DrawDevices(session, presentation, DeviceCell, SelectedDevice);
+            DrawProgramsAndFields(presentation);
             DrawEnvironment(session, presentation);
             DrawWindAppearance(presentation);
             ImGui::Checkbox("Formula editor (F4)", &FormulaEditor.Visible);

@@ -1,5 +1,5 @@
 #pragma once
-#include "Actions.h"
+#include "GameplayObservations.h"
 #include <string_view>
 #include <vector>
 
@@ -11,11 +11,12 @@ struct Rect {
 };
 
 enum class ObservationStatus { Available, NotSampled, SessionUnavailable, InvalidArgument, LimitExceeded };
-enum class Topic { Materials, AirVelocity, Player, Programs, Runtime, Temperature, Ecology, Items, Devices, Knowledge };
+enum class Topic { Materials, AirVelocity, Player, Programs, Runtime, Temperature, Ecology, Items, Devices, Knowledge, FieldSources, Count };
 enum class Availability { Available, Partial, NotApplicable, Unknown, Unsupported };
 constexpr Availability TopicSupport(Topic topic) {
     switch (topic) {
     case Topic::Materials: case Topic::AirVelocity: case Topic::Player: case Topic::Programs: case Topic::Runtime:
+    case Topic::Items: case Topic::Devices: case Topic::FieldSources:
         return Availability::Available;
     default: return Availability::Unsupported;
     }
@@ -74,6 +75,7 @@ struct ObservationSnapshot {
     std::optional<PlayerObservation> Player; // Present if player rectangle intersects Scope.
     ProgramObservation Programs;
     std::vector<ProjectileObservation> Projectiles; // Centres within Scope.
+    GameplayObservation Gameplay; // Owned domain values filtered to Scope; trusted host capture.
     uint64_t ObjectSampledAtRevision = 0;
     uint64_t RetainedBytes() const;
     Availability MaterialAvailability() const {

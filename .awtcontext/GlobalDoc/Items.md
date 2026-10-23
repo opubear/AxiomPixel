@@ -43,7 +43,7 @@ Input、Debug、Driver 的 MineRegion 和玩家的树形/过程构式挖掘，�
 
 `Gameplay/Construction/DeviceCosts.h` 给首个 WindEmitter 定义 v1 成本：4 stone + 2 copper_ore。成本属于游戏建设规则，Items 只处理物品批次。CPU 场景验证开采到这些物料、整批预留、取消返还、消费以及第二次缺料不部分扣除；本步没有创建设备实体。
 
-M4.6已保存容器ID/版本/容量、物品语义ID与版本、数量和身份高水位；恢复重新分配预留Owner，旧token失效。预留只存在于同步动作内部，捕获时有未完成预留直接报告内部阶段错误。R建新世界背包为空，正常重启保留库存；合同见[一致检查点](Checkpoints.md)。M4.7再增加完整库存/设备的观测与UI。
+M4.6已保存容器ID/版本/容量、物品语义ID与版本、数量和身份高水位；恢复重新分配预留Owner，旧token失效。预留只存在于同步动作内部，捕获时有未完成预留直接报告内部阶段错误。R建新世界背包为空，正常重启保留库存；合同见[一致检查点](Checkpoints.md)。M4.7已增加[有授权的库存/设备观测与同帧UI](GameplayObservation.md)；仅授予Items主题不允许读取私有数量。
 
 ## 验证入口
 

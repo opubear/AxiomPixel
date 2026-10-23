@@ -47,6 +47,7 @@ class FieldSources {
     uint64_t Revision() const;
     std::span<const FieldSourceSnapshot> Sources() const { return {Values.data(), Count}; }
     static bool Fits(const FieldSourceSpec &spec, WorldRect bounds);
+    bool Contributes(FieldSourceHandle handle, WorldRect bounds) const;
     FieldSourcesState CaptureState() const { return {NextId, {Values.begin(), Values.begin() + Count}}; }
 
   private:

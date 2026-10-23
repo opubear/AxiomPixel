@@ -220,6 +220,64 @@ Json ProgramsJson(const api::ProgramObservation &programs) {
             {"projectiles", programs.Projectiles}, {"pending", programs.Pending}};
 }
 
+const char *CarrierName(api::CarrierKind carrier) {
+    switch (carrier) {
+    case api::CarrierKind::Player: return "player";
+    case api::CarrierKind::NaturalSource: return "natural_source";
+    case api::CarrierKind::FixedFixture: return "fixed_fixture";
+    case api::CarrierKind::Device: return "device";
+    }
+    throw std::logic_error("unknown process carrier");
+}
+
+const char *PhaseName(api::ProcessPhase phase) {
+    switch (phase) {
+    case api::ProcessPhase::Ready: return "ready";
+    case api::ProcessPhase::Sleeping: return "sleeping";
+    case api::ProcessPhase::Awaiting: return "awaiting";
+    case api::ProcessPhase::Ended: return "ended";
+    }
+    throw std::logic_error("unknown process phase");
+}
+
+Json InventoryJson(const api::InventoryObservation &inventory) {
+    Json result{{"containerId", std::to_string(inventory.ContainerId)}, {"version", std::to_string(inventory.Version)},
+                {"ownerActor", std::to_string(inventory.OwnerActor)}, {"deviceId", std::to_string(inventory.DeviceId)},
+                {"location", PositionJson(inventory.Location)}, {"capacity", inventory.Capacity},
+                {"quantity", inventory.Quantity}, {"stacks", Json::array()}};
+    for (const auto &stack : inventory.Stacks)
+        result["stacks"].push_back({{"itemId", stack.ItemId}, {"definitionVersion", stack.DefinitionVersion},
+                                    {"quantity", stack.Quantity}, {"reserved", stack.Reserved}});
+    return result;
+}
+
+Json DeviceJson(const api::DeviceObservation &device) {
+    Json result{{"deviceId", std::to_string(device.Ref.Id)}, {"version", std::to_string(device.Ref.Version)},
+                {"typeId", device.TypeId}, {"ownerActor", std::to_string(device.OwnerActor)},
+                {"anchor", CellJson(device.Anchor)}, {"enabled", device.Enabled},
+                {"state", DeviceStateName(device.State)}, {"reason", api::DeviceStateReason(device.State)},
+                {"instanceId", std::to_string(device.InstanceId)}, {"cycles", std::to_string(device.Cycles)}};
+    if (device.Fuel) result["fuel"] = *device.Fuel;
+    return result;
+}
+
+Json ProcessJson(const api::ProcessObservation &process) {
+    return {{"instanceId", std::to_string(process.InstanceId)}, {"subject", std::to_string(process.Subject)},
+            {"program", ProgramJson(process.Program)}, {"carrier", CarrierName(process.Carrier)},
+            {"location", PositionJson(process.Location)}, {"phase", PhaseName(process.Phase)},
+            {"suspended", process.Suspended}, {"activeSteps", std::to_string(process.ActiveSteps)},
+            {"remainingSteps", std::to_string(process.RemainingSteps)}, {"waitingFor", process.WaitingFor}};
+}
+
+Json FieldSourceJson(const api::FieldSourceObservation &source) {
+    return {{"handle", std::to_string(source.Handle)}, {"ownerId", std::to_string(source.OwnerId)},
+            {"ownerInstance", std::to_string(source.OwnerInstance)}, {"deviceId", std::to_string(source.DeviceId)},
+            {"center", PositionJson(source.Center)}, {"radiusCells", source.RadiusCells},
+            {"accelerationCellsPerSecondSquared", source.AccelerationCellsPerSecondSquared},
+            {"remainingSteps", std::to_string(source.RemainingSteps)}, {"suspended", source.Suspended},
+            {"contributing", source.Contributing}};
+}
+
 Json ProjectileJson(const api::ProjectileObservation &projectile) {
     return {{"instanceId", std::to_string(projectile.InstanceId)}, {"projectileId", std::to_string(projectile.ProjectileId)},
             {"program", ProgramJson(projectile.Program)}, {"location", PositionJson(projectile.Location)},
@@ -232,7 +290,22 @@ std::string_view SourceFor(api::Topic topic) {
     case api::Topic::AirVelocity: return api::ObservationSnapshot::WindSource;
     case api::Topic::Player: case api::Topic::Programs: case api::Topic::Runtime:
         return api::ObservationSnapshot::ObjectSource;
+    case api::Topic::Items: return "session.inventory";
+    case api::Topic::Devices: return "session.devices";
+    case api::Topic::FieldSources: return "environment.field_sources";
     default: return {};
+    }
+}
+
+std::string_view TopicUnit(api::Topic topic) {
+    switch (topic) {
+    case api::Topic::AirVelocity: return "cell/second";
+    case api::Topic::Materials: return "material_id";
+    case api::Topic::Player: return "cell";
+    case api::Topic::Items: return "item";
+    case api::Topic::Devices: return "device";
+    case api::Topic::FieldSources: return "cell/second^2";
+    default: return "count";
     }
 }
 
@@ -276,6 +349,26 @@ Json PageJson(const QueryPage &page) {
     if (page.Player) result["player"] = PlayerJson(*page.Player);
     if (page.Programs) result["programs"] = ProgramsJson(*page.Programs);
     if (page.Paused) result["paused"] = *page.Paused;
+    if (page.Query.Topic == api::Topic::Items) {
+        result["totalRecords"] = page.TotalRecords;
+        result["inventories"] = Json::array();
+        for (const auto &inventory : page.Inventories) result["inventories"].push_back(InventoryJson(inventory));
+    }
+    if (page.Query.Topic == api::Topic::Devices) {
+        result["totalRecords"] = page.TotalRecords;
+        result["devices"] = Json::array();
+        for (const auto &device : page.Devices) result["devices"].push_back(DeviceJson(device));
+    }
+    if (page.Query.Topic == api::Topic::Programs) {
+        result["totalRecords"] = page.TotalRecords;
+        result["processes"] = Json::array();
+        for (const auto &process : page.Processes) result["processes"].push_back(ProcessJson(process));
+    }
+    if (page.Query.Topic == api::Topic::FieldSources) {
+        result["totalRecords"] = page.TotalRecords;
+        result["fieldSources"] = Json::array();
+        for (const auto &source : page.FieldSources) result["fieldSources"].push_back(FieldSourceJson(source));
+    }
     if (page.Query.Topic == api::Topic::Runtime) {
         result["projectiles"] = Json::array();
         for (const auto &projectile : page.Projectiles) result["projectiles"].push_back(ProjectileJson(projectile));
@@ -332,7 +425,7 @@ bool ReadRect(const Json &value, api::Rect &scope) {
 
 bool ReadTopic(const Json &value, api::Topic &topic) {
     if (!value.is_string()) return false;
-    for (uint32_t index = 0; index < 10; ++index) {
+    for (uint32_t index = 0; index < uint32_t(api::Topic::Count); ++index) {
         const auto candidate = api::Topic(index);
         if (value == TopicName(candidate)) { topic = candidate; return true; }
     }
@@ -460,9 +553,19 @@ Json ToJson(const Capabilities &capabilities) {
         Json topic{{"topic", TopicName(capability.Topic)}, {"availability", AvailabilityName(capability.Support)}};
         if (capability.Support != api::Availability::Unsupported) {
             topic["resolutionCells"] = capability.Topic == api::Topic::AirVelocity ? Json::array({1, 16}) : Json::array({1});
-            topic["unit"] = capability.Topic == api::Topic::AirVelocity ? "cell/second"
-                : capability.Topic == api::Topic::Materials ? "material_id"
-                : capability.Topic == api::Topic::Player ? "cell" : "count";
+            topic["unit"] = TopicUnit(capability.Topic);
+            if (capability.Topic == api::Topic::Items || capability.Topic == api::Topic::Devices) {
+                topic["inventoryAccess"] = {{"kind", capabilities.AllInventories ? "all"
+                    : capabilities.InventoryOwner ? "owner" : "none"}};
+                if (!capabilities.AllInventories && capabilities.InventoryOwner) {
+                    topic["inventoryAccess"]["worldEpoch"] = std::to_string(capabilities.InventoryOwner->WorldEpoch);
+                    topic["inventoryAccess"]["ownerActor"] = std::to_string(capabilities.InventoryOwner->OwnerActor);
+                }
+            }
+            if (capability.Topic == api::Topic::Items) topic["pageUnit"] = "container";
+            if (capability.Topic == api::Topic::Devices) topic["pageUnit"] = "device";
+            if (capability.Topic == api::Topic::Programs) topic["pageUnit"] = "process";
+            if (capability.Topic == api::Topic::FieldSources) topic["pageUnit"] = "field_source";
             topic["source"] = SourceFor(capability.Topic);
         }
         result["topics"].push_back(std::move(topic));

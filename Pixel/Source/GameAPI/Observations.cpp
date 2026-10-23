@@ -3,9 +3,30 @@
 #include <stdexcept>
 
 namespace pixel::api {
+std::string_view DeviceStateReason(DeviceState state) {
+    switch (state) {
+    case DeviceState::Stopped: return "disabled";
+    case DeviceState::Running: return "paid_cycle_active";
+    case DeviceState::NeedsFuel: return "needs_coal";
+    case DeviceState::WaitingForEnvironment: return "device_footprint_blocked";
+    case DeviceState::OutsideActiveArea: return "outside_active_or_resident_area";
+    case DeviceState::WaitingForCapacity: return "waiting_for_execution_or_field_capacity";
+    }
+    throw std::logic_error("unknown device observation state");
+}
+
+uint64_t GameplayObservation::RetainedBytes() const {
+    uint64_t bytes = sizeof(*this) + Stamp.WorldId.capacity() + 1
+        + Inventories.capacity() * sizeof(InventoryObservation) + Devices.capacity() * sizeof(DeviceObservation)
+        + Processes.capacity() * sizeof(ProcessObservation) + FieldSources.capacity() * sizeof(FieldSourceObservation);
+    for (const auto &inventory : Inventories) bytes += inventory.RetainedBytes() - sizeof(InventoryObservation);
+    return bytes;
+}
+
 uint64_t ObservationSnapshot::RetainedBytes() const {
     return sizeof(*this) + Stamp.WorldId.capacity() + 1
-        + Cells.capacity() * sizeof(ObservedCell) + Projectiles.capacity() * sizeof(ProjectileObservation);
+        + Cells.capacity() * sizeof(ObservedCell) + Projectiles.capacity() * sizeof(ProjectileObservation)
+        + Gameplay.RetainedBytes() - sizeof(GameplayObservation);
 }
 
 namespace {

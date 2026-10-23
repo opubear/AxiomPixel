@@ -1,6 +1,6 @@
 # 设备放置、端口与最小工作状态（M4.5更新）
 
-设备属于 Pixel，不编码进 CellType，也不进入 Axiom。M4.3 建立建造和供煤路径，M4.4 将唯一设备更新为局部推力发生器（类型3001），以持续FieldSource验证程序承载。M4.5已接[区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)保存设备/燃料/程序/来源，M4.7接完整库存/设备 UI 与 LLMView投影。
+设备属于 Pixel，不编码进 CellType，也不进入 Axiom。M4.3 建立建造和供煤路径，M4.4 将唯一设备更新为局部推力发生器（类型3001），以持续FieldSource验证程序承载。M4.5已接[区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)保存设备/燃料/程序/来源，M4.7已接[库存/设备/程序/场源的观测与表现](GameplayObservation.md)。
 
 ## 领域与身份
 
@@ -38,7 +38,7 @@ emit stop_field(source);
 
 ## 事实与呈现
 
-动作回执和领域事实包含拥有值的DeviceChanged（placed/removed/supplied/enabled/state_changed），包含DeviceRef、Owner、坐标、燃料、状态和实例身份。主动动作原因是RequestKey；成功步中的状态事实原因是DeviceCause。安装/更新/停止记录FieldSourceChanged（句柄与操作），以资源3+实例身份关联设备。事实表示操作已提交，F1与已提交力场值显示实际作用。LLMView既有全域事实权限可读取这些事实；设备topic仍留M4.7。
+动作回执和领域事实包含拥有值的DeviceChanged（placed/removed/supplied/enabled/state_changed），包含DeviceRef、Owner、坐标、燃料、状态和实例身份。主动动作原因是RequestKey；成功步中的状态事实原因是DeviceCause。安装/更新/停止记录FieldSourceChanged（句柄与操作），以资源3+实例身份关联设备。事实表示操作已提交，F1与已提交力场值显示实际作用。LLMView既有全域事实权限可读取这些事实；M4.7新增设备topic，公开状态与原因，精确燃料需独立库存授权。
 
 `CommittedWorldView` 保存独立设备摘要，`DeviceFrame` 仅按已提交值生成呈现几何。颜色区分状态，右侧小矩形标出输出端口。远坐标先相对整数参考再转浮点。渲染复用现有合成目标，顺序为世界→风→设备→构式球→人物→后处理→UI；F1隐藏设备图形，数据仍保留。CPU快照纳入发布预留，几何内存单独统计；没有新增GPU目标。
 

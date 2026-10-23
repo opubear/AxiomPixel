@@ -92,13 +92,30 @@ void UpdateObjects(api::ObservationSnapshot &snapshot, const Actors &actors, con
     }
     snapshot.ObjectSampledAtRevision = snapshot.Stamp.Revision;
 }
+
+void UpdateGameplay(api::ObservationSnapshot &snapshot, const api::GameplayObservation &gameplay) {
+    if (gameplay.Stamp != snapshot.Stamp) throw std::logic_error("domain observation has a different commit");
+    auto &result = snapshot.Gameplay;
+    result = {};
+    result.Stamp = snapshot.Stamp;
+    const auto bounds = WorldBounds(snapshot.Scope);
+    const auto inside = [&](api::Cell cell) { return bounds.Contains({cell.X, cell.Y}); };
+    for (const auto &inventory : gameplay.Inventories)
+        if (inside(inventory.Location.AnchorCell)) result.Inventories.push_back(inventory);
+    for (const auto &device : gameplay.Devices)
+        if (inside(device.Anchor)) result.Devices.push_back(device);
+    for (const auto &process : gameplay.Processes)
+        if (inside(process.Location.AnchorCell)) result.Processes.push_back(process);
+    for (const auto &source : gameplay.FieldSources)
+        if (inside(source.Center.AnchorCell)) result.FieldSources.push_back(source);
+}
 } // namespace
 
 ObservationProjector::ObservationProjector() = default;
 ObservationProjector::~ObservationProjector() = default;
 
 api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scope, const World &world, const Actors &actors,
-    const FormulaBridge &formulas, const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
+    const FormulaBridge &formulas, const api::GameplayObservation &gameplay, const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
     uint64_t factHighWatermark) {
     const auto validation = ValidateScope(scope);
     if (validation != api::ObservationStatus::Available) return {validation};
@@ -116,7 +133,7 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
             entry->Snapshot.Cells.resize(size_t(scope.Width) * scope.Height);
             entry->Snapshot.Projectiles.reserve(FormulaBridge::MaximumEffects);
         }
-        Update(*entry, world, actors, formulas, stamp, paused, factHighWatermark);
+        Update(*entry, world, actors, formulas, gameplay, stamp, paused, factHighWatermark);
     }
     auto result = api::ObservationResult{api::ObservationStatus::Available, entry->Snapshot};
     Counters.ExportedBytes += result.Snapshot->RetainedBytes();
@@ -124,7 +141,7 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
 }
 
 void ObservationProjector::Update(Entry &entry, const World &world, const Actors &actors, const FormulaBridge &formulas,
-    const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
+    const api::GameplayObservation &gameplay, const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     if (world.GetEnvironment().IsWaitingForBudget()) throw std::logic_error("observation during pending step");
     auto &snapshot = entry.Snapshot;
     if (snapshot.Stamp == stamp) return;
@@ -167,14 +184,15 @@ void ObservationProjector::Update(Entry &entry, const World &world, const Actors
     snapshot.FactHighWatermark = factHighWatermark;
     snapshot.Paused = paused;
     UpdateObjects(snapshot, actors, formulas);
+    UpdateGameplay(snapshot, gameplay);
     if (snapshot.RetainedBytes() > MaximumSnapshotBytes)
         throw std::logic_error("observation exceeded its fixed payload budget");
 }
 
 void ObservationProjector::Publish(const World &world, const Actors &actors, const FormulaBridge &formulas,
-    const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
+    const api::GameplayObservation &gameplay, const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     for (auto &entry : Entries)
-        if (entry) Update(*entry, world, actors, formulas, stamp, paused, factHighWatermark);
+        if (entry) Update(*entry, world, actors, formulas, gameplay, stamp, paused, factHighWatermark);
 }
 
 void ObservationProjector::Close(size_t slot) { Entries.at(slot).reset(); }

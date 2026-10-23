@@ -82,7 +82,8 @@ void SnapshotValuesAndIncrementalSampling() {
                 && missing.Snapshot->ResidentCellCount == 0
                 && missing.Snapshot->MaterialAvailability() == api::Availability::Partial,
             "negative nonresident coordinate was not represented as unknown");
-    const int64_t far = int64_t{1} << 55;
+    // Keep room below the 49-bit chunk-coordinate limit when ChunkEdge is 64.
+    const int64_t far = (int64_t{1} << 55) - 8192;
     const auto farPositive = session.Observe(NativeCaller::Debug, {{far, far}, 8, 8});
     const auto farNegative = session.Observe(NativeCaller::Debug, {{-far, -far}, 8, 8});
     Require(farPositive.Status == api::ObservationStatus::Available && farPositive.Snapshot
@@ -102,8 +103,8 @@ void FarResidentProjectionAndChunkLifecycle() {
     GameSession session;
     auto &world = testing::SessionAccess::World(session);
     world.DiscardStreaming();
-    const int64_t baseX = (int64_t{1} << 55) + 17;
-    const int64_t baseY = -(int64_t{1} << 55) - 17;
+    const int64_t baseX = (int64_t{1} << 55) - 8192 + 17;
+    const int64_t baseY = -((int64_t{1} << 55) - 8192) - 17;
     const CellCoord base{baseX, baseY};
     const auto chunk = ChunkOf(base);
     testing::WorldAccess::Map(world).Insert(std::make_unique<WorldChunk>(chunk));
@@ -164,6 +165,10 @@ void PendingStepUsesOnlyCompleteCopies() {
     testing::SessionAccess::PublishFixtureChanges(session);
     session.Control(NativeCaller::Driver, api::SetPaused{false});
 
+    const auto source = world.InstallFieldSource(999, {WorldPosition::FromAbsolute(100, 100), 2, {100, 0}, 20});
+    Require(source.has_value(), "pending source setup failed");
+    testing::SessionAccess::PublishFixtureChanges(session);
+
     const api::Rect scope{{64, 64}, 64, 64};
     world.WaitForStreaming();
     world.WaitForStreaming();
@@ -176,6 +181,7 @@ void PendingStepUsesOnlyCompleteCopies() {
     const auto frozenStamp = Available(initial).Stamp;
     const auto sampleIndex = size_t(100 - scope.Origin.Y) * scope.Width + size_t(100 - scope.Origin.X);
     const auto frozenWind = Available(initial).Cells[sampleIndex].AirVelocity;
+    const auto frozenSource = Available(initial).Gameplay.FieldSources.at(0);
     Require(frozenWind.has_value(), "pending fixture air cell was not sampled");
     world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
     session.Tick(.1f, {1, false});
@@ -199,6 +205,9 @@ void PendingStepUsesOnlyCompleteCopies() {
                 && session.ObservationStats().WindCellsSampled == unchangedMetrics.WindCellsSampled
                 && Available(retry).Cells[sampleIndex].AirVelocity == frozenWind,
             "pending retry changed the complete snapshot or sampled its contents");
+    Require(Available(retry).Gameplay.Stamp == stamp
+        && Available(retry).Gameplay.FieldSources.at(0).RemainingSteps == frozenSource.RemainingSteps,
+        "pending step leaked uncommitted source lifetime");
     world.SetPublicationBytes(0);
     session.Control(NativeCaller::Driver, api::StepSimulation{});
     session.Tick(.2f, {-1, true});
