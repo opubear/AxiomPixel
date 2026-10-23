@@ -62,14 +62,31 @@ const char *RequestStatusName(will::RequestStatus status) {
     throw std::logic_error("unknown world will request status");
 }
 
-void DrawPrayer(const api::PrayerRecord &prayer) {
+void DrawPrayer(const api::PrayerRecord &prayer, will::WorldWill &worldWill, std::string &receipt) {
     ImGui::Text("Prayer #%llu: %s", static_cast<unsigned long long>(prayer.Id), will::DecisionStateName(prayer.State));
     ImGui::TextDisabled("Observed tick %llu / revision %llu; resolved tick %llu / revision %llu",
         static_cast<unsigned long long>(prayer.ObservedAt.Tick), static_cast<unsigned long long>(prayer.ObservedAt.Revision),
         static_cast<unsigned long long>(prayer.ResolvedAt.Tick), static_cast<unsigned long long>(prayer.ResolvedAt.Revision));
     ImGui::Text("Scope: (%lld, %lld), %u x %u cells", static_cast<long long>(prayer.Scope.Origin.X),
         static_cast<long long>(prayer.Scope.Origin.Y), prayer.Scope.Width, prayer.Scope.Height);
+    ImGui::TextWrapped("Player prayer: %s", prayer.Prayer.empty() ? "(none; fixed home-aid request)" : prayer.Prayer.c_str());
+    if (prayer.State == api::DecisionState::Thinking)
+        ImGui::TextUnformatted("Status: in flight; no game action.");
+    else if (prayer.State == api::DecisionState::Ready)
+        ImGui::TextWrapped("Status: model proposal, not applied. Resume simulation to submit it.");
+    else if (prayer.State == api::DecisionState::Applied)
+        ImGui::TextUnformatted("Status: action occurred; current lease is shown below.");
+    else if (prayer.State == api::DecisionState::Rejected)
+        ImGui::TextUnformatted("Status: rejected by the game.");
+    else ImGui::TextUnformatted("Status: finished without a game action.");
     if (!prayer.Explanation.empty()) ImGui::TextWrapped("Model explanation: %s", prayer.Explanation.c_str());
+    if (prayer.State == api::DecisionState::Thinking || prayer.State == api::DecisionState::Ready) {
+        const auto label = "Cancel prayer##" + std::to_string(prayer.Id);
+        if (ImGui::Button(label.c_str()))
+            receipt = worldWill.CancelPrayer(prayer.Id, prayer.ObservedAt)
+                ? "Prayer cancellation requested; waiting for a safe committed result."
+                : "Prayer is no longer cancellable in this world.";
+    }
     if (prayer.Action) {
         ImGui::Text("Action request #%llu: %s", static_cast<unsigned long long>(prayer.Action->Sequence),
             prayer.State == api::DecisionState::Applied ? "Applied" : api::ReasonName(prayer.Rejection));
@@ -81,7 +98,7 @@ void DrawPrayer(const api::PrayerRecord &prayer) {
     } else ImGui::TextDisabled("No committed game action.");
 }
 
-void DrawWorldWillState(const api::GameplayObservation &published) {
+void DrawWorldWillState(const api::GameplayObservation &published, will::WorldWill &worldWill, std::string &receipt) {
     const auto &memory = published.WorldWill;
     ImGui::Text("Aid accepted: %llu; autonomy: %s", static_cast<unsigned long long>(memory.AidAccepted),
         memory.AutonomyChosen ? "chosen" : "not chosen");
@@ -90,9 +107,9 @@ void DrawWorldWillState(const api::GameplayObservation &published) {
     ImGui::Text("Global permission: observe %s / intervene %s", published.AllowObservation ? "yes" : "no",
         published.AllowIntervention ? "yes" : "no");
     if (!memory.Records.empty()) {
-        DrawPrayer(memory.Records.back());
+        DrawPrayer(memory.Records.back(), worldWill, receipt);
         if (memory.Records.size() > 1 && ImGui::TreeNode("Earlier prayers")) {
-            for (size_t i = 0; i + 1 < memory.Records.size(); ++i) DrawPrayer(memory.Records[i]);
+            for (size_t i = 0; i + 1 < memory.Records.size(); ++i) DrawPrayer(memory.Records[i], worldWill, receipt);
             ImGui::TreePop();
         }
     }
@@ -115,18 +132,24 @@ void DrawWorldWillState(const api::GameplayObservation &published) {
 }
 
 void DrawHomeAid(GameSession &session, will::WorldWill &worldWill, const api::GameplayObservation &published,
-                 const api::DeviceObservation &device, std::string &receipt) {
+                 const api::DeviceObservation &device, ForceGardenUIState &state) {
+    auto &receipt = state.Receipt;
     ImGui::Separator();
-    ImGui::TextWrapped("5. Request temporary offline help at this emitter, or install protection to choose autonomy. Protection blocks observation and intervention only while the emitter is enabled; it also revokes an existing aid lease.");
-    if (ImGui::Button("Pray for home aid (offline)")) {
+    ImGui::TextWrapped("5. Request temporary help at this emitter, or install protection to choose autonomy. Protection blocks observation and intervention only while the emitter is enabled; it also revokes an existing aid lease.");
+    const auto modelName = worldWill.ModelName();
+    ImGui::Text("Model adapter: %.*s", int(modelName.size()), modelName.data());
+    ImGui::InputText("Prayer text", state.Prayer.data(), state.Prayer.size());
+    ImGui::TextDisabled("Player text: %zu / %zu bytes. Target, program and permissions stay fixed.",
+        std::char_traits<char>::length(state.Prayer.data()), api::WorldWillMemory::PrayerBytes);
+    if (ImGui::Button("Pray for home aid")) {
         const auto applied = session.ApplyProcess(NativeCaller::Debug, GardenAidProgram());
         if (!applied) receipt = "Home prayer: program rejected. " + applied.Message;
         else {
             const api::Rect scope{{device.Anchor.X - 16, device.Anchor.Y - 16}, 34, 34};
-            const auto request = worldWill.Request({scope, device.Anchor, device.Ref.Id});
+            const auto request = worldWill.Request({scope, device.Anchor, device.Ref.Id, state.Prayer.data()});
             receipt = std::string("Home prayer: ") + RequestStatusName(request.Status) + ".";
             if (request.Status == will::RequestStatus::Accepted)
-                receipt += " Offline model is preparing a proposal. Resume simulation to submit it; a proposal is not an applied action.";
+                receipt += " Model is preparing a proposal. Resume simulation to submit it; a proposal is not an applied action.";
         }
     }
     const auto protection = std::find_if(published.Protections.begin(), published.Protections.end(),
@@ -143,7 +166,8 @@ void DrawHomeAid(GameSession &session, will::WorldWill &worldWill, const api::Ga
 } // namespace
 
 void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, will::WorldWill &worldWill,
-                      std::string &receipt) {
+                      ForceGardenUIState &state) {
+    auto &receipt = state.Receipt;
     if (!ImGui::CollapsingHeader("Force garden"))
         return;
     ImGui::TextWrapped("Observe the wild crystal, reproduce its force at the home bed, then sustain growth with a coal-powered emitter.");
@@ -198,9 +222,9 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
                 RecordAction(receipt, "Supply home 8 coal", session.Execute(NativeCaller::Debug, api::SupplyDevice{device->Ref, 8}));
             if (ImGui::Button(device->Enabled ? "Disable home emitter" : "Enable home emitter"))
                 RecordAction(receipt, "Toggle home emitter", session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device->Ref, !device->Enabled}));
-            DrawHomeAid(session, worldWill, *published, *device, receipt);
+            DrawHomeAid(session, worldWill, *published, *device, state);
         }
-        DrawWorldWillState(*published);
+        DrawWorldWillState(*published, worldWill, receipt);
         ImGui::TextWrapped("Leaving the active island freezes both beds and their sources. Clear running also disables the natural crystal; create a new garden to restart it.");
     } else {
         ImGui::TextDisabled("Create a garden to begin. The current world is saved first.");

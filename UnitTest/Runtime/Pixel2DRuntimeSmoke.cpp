@@ -9,6 +9,7 @@
 #include "Application/PixelGame.h"
 #include "Gameplay/FormulaBridge/ProcessExample.h"
 #include "Gameplay/Home/GardenAidProgram.h"
+#include "LLM/Testing/FakeModel.h"
 #include "Asset/Loaders/AssetLoader.h"
 #include "Assets/ArtAssets.h"
 #include "PixelRender/BackgroundView.h"
@@ -837,7 +838,11 @@ void FormulaGameplayGpu() {
 }
 
 void ForceGardenGameplayGpu(bool aid = false) {
-    auto game = std::make_unique<PixelGame>(false);
+    // This fixture measures the rendered effect of guaranteed aid. The normal
+    // PseudoLLM may legitimately choose NoAction and is covered separately.
+    std::unique_ptr<pixel::llm::LLM> model;
+    if (aid) model = std::make_unique<pixel::llm::FakeModel>();
+    auto game = std::make_unique<PixelGame>(false, std::move(model));
     auto *input = game.get();
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
     input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;

@@ -1,5 +1,5 @@
 #include "Gameplay/GameSession.h"
-#include "WorldWill/FakeModel.h"
+#include "LLM/Testing/FakeModel.h"
 #include "WorldWill/WorldWill.h"
 #include <iostream>
 #include <thread>
@@ -13,7 +13,7 @@ int main() {
         "await result within ticks(1); wait ticks(1000);");
     if (!session.ApplyProcess(NativeCaller::Driver, std::get<formula::process::ProgramArtifact>(compiled))) return 1;
     session.Control(NativeCaller::Driver, api::SetPaused{false});
-    will::FakeModel model;
+    llm::FakeModel model;
     will::WorldWill decisions(session, model);
     model.EnqueuePlan({0ms, true});
     const auto request = decisions.Request({{{80, 80}, 40, 40}, {100, 100}, {}});
@@ -26,8 +26,8 @@ int main() {
     std::cout << "model pending=" << model.Statistics().Pending
               << "; simulation tick=" << session.CurrentCommit().Tick << '\n';
     model.Release(request.Id);
-    const auto deadline = will::Clock::now() + 3s;
-    while (decisions.Results().empty() && will::Clock::now() < deadline) {
+    const auto deadline = llm::Clock::now() + 3s;
+    while (decisions.Results().empty() && llm::Clock::now() < deadline) {
         decisions.Service();
         std::this_thread::sleep_for(1ms);
     }

@@ -64,7 +64,9 @@
 | 可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | M4.8天然晶体、真实资源、设备与植物条件响应、冻结存档、试玩和验证 | |
 | 发现知识、重要历史与派生记忆 | `context:GlobalDoc/KnowledgeAndHistory.md` | 有来源档案与授权查询；M5.4知识存档和祈祷激活证据 | |
 | 区域控制与干预撤销 | `context:GlobalDoc/Authority.md` | 能力、保护与租约；M5.4同提交存档、重载核验和设备保护UI | |
-| 异步WorldWill与离线模型闭环 | `context:GlobalDoc/WorldWill.md` | M5.3有界异步决策与资源裁决；M5.4接持久祈祷档案和育圃入口 | |
+| 异步WorldWill与离线决策 | `context:GlobalDoc/WorldWill.md` | 授权观察与受限提案提交、LLM抽象接线、测试worker及生命周期 | |
 | 持久援助、祈祷档案与自主权 | `context:GlobalDoc/PersistentInterventions.md` | M5.4离线育圃援助、保护撤销、同提交知识与权限存档、恢复和来源证据 | |
+| 模型接口与祈祷交互 | `context:GlobalDoc/ModelServiceIntegration.md` | LLM注入、共用API提案协议、玩家原文、取消与Ready；真实服务未接入 | |
+| LLM抽象与随机PseudoLLM | `context:GlobalDoc/LLMAndPseudoLLM.md` | 独立模型生命周期、共用决策API、随机函数组合兜底及验证边界 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

@@ -1,11 +1,11 @@
 #pragma once
-#include "Model.h"
+#include "LLM/LLM.h"
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <thread>
 
-namespace pixel::will {
+namespace pixel::llm {
 struct FakePlan {
     std::chrono::milliseconds Delay{0};
     bool HoldUntilReleased = false;
@@ -18,9 +18,9 @@ struct FakeStatistics {
     bool Closed = false;
 };
 
-// Offline adapter. One worker schedules bounded requests independently, so a
+// Test adapter. One worker schedules bounded requests independently, so a
 // held/slow request does not prevent a later request from completing first.
-class FakeModel final : public ModelPort {
+class FakeModel final : public LLM {
   public:
     FakeModel();
     ~FakeModel() override;
@@ -28,6 +28,7 @@ class FakeModel final : public ModelPort {
     std::optional<ModelReply> Poll() override;
     void Cancel(DecisionId id) override;
     void Close() override;
+    std::string_view DisplayName() const override { return "Test fake model"; }
     bool EnqueuePlan(FakePlan plan);
     bool Release(DecisionId id);
     FakeStatistics Statistics() const;
@@ -45,4 +46,4 @@ class FakeModel final : public ModelPort {
     void Run();
     static ModelReply Decide(const Job &job);
 };
-} // namespace pixel::will
+} // namespace pixel::llm

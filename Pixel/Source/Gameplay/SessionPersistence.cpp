@@ -124,7 +124,8 @@ void GameSession::RestoreSocialData(const GameplaySaveData &data, const std::str
             return stamp.WorldId == worldId && stamp.Tick <= data.Tick && stamp.Revision <= data.Revision;
         };
         if (!validStamp(prayer.ObservedAt)
-            || (prayer.State != api::DecisionState::Thinking && !validStamp(prayer.ResolvedAt)))
+            || (prayer.State != api::DecisionState::Thinking && prayer.State != api::DecisionState::Ready
+                && !validStamp(prayer.ResolvedAt)))
             throw WorldStorageError("prayer belongs to another checkpoint");
         if (prayer.State == api::DecisionState::Applied) {
             if (prayer.EvidenceSequence >= knowledge.NextSequence)
@@ -138,7 +139,7 @@ void GameSession::RestoreSocialData(const GameplaySaveData &data, const std::str
                     throw WorldStorageError("prayer and activation evidence disagree");
             }
         }
-        if (prayer.State == api::DecisionState::Thinking) {
+        if (prayer.State == api::DecisionState::Thinking || prayer.State == api::DecisionState::Ready) {
             prayer.State = api::DecisionState::Interrupted;
             prayer.ResolvedAt = {worldId, Epoch, data.Tick, data.Revision};
             // No worker, timeout, action sequence or pending proposal is resumed.

@@ -13,7 +13,7 @@ void Check(bool value, const char *message) { if (!value) throw std::runtime_err
 
 const char *Field = "process 1; emit field(cells(4), acceleration(100), acceleration(0), ticks(1200)); "
     "await result within ticks(1); wait ticks(1000);";
-const will::Goal CellGoal{{{92, 92}, 32, 32}, {100, 100}, {}};
+const llm::Goal CellGoal{{{92, 92}, 32, 32}, {100, 100}, {}};
 
 void Apply(GameSession &session, std::string_view source = Field) {
     const auto program = formula::process::Compile("world-will-test", source);
@@ -23,28 +23,29 @@ void Apply(GameSession &session, std::string_view source = Field) {
 
 // This adapter deliberately permits late and repeated replies after cancellation.
 // The controller must reject them even when an external adapter fails to retract work.
-class ManualModel final : public will::ModelPort {
+class ManualModel final : public llm::LLM {
   public:
     bool Accept = true, Closed = false;
-    std::vector<will::ModelInput> Inputs;
-    std::deque<will::ModelReply> Replies;
-    std::vector<will::DecisionId> Cancelled;
+    std::vector<llm::ModelInput> Inputs;
+    std::deque<llm::ModelReply> Replies;
+    std::vector<llm::DecisionId> Cancelled;
 
-    bool TryStart(will::ModelInput input) override {
+    std::string_view DisplayName() const override { return "Manual test model"; }
+    bool TryStart(llm::ModelInput input) override {
         if (!Accept || Closed) return false;
         Inputs.push_back(std::move(input));
         return true;
     }
-    std::optional<will::ModelReply> Poll() override {
+    std::optional<llm::ModelReply> Poll() override {
         if (Replies.empty()) return {};
         auto reply = std::move(Replies.front());
         Replies.pop_front();
         return reply;
     }
-    void Cancel(will::DecisionId id) override { Cancelled.push_back(id); }
+    void Cancel(llm::DecisionId id) override { Cancelled.push_back(id); }
     void Close() override { Closed = true; }
-    void Reply(will::DecisionId id, will::Proposal proposal = {will::ProposalKind::AtCell, {100, 100}, 0}) {
-        Replies.push_back({id, will::ModelStatus::Proposed, proposal, "derived model explanation"});
+    void Reply(llm::DecisionId id, llm::Proposal proposal = {llm::ProposalKind::AtCell, {100, 100}, 0}) {
+        Replies.push_back({id, llm::ModelStatus::Proposed, proposal, "derived model explanation"});
     }
 };
 
@@ -61,6 +62,14 @@ class Host final : public api::WorldWillHost {
         status.Pending = status.Pending || Pending;
         status.Ready = status.Ready && !NotReady;
         return status;
+    }
+    uint64_t BeginPrayer(const api::CommitStamp &stamp, api::Rect scope, std::string prayer) override {
+        return Session.BeginPrayer(stamp, scope, std::move(prayer));
+    }
+    void ResolvePrayer(uint64_t id, api::DecisionState state, std::string explanation,
+                       const std::optional<api::ActionReceipt> &receipt) override {
+        Check(!Pending && !NotReady, "prayer lifecycle escaped the complete host boundary");
+        Session.ResolvePrayer(id, state, std::move(explanation), receipt);
     }
     api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request) override {
         ++Submissions;
@@ -80,7 +89,7 @@ struct Fixture {
     Host Source;
     ManualModel Model;
     will::WorldWill Will{Source, Model};
-    will::Clock::time_point Now = will::Clock::time_point{} + 1s;
+    llm::Clock::time_point Now = llm::Clock::time_point{} + 1s;
 
     Fixture() {
         Apply(Source.Session);
@@ -89,13 +98,13 @@ struct Fixture {
     void Pause(bool paused) {
         Check(Source.Session.Control(NativeCaller::Driver, api::SetPaused{paused}).Succeeded(), "set paused");
     }
-    will::DecisionId Request(will::Goal goal = CellGoal) {
+    llm::DecisionId Request(llm::Goal goal = CellGoal) {
         const auto result = Will.Request(goal, Now);
         Check(result.Status == will::RequestStatus::Accepted && result.Id, "decision request rejected");
         return result.Id;
     }
     void Service(std::chrono::milliseconds elapsed = 1ms) { Now += elapsed; Will.Service(Now); }
-    const will::DecisionResult &Result(will::DecisionId id) const {
+    const will::DecisionResult &Result(llm::DecisionId id) const {
         const auto &results = Will.Results();
         const auto found = std::find_if(results.begin(), results.end(), [&](const auto &result) { return result.Id == id; });
         Check(found != results.end(), "missing terminal decision");
@@ -111,7 +120,13 @@ struct Fixture {
     }
 };
 
-void CheckApplied(const Fixture &fixture, will::DecisionId id, uint64_t sequence = 1) {
+api::WorldWillMemory Prayers(GameSession &session) {
+    auto view = session.CreateReadView();
+    session.RefreshReadView(*view, {92, 92, 32, 32});
+    return view->Gameplay().WorldWill;
+}
+
+void CheckApplied(const Fixture &fixture, llm::DecisionId id, uint64_t sequence = 1) {
     const auto &result = fixture.Result(id);
     Check(result.State == will::DecisionState::Applied && result.Action && result.Action->Applied(), "decision did not apply");
     const auto &receipt = *result.Action;
@@ -205,7 +220,7 @@ void DeviceCurrentState() {
     for (const bool remove : {true, false}) {
         Fixture f;
         const auto device = f.PlaceDevice();
-        const will::Goal goal{{{84, 84}, 34, 34}, {}, device.Id};
+        const llm::Goal goal{{{84, 84}, 34, 34}, {}, device.Id};
         const auto id = f.Request(goal);
         Check(f.Model.Inputs.back().Devices.size() == 1 && f.Model.Inputs.back().Devices.front().Ref == device,
             "device proposal lacks captured version");
@@ -215,7 +230,7 @@ void DeviceCurrentState() {
         } else {
             Check(f.Source.Session.Execute(NativeCaller::Input, api::SetDeviceEnabled{device, true}).Applied(), "change target version");
         }
-        f.Model.Reply(id, {will::ProposalKind::AtDevice, {}, device.Id});
+        f.Model.Reply(id, {llm::ProposalKind::AtDevice, {}, device.Id});
         f.Service();
         const auto &result = f.Result(id);
         Check(result.State == will::DecisionState::Rejected && result.Action
@@ -226,7 +241,7 @@ void DeviceCurrentState() {
     Fixture valid;
     const auto device = valid.PlaceDevice();
     const auto id = valid.Request({{{84, 84}, 34, 34}, {}, device.Id});
-    valid.Model.Reply(id, {will::ProposalKind::AtDevice, {}, device.Id});
+    valid.Model.Reply(id, {llm::ProposalKind::AtDevice, {}, device.Id});
     valid.Service();
     CheckApplied(valid, id);
     const auto processes = valid.Source.Session.GetFormulaRuntime().InspectProcesses();
@@ -316,7 +331,7 @@ void HoldUntilSafeBoundary() {
         blocked.Source.Pending = pendingStep;
         blocked.Source.NotReady = !pendingStep;
         blocked.Service(5s);
-        Check(blocked.Model.Cancelled == std::vector<will::DecisionId>{blockedId}
+        Check(blocked.Model.Cancelled == std::vector<llm::DecisionId>{blockedId}
             && blocked.Will.Results().empty(), "unsafe boundary delayed worker cancellation or published a terminal result");
         blocked.Model.Reply(blockedId);
         blocked.Service();
@@ -333,10 +348,10 @@ void HoldUntilSafeBoundary() {
 void MalformedAndUnavailableResults() {
     Fixture f;
     const auto watermark = f.Source.Session.FactHighWatermark();
-    const std::array<will::Proposal, 3> invalid{{
-        {will::ProposalKind::AtCell, {200, 200}, 0},
-        {will::ProposalKind::AtDevice, {}, 999},
-        {static_cast<will::ProposalKind>(99), {}, 0}}};
+    const std::array<llm::Proposal, 3> invalid{{
+        {llm::ProposalKind::AtCell, {200, 200}, 0},
+        {llm::ProposalKind::AtDevice, {}, 999},
+        {static_cast<llm::ProposalKind>(99), {}, 0}}};
     for (const auto &proposal : invalid) {
         const auto id = f.Request();
         f.Model.Reply(id, proposal);
@@ -346,14 +361,18 @@ void MalformedAndUnavailableResults() {
     }
     const auto longText = f.Request();
     f.Model.Reply(longText);
-    f.Model.Replies.back().Explanation.assign(will::Limits::ExplanationBytes + 1, 'x');
+    f.Model.Replies.back().Explanation.assign(llm::ModelLimits::ExplanationBytes + 1, 'x');
     f.Service();
     Check(f.Result(longText).State == will::DecisionState::InvalidProposal && f.Result(longText).Explanation.empty(),
         "oversized explanation retained or submitted");
     const auto unavailable = f.Request();
-    f.Model.Replies.push_back({unavailable, will::ModelStatus::Unavailable, {}, "offline"});
+    f.Model.Replies.push_back({unavailable, llm::ModelStatus::Unavailable, {}, "offline"});
     f.Service();
     Check(f.Result(unavailable).State == will::DecisionState::ModelUnavailable, "model failure became gameplay action");
+    const auto invalidStatus = f.Request();
+    f.Model.Replies.push_back({invalidStatus, llm::ModelStatus::Invalid, {}, "malformed provider reply"});
+    f.Service();
+    Check(f.Result(invalidStatus).State == will::DecisionState::InvalidProposal, "invalid provider reply became unavailable or applied");
     const auto none = f.Request();
     f.Model.Reply(none, {});
     f.Service();
@@ -386,18 +405,121 @@ void RequestBoundsAndClose() {
         && f.Source.Submissions == 0 && f.Will.Statistics().Thinking == 0, "closed controller resumed work");
 }
 
+void PlayerTextIsOwnedAndBounded() {
+    Fixture f;
+    Check(f.Will.ModelName() == "Manual test model", "adapter identity did not reach the controller");
+    auto goal = CellGoal;
+    goal.Prayer = "请照顾育圃 🌱\n";
+    goal.Prayer.append(llm::ModelLimits::PrayerBytes - goal.Prayer.size(), 'x');
+    const auto original = goal.Prayer;
+    const auto id = f.Request(goal);
+    goal.Prayer.assign("caller changed its text");
+    Check(f.Model.Inputs.back().Intent.Prayer == original && Prayers(f.Source.Session).Records.back().Prayer == original,
+        "player prayer was truncated or not owned by model input and durable record");
+    const auto withText = f.Model.Inputs.back().RetainedBytes();
+    auto withoutText = f.Model.Inputs.back();
+    std::string{}.swap(withoutText.Intent.Prayer);
+    Check(withText > withoutText.RetainedBytes(), "model memory accounting omitted owned player text");
+    const auto next = Prayers(f.Source.Session).NextPrayer;
+    for (const auto &invalid : {std::string(llm::ModelLimits::PrayerBytes + 1, 'x'), std::string("a\0b", 3),
+        std::string("\x01", 1), std::string("\x7f", 1), std::string("\xc2\x85", 2),
+        std::string("\xc0\xaf", 2), std::string("\xed\xa0\x80", 3), std::string("\xf4\x90\x80\x80", 4),
+        std::string("\xe4\xbd", 2)}) {
+        goal.Prayer = invalid;
+        Check(f.Will.Request(goal, f.Now).Status == will::RequestStatus::InvalidGoal,
+            "unbounded or non-text prayer reached the model");
+    }
+    Check(f.Model.Inputs.size() == 1 && Prayers(f.Source.Session).NextPrayer == next,
+        "rejected player text allocated a worker request or durable identity");
+    f.Model.Reply(id);
+    f.Pause(true);
+    f.Service();
+    const auto ready = Prayers(f.Source.Session).Records.back();
+    Check(ready.State == api::DecisionState::Ready && ready.Prayer == original && !ready.Action
+        && ready.Facts.Count == 0 && ready.ResolvedAt == api::CommitStamp{} && !ready.Explanation.empty(),
+        "ready proposal became action evidence or lost its player source");
+    const auto revision = f.Source.Session.CurrentCommit().Revision;
+    f.Service();
+    Check(f.Source.Session.CurrentCommit().Revision == revision, "ready publication repeated each service frame");
+    f.Pause(false);
+    f.Service();
+    CheckApplied(f, id);
+    Check(Prayers(f.Source.Session).Records.back().Prayer == original, "terminal result replaced original player text");
+}
+
+void ExplicitCancellationWaitsForCommitAndRejectsLateReplies() {
+    for (const bool pendingStep : {true, false}) {
+        Fixture f;
+        const auto id = f.Request();
+        if (pendingStep) {
+            f.Pause(true);
+            f.Model.Reply(id);
+            f.Service();
+        }
+        const auto before = Prayers(f.Source.Session).Records.back();
+        f.Source.Pending = pendingStep;
+        f.Source.NotReady = !pendingStep;
+        Check(f.Will.CancelPrayer(before.Id, before.ObservedAt) && !f.Will.CancelPrayer(before.Id, before.ObservedAt), "cancel was not admitted exactly once");
+        Check(f.Model.Cancelled == std::vector<llm::DecisionId>{id} && f.Will.Results().empty()
+            && Prayers(f.Source.Session).Records.back().State == before.State,
+            "cancellation waited for the worker or changed an incomplete game commit");
+        f.Model.Reply(id);
+        f.Service();
+        Check(f.Will.Statistics().IgnoredReplies == 1 && f.Source.Submissions == 0 && f.Will.Results().empty(),
+            "cancelled worker's late response was retained or submitted");
+        f.Source.Pending = f.Source.NotReady = false;
+        f.Service();
+        const auto cancelled = Prayers(f.Source.Session).Records.back();
+        Check(f.Result(id).State == api::DecisionState::Cancelled && cancelled.State == api::DecisionState::Cancelled
+            && cancelled.ResolvedAt != api::CommitStamp{} && !cancelled.Action && !cancelled.Facts.Count
+            && f.Model.Cancelled.size() == 1 && f.Source.Submissions == 0,
+            "safe boundary did not publish one cancellation without effects");
+        Check(!f.Will.CancelPrayer(before.Id, before.ObservedAt) && !f.Will.CancelPrayer(0, before.ObservedAt), "terminal or empty prayer remained cancellable");
+    }
+    Fixture current;
+    const auto id = current.Request();
+    const auto prayer = Prayers(current.Source.Session).Records.back();
+    Check(current.Will.CancelPrayer(prayer.Id, prayer.ObservedAt) && current.Result(id).State == api::DecisionState::Cancelled,
+        "complete boundary deferred an explicit cancellation");
+    current.Model.Reply(id);
+    current.Service();
+    Check(current.Source.Submissions == 0, "completed cancellation accepted a late action");
+
+    Fixture changed;
+    const auto old = changed.Request();
+    const auto oldPrayer = Prayers(changed.Source.Session).Records.back();
+    Check(changed.Source.Session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded(), "cancel reset fixture");
+    Check(!changed.Will.CancelPrayer(oldPrayer.Id, oldPrayer.ObservedAt), "old epoch prayer accepted current-world cancellation");
+    Apply(changed.Source.Session);
+    const auto fresh = changed.Request();
+    const auto freshPrayer = Prayers(changed.Source.Session).Records.back();
+    Check(freshPrayer.Id == oldPrayer.Id && freshPrayer.ObservedAt.WorldEpoch != oldPrayer.ObservedAt.WorldEpoch,
+        "new-world cancellation fixture did not reuse the durable prayer number");
+    Check(!changed.Will.CancelPrayer(oldPrayer.Id, oldPrayer.ObservedAt)
+        && std::find(changed.Model.Cancelled.begin(), changed.Model.Cancelled.end(), fresh) == changed.Model.Cancelled.end(),
+        "old UI prayer reference cancelled same-number work in the new world");
+    changed.Service();
+    Check(changed.Result(old).State == will::DecisionState::StaleEpoch
+        && Prayers(changed.Source.Session).Records.back().State == api::DecisionState::Thinking,
+        "stale cancellation resolved a prayer in the new world");
+    changed.Pause(false);
+    changed.Model.Reply(fresh);
+    changed.Service();
+    CheckApplied(changed, fresh);
+}
+
 void TerminalHistoryIsBounded() {
     Fixture f;
-    will::DecisionId first = 0, last = 0;
-    for (size_t i = 0; i < will::Limits::Results + 3; ++i) {
+    llm::DecisionId first = 0, last = 0;
+    for (size_t i = 0; i < llm::ModelLimits::Results + 3; ++i) {
         last = f.Request();
         if (!first) first = last;
         f.Model.Reply(last, {});
         f.Service();
     }
     const auto &results = f.Will.Results();
-    Check(results.size() == will::Limits::Results && results.front().Id != first && results.back().Id == last
-        && f.Will.Statistics().Completed == will::Limits::Results, "terminal history grew without a bound");
+    Check(results.size() == llm::ModelLimits::Results && results.front().Id != first && results.back().Id == last
+        && f.Will.Statistics().Completed == llm::ModelLimits::Results, "terminal history grew without a bound");
     f.Model.Reply(first);
     f.Service();
     Check(f.Source.Submissions == 0 && f.Will.Statistics().IgnoredReplies == 1, "eviction made a retired ID executable again");
@@ -409,6 +531,7 @@ int main() {
         DelayDoesNotStopSimulation(); ReturnOrderAndDuplicateDelivery(); EpochAndDeadline(); DeviceCurrentState();
         PreconditionsAreSpecific(); AuthorityCannotReturnWithLateWork(); HoldUntilSafeBoundary();
         MalformedAndUnavailableResults(); RequestBoundsAndClose(); TerminalHistoryIsBounded();
+        PlayerTextIsOwnedAndBounded(); ExplicitCancellationWaitsForCommitAndRejectsLateReplies();
         std::cout << "world will delay, ordering, current-state admission, revocation, deadlines and lifecycle passed\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }

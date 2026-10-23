@@ -24,10 +24,34 @@ uint64_t GameplayObservation::RetainedBytes() const {
     return bytes;
 }
 
+bool ValidPrayerText(std::string_view text) {
+    if (text.size() > WorldWillMemory::PrayerBytes) return false;
+    for (size_t index = 0; index < text.size();) {
+        const auto first = static_cast<unsigned char>(text[index++]);
+        uint32_t scalar = first, minimum = 0;
+        size_t trailing = 0;
+        if (first >= 0xc2 && first <= 0xdf) { scalar = first & 0x1f; trailing = 1; minimum = 0x80; }
+        else if (first >= 0xe0 && first <= 0xef) { scalar = first & 0x0f; trailing = 2; minimum = 0x800; }
+        else if (first >= 0xf0 && first <= 0xf4) { scalar = first & 0x07; trailing = 3; minimum = 0x10000; }
+        else if (first >= 0x80) return false;
+        if (trailing > text.size() - index) return false;
+        for (size_t byte = 0; byte < trailing; ++byte) {
+            const auto next = static_cast<unsigned char>(text[index++]);
+            if ((next & 0xc0) != 0x80) return false;
+            scalar = (scalar << 6) | (next & 0x3f);
+        }
+        if (scalar < minimum || scalar > 0x10ffff || (scalar >= 0xd800 && scalar <= 0xdfff)) return false;
+        if ((scalar < 0x20 && scalar != '\n' && scalar != '\r' && scalar != '\t')
+            || (scalar >= 0x7f && scalar <= 0x9f)) return false;
+    }
+    return true;
+}
+
 uint64_t WorldWillMemory::RetainedBytes() const {
     uint64_t bytes = sizeof(*this) + Records.capacity() * sizeof(PrayerRecord);
     for (const auto &record : Records)
-        bytes += record.Explanation.capacity() + record.ObservedAt.WorldId.capacity() + record.ResolvedAt.WorldId.capacity() + 3;
+        bytes += record.Explanation.capacity() + record.Prayer.capacity()
+            + record.ObservedAt.WorldId.capacity() + record.ResolvedAt.WorldId.capacity() + 4;
     return bytes;
 }
 

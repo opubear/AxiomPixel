@@ -28,6 +28,8 @@
 | `Pixel/Source/Devices/` | 有界设备集合、版本化身份、建造占用及工作状态值 |
 | `Pixel/Source/Authority/` | 世界意志能力、设备矩形保护与当前授权版本 |
 | `Pixel/Source/Knowledge/` | 有来源的重要历史、玩家发现、有界保留和版本化保存DTO |
+| `Pixel/Source/LLM/` | LLM抽象、共用决策API、随机PseudoLLM与外围模型协议 |
+| `Pixel/Source/WorldWill/` | 授权观测、祈祷生命周期与受限提案的主线程提交 |
 | `Pixel/Source/LLMView/` | 授权冻结查询、JSON交付及与权威事实分离的模型派生摘要 |
 | `Pixel/Source/Input/` | GameInput处理键鼠、控制模式、编辑、相机和重置 |
 | `Pixel/Source/Camera/` | 分段连续世界坐标、跟随、平移、缩放和事件选格 |
@@ -57,7 +59,11 @@ M5.2 已建立[区域控制与干预撤销](.awtcontext/GlobalDoc/Authority.md)�
 
 M5.3 已建立[异步 WorldWill 与离线模型闭环](.awtcontext/GlobalDoc/WorldWill.md)：授权观测复制给有界 worker，主线程在安全边界核验设备、程序和干预资源，保留真实回执与事实。应用已接服务帧和关闭生命周期，不自动发起祈祷，也没有网络模型。
 
-M5.4 的[持久援助与自主权](.awtcontext/GlobalDoc/PersistentInterventions.md)提供试玩入口：F2创建力场育圃，开采并建造家园设备后，点击 `Pray for home aid (offline)`，恢复模拟即可让离线提案经正式动作入口产生临时推力。安装保护并启用设备会撤销援助；已积累成长、援助次数、自主选择及带来源的祈祷档案可保存。未完成推理加载后标为Interrupted，不自动重放。模型说明与实际动作、实例和历史证据分别展示。
+M5.4 的[持久援助与自主权](.awtcontext/GlobalDoc/PersistentInterventions.md)提供试玩入口：F2创建力场育圃，开采并建造家园设备后，点击 `Pray for home aid`，获得援助提案后恢复模拟，即可经正式动作入口产生临时推力（当前随机兜底也可能选择NoAction）。安装保护并启用设备会撤销援助；已积累成长、援助次数、自主选择及带来源的祈祷档案可保存。未完成推理加载后标为Interrupted，不自动重放。模型说明与实际动作、实例和历史证据分别展示。
+
+M5.5 [可替换模型接口与祈祷交互](.awtcontext/GlobalDoc/ModelServiceIntegration.md)增加有界玩家原文、建议未执行的Ready状态、显式取消与跨世界核验，以及独立的受限JSON提案协议。程序可由组合根注入LLM实现。按本轮用户要求暂不接实际模型，网络适配、服务配置和真实连通验收留待后续。
+
+用户追加的 [LLM与PseudoLLM](.awtcontext/GlobalDoc/LLMAndPseudoLLM.md) 将模型抽象独立到 `PixelLLM`。未注入模型时使用 `PseudoLLM`，随机选择“援助”或“等待”的函数组合，通过共用 `DecisionAPI` 提出建议；因此祈祷可能返回 `NoAction`，可以再次请求。实际援助仍经WorldWill与GameAPI核验，测试专用FakeModel保留受控延迟/重复回包能力。
 
 ## 构建和运行
 

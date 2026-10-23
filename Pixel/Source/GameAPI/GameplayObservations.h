@@ -55,7 +55,9 @@ struct FieldSourceObservation {
 };
 
 struct GameplayObservation {
-    static constexpr uint64_t MaximumRetainedBytes = 128 * 1024;
+    // Includes the full prayer archive plus maximum devices, containers,
+    // processes and fields, including retained vector/string capacity.
+    static constexpr uint64_t MaximumRetainedBytes = 192 * 1024;
     CommitStamp Stamp;
     std::vector<InventoryObservation> Inventories;
     std::vector<DeviceObservation> Devices;

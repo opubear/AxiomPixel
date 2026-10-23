@@ -20,8 +20,9 @@ class WorldWillHost : public ObservationSource {
     virtual WorldWillHostStatus WorldWillStatus() const = 0;
     virtual ActionReceipt Submit(CallerSessionId caller, const ActionRequest &request) = 0;
     // Trusted main-thread decision lifecycle, distinct from model proposals.
+    // Ready publishes a proposal without resolving it; other states are terminal.
     // Hosts without a durable game journal may leave these hooks unused.
-    virtual uint64_t BeginPrayer(const CommitStamp &, Rect) { return 0; }
+    virtual uint64_t BeginPrayer(const CommitStamp &, Rect, std::string) { return 0; }
     virtual void ResolvePrayer(uint64_t, DecisionState, std::string, const std::optional<ActionReceipt> &) {}
 };
 } // namespace pixel::api

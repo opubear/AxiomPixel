@@ -6,7 +6,7 @@
 
 namespace pixel::will {
 namespace {
-DecisionId NewDecision() {
+llm::DecisionId NewDecision() {
     static std::atomic<uint64_t> next{1};
     const auto id = next.fetch_add(1);
     if (!id || id == UINT64_MAX) std::terminate();
@@ -14,34 +14,29 @@ DecisionId NewDecision() {
 }
 } // namespace
 
-uint64_t ModelInput::RetainedBytes() const {
-    return sizeof(*this) + ObservedAt.WorldId.capacity() + 1
-        + Materials.capacity() * sizeof(llm::CellSample) + Devices.capacity() * sizeof(api::DeviceObservation);
-}
-
 const char *DecisionStateName(DecisionState state) {
     switch (state) {
 #define WILL_STATE(name) case DecisionState::name: return #name
         WILL_STATE(Thinking); WILL_STATE(Ready); WILL_STATE(Applied); WILL_STATE(Rejected);
         WILL_STATE(NoAction); WILL_STATE(TimedOut); WILL_STATE(StaleEpoch); WILL_STATE(ViewRevoked);
         WILL_STATE(ModelUnavailable); WILL_STATE(InvalidProposal); WILL_STATE(Closed);
-        WILL_STATE(Interrupted);
+        WILL_STATE(Interrupted); WILL_STATE(Cancelled);
 #undef WILL_STATE
     }
     throw std::logic_error("unknown decision state");
 }
 
-WorldWill::WorldWill(api::WorldWillHost &host, ModelPort &model, std::chrono::milliseconds timeout)
+WorldWill::WorldWill(api::WorldWillHost &host, llm::LLM &model, std::chrono::milliseconds timeout)
     : Host(host), Model(model), Views(host), Timeout(timeout) {
     if (timeout.count() <= 0 || timeout > std::chrono::seconds(60)) throw std::invalid_argument("decision timeout outside [1ms,60s]");
 
-    Active.reserve(Limits::InFlight);
+    Active.reserve(llm::ModelLimits::InFlight);
 }
 
 WorldWill::~WorldWill() { Close(); }
 
-void WorldWill::CheckTime(Clock::time_point now) {
-    if (now < LastService || now > Clock::time_point::max() - Timeout)
+void WorldWill::CheckTime(llm::Clock::time_point now) {
+    if (now < LastService || now > llm::Clock::time_point::max() - Timeout)
         throw std::invalid_argument("world will service clock must be monotonic and bounded");
     LastService = now;
 }
@@ -49,18 +44,18 @@ void WorldWill::CheckTime(Clock::time_point now) {
 void WorldWill::Finish(size_t index, DecisionState state, std::optional<api::ActionReceipt> receipt) {
     auto &pending = Active.at(index);
     DecisionResult result{pending.Id, state, pending.ObservedAt, std::move(receipt), {}};
-    if (pending.Reply && pending.Reply->Explanation.size() <= Limits::ExplanationBytes)
+    if (pending.Reply && pending.Reply->Explanation.size() <= llm::ModelLimits::ExplanationBytes)
         result.Explanation = std::move(pending.Reply->Explanation);
     const auto host = Host.WorldWillStatus();
     if (pending.PrayerId && host.Stamp.WorldEpoch == pending.ObservedAt.WorldEpoch && host.Ready && !host.Pending)
         Host.ResolvePrayer(pending.PrayerId, state, result.Explanation, result.Action);
     if (!pending.ModelCancelled) Model.Cancel(pending.Id);
-    if (Completed.size() == Limits::Results) Completed.pop_front();
+    if (Completed.size() == llm::ModelLimits::Results) Completed.pop_front();
     Completed.push_back(std::move(result));
     Active.erase(Active.begin() + index);
 }
 
-RequestResult WorldWill::Observe(Goal goal, const api::WorldWillHostStatus &status, ModelInput &input) {
+RequestResult WorldWill::Observe(llm::Goal goal, const api::WorldWillHostStatus &status, llm::ModelInput &input) {
     llm::Policy policy;
     policy.AuthoritySubject = status.Caller;
     policy.Region = goal.Scope;
@@ -98,23 +93,23 @@ RequestResult WorldWill::Observe(Goal goal, const api::WorldWillHostStatus &stat
         } while (cursor);
     }
     Views.CloseView(Observer, view);
-    if (input.Materials.size() > Limits::Cells || input.Devices.size() > Limits::Devices
-        || input.RetainedBytes() > Limits::InputBytes)
+    if (input.Materials.size() > llm::ModelLimits::Cells || input.Devices.size() > llm::ModelLimits::Devices
+        || input.RetainedBytes() > llm::ModelLimits::InputBytes)
         throw std::logic_error("bounded observation exceeded model input contract");
     return {RequestStatus::Accepted};
 }
 
-RequestResult WorldWill::Request(Goal goal, Clock::time_point now) {
+RequestResult WorldWill::Request(llm::Goal goal, llm::Clock::time_point now) {
     CheckTime(now);
     if (Stopped) return {RequestStatus::Closed};
-    if (Active.size() == Limits::InFlight) return {RequestStatus::Capacity};
+    if (Active.size() == llm::ModelLimits::InFlight) return {RequestStatus::Capacity};
     const auto status = Host.WorldWillStatus();
     if (!status.Ready || status.Pending) return {RequestStatus::NotReady};
     if (!llm::ValidRect(goal.Scope) || goal.Scope.Width > 64 || goal.Scope.Height > 64
         || (!goal.Device && !llm::Contains(goal.Scope, {goal.Target, 1, 1}))
-        || (goal.Device && !*goal.Device)) return {RequestStatus::InvalidGoal};
+        || (goal.Device && !*goal.Device) || !api::ValidPrayerText(goal.Prayer)) return {RequestStatus::InvalidGoal};
 
-    ModelInput input;
+    llm::ModelInput input;
     input.Intent = goal;
     input.OfferedProgram = status.Program;
     input.Resources = status.Resources;
@@ -128,19 +123,35 @@ RequestResult WorldWill::Request(Goal goal, Clock::time_point now) {
     Pending pending{input.Id, input.ObservedAt, status.Caller, authorization.Version, goal,
         status.Program, status.Resources, input.Devices, now + Timeout, {}};
     if (!Model.TryStart(std::move(input))) return {RequestStatus::ModelBusy};
-    pending.PrayerId = Host.BeginPrayer(pending.ObservedAt, goal.Scope);
+    pending.PrayerId = Host.BeginPrayer(pending.ObservedAt, goal.Scope, goal.Prayer);
     Active.push_back(std::move(pending));
     return {RequestStatus::Accepted, Active.back().Id};
 }
 
+bool WorldWill::CancelPrayer(uint64_t durablePrayerId, const api::CommitStamp &observed) {
+    if (Stopped || !durablePrayerId) return false;
+    const auto status = Host.WorldWillStatus();
+    const auto found = std::find_if(Active.begin(), Active.end(), [&](const auto &pending) {
+        return pending.PrayerId == durablePrayerId && pending.ObservedAt == observed
+            && pending.ObservedAt.WorldEpoch == status.Stamp.WorldEpoch
+            && pending.ObservedAt.WorldId == status.Stamp.WorldId && pending.Caller == status.Caller;
+    });
+    if (found == Active.end() || found->ModelCancelled) return false;
+    found->CancelRequested = true;
+    found->ModelCancelled = true;
+    Model.Cancel(found->Id);
+    if (status.Ready && !status.Pending) Finish(size_t(found - Active.begin()), DecisionState::Cancelled);
+    return true;
+}
+
 std::optional<api::Action> WorldWill::ActionFor(const Pending &pending) const {
     const auto &proposal = pending.Reply->Choice;
-    if (proposal.Kind == ProposalKind::AtCell) {
+    if (proposal.Kind == llm::ProposalKind::AtCell) {
         if (!llm::Contains(pending.Intent.Scope, {proposal.Target, 1, 1})) return {};
         return api::InstallIntervention{pending.Program, proposal.Target, pending.Intent.Scope, pending.Resources.Version};
     }
 
-    if (proposal.Kind == ProposalKind::AtDevice) {
+    if (proposal.Kind == llm::ProposalKind::AtDevice) {
         const auto found = std::find_if(pending.Devices.begin(), pending.Devices.end(),
             [&](const auto &device) { return device.Ref.Id == proposal.DeviceId; });
         if (found == pending.Devices.end()) return {};
@@ -151,7 +162,7 @@ std::optional<api::Action> WorldWill::ActionFor(const Pending &pending) const {
     return {};
 }
 
-void WorldWill::Service(Clock::time_point now) {
+void WorldWill::Service(llm::Clock::time_point now) {
     CheckTime(now);
     if (Stopped) return;
     Views.AdvanceServiceFrame();
@@ -162,7 +173,7 @@ void WorldWill::Service(Clock::time_point now) {
         auto reply = Model.Poll();
         if (!reply) break;
         auto found = std::find_if(Active.begin(), Active.end(), [&](const auto &pending) { return pending.Id == reply->Id; });
-        if (found == Active.end() || found->Reply) { ++IgnoredReplies; continue; }
+        if (found == Active.end() || found->Reply || found->ModelCancelled) { ++IgnoredReplies; continue; }
         found->Reply = std::move(reply);
     }
 
@@ -180,21 +191,30 @@ void WorldWill::Service(Clock::time_point now) {
                 pending.ModelCancelled = true;
             }
             ++i;
+        } else if (pending.CancelRequested) {
+            Finish(i, DecisionState::Cancelled);
         } else if (!authorization.Allowed || authorization.Version != pending.AuthorizationVersion) {
             Finish(i, DecisionState::ViewRevoked);
         } else if (now >= pending.Deadline) {
             Finish(i, DecisionState::TimedOut);
         } else if (!pending.Reply) { ++i; }
-        else if (pending.Reply->Explanation.size() > Limits::ExplanationBytes) {
+        else if (pending.Reply->Explanation.size() > llm::ModelLimits::ExplanationBytes) {
             Finish(i, DecisionState::InvalidProposal);
-        } else if (pending.Reply->Status == ModelStatus::Unavailable) {
+        } else if (pending.Reply->Status == llm::ModelStatus::Unavailable) {
             Finish(i, DecisionState::ModelUnavailable);
-        } else if (pending.Reply->Status != ModelStatus::Proposed) {
+        } else if (pending.Reply->Status != llm::ModelStatus::Proposed) {
             Finish(i, DecisionState::InvalidProposal);
-        } else if (pending.Reply->Choice.Kind == ProposalKind::None) {
+        } else if (pending.Reply->Choice.Kind == llm::ProposalKind::None) {
             Finish(i, DecisionState::NoAction);
-        } else if (status.Paused) { ++i; }
-        else if (const auto action = ActionFor(pending)) {
+        } else if (const auto action = ActionFor(pending)) {
+            if (status.Paused) {
+                if (pending.PrayerId && !pending.PrayerReady) {
+                    Host.ResolvePrayer(pending.PrayerId, DecisionState::Ready, pending.Reply->Explanation, {});
+                    pending.PrayerReady = true;
+                }
+                ++i;
+                continue;
+            }
             // No equality check against the global revision: the action owns
             // program/device/resource preconditions and rechecks current control.
             auto receipt = Host.Submit(pending.Caller, {pending.ObservedAt.WorldEpoch, status.NextSequence, *action});
@@ -207,7 +227,7 @@ void WorldWill::Service(Clock::time_point now) {
 void WorldWill::Close() {
     if (Stopped) return;
     Stopped = true;
-    while (!Active.empty()) Finish(0, DecisionState::Closed);
+    while (!Active.empty()) Finish(0, Active.front().CancelRequested ? DecisionState::Cancelled : DecisionState::Closed);
     if (Observer) { Views.RemoveObserver(Observer); Observer = 0; }
     Model.Close();
 }

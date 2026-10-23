@@ -1,5 +1,6 @@
 #pragma once
-#include "Model.h"
+#include "LLM/LLM.h"
+#include "GameAPI/WorldWillHost.h"
 #include <deque>
 
 namespace pixel::will {
@@ -8,11 +9,11 @@ const char *DecisionStateName(DecisionState state);
 enum class RequestStatus { Accepted, Closed, Capacity, NotReady, InvalidGoal, ObservationDenied, ModelBusy };
 struct RequestResult {
     RequestStatus Status = RequestStatus::NotReady;
-    DecisionId Id = 0;
+    llm::DecisionId Id = 0;
     llm::Status Observation = llm::Status::Ok;
 };
 struct DecisionResult {
-    DecisionId Id = 0;
+    llm::DecisionId Id = 0;
     DecisionState State = DecisionState::Thinking;
     api::CommitStamp ObservedAt;
     std::optional<api::ActionReceipt> Action;
@@ -24,43 +25,45 @@ struct Metrics { size_t Thinking = 0, Ready = 0, Completed = 0; uint64_t Ignored
 // this host-thread object can turn proposals into current-state game actions.
 class WorldWill {
   public:
-    WorldWill(api::WorldWillHost &host, ModelPort &model, std::chrono::milliseconds timeout = std::chrono::seconds(5));
+    WorldWill(api::WorldWillHost &host, llm::LLM &model, std::chrono::milliseconds timeout = std::chrono::seconds(5));
     ~WorldWill();
     WorldWill(const WorldWill &) = delete;
     WorldWill &operator=(const WorldWill &) = delete;
-    RequestResult Request(Goal goal, Clock::time_point now = Clock::now());
-    void Service(Clock::time_point now = Clock::now());
+    RequestResult Request(llm::Goal goal, llm::Clock::time_point now = llm::Clock::now());
+    bool CancelPrayer(uint64_t durablePrayerId, const api::CommitStamp &observed);
+    std::string_view ModelName() const { return Model.DisplayName(); }
+    void Service(llm::Clock::time_point now = llm::Clock::now());
     void Close();
     const std::deque<DecisionResult> &Results() const { return Completed; }
     Metrics Statistics() const;
 
   private:
     struct Pending {
-        DecisionId Id = 0;
+        llm::DecisionId Id = 0;
         api::CommitStamp ObservedAt;
         uint64_t Caller = 0, AuthorizationVersion = 0;
-        Goal Intent;
+        llm::Goal Intent;
         api::ProgramRef Program;
         api::InterventionResources Resources;
         std::vector<api::DeviceObservation> Devices;
-        Clock::time_point Deadline;
-        std::optional<ModelReply> Reply;
+        llm::Clock::time_point Deadline;
+        std::optional<llm::ModelReply> Reply;
         uint64_t PrayerId = 0;
-        bool ModelCancelled = false;
+        bool ModelCancelled = false, CancelRequested = false, PrayerReady = false;
     };
     api::WorldWillHost &Host;
-    ModelPort &Model;
+    llm::LLM &Model;
     llm::ViewService Views;
     llm::ObserverId Observer = 0;
     uint64_t BoundCaller = 0, IgnoredReplies = 0;
     std::chrono::milliseconds Timeout;
-    Clock::time_point LastService{};
+    llm::Clock::time_point LastService{};
     bool Stopped = false;
     std::vector<Pending> Active;
     std::deque<DecisionResult> Completed;
-    void CheckTime(Clock::time_point now);
+    void CheckTime(llm::Clock::time_point now);
     void Finish(size_t index, DecisionState state, std::optional<api::ActionReceipt> receipt = {});
-    RequestResult Observe(Goal goal, const api::WorldWillHostStatus &status, ModelInput &input);
+    RequestResult Observe(llm::Goal goal, const api::WorldWillHostStatus &status, llm::ModelInput &input);
     std::optional<api::Action> ActionFor(const Pending &pending) const;
 };
 } // namespace pixel::will

@@ -45,7 +45,7 @@ class GameSession : public api::WorldWillHost {
     api::ObservationAuthorization AuthorizeObservation(uint64_t subject, api::Rect scope) const override;
     const authority::Control &GetAuthority() const { return Authority; }
     api::WorldWillHostStatus WorldWillStatus() const override;
-    uint64_t BeginPrayer(const api::CommitStamp &observed, api::Rect scope) override;
+    uint64_t BeginPrayer(const api::CommitStamp &observed, api::Rect scope, std::string prayer) override;
     void ResolvePrayer(uint64_t id, api::DecisionState state, std::string explanation,
                        const std::optional<api::ActionReceipt> &receipt) override;
     api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request) override;

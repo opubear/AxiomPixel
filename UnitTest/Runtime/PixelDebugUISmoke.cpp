@@ -5,6 +5,7 @@
 #include "InputManager.h"
 #include "Application/PixelGame.h"
 #include "Gameplay/Home/ForceGardenProgram.h"
+#include "LLM/Testing/FakeModel.h"
 #include "Render/RenderGlobalContext.h"
 #include "SystemEnum.h"
 #include "DebugUI/ImguiManager.h"
@@ -344,6 +345,8 @@ void CheckMemoryPanel(Axiom &app) {
 void RunPixelDebugUISmoke() {
     auto game = std::make_unique<PixelGame>(false);
     auto *pixel = game.get();
+    Require(pixel->GetWorldWill().ModelName() == "PseudoLLM (random offline decisions)",
+            "default game did not select the offline PseudoLLM");
     pixel->SetControlMode(PixelGame::ControlMode::DebugCamera);
     PixelSmokeApplication app(std::move(game), {true});
     auto &engine = *app.Engine;
@@ -591,7 +594,9 @@ void RunPixelGardenUISmoke() {
 }
 
 void RunPixelGardenAidUISmoke() {
-    auto game = std::make_unique<PixelGame>(false);
+    auto model = std::make_unique<pixel::llm::FakeModel>();
+    auto *offline = model.get();
+    auto game = std::make_unique<PixelGame>(false, std::move(model));
     auto *pixel = game.get();
     PixelSmokeApplication app(std::move(game), {true});
     app.Initialize();
@@ -615,20 +620,43 @@ void RunPixelGardenAidUISmoke() {
             observation().WorldWill.AutonomyChosen, "disabled emitter protection should record autonomy without active coverage");
     Click(app, ControlPoint(app, "Enable home emitter"));
     Require(observation().Protections.front().Active, "enabled emitter did not activate installed protection");
-    Click(app, ControlPoint(app, "Pray for home aid (offline)"));
+    Click(app, ControlPoint(app, "Pray for home aid"));
     const auto denied = CaptureUiText(app);
     RequireUiText(observation().WorldWill.Records.empty() && denied.find("Home prayer: ObservationDenied") != std::string::npos,
         "protected prayer did not report observation denial", denied);
     Click(app, ControlPoint(app, "Remove home protection"));
+    EnterScalar(app, "Prayer text", "Help this home bed.");
+    Require(offline->EnqueuePlan({std::chrono::milliseconds(0), true}), "UI cancellation model plan failed");
+    Click(app, ControlPoint(app, "Pray for home aid"));
+    Require(observation().WorldWill.Records.back().Prayer == "Help this home bed." &&
+        observation().WorldWill.Records.back().State == pixel::api::DecisionState::Thinking,
+        "player text did not reach a held durable prayer through the actual input control");
+    const auto cancelLabel = "Cancel prayer##" + std::to_string(observation().WorldWill.Records.back().Id);
+    Click(app, ControlPoint(app, cancelLabel.c_str()));
+    Require(observation().WorldWill.Records.back().State == pixel::api::DecisionState::Cancelled &&
+        observation().WorldWill.AidAccepted == 0 && observation().InterventionSlots.Available == 4,
+        "production cancel button failed to retire the held prayer without effects");
     const auto beforePrayer = observation().Stamp;
-    Click(app, ControlPoint(app, "Pray for home aid (offline)"));
+    Click(app, ControlPoint(app, "Pray for home aid"));
     Require(session.IsPaused() && observation().Stamp.Tick == beforePrayer.Tick &&
-            observation().WorldWill.Records.size() == 1 && observation().WorldWill.AidAccepted == 0 &&
+            observation().WorldWill.Records.size() == 2 && observation().WorldWill.AidAccepted == 0 &&
             observation().Garden->State.HomeGrowth == 0,
             "prayer button advanced or resumed simulation, applied while paused, or omitted the persistent request");
+    for (int attempt = 0; attempt < 100 &&
+         observation().WorldWill.Records.back().State == pixel::api::DecisionState::Thinking; ++attempt) {
+        Draw(app);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    const auto &ready = observation().WorldWill.Records.back();
+    Require(ready.State == pixel::api::DecisionState::Ready && !ready.Action && ready.Facts.Count == 0 &&
+        ready.ResolvedAt == pixel::api::CommitStamp{} && session.IsPaused(),
+        "returned model proposal was not published as Ready without committed action evidence");
     const auto queued = CaptureUiText(app);
     RequireUiText(queued.find("Resume simulation to submit") != std::string::npos &&
-        queued.find("No committed game action.") != std::string::npos,
+        queued.find("Status: model proposal, not applied.") != std::string::npos &&
+        queued.find("No committed game action.") != std::string::npos &&
+        queued.find("Player prayer: Help this home bed.") != std::string::npos &&
+        queued.find("Model adapter: Test fake model") != std::string::npos,
         "paused prayer UI did not distinguish the proposal from a committed action", queued);
 
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "aid smoke resume failed");
@@ -684,7 +712,7 @@ void RunPixelGardenAidUISmoke() {
     Require(observation().Protections.empty() && observation().WorldWill.AutonomyChosen && observation().WorldWill.AidAccepted == 1,
         "protection removal erased durable relationship choices");
     app.Shutdown();
-    std::cout << "Garden aid ImGui passed: real prayer/protection controls, paused proposal, offline worker, committed instance/field/growth, revocation and frozen publication\n";
+    std::cout << "Garden aid ImGui passed: real player text/prayer/cancel/protection controls, injected offline worker, Ready without action, committed instance/field/growth, revocation and frozen publication\n";
 }
 
 void RunPixelFormulaUISmoke() {

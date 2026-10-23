@@ -70,3 +70,7 @@ M5.2新增[区域控制与干预撤销](GlobalDoc/Authority.md)：世界意志�
 M5.3新增[异步WorldWill与离线模型闭环](GlobalDoc/WorldWill.md)：固定步外取得授权观测副本，真实有界worker生成提案，主线程重新核验设备/程序/资源/权限。最多2个在途决策、4个并发干预槽；超时、旧epoch和重复回包不会重放。应用接入服务帧与关闭，CPU demo可离线演示；没有自动祈祷或模型网络。
 
 M5.4新增[持久援助、祈祷档案与自主权](GlobalDoc/PersistentInterventions.md)：育圃离线祈祷产生真实持续场，设备保护可拒绝/撤销。PixelGameplay 3保存知识、重要历史、权限/资源槽、活跃或冻结干预及有来源的祈祷档案；加载续接程序/场源而不重放，旧推理标为Interrupted。原生UI区分模型文本和实际结果，关系首版仅记录援助次数与自主选择。
+
+M5.5增加[可替换模型接口与祈祷交互](GlobalDoc/ModelServiceIntegration.md)：组合根可注入LLM实现，外围JSON协议严格限制提案；玩家原文、Ready与Cancelled进入v2祈祷存档，旧界面取消绑定原始世界提交。用户本轮明确只定义接口，不接实际服务或凭据。
+
+M5.6按用户追加需求建立[LLM与PseudoLLM](GlobalDoc/LLMAndPseudoLLM.md)：独立LLM生命周期抽象与共用DecisionAPI，运行默认随机选择援助/等待函数组合；FakeModel仅在测试目标保留。模型仍只生成提案，WorldWill按当前权限和游戏状态执行。

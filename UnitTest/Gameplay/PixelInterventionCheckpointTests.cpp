@@ -3,7 +3,7 @@
 #include "Gameplay/Home/GardenAidProgram.h"
 #include "Persistence/GameplaySaveData.h"
 #include "World/WorldStorageError.h"
-#include "WorldWill/FakeModel.h"
+#include "LLM/Testing/FakeModel.h"
 #include "WorldWill/WorldWill.h"
 #include <algorithm>
 #include <chrono>
@@ -33,7 +33,7 @@ struct EnvironmentVariable {
 };
 struct SaveRoot {
     std::filesystem::path Path = std::filesystem::temp_directory_path()
-        / ("pixel-intervention-" + std::to_string(will::Clock::now().time_since_epoch().count()));
+        / ("pixel-intervention-" + std::to_string(llm::Clock::now().time_since_epoch().count()));
     EnvironmentVariable Root{"PIXEL_SAVE_ROOT", Path.string()}, Window{"PIXEL_SIMULATION_WINDOW", "256"};
     ~SaveRoot() { std::filesystem::remove_all(Path); }
 };
@@ -63,17 +63,18 @@ uint64_t SetupGarden(GameSession &session) {
     Check(bool(session.ApplyProcess(NativeCaller::Driver, GardenAidProgram())), "apply aid program");
     return std::get<api::DeviceChanged>(placed.Result).Device.Ref.Id;
 }
-will::Goal Goal(uint64_t device) { return {{{GardenDeviceX - 16, 494}, 34, 34}, {}, device}; }
+const std::string Prayer = "请帮助家园育圃。\nKeep the fixed home target.";
+llm::Goal Goal(uint64_t device) { return {{{GardenDeviceX - 16, 494}, 34, 34}, {}, device, Prayer}; }
 void Wait(will::WorldWill &decisions, size_t completed) {
-    const auto until = will::Clock::now() + 3s;
-    while (decisions.Results().size() < completed && will::Clock::now() < until) {
+    const auto until = llm::Clock::now() + 3s;
+    while (decisions.Results().size() < completed && llm::Clock::now() < until) {
         decisions.Service();
         std::this_thread::sleep_for(1ms);
     }
     Check(decisions.Results().size() == completed, "worker completion timeout");
 }
 uint64_t Aid(GameSession &session, uint64_t device) {
-    will::FakeModel model;
+    llm::FakeModel model;
     will::WorldWill decisions(session, model);
     Check(model.EnqueuePlan({0ms, true, true}), "held duplicate model plan");
     const auto requested = decisions.Request(Goal(device));
@@ -127,7 +128,8 @@ void AidSurvivesRestartAndProtection() {
         Check(loaded.CurrentCommit().Tick == tick && snapshot.Garden->State.HomeGrowth == growth,
             "load advanced garden or simulation");
         Check(snapshot.WorldWill.AidAccepted == 1 && snapshot.WorldWill.Records.size() == 1
-            && snapshot.WorldWill.Records.front().State == api::DecisionState::Applied, "load lost or replayed prayer");
+            && snapshot.WorldWill.Records.front().State == api::DecisionState::Applied
+            && snapshot.WorldWill.Records.front().Prayer == Prayer, "load lost, changed the original text or replayed prayer");
         Check(loaded.CaptureKnowledgeData().NextSequence == history
             && loaded.CaptureKnowledgeData().Discoveries.size() == 1, "knowledge not restored");
         Check(loaded.GetAuthority().Resources().Available == 3, "load minted influence slot");
@@ -176,7 +178,7 @@ void PendingPrayerIsInterrupted() {
     {
         GameSession session(true);
         device = SetupGarden(session);
-        will::FakeModel model;
+        llm::FakeModel model;
         will::WorldWill decisions(session, model);
         Check(model.EnqueuePlan({60s, true}), "held request plan");
         Check(decisions.Request(Goal(device)).Status == will::RequestStatus::Accepted, "held request");
@@ -193,6 +195,57 @@ void PendingPrayerIsInterrupted() {
         "interrupted prayer cannot be resaved");
     Aid(again, device);
     Check(Snapshot(again).WorldWill.NextPrayer == 3, "durable prayer identity reused");
+}
+
+void ReadyPrayerRestoresWithoutCancellingFreshWork() {
+    SaveRoot root;
+    uint64_t device;
+    api::PrayerRecord previousPrayer;
+    {
+        GameSession session(true);
+        device = SetupGarden(session);
+        llm::FakeModel model;
+        will::WorldWill decisions(session, model);
+        Check(decisions.Request(Goal(device)).Status == will::RequestStatus::Accepted, "ready save prayer request");
+        const auto until = llm::Clock::now() + 3s;
+        while (Snapshot(session).WorldWill.Records.back().State != api::DecisionState::Ready && llm::Clock::now() < until) {
+            decisions.Service();
+            std::this_thread::sleep_for(1ms);
+        }
+        const auto ready = Snapshot(session).WorldWill.Records.back();
+        Check(ready.State == api::DecisionState::Ready && !ready.Action && ready.ResolvedAt == api::CommitStamp{},
+            "paused model proposal was not published as unresolved ready state");
+        previousPrayer = ready;
+        Save(session);
+    }
+    {
+        GameSession loaded(true);
+        const auto interrupted = Snapshot(loaded).WorldWill.Records.back();
+        Check(interrupted.State == api::DecisionState::Interrupted && interrupted.Prayer == Prayer && !interrupted.Action,
+            "load replayed a ready proposal or lost original text");
+        llm::FakeModel model;
+        will::WorldWill decisions(loaded, model);
+        Check(model.EnqueuePlan({0ms, true}), "fresh held worker plan");
+        const auto fresh = decisions.Request(Goal(device));
+        Check(fresh.Status == will::RequestStatus::Accepted, "fresh request after ready load");
+        const auto currentPrayer = Snapshot(loaded).WorldWill.Records.back();
+        Check(currentPrayer.Id > previousPrayer.Id && !decisions.CancelPrayer(previousPrayer.Id, previousPrayer.ObservedAt) && model.Release(fresh.Id),
+            "cancelling a restored prayer stopped new work or durable identity was reused");
+        loaded.Control(NativeCaller::Driver, api::SetPaused{false});
+        Wait(decisions, 1);
+        loaded.Control(NativeCaller::Driver, api::SetPaused{true});
+        Check(Snapshot(loaded).WorldWill.AidAccepted == 1 && !decisions.CancelPrayer(currentPrayer.Id, currentPrayer.ObservedAt),
+            "fresh post-load work failed or completed prayer stayed cancellable");
+        Check(model.EnqueuePlan({0ms, true}), "cancel save worker plan");
+        Check(decisions.Request(Goal(device)).Status == will::RequestStatus::Accepted, "cancel save request");
+        const auto cancel = Snapshot(loaded).WorldWill.Records.back();
+        Check(decisions.CancelPrayer(cancel.Id, cancel.ObservedAt), "cancel before save");
+        Save(loaded);
+    }
+    GameSession cancelled(true);
+    Check(Snapshot(cancelled).WorldWill.Records.back().State == api::DecisionState::Cancelled
+        && Snapshot(cancelled).WorldWill.Records.back().Prayer == Prayer,
+        "cancelled prayer or original text did not survive the next checkpoint");
 }
 
 void FrozenLeaseUsesRemainingGlobalTime() {
@@ -300,6 +353,7 @@ int main() {
     try {
         AidSurvivesRestartAndProtection();
         PendingPrayerIsInterrupted();
+        ReadyPrayerRestoresWithoutCancellingFreshWork();
         FrozenLeaseUsesRemainingGlobalTime();
         CorruptCrossDomainStateIsRejected();
         std::cout << "durable prayers, knowledge, interventions, autonomy and cross-domain validation passed\n";

@@ -9,11 +9,11 @@
 
 namespace pixel {
 namespace {
-constexpr size_t MaximumPayloadBytes = 128 * 1024;
+constexpr size_t MaximumPayloadBytes = 256 * 1024;
 constexpr std::array StateTags{
     "thinking", "ready", "applied", "rejected", "no_action", "timed_out", "stale_epoch",
-    "view_revoked", "model_unavailable", "invalid_proposal", "closed", "interrupted"};
-static_assert(StateTags.size() == size_t(api::DecisionState::Interrupted) + 1);
+    "view_revoked", "model_unavailable", "invalid_proposal", "closed", "interrupted", "cancelled"};
+static_assert(StateTags.size() == size_t(api::DecisionState::Cancelled) + 1);
 
 template<class T> void Read(std::istream &in, T &value) {
     in >> std::ws;
@@ -63,12 +63,12 @@ bool EmptyFacts(const api::FactRange &facts) {
 
 void ValidateRecord(const api::PrayerRecord &record) {
     const auto state = record.State;
-    if (uint32_t(state) >= StateTags.size() || state == api::DecisionState::Ready
+    if (uint32_t(state) >= StateTags.size() || !api::ValidPrayerText(record.Prayer)
         || record.Explanation.size() > api::WorldWillMemory::ExplanationBytes
         || !authority::Control::ValidRegion(record.Scope) || !ValidStamp(record.ObservedAt)
         || uint32_t(record.Rejection) > uint32_t(api::Reason::InsufficientItems))
         throw std::invalid_argument("invalid prayer state, text, scope or observation");
-    if (state == api::DecisionState::Thinking) {
+    if (state == api::DecisionState::Thinking || state == api::DecisionState::Ready) {
         if (record.ResolvedAt != api::CommitStamp{}) throw std::invalid_argument("pending prayer already resolved");
     } else if (!ValidStamp(record.ResolvedAt) || record.ResolvedAt.WorldId != record.ObservedAt.WorldId
         || (state != api::DecisionState::Interrupted && record.ResolvedAt.WorldEpoch != record.ObservedAt.WorldEpoch)
@@ -114,20 +114,23 @@ void WriteRecord(std::ostream &out, const api::PrayerRecord &record) {
     WriteStamp(out, record.ObservedAt);
     WriteStamp(out, record.ResolvedAt);
     WriteAll(out, record.Scope.Origin.X, record.Scope.Origin.Y, record.Scope.Width, record.Scope.Height,
-        StateTags[size_t(record.State)], std::quoted(record.Explanation), bool(record.Action));
+        StateTags[size_t(record.State)], std::quoted(record.Prayer), std::quoted(record.Explanation), bool(record.Action));
     if (record.Action) WriteAll(out, record.Action->WorldEpoch, record.Action->Caller, record.Action->Sequence);
     WriteAll(out, record.Facts.WorldEpoch, record.Facts.FirstSequence, record.Facts.Count,
         record.InstanceId, record.EvidenceSequence, uint32_t(record.Rejection));
     out << '\n';
 }
 
-api::PrayerRecord ReadRecord(std::istream &in) {
+api::PrayerRecord ReadRecord(std::istream &in, uint32_t version) {
     api::PrayerRecord record;
     Read(in, record.Id);
     record.ObservedAt = ReadStamp(in);
     record.ResolvedAt = ReadStamp(in);
     ReadAll(in, record.Scope.Origin.X, record.Scope.Origin.Y, record.Scope.Width, record.Scope.Height);
     record.State = ReadState(in);
+    if (version == 1 && (record.State == api::DecisionState::Ready || record.State == api::DecisionState::Cancelled))
+        throw WorldStorageError("world-will state is not supported by checkpoint version");
+    if (version >= 2) record.Prayer = ReadText(in, api::WorldWillMemory::PrayerBytes);
     record.Explanation = ReadText(in, api::WorldWillMemory::ExplanationBytes);
     bool action;
     Read(in, action);
@@ -148,7 +151,7 @@ std::string EncodeWorldWillState(const api::WorldWillMemory &state) {
     Validate(state);
     std::ostringstream out;
     out.imbue(std::locale::classic());
-    out << "PixelWorldWill 1\n";
+    out << "PixelWorldWill 2\n";
     WriteAll(out, state.NextPrayer, state.AidAccepted, state.AutonomyChosen, state.Records.size());
     out << '\n';
     for (const auto &record : state.Records) WriteRecord(out, record);
@@ -162,14 +165,14 @@ api::WorldWillMemory DecodeWorldWillState(std::string_view payload) {
     std::string magic;
     uint32_t version;
     ReadAll(in, magic, version);
-    if (magic != "PixelWorldWill" || version != 1) throw WorldStorageError("unsupported world-will checkpoint");
+    if (magic != "PixelWorldWill" || (version != 1 && version != 2)) throw WorldStorageError("unsupported world-will checkpoint");
 
     api::WorldWillMemory state;
     size_t count;
     ReadAll(in, state.NextPrayer, state.AidAccepted, state.AutonomyChosen, count);
     if (count > api::WorldWillMemory::Capacity) throw WorldStorageError("world-will checkpoint capacity exceeded");
     state.Records.reserve(count);
-    for (size_t index = 0; index < count; ++index) state.Records.push_back(ReadRecord(in));
+    for (size_t index = 0; index < count; ++index) state.Records.push_back(ReadRecord(in, version));
     in >> std::ws;
     if (!in.eof()) throw WorldStorageError("unexpected world-will checkpoint data");
     try { Validate(state); }

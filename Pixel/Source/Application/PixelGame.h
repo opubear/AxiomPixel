@@ -5,17 +5,18 @@
 #include "GamePlay/GameInterface.h"
 #include "Gameplay/GameSession.h"
 #include "LLMView/ViewService.h"
-#include "WorldWill/FakeModel.h"
+#include "LLM/LLM.h"
 #include "WorldWill/WorldWill.h"
 #include "Input/GameInput.h"
 #include "Performance/GameProfiler.h"
 #include "PixelRender/GamePresentation.h"
+#include <memory>
 
 // Engine lifecycle adapter and composition root. Each subsystem owns its state.
 class PixelGame final : public IGameInterface {
   public:
     using ControlMode = pixel::ControlMode;
-    explicit PixelGame(bool persistent = true);
+    explicit PixelGame(bool persistent = true, std::unique_ptr<pixel::llm::LLM> model = {});
     // Input callbacks capture this composition root; its address remains stable.
     PixelGame(const PixelGame &) = delete;
     PixelGame &operator=(const PixelGame &) = delete;
@@ -59,8 +60,8 @@ class PixelGame final : public IGameInterface {
   private:
     pixel::GameSession Session;
     pixel::llm::ViewService ObservationViews{Session};
-    pixel::will::FakeModel Model;
-    pixel::will::WorldWill WorldWill{Session, Model};
+    std::unique_ptr<pixel::llm::LLM> Model;
+    pixel::will::WorldWill WorldWill{Session, *Model};
     pixel::GameCamera Camera;
     pixel::GamePresentation Presentation;
     pixel::ArtAssetStore ArtAssets;

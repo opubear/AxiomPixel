@@ -334,7 +334,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
                                                        std::max(120.f, ImGui::GetIO().DisplaySize.y - 32)});
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
             DrawGeneration(session);
-            DrawForceGardenUI(session, presentation, worldWill, GardenReceipt);
+            DrawForceGardenUI(session, presentation, worldWill, GardenUI);
             DrawActions(session, ActionCell);
             DrawInventory(presentation);
             DrawDevices(session, presentation, DeviceCell, SelectedDevice);

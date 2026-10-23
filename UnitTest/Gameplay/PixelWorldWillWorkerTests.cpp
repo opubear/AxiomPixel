@@ -1,5 +1,5 @@
 #include "Gameplay/GameSession.h"
-#include "WorldWill/FakeModel.h"
+#include "LLM/Testing/FakeModel.h"
 #include "WorldWill/WorldWill.h"
 #include <iostream>
 #include <thread>
@@ -17,18 +17,18 @@ void Configure(GameSession &session) {
     Check(session.Control(NativeCaller::Driver, api::SetPaused{false}).Succeeded(), "unpause fixture");
 }
 
-void WaitForReply(will::FakeModel &model) {
-    const auto deadline = will::Clock::now() + 3s;
-    while (!model.Statistics().Replies && will::Clock::now() < deadline) std::this_thread::sleep_for(1ms);
+void WaitForReply(llm::FakeModel &model) {
+    const auto deadline = llm::Clock::now() + 3s;
+    while (!model.Statistics().Replies && llm::Clock::now() < deadline) std::this_thread::sleep_for(1ms);
     Check(model.Statistics().Replies != 0, "worker failed to publish completion");
 }
 
-const will::Goal Region{{{80, 80}, 40, 40}, {100, 100}, {}};
+const llm::Goal Region{{{80, 80}, 40, 40}, {100, 100}, {}};
 
 void WorkerProgressAndOrder() {
     GameSession session;
     Configure(session);
-    will::FakeModel model;
+    llm::FakeModel model;
     will::WorldWill decisions(session, model);
     Check(model.EnqueuePlan({0ms, true, true}), "queue first held plan");
     Check(model.EnqueuePlan({0ms, true, true}), "queue second held plan");
@@ -67,7 +67,7 @@ void WorkerProgressAndOrder() {
 void DelayUnavailableAndShutdown() {
     GameSession session;
     Configure(session);
-    will::FakeModel model;
+    llm::FakeModel model;
     will::WorldWill decisions(session, model);
     Check(model.EnqueuePlan({25ms, false, false, true}), "queue delayed unavailable plan");
     Check(decisions.Request(Region).Status == will::RequestStatus::Accepted, "start unavailable request");
@@ -78,19 +78,19 @@ void DelayUnavailableAndShutdown() {
 
     Check(model.EnqueuePlan({60s, true}), "queue long held job");
     Check(decisions.Request(Region).Status == will::RequestStatus::Accepted, "start close fixture");
-    const auto start = will::Clock::now();
+    const auto start = llm::Clock::now();
     decisions.Close();
-    Check(will::Clock::now() - start < 1s, "shutdown waited for model delay instead of cancellation");
+    Check(llm::Clock::now() - start < 1s, "shutdown waited for model delay instead of cancellation");
     Check(decisions.Results().back().State == will::DecisionState::Closed && model.Statistics().Closed,
         "close did not retire outstanding work");
     Check(decisions.Request(Region).Status == will::RequestStatus::Closed, "closed controller restarted work");
 }
 
 void BoundedAdapter() {
-    will::FakeModel model;
+    llm::FakeModel model;
     for (int i = 0; i < 8; ++i) Check(model.EnqueuePlan({0ms, true}), "plan capacity too small");
     Check(!model.EnqueuePlan({}), "plan queue unbounded");
-    will::ModelInput first, second, third;
+    llm::ModelInput first, second, third;
     first.Id = 1; second.Id = 2; third.Id = 3;
     Check(model.TryStart(std::move(first)) && model.TryStart(std::move(second)) && !model.TryStart(std::move(third)),
         "worker input queue unbounded");

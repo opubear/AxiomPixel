@@ -2,18 +2,18 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace pixel::will {
+namespace pixel::llm {
 FakeModel::FakeModel() : Worker([this] { Run(); }) {}
 
 FakeModel::~FakeModel() { Close(); }
 
 bool FakeModel::TryStart(ModelInput input) {
-    if (!input.Id || input.RetainedBytes() > Limits::InputBytes)
+    if (!input.Id || input.RetainedBytes() > ModelLimits::InputBytes)
         throw std::invalid_argument("fake model requires a bounded, identified input");
 
     std::lock_guard lock(Mutex);
     // Completed replies also consume capacity until the host drains them.
-    if (Closed || Jobs.size() + Replies.size() >= Limits::InFlight) return false;
+    if (Closed || Jobs.size() + Replies.size() >= ModelLimits::InFlight) return false;
     const auto plan = Plans.empty() ? FakePlan{} : Plans.front();
     if (!Plans.empty()) Plans.pop_front();
     Jobs.push_back({std::move(input), plan, Clock::now() + plan.Delay});
@@ -120,4 +120,4 @@ void FakeModel::Run() {
         ++Completed;
     }
 }
-} // namespace pixel::will
+} // namespace pixel::llm

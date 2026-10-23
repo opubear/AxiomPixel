@@ -1,4 +1,5 @@
 #include "../Support/TestAccess.h"
+#include "Gameplay/FormulaBridge/ProcessHost.h"
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -112,12 +113,53 @@ void ScopeAndNativeOwnership() {
         && reset.Gameplay.FieldSources.empty() && reset.Gameplay.Inventories.size() == 1
         && reset.Gameplay.Inventories[0].Quantity == 0, "epoch replacement retained gameplay values");
 }
+
+void FullDomainsFitPublicationBudget() {
+    api::GameplayObservation values;
+    values.Stamp = {std::string(128, 'w'), 1, 100, 100};
+    api::WorldWillMemory memory;
+    memory.NextPrayer = api::WorldWillMemory::Capacity + 1;
+    for (size_t i = 0; i < api::WorldWillMemory::Capacity; ++i) {
+        api::PrayerRecord prayer;
+        prayer.Id = i + 1;
+        prayer.State = api::DecisionState::NoAction;
+        prayer.ObservedAt = prayer.ResolvedAt = values.Stamp;
+        prayer.Prayer.assign(api::WorldWillMemory::PrayerBytes, 'p');
+        prayer.Explanation.assign(api::WorldWillMemory::ExplanationBytes, 'e');
+        memory.Records.push_back(std::move(prayer));
+    }
+    values.WorldWill = memory;
+
+    // Match publication growth, including the 65th container expanding the
+    // vector. Counting only element sizes misses this legal combined boundary.
+    api::InventoryObservation player;
+    player.Stacks.reserve(items::Definitions().size());
+    for (const auto &item : items::Definitions()) player.Stacks.push_back({uint32_t(item.Id), item.Version, 1, 0});
+    values.Inventories.push_back(std::move(player));
+    for (size_t i = 0; i < Devices::MaximumCount; ++i) {
+        values.Devices.push_back({});
+        api::InventoryObservation fuel;
+        const auto &coal = items::Definition(items::ItemId::Coal);
+        fuel.Stacks.push_back({uint32_t(coal.Id), coal.Version, 1, 0});
+        values.Inventories.push_back(std::move(fuel));
+        values.Protections.push_back({i + 1, {{0, 0}, 34, 34}, false});
+    }
+    for (size_t i = 0; i < ProcessHost::MaximumInstances; ++i) values.Processes.push_back({});
+    for (size_t i = 0; i < FieldSources::Capacity; ++i) values.FieldSources.push_back({});
+
+    const auto bytes = values.RetainedBytes();
+    Check(bytes <= api::GameplayObservation::MaximumRetainedBytes,
+        "legal full prayer archive and gameplay domains exceed publication budget");
+    std::cout << "Maximum gameplay observation: " << bytes << " / "
+        << api::GameplayObservation::MaximumRetainedBytes << " retained bytes\n";
+}
 } // namespace
 
 int main() {
     try {
         SharedCommitAndDomainLifecycle();
         ScopeAndNativeOwnership();
+        FullDomainsFitPublicationBudget();
         std::cout << "Committed gameplay observation contracts passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
