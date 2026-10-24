@@ -70,5 +70,6 @@
 | LLM抽象与随机PseudoLLM | `context:GlobalDoc/LLMAndPseudoLLM.md` | 独立模型生命周期、共用决策API、随机函数组合兜底及验证边界 | |
 | BehaviorDSL必要性与有限决策图实验 | `workspace:Docs/Architecture/BehaviorDecisionExperiment.md` | M6.1同场景表达、诊断和成本对照；暂缓持久DSL的依据与重启门槛 | |
 | 有限决策图Release成本原始数据 | `workspace:Docs/Architecture/BehaviorDecisionBenchmark-2026-10-24.csv` | 三轮原生函数与决策图同输入求值P50/P95及保留字节；不含模型与模拟成本 | |
+| M4持久设备与家园阶段验收 | `context:GlobalDoc/M4Acceptance.md` | 八项子任务整合合同、当前CPU与GPU证据、独立审查、夹具修复及保存恢复边界 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

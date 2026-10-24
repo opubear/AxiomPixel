@@ -165,10 +165,14 @@ void SessionOccupancyAndPublication() {
     actors.Remove(resident);
     Require(session.Execute(NativeCaller::Driver, api::MineRegion{{520, 512}, {}}).Applied(), "fixture mining failed");
     Require(session.Execute(NativeCaller::Driver, api::PlaceMaterial{{100, 101}}).Applied(), "removed actor still blocks placement");
-    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(513.125, 508));
+    const auto destination = WorldPosition::FromAbsolute(513.125, 508);
+    testing::SessionAccess::SetPlayerPosition(session, destination);
     testing::SessionAccess::PublishFixtureChanges(session);
-    Require(view->GetPlayer()->Id == player.Id && view->GetPlayer()->Position.Local != player.Position.Local
-                && player.Position.Local[0] == 511, "player relocation changed identity or mutated a published value");
+    Require(view->GetPlayer()->Id == player.Id && view->GetPlayer()->Position.Chunk == destination.Chunk
+                && view->GetPlayer()->Position.Local == destination.Local, "player relocation changed identity or missed its destination");
+    const auto spawn = WorldPosition::FromAbsolute(511, 508);
+    Require(player.Position.Chunk == spawn.Chunk && player.Position.Local == spawn.Local,
+            "player relocation mutated a published value");
     const auto oldHandle = *actors.Resolve(player.Id);
     session.Control(NativeCaller::Driver, api::ResetWorld{});
     Require(!actors.Find(oldHandle) && view->GetPlayer()->Id != player.Id, "world replacement retained actor handle");

@@ -32,7 +32,7 @@ HostContractVersion与InstanceSnapshot.SchemaVersion升级为2，拒绝旧合同
 
 唯一设备从旧风脉冲发生器更新为推力发生器，类型3001保持，安装程序资源3版本2。每煤维持30个成功tick，程序显式存储安装回传的句柄并停止；设备关闭/拆除还有宿主所有权清理。半径16格、向右3600格/秒²，不要求开启Coarse风。成本、补煤和整批回收规则不变；计数字段Pulses改为Cycles，删除不再适用的OutputUnresolved状态。完整设备合同见[Devices](Devices.md)。
 
-`FieldSourceChanged`事实记录安装/更新/停止的句柄和操作，承接程序/设备因果。到期、取消后的实际场由已提交投影反映；完整来源/设备观察topic留后续任务。
+`FieldSourceChanged`事实记录安装/更新/停止的句柄和操作，承接程序/设备因果。到期、取消后的实际场由已提交投影反映；M4.7已加入有界、按授权与空间裁剪的来源/设备观察主题，见[设备、库存与持续程序观测](GameplayObservation.md)。
 
 ## 验证与测量
 
@@ -74,4 +74,4 @@ cmake --build build-region-release --target PixelFieldSourceBenchmark -j6
 ./build-region-release/bin/Release/PixelFieldSourceBenchmark /private/tmp/pixel-fields.csv
 ```
 
-本轮未跑sanitizer、完整长GPU smoke或AET；引擎未修改，Vulkan validation layer不可用。上述为M4.4验收边界；后续M4.6已接[跨域checkpoint](Checkpoints.md)，来源、设备和库存现可保存恢复。没有实现水/角色受推力、设备碰撞或完整观察topic。
+本轮未跑sanitizer、完整长GPU smoke或AET；引擎未修改，Vulkan validation layer不可用。上述为M4.4验收边界；后续M4.6已接[跨域checkpoint](Checkpoints.md)，来源、设备和库存现可保存恢复，M4.7已接来源/设备观察主题。没有实现水/角色受推力或设备碰撞。

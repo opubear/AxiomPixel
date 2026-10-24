@@ -22,7 +22,7 @@ Policy.Topics只是主题可用性。读取精确库存或设备煤数量还需�
 
 完整Facts含设备煤数等私有事实，因此Facts要求AllInventories；仅某个Owner的授权不足以开放全会话事实。带Region的策略仍不能授予全会话Programs摘要、Runtime或Facts。SetPolicy撤销旧view、游标和未交付结果；每次交付重新核验。已经交付的值不能追溯收回。
 
-公开程序数据不提供配方读取、复制、编辑能力。温度、生态和知识仍为Unsupported。JSON保持64位身份/坐标/tick/数量水位以十进制字符串编码；设备Fuel、物品Quantity等uint32仍是整数。能力目录声明分页单位、已实现主题和实际库存权限，接口不接模型SDK或网络。
+公开程序数据不提供配方读取、复制、编辑能力。温度、生态仍为Unsupported；M5.1已加入独立授权的Knowledge/History主题，见[发现知识与重要历史](KnowledgeAndHistory.md)。JSON保持64位身份/坐标/tick/数量水位以十进制字符串编码；设备Fuel、物品Quantity等uint32仍是整数。能力目录声明分页单位、已实现主题和实际库存权限，接口不接模型SDK或网络。
 
 ## 玩家可见状态
 

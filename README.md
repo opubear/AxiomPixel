@@ -53,6 +53,8 @@ M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSou
 
 M4.8 提供可保存的「力场育圃」小场景：F2展开 `Force garden`，点击 `Save and create force garden` 保存旧世界并创建独立场景。观察左侧晶体和野生植株，应用同一个构式并走近右侧育圃试验；开采面板标出的真实石头、铜和煤，建造、供煤并启用推力设备，取消暂停后观察开花。成长按实际水平加速度与地形条件累计，离开活动区冻结，保存重启接续。创建需要至少128格模拟窗口；R仍创建普通世界。操作、规则与验证见[力场育圃贯穿场景](.awtcontext/GlobalDoc/ForceGarden.md)。
 
+M4 的[阶段验收](.awtcontext/GlobalDoc/M4Acceptance.md)已完成：核对八项子任务的整合边界，复验默认CPU、64格区块专项及真实GPU育圃/UI/关闭保存，并完成独立review。记录包含一个跨区块坐标测试修复、保存中断的验证方式与当前限制。
+
 M5.1 已建立[发现知识与重要历史](.awtcontext/GlobalDoc/KnowledgeAndHistory.md)：显式ObserveForce动作记录32格内的真实加速度，只授予“已观测”；重要开采、设备操作和首次发现保留原始来源。LLMView增加独立授权的Knowledge/History冻结查询，模型摘要另存并引用已交付历史。M5.4已把知识和重要历史接入磁盘检查点；尚无独立知识UI或网络模型。
 
 M5.2 已建立[区域控制与干预撤销](.awtcontext/GlobalDoc/Authority.md)：宿主分配世界意志身份，设备保护模块阻断区域观察与干预，撤权清理实例、后续事件和实际场源，同时使旧查询与待交付结果失效。M5.4已保存保护模块、活跃/冻结干预、剩余租约及非默认能力，提供育圃保护按钮。
