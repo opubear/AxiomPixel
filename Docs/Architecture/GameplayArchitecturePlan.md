@@ -18,7 +18,7 @@
 | [World](../../Pixel/Source/World/World.h) 同时拥有地图、环境、流式与唯一玩家，并暴露大量具体风后端入口 | 后续多角色和设备不宜继续扩展此门面；逐步收拢为世界领域与宿主编排 |
 | [GameSession](../../Pixel/Source/Gameplay/GameSession.cpp) 同时处理存档格式、创建/恢复、暂停、瞄准、风选择与构式 | 首先拆职责和依赖，不急于重写材料或求解算法 |
 | [Environment::Tick](../../Pixel/Source/World/Environment/Environment.cpp) 持有累加器；风预推进后材料预算不足会延期 | 时钟迁移必须保留“成功步才推进其他系统”和同一步不重复风更新 |
-| [FormulaRuntime](../../Pixel/Source/Gameplay/FormulaRuntime.cpp) 每次激活拥有 Simulator；所有扫掠先完成，再提交各根效果 | 保留可观察顺序作为旧版契约，语言新版如改变须明确标记 |
+| [FormulaRuntime（现 FormulaBridge）](../../Pixel/Source/Gameplay/FormulaBridge/FormulaBridge.cpp) 每次激活拥有 Simulator；所有扫掠先完成，再提交各根效果 | 保留可观察顺序作为旧版契约，语言新版如改变须明确标记 |
 | [FormulaDraft](../../Pixel/Source/FormulaEditing/FormulaDraft.h) 兼有编辑树与工作量分析；Gameplay 依赖 Editing | 将运行校验与 UI 草稿解耦，使无编辑器宿主也能执行程序 |
 | [GameInput](../../Pixel/Source/Input/GameInput.cpp)、[DebugUI](../../Pixel/Source/Debug/PixelDebugUI.cpp) 可直接调用 World、Session 与运行时 | 接入自动化、LLM 后需要统一操作入口，避免不同调用者绕过相同规则 |
 | [WorldSnapshot 与流式契约](../../Docs/WorldRepresentation.md)、[呈现转换](../../Pixel/Source/PixelRender/PixelWorldPresentation.h) 已有区域版本与独立副本 | 复用增量思路；LLM 语义摘要不复用渲染像素缓冲，也不持有 WorldMapView |
@@ -418,5 +418,7 @@ LLM 参与“逻辑构建”的第一种形式是组合现有动作与条件；�
 ## 15 需要通过实验决定的事项
 
 构式语言的具体语法与范式、世界行为覆盖范围、持续过程与编辑体验由 M3 决定；LLM DSL 是否单独实现由 M5/M6 决定。远处持续生产、精确风场存档、跨平台重放、多人网络和更复杂的引擎实体框架都没有预先承诺。当前明确选择是有界活动区域、单写者推进、独立子系统与可观测的领域动作。
+
+2026-10-24，M6.1完成[同场景决策实验](BehaviorDecisionExperiment.md)：当前育圃援助使用DecisionAPI单次提案和Formula持续执行即可表达，暂缓独立持久BehaviorDSL。有限决策图仅供实验，不是生产安装/保存接口；未来跨决策等待与重新观测需先证明玩法必要性。
 
 每次后续提案都应说明它解决的玩法问题、状态归属、输入/输出、作用时刻、卸载和保存行为，以及一个可以试玩的贯穿场景。若一个抽象无法用当前场景证明价值，就保留局部实现。

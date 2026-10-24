@@ -74,3 +74,5 @@ M5.4新增[持久援助、祈祷档案与自主权](GlobalDoc/PersistentInterven
 M5.5增加[可替换模型接口与祈祷交互](GlobalDoc/ModelServiceIntegration.md)：组合根可注入LLM实现，外围JSON协议严格限制提案；玩家原文、Ready与Cancelled进入v2祈祷存档，旧界面取消绑定原始世界提交。用户本轮明确只定义接口，不接实际服务或凭据。
 
 M5.6按用户追加需求建立[LLM与PseudoLLM](GlobalDoc/LLMAndPseudoLLM.md)：独立LLM生命周期抽象与共用DecisionAPI，运行默认随机选择援助/等待函数组合；FakeModel仅在测试目标保留。模型仍只生成提案，WorldWill按当前权限和游戏状态执行。
+
+M6.1增加[BehaviorDSL必要性实验](../Docs/Architecture/BehaviorDecisionExperiment.md)：同一育圃场景比较原生函数组合与有限决策图，验证权限、版本、容量与实际成长，记录Release成本。当前暂缓独立持久BehaviorDSL；植物条件等新需求首先需要明确观测与动作合同。候选仅在测试目标构建，生产继续使用DecisionAPI与Formula。

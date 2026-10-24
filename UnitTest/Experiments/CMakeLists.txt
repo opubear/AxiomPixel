@@ -1,0 +1,10 @@
+# M6 candidates remain isolated from the game and the independent Formula language.
+if(BUILD_TESTING)
+    add_library(PixelBehaviorDecisionExperiment STATIC BehaviorDecision.cpp)
+    target_link_libraries(PixelBehaviorDecisionExperiment PUBLIC PixelLLM)
+    add_executable(PixelBehaviorDecisionTests BehaviorDecisionTests.cpp)
+    target_link_libraries(PixelBehaviorDecisionTests PRIVATE PixelBehaviorDecisionExperiment PixelWorldWill PixelGameplay)
+    add_test(NAME Pixel.BehaviorDecision COMMAND PixelBehaviorDecisionTests)
+    add_executable(PixelBehaviorDecisionBenchmark EXCLUDE_FROM_ALL BehaviorDecisionBenchmark.cpp)
+    target_link_libraries(PixelBehaviorDecisionBenchmark PRIVATE PixelBehaviorDecisionExperiment)
+endif()

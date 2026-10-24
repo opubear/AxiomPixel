@@ -65,6 +65,8 @@ M5.5 [可替换模型接口与祈祷交互](.awtcontext/GlobalDoc/ModelServiceIn
 
 用户追加的 [LLM与PseudoLLM](.awtcontext/GlobalDoc/LLMAndPseudoLLM.md) 将模型抽象独立到 `PixelLLM`。未注入模型时使用 `PseudoLLM`，随机选择“援助”或“等待”的函数组合，通过共用 `DecisionAPI` 提出建议；因此祈祷可能返回 `NoAction`，可以再次请求。实际援助仍经WorldWill与GameAPI核验，测试专用FakeModel保留受控延迟/重复回包能力。
 
+M6.1 的 [BehaviorDSL必要性实验](Docs/Architecture/BehaviorDecisionExperiment.md) 用同一育圃场景比较原生函数组合与独立有限决策图，验证真实援助、撤销、版本和容量边界，并保存三轮Release测量。当前暂缓持久BehaviorDSL，继续采用DecisionAPI提案与Formula执行；实验代码仅在测试目标构建。
+
 ## 构建和运行
 
 需要CMake 3.23+、C++20、引擎锁定子模块及运行时Slang/Vulkan工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎；窗口配置位于 `Pixel/Config/GameConfig.json`。
