@@ -71,5 +71,8 @@
 | BehaviorDSL必要性与有限决策图实验 | `workspace:Docs/Architecture/BehaviorDecisionExperiment.md` | M6.1同场景表达、诊断和成本对照；暂缓持久DSL的依据与重启门槛 | |
 | 有限决策图Release成本原始数据 | `workspace:Docs/Architecture/BehaviorDecisionBenchmark-2026-10-24.csv` | 三轮原生函数与决策图同输入求值P50/P95及保留字节；不含模型与模拟成本 | |
 | M4持久设备与家园阶段验收 | `context:GlobalDoc/M4Acceptance.md` | 八项子任务整合合同、当前CPU与GPU证据、独立审查、夹具修复及保存恢复边界 | |
+| M5可追溯世界意志阶段验收 | `context:GlobalDoc/M5Acceptance.md` | 六项能力的异步、授权与持久化合同，CPU及GPU证据与独立审查 | |
+| M6阶段决策实验Release复测原始数据 | `context:GlobalDoc/M6AcceptanceBenchmark-2026-10-24.csv` | 阶段验收三轮原生与决策图同输入求值批均值P50/P95和保留字节 | |
+| M6运行时逻辑构建与DSL阶段验收 | `context:GlobalDoc/M6Acceptance.md` | 暂缓持久DSL的场景依据、实验隔离、阶段复测与独立审查 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

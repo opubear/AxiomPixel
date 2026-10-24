@@ -46,7 +46,7 @@ M5.4已实现[持久干预检查点](PersistentInterventions.md)。保护模块�
 
 ## 验证
 
-测试入口为 `Pixel.Authority` 和 `Pixel.AuthorityView`。前者使用真实 Session、设备、FieldSource、LLMView 和流式预算；后者使用默认拒绝/动态版本的 fake source，验证所有查询、交付、策略和数据过滤边界。构建与实际结果在本任务最终验证后登记。
+测试入口为 `Pixel.Authority` 和 `Pixel.AuthorityView`。前者使用真实 Session、设备、FieldSource、LLMView 和流式预算；后者使用默认拒绝/动态版本的 fake source，验证所有查询、交付、策略和数据过滤边界。下文保留M5.2历史记录，当前整合验证见[M5阶段验收](M5Acceptance.md)。
 
 2026-10-23，macOS，M5.2 提交前验证（M5.3 资源扩展的当前结果见 [WorldWill](WorldWill.md)）：
 

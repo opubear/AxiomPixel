@@ -77,4 +77,8 @@ M5.5增加[可替换模型接口与祈祷交互](GlobalDoc/ModelServiceIntegrati
 
 M5.6按用户追加需求建立[LLM与PseudoLLM](GlobalDoc/LLMAndPseudoLLM.md)：独立LLM生命周期抽象与共用DecisionAPI，运行默认随机选择援助/等待函数组合；FakeModel仅在测试目标保留。模型仍只生成提案，WorldWill按当前权限和游戏状态执行。
 
+M5整合合同及验证见[阶段验收](GlobalDoc/M5Acceptance.md)：默认与64格区块专项各14项、真实worker等待期间的模拟推进，以及实际GPU祈祷/Ready/取消/保护撤销。模型说明、原始事实和实际权限仍分别归属；当前阶段不包含真实模型服务或知识历史自动输入。
+
 M6.1增加[BehaviorDSL必要性实验](../Docs/Architecture/BehaviorDecisionExperiment.md)：同一育圃场景比较原生函数组合与有限决策图，验证权限、版本、容量与实际成长，记录Release成本。当前暂缓独立持久BehaviorDSL；植物条件等新需求首先需要明确观测与动作合同。候选仅在测试目标构建，生产继续使用DecisionAPI与Formula。
+
+M6[阶段验收](GlobalDoc/M6Acceptance.md)核对暂缓决定、模块所有权和实验边界，记录本次16项CPU专项、Release实验与三轮成本复测。当前结论只覆盖已实现的育圃援助/等待场景；未交付持久BehaviorDSL，未据此完成架构总任务的整体验收。
