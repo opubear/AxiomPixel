@@ -14,7 +14,7 @@ M2.3 将会话元数据写入限制在完整提交边界；M4.6已接入[多领�
 
 窗口关闭按钮、Escape 和性能捕获结束都进入 `PixelApplication::OnCloseRequested`。应用同步发起 SaveWorld，成功才允许退出；Deferred、Failed 或不可用会话拒绝当前请求。关闭请求由引擎消费一次，不会因后续容量或 I/O 恢复而自动退出。拒绝期间游戏、窗口、输入回调和调试 UI 继续工作。
 
-`PixelGame::GameEnd` 仅清理输入；直接 Shutdown/析构不再保存。嵌入宿主要保存退出，必须先在帧间处理关闭请求。单独丢弃未保存状态退出不由本任务增加 UI 入口。
+`PixelGame::GameEnd`关闭WorldWill及模型工作并清理输入；直接Shutdown/析构不再保存。正常保存捕获的Thinking/Ready祈祷在下次加载时变为Interrupted，不恢复请求线程、超时或待执行提案。嵌入宿主要保存退出，必须先在帧间处理关闭请求。单独丢弃未保存状态退出不由本任务增加UI入口。
 
 ## v5 和兼容读取
 

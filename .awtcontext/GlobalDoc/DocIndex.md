@@ -74,5 +74,6 @@
 | M5可追溯世界意志阶段验收 | `context:GlobalDoc/M5Acceptance.md` | 六项能力的异步、授权与持久化合同，CPU及GPU证据与独立审查 | |
 | M6阶段决策实验Release复测原始数据 | `context:GlobalDoc/M6AcceptanceBenchmark-2026-10-24.csv` | 阶段验收三轮原生与决策图同输入求值批均值P50/P95和保留字节 | |
 | M6运行时逻辑构建与DSL阶段验收 | `context:GlobalDoc/M6Acceptance.md` | 暂缓持久DSL的场景依据、实验隔离、阶段复测与独立审查 | |
+| 游戏愿景模块化架构总验收 | `context:GlobalDoc/GameplayArchitectureAcceptance.md` | 六阶段29项任务的组合合同、CPU与GPU/AET验证、独立审查及范围限制 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。

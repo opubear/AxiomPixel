@@ -6,15 +6,15 @@
 
 F4 的 Formula Editor 展开 **Process source**，点击 **Load three-pulse draft → Compile process → Apply process**。随后右键由玩家发射；展开 **Process: three carriers**，**Start natural source / Start fixed fixture** 在玩家附近装配另外两种承载者。三者使用同一个不可变产物：发球、等待命中、命中后挖掘、等待30活动步，重复三次。取消暂停或单步推进，Clear running 统一清理。两种固定承载者仅为 M3 CPU 夹具与调试样例，没有实体外观、放置占用、设备网络或真实物品库存。
 
-旧树形编辑器的 Apply 切回旧语言。两种语言可以短期并存，已运行实例保留各自原程序及版本；Revert to applied 仍只恢复最近的旧树形描述，过程程序生效时工具栏明确说明。新过程的源码编辑与状态 DTO 见[M3.4 合同](FormulaStateAndEditing.md)，完整设备及持久化由 M4 处理。
+旧树形编辑器的Apply切回旧语言。两种语言可以短期并存，已运行实例保留各自原程序及版本；Revert to applied仍只恢复最近的旧树形描述，过程程序生效时工具栏明确说明。源码编辑与状态DTO见[M3.4合同](FormulaStateAndEditing.md)。M4已在调试夹具之外加入真实Device承载者及[检查点](Checkpoints.md)，M5另加入受[区域权限](Authority.md)约束的Intervention承载者。
 
 `GameSession::ApplyProcess` 安装独立编译产物；已有 `ActivateProgram` 动作负责玩家激活、请求去重、发射起点和来源事实。`StartProcessFixture`、`CancelProcessCarrier`、`WakeProcessCarrier` 是仅供原生 Debug/Driver 装配使用的安全边界入口；玩家输入和外部语言不能提交自报的权限、主体或资源配置。预算等待期间以上修改均被拒绝。过程有自己的资源编号2，旧树编号1；会话版本递增，投影、弹体及事实不再把新过程标为旧树。完整源码身份仍由实例保留的 ProgramArtifact 管理，LLMView 不开放配方源码。
 
 ## 承载者和领域能力
 
-`ProcessCarrier` 固定 Kind、Subject、原点、瞄准角、Scope、MaximumRadius、能力集合、片段预算与有限 Credits。三种 Kind 只影响来源标识，不分叉效果实现。Subject 仅在承载类型内区分来源；同一来源可发起多个实例，Cancel/Wake 按该来源统一作用。
+`ProcessCarrier`固定Kind、Subject、原点、瞄准角、Scope、MaximumRadius、能力集合、片段预算与有限Credits。当前包含Player、NaturalSource、FixedFixture、Device和Intervention；共用ProcessHost效果实现，资源供给和权限由各自宿主装配。Subject仅在承载类型内区分来源；同一来源可发起多个实例，Cancel/Wake按该来源统一作用。
 
-Credits 是每次激活独有的演示额度：每个成功接受的 dig、wind 或 bolt 扣1，拒绝不扣。`inventory()` 返回本次片段开始时冻结的剩余额度，查询不读取片段内尚未提交的扣减。这不是 M4 的物品容器，也不承诺同主体的多个激活共用库存。UI 示例天然源6、固定夹具4、玩家64；原生装配可以显式提供不同额度。
+Credits是每次激活独有的效果额度：成功的dig、wind、bolt、field或update_field扣1，拒绝和stop_field不扣。`inventory()`返回片段开始时冻结的剩余额度，不读取片段内尚未提交的扣减，也不是物品容器。UI示例天然源6、固定夹具4、玩家64；原生装配可显式提供不同额度。真实设备在启动周期前另由宿主支付Items燃料，玩家开采收益进入背包，两者不替代过程Credits。
 
 同一阶段先完成全部语言求值和碰撞查询，再按实例激活次序与源码顺序提交效果。每个实例的库存值来自自己的固定视图。静态能力在 Instance::Start 核对，动态几何、资源、区域、驻留与风后端在提交时再次核对。
 
@@ -26,7 +26,7 @@ Credits 是每次激活独有的演示额度：每个成功接受的 dig、wind 
 
 ## 顺序、通知和生命周期
 
-固定步仍为环境 → 玩家 → FormulaBridge → CommitStamp → 事实/投影。桥接先完成全部旧树扫掠、新过程片段求值与现有/新生球的扫掠，再提交旧树效果、新过程效果。因而任一版本的同批开采都不会改变另一版本已经确定的碰撞；跨版本效果争用时旧树批次先提交，过程批次后提交，这是短期并存的明确顺序。
+当前Session固定步为环境→Actors→FormulaBridge→设备/育圃→CommitStamp→事实及权限结算→投影，详见[固定步合同](../../Docs/Architecture/SimulationCommits.md)。桥接先完成全部旧树扫掠、新过程片段求值与现有/新生球的扫掠，再提交旧树效果、新过程效果。因而任一版本的同批开采都不会改变另一版本已经确定的碰撞；跨版本效果争用时旧树批次先提交，过程批次后提交，这是短期并存的明确顺序。
 
 新球出生边界不移动，出生重叠仍检查；已有球到期优先于被排除的最后一段运动。碰撞按 fraction、实例ID、request序号、格(y,x)排序，命中位置保留int64格坐标与格内double偏移。命中/到期在本边界提交，最早下一活动边界才交给实例；接连 `await result` 与 `await hit` 仍是两个片段，早到命中由语言运行时缓存。
 

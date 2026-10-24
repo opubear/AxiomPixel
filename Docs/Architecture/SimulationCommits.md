@@ -4,7 +4,7 @@ M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`GameSession.cpp`�
 
 ## 推进与等待
 
-Session 先在安全边界处理流式驻留，再由协调器累计最多 0.25 秒的待处理时间。每一步依次执行：Environment 风预推进、原有同步材料提案/裁决/提交、风反馈、Actors 的角色一步、FormulaBridge 的碰撞与效果，最后增加 Tick 和 Revision 并刷新读副本。独立 World 只提供 `StepEnvironment(committedSeconds)`；Session 随后调用 `Actors::Step(terrain, input)`。纯世界测试与基准使用 `UnitTest/Support/SimulatedWorld.h` 的宿主夹具，角色组合使用 `SimulatedActorWorld.h`。
+Session先在安全边界处理流式驻留，再由协调器累计最多0.25秒的待处理时间。每一步依次执行：Environment风预推进、原有同步材料提案/裁决/提交、风反馈、Actors角色一步、FormulaBridge碰撞与效果、设备和育圃逻辑。随后增加Tick和Revision、记录构式事实、结算权限/租约撤销与设备事实，最后发布完整读副本。独立World只提供`StepEnvironment(committedSeconds)`；Session随后调用`Actors::Step(terrain, input)`。纯世界测试与基准使用`UnitTest/Support/SimulatedWorld.h`的宿主夹具，角色组合使用`SimulatedActorWorld.h`。
 
 只有完整成功的一步消费余量。单步请求消费已有余量中的一步；不足一步才补足，不清空剩余时间。不同帧时长分段仍使用同一固定步。Skip 沿引擎原帧协议不调用游戏推进。
 
@@ -12,7 +12,7 @@ Session 先在安全边界处理流式驻留，再由协调器累计最多 0.25 
 
 ## 版本与回执
 
-`GameAPI/CommitStamp.h` 提供 `{WorldId, WorldEpoch, Tick, Revision}`。初始完整状态 Revision=1，有限夹具 WorldId 为 `finite-world`；持久会话使用存档目录名。不同会话化身由现有宿主 epoch 区分，世界替换后 Revision 重新从1开始。
+`GameAPI/CommitStamp.h` 提供 `{WorldId, WorldEpoch, Tick, Revision}`。初始完整状态 Revision=1，有限夹具 WorldId 为 `finite-world-<epoch>`；持久会话使用存档目录名。不同会话化身由宿主epoch区分，新建世界后Revision从1开始，恢复检查点时保留已保存的Tick/Revision。
 
 成功物理步同时增加 Tick 和 Revision；暂停开采、放置、激活、重建风、应用程序、清理现存运行实例、改变暂停设置，以及接纳驻留/风域变化只增加 Revision。下一世界的生成配置、单步请求、存储重试和运行诊断属于服务控制，不代表当前世界的物理提交。查询、拒绝、重复请求和无变化的暂停设置不增加版本。
 
@@ -24,11 +24,11 @@ Session 先在安全边界处理流式驻留，再由协调器累计最多 0.25 
 
 所有已注册副本在成功步或离散提交后刷新。等待期间继续读取最后完整副本；新消费者如果没有副本，返回无可用样本，不能现场采样准备中的风。呈现回退使用相机附近的 Missing 区域并更新上传版本，支持远坐标与帧复用。相机移动可以继续显示旧范围，范围外显示缺失；恢复后再接纳新范围。`GamePresentation` 仅从此副本转换材料、F1、风效、角色和弹体，仍在帧首发布，Draw 仍只消费独立 frame 数据。
 
-这个实时投影在下一次提交时更新，引用仅供主线程使用。它不是 M2.4/M2.5 的冻结查询租约：分页、事实流、观察权限、viewId、过期策略与 LLMView 尚未实现。可信调试面板的求解器迭代数、预算与 I/O 状态仍属于实时服务诊断，不能当作冻结领域查询。
+这个实时投影在下一次提交时更新，引用仅供主线程使用。M2.4/M2.5已另行实现[领域投影](../../.awtcontext/GlobalDoc/ObservationProjection.md)与[LLMView](../../.awtcontext/GlobalDoc/LLMView.md)的冻结查询租约、分页、事实流、观察权限和过期策略，二者不共用呈现缓冲。可信调试面板的求解器迭代数、预算与I/O状态仍属于实时服务诊断，不能当作冻结领域查询。
 
 ## 存储与验证边界
 
-时钟由协调器导出/恢复，成功 tick 从保存的已提交秒数转换。M2.3 已升级为 v5，并将旧 v2–v4 deferred 转换为完整欠步；Save/Reset 在 Pending 时返回 Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。动态风和运行构式仍不持久化。
+时钟由协调器导出/恢复，旧档成功tick从保存的已提交秒数转换；checkpoint/1恢复精确Tick/Revision并核对元数据时钟。M2.3将旧v2–v4 deferred转换为完整欠步；Save/Reset在Pending时返回Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。M4已持久化process/1运行实例及归属效果；活跃旧树实例仍拒绝保存，动态风扰动仍按配置重建，详见[检查点](../../.awtcontext/GlobalDoc/Checkpoints.md)。
 
 正常保存可以等待并接纳已完成的加载，因此无论随后块写入成功还是存储失败，返回前都同步已接纳状态的服务 Revision。延期保存仍不接纳加载，不发布准备中的风。
 

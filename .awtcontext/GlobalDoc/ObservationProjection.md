@@ -26,7 +26,7 @@ Session 在完整提交后、发布投影前分配事实序号。原生开采/�
 
 FormulaRuntime 每次 Cast/Step 导出有界成功效果记录，Session 写入正式 epoch 与提交 stamp。挖掘只在实际 changed>0 时输出一条圆域摘要；风只在后端接受时输出 `WindPulseSubmitted`，记录请求圆和 deltaVelocity，不声称测得风速改变。原因携带 instance、程序版本、根内 emission 序号和最初激活请求，跨 tick 保留来源。未实现/拒绝/零变化效果不会伪造成功事实；材料每格物理移动不写事实。
 
-事实环保留最近 256 条且最多 128 KiB（含固定槽和 WorldId 字符串容量）。`ReadFacts(epoch, after, high, limit)` 固定上界、最多256条；淘汰导致 Gap，不跨缺口返回看似完整的增量。旧 epoch 拒绝；新事实不会进入旧 highWatermark。事实环不持久化；M5.1已增加独立128条重要历史档案、玩家发现和带版本保存DTO，磁盘接线尚未实施，见[发现知识与历史](KnowledgeAndHistory.md)。
+事实环保留最近256条且最多128 KiB（含固定槽和WorldId字符串容量）。`ReadFacts(epoch, after, high, limit)`固定上界、最多256条；淘汰导致Gap，不跨缺口返回看似完整的增量。旧epoch拒绝；新事实不会进入旧highWatermark。事实环不持久化；M5.1增加的独立128条重要历史档案、玩家发现和带版本保存DTO已由M5.4接入磁盘检查点，见[发现知识与历史](KnowledgeAndHistory.md)。
 
 ## 预算与测量口径
 

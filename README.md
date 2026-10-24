@@ -73,6 +73,8 @@ M6.1 的 [BehaviorDSL必要性实验](Docs/Architecture/BehaviorDecisionExperime
 
 M6 的[阶段验收](.awtcontext/GlobalDoc/M6Acceptance.md)记录当前暂缓决定的适用范围、16项CPU专项、Release复测与实验构建隔离。跨请求等待、重新观测和持久行为安装仍未实现，未来先用真实玩法证明需要，再定义相关合同。
 
+六阶段组合合同与当前验证见[模块化架构总验收](.awtcontext/GlobalDoc/GameplayArchitectureAcceptance.md)：CPU全量94项、Formula独立7项、64格区块专项32项及完整Pixel GPU/关闭与AET验证。验收覆盖观测、构式、设备家园和世界意志切片；游戏总纲的远期玩法仍按需推进。
+
 ## 构建和运行
 
 需要CMake 3.23+、C++20、引擎锁定子模块及运行时Slang/Vulkan工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎；窗口配置位于 `Pixel/Config/GameConfig.json`。

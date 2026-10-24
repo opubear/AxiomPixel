@@ -14,7 +14,7 @@ M2.2 为本地 Axiom/PixelMain 增加最小应用钩子。窗口关闭按钮与�
 
 ## Pixel 接入范围
 
-M2.3 已由 PixelApplication::OnCloseRequested 调用会话 SaveWorld。Saved 才接受正常退出；Deferred、存储失败或会话不可用均拒绝本次请求，显示结果并保留服务。GameEnd 仅清理输入，不再保存。保存与旧档转换的完整约定见[保存边界](SessionSaveBoundary.md)。
+M2.3已由PixelApplication::OnCloseRequested调用会话SaveWorld。Saved才接受正常退出；Deferred、存储失败或会话不可用均拒绝本次请求，显示结果并保留服务。M5接入后，GameEnd关闭WorldWill及模型工作并清理输入，不再保存。保存的Thinking/Ready记录在下次加载时变为Interrupted，不恢复旧推理或重放提案；保存与旧档转换见[保存边界](SessionSaveBoundary.md)。
 
 父仓库 gitlink 与 AxiomVersion.json 锁定同一引擎提交；相邻 Axiom 参考仓库未改动。
 
