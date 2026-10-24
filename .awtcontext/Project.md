@@ -46,6 +46,7 @@ F2的World generation选择下一世界生成器与seed，R保存旧世界后创
 
 `Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定，准确提交见 `AxiomVersion.json`。锁定版本包含通用纹理区域上传、鼠标事件快照、可接受/拒绝的应用关闭请求、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
 通用 RHI、Forward 渲染和 AET 留在引擎；相邻 `../Axiom` 仅供只读历史参考。
+Core的标准兼容Allocator与模板容器后端已包含在当前锁定引擎中；Pixel默认Array/Map保持标准库算法与Axiom池资源。区块独立64 KiB对齐分配、scratch换资源释放旧池，以及后端选择的接口/寿命限制见[Core接入合同](GlobalDoc/CoreAllocatorAndContainers.md)。历史Allocator任务按当前代码与消费路径验收，不改变默认后端，也不批量迁移游戏容器。
 本目录为 AWT Project 根，真实工程为其父目录。
 构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。
 
