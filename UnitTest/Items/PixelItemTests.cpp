@@ -1,4 +1,4 @@
-#include "Items/Inventory.h"
+#include "Runtime/Gameplay/Items/Inventory.h"
 #include <array>
 #include <iostream>
 #include <stdexcept>

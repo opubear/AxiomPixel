@@ -10,7 +10,7 @@
 | 风场可视化双模式 | `workspace:Docs/WindVisualizationSystemDesign.docx` | 纯风速GPU纹理、短轨迹/柔和折光、人物前合成、参数与验证 | 首版实现并独立审查通过 |
 | 构式系统（Formula System） | `workspace:Docs/GameDesign/FormulaSystem.md` | 核心玩法、封闭组合、作用域、已实现的游戏基础版及后续边界 | 当前系统入口；基础版游戏已实现 |
 | 构式语言架构（Formula DSL） | `context:GlobalDoc/FormulaLanguageArchitecture.md` | 独立语言四层、不可变访问、调度作用域、宿主诊断与内部早失败边界 | 独立模块架构；游戏接入见基础版实现 |
-| 构式语言原型使用说明 | `workspace:Pixel/Formula/README.md` | 独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
+| 构式语言原型使用说明 | `workspace:Pixel/Source/Runtime/System/Formula/README.md` | System下独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
 | 早期法术编程系统设计（历史提案） | `workspace:Docs/GameDesign/SpellProgrammingSystemDesign.docx` | 2026-10-12 原始设计；当前名称为构式，现行规则与实现边界见构式系统及语言架构 | 保留 v0.1 历史依据，不作为实现完成声明 |
 | Astra 独立全代码审查（2026-10-05） | `CodeReview-Astra-2026-10-05.md` | 干净上下文 xhigh 审查 Pixel 与本地 Axiom，P2 Cross、P3 Quaternion；覆盖清单与独立验证证据 | 两项已修复，原 Astra 复核通过 |
 | 当前 Pixel 代码审查（2026-10-04） | `CodeReview-2026-10-04.md` | 全部 Pixel 代码与引擎集成审查，3 项 P2 缺陷、复现材料及修复验证 | F1–F3 已修复 |
@@ -76,5 +76,7 @@
 | M6运行时逻辑构建与DSL阶段验收 | `context:GlobalDoc/M6Acceptance.md` | 暂缓持久DSL的场景依据、实验隔离、阶段复测与独立审查 | |
 | 游戏愿景模块化架构总验收 | `context:GlobalDoc/GameplayArchitectureAcceptance.md` | 六阶段29项任务的组合合同、CPU与GPU/AET验证、独立审查及范围限制 | |
 | Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
+| 工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 五大模块归属、数据流、构建运行和验证命令；System/IO/Input与Gameplay分层 | |
+| 性能采样模块 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | Dev/Debug性能插桩、运行时采样开关、CSV和内存统计口径 | |
 
-角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Actors/Actors.*`、`Actors/Character.*`、`Gameplay/GameSession.*`、`Input/GameInput.*`、`Camera/GameCamera.*` 和 `PixelRender/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelCharacterTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用。
+角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

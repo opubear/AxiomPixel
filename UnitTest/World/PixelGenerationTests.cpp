@@ -1,5 +1,5 @@
-#include "World/Generation/GenerationNoise.h"
-#include "World/Generation/WorldGenerator.h"
+#include "Runtime/Simulation/World/Generation/GenerationNoise.h"
+#include "Runtime/Simulation/World/Generation/WorldGenerator.h"
 #include <algorithm>
 #include <array>
 #include <iostream>

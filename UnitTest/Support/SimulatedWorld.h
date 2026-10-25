@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Gameplay/SimulationCoordinator.h"
-#include "World/World.h"
+#include "Runtime/Gameplay/SimulationCoordinator.h"
+#include "Runtime/Simulation/World/World.h"
 #include <functional>
 
 namespace pixel::testing {

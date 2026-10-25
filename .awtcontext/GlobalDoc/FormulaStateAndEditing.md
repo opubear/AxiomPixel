@@ -63,7 +63,7 @@ Apply 经 GameSession 安全边界发布新版本，只影响后续玩家/承载
 
 | 验证 | 结果 |
 | --- | --- |
-| 独立验证 agent：`cmake -S Pixel/Formula -B /private/tmp/pixel-state-standalone -DCMAKE_BUILD_TYPE=Debug`、build、CTest | 6/6 |
+| 独立验证 agent：`cmake -S Pixel/Source/Runtime/System/Formula -B /private/tmp/pixel-state-standalone -DCMAKE_BUILD_TYPE=Debug`、build、CTest | 6/6 |
 | 独立验证 agent：`cmake --build /private/tmp/pixel-bridge-verify -j4`；`ctest --test-dir /private/tmp/pixel-bridge-verify --output-on-failure` | Debug 完整 70/70 |
 | 独立验证 agent：Release Formula 相关目标 build；`ctest --test-dir /private/tmp/pixel-bridge-release -R Formula --output-on-failure` | 11/11 |
 | 独立验证 agent：ASan+UBSan Formula 相关目标 build；`ctest --test-dir /private/tmp/pixel-bridge-sanitize -R Formula --output-on-failure` | 11/11，无 sanitizer 报告 |

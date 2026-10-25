@@ -1,6 +1,6 @@
-#include "LLMView/DerivedMemory.h"
-#include "LLMView/JsonAdapter.h"
-#include "LLMView/QueryProjection.h"
+#include "Runtime/Gameplay/LLMView/DerivedMemory.h"
+#include "Runtime/Gameplay/LLMView/JsonAdapter.h"
+#include "Runtime/Gameplay/LLMView/QueryProjection.h"
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>

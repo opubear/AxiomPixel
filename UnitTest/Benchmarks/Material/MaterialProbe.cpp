@@ -1,7 +1,7 @@
 #include "ProbeMetrics.h"
 #include "../../Support/SimulatedWorld.h"
-#include "World/Environment/FieldResponse.h"
-#include "Performance/FrameProfiler.h"
+#include "Runtime/Simulation/World/Environment/FieldResponse.h"
+#include "Dev/Debug/Performance/FrameProfiler.h"
 #include <algorithm>
 #include <array>
 #include <chrono>

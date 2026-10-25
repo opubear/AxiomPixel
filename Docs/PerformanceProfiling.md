@@ -64,7 +64,7 @@ mkdir -p build-profile-results
 # 替换 SCENARIO 和输出文件可复现下表其他组。
 ```
 
-首次配置和全部变量见 [采样模块说明](../Pixel/Source/Performance/README.md)。所有正式原始帧 CSV、日志和汇总保存在本机 `build-profile-results/`；便于跟随源码保留的证据为 [汇总 CSV](Performance/2026-10-14-summary.csv)、[Debug 默认阶段统计](Performance/debug-default.summary.txt)、[优化版默认阶段统计](Performance/release-default.summary.txt)、[优化版复测](Performance/release-default-repeat.summary.txt)、[F1 阶段统计](Performance/release-field.summary.txt)。初次编译期间的试运行已被正式重测覆盖，不用于结论。
+首次配置和全部变量见 [采样模块说明](../Pixel/Source/Dev/Debug/Performance/README.md)。所有正式原始帧 CSV、日志和汇总保存在本机 `build-profile-results/`；便于跟随源码保留的证据为 [汇总 CSV](Performance/2026-10-14-summary.csv)、[Debug 默认阶段统计](Performance/debug-default.summary.txt)、[优化版默认阶段统计](Performance/release-default.summary.txt)、[优化版复测](Performance/release-default-repeat.summary.txt)、[F1 阶段统计](Performance/release-field.summary.txt)。初次编译期间的试运行已被正式重测覆盖，不用于结论。
 
 ## 对照结果
 
@@ -135,7 +135,7 @@ mkdir -p build-profile-results
 
 ## 封装与验证
 
-核心采样器为 `Pixel/Source/Performance/FrameProfiler.*`，集成层为 `GameProfiler.*`。固定枚举和有界缓冲避免热路径字符串、分配、日志与锁；RAII支持嵌套inclusive/self，按帧统计mean/P95/max，按调用数统计单次成本。关闭时只做空指针检查，不调用时钟。新增重逻辑通常只需添加ID并放置一个scope，计数在循环外汇总，不逐格插桩。
+核心采样器为 `Pixel/Source/Dev/Debug/Performance/FrameProfiler.*`，集成层为 `GameProfiler.*`。固定枚举和有界缓冲避免热路径字符串、分配、日志与锁；RAII支持嵌套inclusive/self，按帧统计mean/P95/max，按调用数统计单次成本。关闭时只做空指针检查，不调用时钟。新增重逻辑通常只需添加ID并放置一个scope，计数在循环外汇总，不逐格插桩。
 
 本机空scope探针（10万帧，每帧1父scope和20子scope）约0.68微秒/帧，关闭时21个scope及计数调用约0.058微秒；只代表采样器自身，不包括展开面板的汇总绘制与文件导出。探针与结果在 `build-profile-results/overhead-probe.cpp`、`overhead.txt`。
 

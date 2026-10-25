@@ -65,7 +65,7 @@ Session 提供玩家所在的活动中心，World 的模拟窗口对齐64格；�
 
 ## 文件约定
 
-`current.txt` 指向当前world-id，其 `checkpoint.current` 发布完整的不可变世代。每代包含v5 `world.meta`、`gameplay.state`、全部块及校验清单；世界元数据保存生成配置、玩家位置、完整时钟余量和风设置，各游戏域及程序continuation由独立载荷保存。旧v2–v5文件可导入，旧v2映射到Flat/version1。格式解析、工作目录、完整世代校验和指针发布由 [SessionStore](../Pixel/Source/Persistence/SessionStore.h) 处理，GameSession在完整提交点捕获各域，全部文件写好后才发布指针，见[多领域一致检查点](../.awtcontext/GlobalDoc/Checkpoints.md)。`chunks/<chunk-x>_<chunk-y>.bin` 仍为版本1小端二进制，后接材料/方向/基础力三列；尺寸、长度、注册材料ID、方向和非有限基础力均校验。
+`current.txt` 指向当前world-id，其 `checkpoint.current` 发布完整的不可变世代。每代包含v5 `world.meta`、`gameplay.state`、全部块及校验清单；世界元数据保存生成配置、玩家位置、完整时钟余量和风设置，各游戏域及程序continuation由独立载荷保存。旧v2–v5文件可导入，旧v2映射到Flat/version1。格式解析、工作目录、完整世代校验和指针发布由 [SessionStore](../Pixel/Source/Runtime/Gameplay/Persistence/SessionStore.h) 处理，GameSession在完整提交点捕获各域，全部文件写好后才发布指针，见[多领域一致检查点](../.awtcontext/GlobalDoc/Checkpoints.md)。`chunks/<chunk-x>_<chunk-y>.bin` 仍为版本1小端二进制，后接材料/方向/基础力三列；尺寸、长度、注册材料ID、方向和非有限基础力均校验。
 
 未存在块由世界描述指定的IWorldGenerator生成：Superflat保留y<512空气、其余Dirt；Natural生成土岩、洞穴、矿物、有限水体与干燥草皮。基础力均向下。已有块直接恢复文件，不补水、补矿或重新覆草。卸载、手动保存和正常退出写文件；远处不补算时间。动态风不写盘，重建为所选背景状态；程序风使用世界坐标和持久物理时钟保持相位。生成器、材料纹理与液体接入的现行细节见 [世界生成与自然材质](../.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
 

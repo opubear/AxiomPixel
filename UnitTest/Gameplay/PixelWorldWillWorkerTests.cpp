@@ -1,6 +1,6 @@
-#include "Gameplay/GameSession.h"
-#include "LLM/Testing/FakeModel.h"
-#include "WorldWill/WorldWill.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Dev/Debug/LLM/FakeModel.h"
+#include "Runtime/Gameplay/WorldWill/WorldWill.h"
 #include <iostream>
 #include <thread>
 

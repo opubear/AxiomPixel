@@ -1,8 +1,8 @@
 #include "../Support/TestAccess.h"
 #include "../Support/CheckpointFiles.h"
-#include "Camera/GameCamera.h"
-#include "Gameplay/GameSession.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Gameplay/Camera/GameCamera.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -302,7 +302,7 @@ void DistantCameraAndCollision() {
     Require(camera.GetWorldPosition().Local[0] > .375 && camera.GetWorldPosition().Local[0] < .625,
             "distant camera follow lost fractional target");
     pixel::WorldMap missing;
-    pixel::Character player;
+    pixel::Body player;
     player.OriginChunk = position.Chunk;
     player.X = .5;
     player.Y = .5;

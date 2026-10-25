@@ -1,6 +1,6 @@
 # FormulaBridge 与三种程序承载者
 
-2026-10-22，M3.3。现行游戏适配位于 `Pixel/Source/Gameplay/FormulaBridge/`；`FormulaBridge` 编排旧树形运行器和新的 `process 1` 语言实例，`ProcessHost` 解释新语言宿主请求，`FormulaWorldAdapter` 复用原有扫掠、开采和 Coarse 风脉冲规则。`PixelFormulaProcess` 仍只依赖标准库；World 无 Formula、RHI 或 UI 依赖，本轮未改引擎。
+2026-10-22，M3.3。现行游戏适配位于 `Pixel/Source/Runtime/Gameplay/FormulaBridge/`；`FormulaBridge` 编排旧树形运行器和新的 `process 1` 语言实例，`ProcessHost` 解释新语言宿主请求，`FormulaWorldAdapter` 复用原有扫掠、开采和 Coarse 风脉冲规则。`PixelFormulaProcess` 仍只依赖标准库；World 无 Formula、RHI 或 UI 依赖，本轮未改引擎。
 
 ## 使用与范围
 

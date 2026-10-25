@@ -1,6 +1,6 @@
-#include "WorldWill/WorldWill.h"
-#include "Gameplay/GameSession.h"
-#include "Gameplay/Construction/DeviceCosts.h"
+#include "Runtime/Gameplay/WorldWill/WorldWill.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/Gameplay/Construction/DeviceCosts.h"
 #include "../Support/TestAccess.h"
 #include <algorithm>
 #include <iostream>

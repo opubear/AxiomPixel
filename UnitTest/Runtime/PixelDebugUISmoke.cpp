@@ -3,9 +3,9 @@
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
 #include "InputManager.h"
-#include "Application/PixelGame.h"
-#include "Gameplay/Home/ForceGardenProgram.h"
-#include "LLM/Testing/FakeModel.h"
+#include "Runtime/Gameplay/Application/PixelGame.h"
+#include "Dev/Debug/Garden/ForceGardenProgram.h"
+#include "Dev/Debug/LLM/FakeModel.h"
 #include "Render/RenderGlobalContext.h"
 #include "SystemEnum.h"
 #include "DebugUI/ImguiManager.h"
@@ -228,7 +228,7 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     Draw(app, 2);
     Click(app, ControlPoint(app, "Devices"));
     Click(app, ControlPoint(app, "Place devices with left click (B)"));
-    Require(game.GetPresentation().DevicePlacementMode, "device UI checkbox did not enable the native placement tool");
+    Require(game.IsDevicePlacementEnabled(), "device UI checkbox did not enable the native placement tool");
     EnterScalar(app, "Cell X", "100", "Devices");
     EnterScalar(app, "Cell Y", "100", "Devices");
     Click(app, deviceControl("Place force emitter"));
@@ -313,7 +313,7 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     Click(app, deviceControl("Recycle"));
     changed(pixel::api::DeviceEvent::Removed);
     Click(app, ControlPoint(app, "Place devices with left click (B)"));
-    Require(!game.GetPresentation().DevicePlacementMode && inputSequence() == inputBefore &&
+    Require(!game.IsDevicePlacementEnabled() && inputSequence() == inputBefore &&
                 original == CopyWorldCells(session.GetWorld()), "Devices controls changed the world through leaked input");
     Click(app, ControlPoint(app, "Devices"));
 }

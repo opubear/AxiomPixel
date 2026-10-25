@@ -15,7 +15,7 @@
 
 | 模块/文件 | 实际责任 |
 |---|---|
-| `Pixel/Formula` | 不可变描述的Kind/Values/Child只读接口；Simulator保留原语义并新增DrainTrace、PendingCount、IsIdle和无触发DiscardProjectile |
+| `Pixel/Source/Runtime/System/Formula` | 不可变描述的Kind/Values/Child只读接口；Simulator保留原语义并新增DrainTrace、PendingCount、IsIdle和无触发DiscardProjectile |
 | `FormulaValidation/FormulaAnalysis.*` | 不可变Formula的游戏参数/结构额度校验及所有命中后代工作量分析；只依赖Formula，诊断以子节点路径定位 |
 | `FormulaEditing/FormulaDraft.*` | 稳定ID可变树、结构操作、ID/槽位校验、构造不可变Formula；共用验证组件并将诊断映射回编辑节点 |
 | `Gameplay/FormulaRuntime.*` | 每根独立Simulator、局部Anchor、Epoch/Cast/Projectile身份、旧版本保留、统一碰撞后效果提交、增量事件和跨帧额度 |
@@ -66,7 +66,7 @@ cmake -S . -B build-cpu -DAXIOM_BUILD_RUNTIME=OFF
 cmake --build build-cpu -j4
 ctest --test-dir build-cpu --output-on-failure
 
-cmake -S Pixel/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
+cmake -S Pixel/Source/Runtime/System/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-formula -j4
 ctest --test-dir build-formula --output-on-failure
 

@@ -15,8 +15,8 @@
 ## 2. 依据和当前代码基线
 
 - 当前父仓库 HEAD：`a748ef8d25b7270117ebd99cef12b14321df3c0a`；本地 Axiom gitlink/HEAD：`150ea98077aa9f0fb857229220917ebb98baa775`。main 工作区已有世界生成、美术和玩法修改，当前文件内容是设计基线，不能用 HEAD 中旧文件替代。
-- 当前设计依据：[构式系统](../../Docs/GameDesign/FormulaSystem.md)、[构式语言架构](FormulaLanguageArchitecture.md)、[Formula README](../../Pixel/Formula/README.md)。早期 DOCX 仅是历史方案。
-- `Pixel/Formula` 已有不可变描述、封闭组合、CPU Simulator、60 Hz tick、CLI 和测试；`Node.h` 是私有结构。没有游戏运行时、自动碰撞或结构编辑器。
+- 当前设计依据：[构式系统](../../Docs/GameDesign/FormulaSystem.md)、[构式语言架构](FormulaLanguageArchitecture.md)、[Formula README](../../Pixel/Source/Runtime/System/Formula/README.md)。早期 DOCX 仅是历史方案。
+- `Pixel/Source/Runtime/System/Formula` 已有不可变描述、封闭组合、CPU Simulator、60 Hz tick、CLI 和测试；`Node.h` 是私有结构。没有游戏运行时、自动碰撞或结构编辑器。
 - `GameInput::OnMouseButtonEvent` 当前左键放 Dirt、右键开采；用事件携带的 `MousePointerState` 取尺寸，不重新读取光标。引擎 `InputManager::Dispatch` 已按本帧 ImGui capture 过滤。
 - `GameSession::Tick` 调 `World::Tick`；Environment 自有固定步累加器和预算重试状态，角色目前按传入帧 duration 更新，Session 时间也按 duration 增加。不能简单给构式再加一个逐帧累加器。
 - `WorldPosition` 用块坐标 + 局部 double 保持远坐标精度；原型 `Vec2` 是普通 double，不能直接装入绝对世界坐标。
@@ -76,7 +76,7 @@ flowchart LR
 | `PixelPresentation` / `PixelRuntime` | 将运行快照转换为屏幕圆形数据；PixelRender 的独立合成 pass；不回写 gameplay |
 | `PixelWorld` | 原有地图、材料、角色和风；只增加通用“固定步成功”通知及必要的精确坐标风脉冲入口，不依赖 Formula/ImGui/RHI |
 
-`PixelGameplay → PixelWorld + PixelFormula`；`PixelFormulaEditing → PixelFormula`；DebugUI 链接 editing 与既有 gameplay/presentation。根工程已经先 add_subdirectory(Formula) 再 Source，可直接链接；维持 `cmake -S Pixel/Formula` 的独立构建。没有引擎改动计划，AET 和 AxiomVersion 不变；相邻 `../Axiom` 不写入、不构建。
+`PixelGameplay → PixelWorld + PixelFormula`；`PixelFormulaEditing → PixelFormula`；DebugUI 链接 editing 与既有 gameplay/presentation。根工程已经先 add_subdirectory(Formula) 再 Source，可直接链接；维持 `cmake -S Pixel/Source/Runtime/System/Formula` 的独立构建。没有引擎改动计划，AET 和 AxiomVersion 不变；相邻 `../Axiom` 不写入、不构建。
 
 ## 5. 编辑器：独立树形窗口
 
@@ -225,18 +225,18 @@ P1、P2 先形成可复现 CPU 契约，再接表现；不等制作正式 VFX �
 
 | 路径 | 计划 |
 |---|---|
-| `Pixel/Formula/Include/Formula/Formula.h` 与实现 | 增加稳定只读节点访问/遍历，不暴露可变私有节点 |
-| `Pixel/Formula/Include/Formula/Simulator.h`、`Source/Simulator.cpp` | DrainTrace、IsIdle、pending、无触发 discard，保留旧 API 语义 |
-| `Pixel/Source/FormulaEditing/*`（新） | Draft、结构操作、编译与 Analysis；独立 CPU target |
-| `Pixel/Source/Gameplay/FormulaRuntime.*`（新） | 根实例与事件生命周期、局部坐标、诊断 |
-| `Pixel/Source/Gameplay/FormulaWorldAdapter.*`（新） | 扫掠、驻留边界、Dig/Wind 领域操作 |
-| `Pixel/Source/Gameplay/GameSession.*` | 应用描述、发射入口、固定步、世界替换清理 |
-| `Pixel/Source/World/World.*`、`Environment/Environment.*` | 成功步通知、单步限制、锁存 jump，不依赖 Formula |
-| `Pixel/Source/World/Environment/Wind/WindSimulation.*` | 精确分段坐标脉冲入口 |
-| `Pixel/Source/Camera/GameCamera.*`、`Input/GameInput.*` | 连续拾取、鼠标分流/瞄准/帮助 |
-| `Pixel/Source/Debug/FormulaDebugUI.*`（新）、`PixelDebugUI.*` | 独立窗口，结构与参数 UI |
-| `Pixel/Source/PixelRender/FormulaFrame.*`（新）、`WorldGridFrame.*`、`GamePresentation.cpp` | render-owned 球快照、验证与各返回路径清理 |
-| `Pixel/Source/PixelRender/PixelRender.*`、`Pixel/Shader/*` | 有限小圆合成及 frame-slot 生命周期 |
+| `Pixel/Source/Runtime/System/Formula/Include/Formula/Formula.h` 与实现 | 增加稳定只读节点访问/遍历，不暴露可变私有节点 |
+| `Pixel/Source/Runtime/System/Formula/Include/Formula/Simulator.h`、`Source/Simulator.cpp` | DrainTrace、IsIdle、pending、无触发 discard，保留旧 API 语义 |
+| `Pixel/Source/Dev/Debug/FormulaEditing/*`（新） | Draft、结构操作、编译与 Analysis；独立 CPU target |
+| `Pixel/Source/Runtime/Gameplay/FormulaRuntime.*`（新） | 根实例与事件生命周期、局部坐标、诊断 |
+| `Pixel/Source/Runtime/Gameplay/FormulaWorldAdapter.*`（新） | 扫掠、驻留边界、Dig/Wind 领域操作 |
+| `Pixel/Source/Runtime/Gameplay/GameSession.*` | 应用描述、发射入口、固定步、世界替换清理 |
+| `Pixel/Source/Runtime/Simulation/World/World.*`、`Environment/Environment.*` | 成功步通知、单步限制、锁存 jump，不依赖 Formula |
+| `Pixel/Source/Runtime/Simulation/World/Environment/Wind/WindSimulation.*` | 精确分段坐标脉冲入口 |
+| `Pixel/Source/Runtime/Gameplay/Camera/GameCamera.*`、`Input/GameInput.*` | 连续拾取、鼠标分流/瞄准/帮助 |
+| `Pixel/Source/Dev/Debug/UI/FormulaDebugUI.*`（新）、`PixelDebugUI.*` | 独立窗口，结构与参数 UI |
+| `Pixel/Source/Runtime/Render/FormulaFrame.*`（新）、`WorldGridFrame.*`、`GamePresentation.cpp` | render-owned 球快照、验证与各返回路径清理 |
+| `Pixel/Source/Runtime/Render/PixelRender.*`、`Pixel/Source/Runtime/Render/Shader/*` | 有限小圆合成及 frame-slot 生命周期 |
 | 相应 CMake、`UnitTest/Formula`、`Gameplay`、`Rendering`、`Runtime` | 精确链接和行为测试，不把测试放回引擎 |
 
 ## 11. 验收矩阵
@@ -269,7 +269,7 @@ P1、P2 先形成可复现 CPU 契约，再接表现；不等制作正式 VFX �
 实施后的命令（本轮未执行这些功能验证）：
 
 ```sh
-cmake -S Pixel/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
+cmake -S Pixel/Source/Runtime/System/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-formula -j4
 ctest --test-dir build-formula --output-on-failure
 

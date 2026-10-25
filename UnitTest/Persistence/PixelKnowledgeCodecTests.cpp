@@ -1,6 +1,6 @@
-#include "Persistence/KnowledgeCodec.h"
-#include "Knowledge/Knowledge.h"
-#include "World/WorldStorageError.h"
+#include "Runtime/Gameplay/Persistence/KnowledgeCodec.h"
+#include "Runtime/Gameplay/Knowledge/Knowledge.h"
+#include "Runtime/Simulation/World/WorldStorageError.h"
 #include <iostream>
 #include <limits>
 #include <stdexcept>

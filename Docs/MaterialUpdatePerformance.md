@@ -20,7 +20,7 @@ flowchart TD
     B --> J[角色独立更新]
 ```
 
-关键入口是 [Environment.cpp](../Pixel/Source/World/Environment/Environment.cpp) 的 `Tick`、`StepForceField`、`ResolveMovementChain`，以及 [World.cpp](../Pixel/Source/World/World.cpp) 的 `GetFieldVelocity` 和 `MoveMaterial`。
+关键入口是 [Environment.cpp](../Pixel/Source/Runtime/Simulation/World/Environment/Environment.cpp) 的 `Tick`、`StepForceField`、`ResolveMovementChain`，以及 [World.cpp](../Pixel/Source/Runtime/Simulation/World/World.cpp) 的 `GetFieldVelocity` 和 `MoveMaterial`。
 
 每个材料步执行以下工作：
 

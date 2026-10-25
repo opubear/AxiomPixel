@@ -1,7 +1,7 @@
 #include "HAL/Shader/ShaderLibrary.h"
-#include "PixelRender/PixelRender.h"
-#include "PixelRender/PixelWorldPresentation.h"
-#include "World/World.h"
+#include "Runtime/Render/PixelRender.h"
+#include "Runtime/Render/PixelWorldPresentation.h"
+#include "Runtime/Simulation/World/World.h"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -391,6 +391,14 @@ void FailedFrames() {
             Reject([&] { policy.Draw(); });
         }
         Check(rhi.Submits == 0 && policy.SubmittedFrames() == 0, "failed frame submitted or counted");
+        if (failure == 2) {
+            Check(policy.UploadedWorldBytes() == 0, "failed recording committed upload accounting");
+            rhi.FailRecord = false;
+            policy.FrameBegin();
+            policy.Draw();
+            Check(rhi.Submits == 1 && policy.SubmittedFrames() == 1, "recording failure prevented a fresh frame");
+            Check(rhi.Commands.Copies.size() == 2, "retry skipped uncommitted material or world upload");
+        }
         policy.Clear();
     }
 }
@@ -582,7 +590,7 @@ void DistantRegionProjection() {
                                                 int32_t(std::round(normalized.Local[1] * 16 - 600))};
     Check(view.OriginPixels == expectedOrigin && view.WorldOriginCells == std::array<int64_t, 2>{normalized.Chunk.X * pixel::storage::ChunkEdge, normalized.Chunk.Y * pixel::storage::ChunkEdge},
           "distant camera discarded its fractional position before GPU projection");
-    pixel::Character player;
+    pixel::Body player;
     player.OriginChunk = chunk;
     player.X = 511.03125;
     player.Y = 508;

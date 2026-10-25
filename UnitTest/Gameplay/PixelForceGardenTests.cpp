@@ -1,8 +1,8 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/Home/ForceGardenProgram.h"
-#include "Persistence/GameplaySaveData.h"
-#include "World/Environment/FieldResponse.h"
-#include "World/WorldStorageError.h"
+#include "Dev/Debug/Garden/ForceGardenProgram.h"
+#include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
+#include "Runtime/Simulation/World/Environment/FieldResponse.h"
+#include "Runtime/Simulation/World/WorldStorageError.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -236,6 +236,11 @@ void VerifyPauseAndPendingCommit() {
     session.Tick(0, {});
     const auto *stream = world.GetStreamer();
     Check(bool(stream), "pending fixture did not enable streaming");
+    // Publish the committed baseline while capacity is available. A new view
+    // is allowed to remain empty if first requested after the budget is pinned.
+    auto view = session.CreateReadView();
+    session.RefreshReadView(*view, world.GetSimulationBounds());
+    Check(view->IsValid() && view->Gameplay().Garden.has_value(), "pending fixture needs a published garden baseline");
     world.WaitForStreaming();
     const auto activeBounds = world.GetSimulationBounds();
     for (const auto coordinate : testing::WorldAccess::Map(world).ChunkCoordinates())
@@ -243,13 +248,10 @@ void VerifyPauseAndPendingCommit() {
                        storage::ChunkEdge, storage::ChunkEdge}.Intersects(activeBounds))
             testing::WorldAccess::Map(world).Remove(coordinate);
     Check(testing::WorldAccess::Map(world).ChunkCount() > 0, "pending fixture removed every active chunk");
-    world.SetPublicationBytes(stream->Settings().BudgetBytes - stream->RetainedBytes() - 128);
-    world.WaitForStreaming();
-    session.Tick(0, {});
-    auto view = session.CreateReadView();
-    session.RefreshReadView(*view, world.GetSimulationBounds());
+    testing::SessionAccess::PublishFixtureChanges(session);
     Check(session.Control(NativeCaller::Driver, api::StepSimulation{}).Succeeded(), "pending fixture step request failed");
     const auto stamp = session.CurrentCommit();
+    world.SetPublicationBytes(stream->Settings().BudgetBytes - stream->RetainedBytes() - 128);
     session.Tick(1.f / 60.f, {});
     if (!world.GetEnvironment().IsWaitingForBudget() || session.CurrentCommit() != stamp)
         throw std::runtime_error("environment did not enter a real pending budget step (waiting="

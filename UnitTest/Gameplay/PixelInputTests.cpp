@@ -1,8 +1,8 @@
 #include "../Support/TestAccess.h"
-#include "Camera/GameCamera.h"
-#include "Gameplay/GameSession.h"
-#include "Input/GameInput.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Gameplay/Camera/GameCamera.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/System/IO/Input/GameInput.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -205,7 +205,7 @@ void DeviceInput() {
     f.KeyEvent(Key::KEY_B);
     f.KeyEvent(Key::KEY_B, ButtonAction::ACTION_REPEAT);
     f.KeyEvent(Key::KEY_B, ButtonAction::ACTION_RELEASE);
-    Require(f.Presentation.DevicePlacementMode, "B must toggle placement once per press");
+    Require(f.Input.IsDevicePlacementEnabled(), "B must toggle placement once per press");
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, target);
     Require(f.Session.GetDevices().Count() == 1 && f.Session.LastAction(pixel::NativeCaller::Input)->Applied(),
             "build mode left click did not place a device");
@@ -217,7 +217,7 @@ void DeviceInput() {
     Require(f.Session.GetDevices().Count() == 0, "Shift+right click did not recycle device");
     f.KeyEvent(Key::KEY_B);
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, target);
-    Require(!f.Presentation.DevicePlacementMode && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Dirt,
+    Require(!f.Input.IsDevicePlacementEnabled() && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Dirt,
             "leaving build mode did not restore material placement");
 }
 } // namespace

@@ -1,6 +1,6 @@
 # 有界领域观测与提交事实
 
-M2.4 实现入口为 `Pixel/Source/Observation/`、`GameAPI/Observations.*`、`GameAPI/Facts.h` 和 `Gameplay/SessionObservation.cpp`。这是单写者 Session 的内部观测基座；外部主体权限、view 租约、分页游标与 JSON 适配属于后续 M2.5。
+M2.4 实现入口为 `Pixel/Source/Runtime/Gameplay/Observation/`、`GameAPI/Observations.*`、`GameAPI/Facts.h` 和 `Gameplay/GameSession/SessionObservation.cpp`。这是单写者 Session 的内部观测基座；外部主体权限、view 租约、分页游标与 JSON 适配属于后续 M2.5。
 
 ## 发布与所有权
 

@@ -1,5 +1,5 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/FormulaBridge/ProcessHost.h"
+#include "Runtime/Gameplay/FormulaBridge/ProcessHost.h"
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>

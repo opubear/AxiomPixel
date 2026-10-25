@@ -1,6 +1,6 @@
 #include "../Support/TestAccess.h"
-#include "Camera/GameCamera.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Gameplay/Camera/GameCamera.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <chrono>
 #include <cmath>
 #include <filesystem>

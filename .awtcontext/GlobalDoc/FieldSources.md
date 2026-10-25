@@ -28,7 +28,7 @@ ProcessHost显式清理正常完成、stop、fault、取消及承载者移除的
 
 `process 1`新增 `acceleration`、`field`、`effect_handle`、`update_field`、`stop_field`；不能用speed替代acceleration，不能从数字构造句柄。安装和更新成功的回执返回同一个token，`await result`之后读取；跨等待保存到local。更新需消耗1额度，停止不收费，零额度仍能释放已有来源。无效token收到Rejected/InvalidHandle。Capability::Field=32，AllCapabilities=63。
 
-HostContractVersion与InstanceSnapshot.SchemaVersion升级为2，拒绝旧合同/快照；process语法及SemanticsVersion保留1。独立Formula库与fake host能验证快照中的句柄、缓存回执和挂起/恢复，游戏实际区域挂起已由M4.5接入。示例见 `Pixel/Formula/Examples/Process/field.formula`。
+HostContractVersion与InstanceSnapshot.SchemaVersion升级为2，拒绝旧合同/快照；process语法及SemanticsVersion保留1。独立Formula库与fake host能验证快照中的句柄、缓存回执和挂起/恢复，游戏实际区域挂起已由M4.5接入。示例见 `Pixel/Source/Runtime/System/Formula/Examples/Process/field.formula`。
 
 唯一设备从旧风脉冲发生器更新为推力发生器，类型3001保持，安装程序资源3版本2。每煤维持30个成功tick，程序显式存储安装回传的句柄并停止；设备关闭/拆除还有宿主所有权清理。半径16格、向右3600格/秒²，不要求开启Coarse风。成本、补煤和整批回收规则不变；计数字段Pulses改为Cycles，删除不再适用的OutputUnresolved状态。完整设备合同见[Devices](Devices.md)。
 

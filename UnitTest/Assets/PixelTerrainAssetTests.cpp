@@ -1,6 +1,6 @@
-#include "Assets/ArtAssets.h"
-#include "PixelRender/GamePresentation.h"
-#include "World/World.h"
+#include "Runtime/Render/Assets/ArtAssets.h"
+#include "Runtime/Render/GamePresentation.h"
+#include "Runtime/Simulation/World/World.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>

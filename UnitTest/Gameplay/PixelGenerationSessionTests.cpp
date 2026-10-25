@@ -1,6 +1,6 @@
 #include "../Support/TestAccess.h"
 #include "../Support/CheckpointFiles.h"
-#include "Gameplay/GameSession.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
 #include <chrono>
 #include <cstdlib>
 #include <fstream>

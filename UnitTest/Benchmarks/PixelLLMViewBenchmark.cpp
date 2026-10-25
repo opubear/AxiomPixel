@@ -1,5 +1,5 @@
 #include "../Support/TestAccess.h"
-#include "LLMView/JsonAdapter.h"
+#include "Runtime/Gameplay/LLMView/JsonAdapter.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>

@@ -1,8 +1,8 @@
-#include "Performance/MemoryUsage.h"
-#include "World/Environment/Wind/LocalWindGeometry.h"
-#include "World/Environment/Wind/ProceduralWindField.h"
+#include "Dev/Debug/Performance/MemoryUsage.h"
+#include "Runtime/Simulation/World/Environment/Wind/LocalWindGeometry.h"
+#include "Runtime/Simulation/World/Environment/Wind/ProceduralWindField.h"
 #include "../Support/SimulatedWorld.h"
-#include "World/WorldMap.h"
+#include "Runtime/Simulation/World/WorldMap.h"
 #include <iostream>
 #include <stdexcept>
 

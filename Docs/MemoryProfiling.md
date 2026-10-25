@@ -18,7 +18,7 @@ macOS / Apple M5，RelWithDebInfo，1024×1024 世界，默认地形，当前默
 
 Empty 不创建数值风格子，但 WindSimulation 持有指针，具体空策略保存类型信息/区域，因此仍计24字节。切换其他策略时，统计由具体策略递归计算当前求解器和几何数组，不沿用固定估值；七策略均有CPU测试，本表没有宣称测量其他策略的默认大世界运行成本。
 
-可追溯汇总为 [逐组件采样结果](Performance/2026-10-15-memory-summary.csv)。完整逐帧 CSV 和文本报告保留在本机忽略目录 `build-profile-results/memory-default.csv*`、`memory-paused.csv*`。复现方式见 [工具说明](../Pixel/Source/Performance/README.md)，默认采集使用 `PIXEL_PROFILE_FRAMES=30 PIXEL_PROFILE_WARMUP=5`；暂停对照另设 `PIXEL_PROFILE_SCENARIO=paused`，采集20帧。
+可追溯汇总为 [逐组件采样结果](Performance/2026-10-15-memory-summary.csv)。完整逐帧 CSV 和文本报告保留在本机忽略目录 `build-profile-results/memory-default.csv*`、`memory-paused.csv*`。复现方式见 [工具说明](../Pixel/Source/Dev/Debug/Performance/README.md)，默认采集使用 `PIXEL_PROFILE_FRAMES=30 PIXEL_PROFILE_WARMUP=5`；暂停对照另设 `PIXEL_PROFILE_SCENARIO=paused`，采集20帧。
 
 ## 封装与边界
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "Gameplay/GameSession.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "WorldAccess.h"
 
 namespace pixel::testing {

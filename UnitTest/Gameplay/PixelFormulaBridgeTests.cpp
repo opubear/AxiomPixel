@@ -1,7 +1,7 @@
-#include "Gameplay/FormulaBridge/FormulaBridge.h"
+#include "Runtime/Gameplay/FormulaBridge/FormulaBridge.h"
 #include "Formula/Process/Editing.h"
-#include "Gameplay/FormulaBridge/ProcessExample.h"
-#include "Gameplay/GameSession.h"
+#include "Runtime/Gameplay/FormulaBridge/ProcessExample.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "ProcessFakeHost.h"
 #include "../Support/TestAccess.h"
 #include <chrono>

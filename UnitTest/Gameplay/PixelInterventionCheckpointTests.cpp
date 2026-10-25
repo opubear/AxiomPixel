@@ -1,10 +1,10 @@
 #include "../Support/TestAccess.h"
 #include "../Support/CheckpointFiles.h"
-#include "Gameplay/Home/GardenAidProgram.h"
-#include "Persistence/GameplaySaveData.h"
-#include "World/WorldStorageError.h"
-#include "LLM/Testing/FakeModel.h"
-#include "WorldWill/WorldWill.h"
+#include "Dev/Debug/Garden/GardenAidProgram.h"
+#include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
+#include "Runtime/Simulation/World/WorldStorageError.h"
+#include "Dev/Debug/LLM/FakeModel.h"
+#include "Runtime/Gameplay/WorldWill/WorldWill.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>

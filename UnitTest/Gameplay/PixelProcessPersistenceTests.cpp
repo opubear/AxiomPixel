@@ -1,5 +1,5 @@
-#include "Gameplay/FormulaBridge/FormulaBridge.h"
-#include "World/WorldStorageError.h"
+#include "Runtime/Gameplay/FormulaBridge/FormulaBridge.h"
+#include "Runtime/Simulation/World/WorldStorageError.h"
 #include "../Support/WorldAccess.h"
 #include <iostream>
 #include <stdexcept>

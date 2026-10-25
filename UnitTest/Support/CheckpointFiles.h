@@ -1,5 +1,5 @@
 #pragma once
-#include "Persistence/SessionStore.h"
+#include "Runtime/Gameplay/Persistence/SessionStore.h"
 
 namespace pixel::testing {
 inline std::filesystem::path CheckpointDirectory(const std::filesystem::path &world) {

@@ -1,6 +1,6 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/Construction/DeviceCosts.h"
-#include "LLMView/JsonAdapter.h"
+#include "Runtime/Gameplay/Construction/DeviceCosts.h"
+#include "Runtime/Gameplay/LLMView/JsonAdapter.h"
 #include <iostream>
 #include <stdexcept>
 

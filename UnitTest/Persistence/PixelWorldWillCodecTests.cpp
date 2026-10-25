@@ -1,5 +1,5 @@
-#include "Persistence/WorldWillCodec.h"
-#include "World/WorldStorageError.h"
+#include "Runtime/Gameplay/Persistence/WorldWillCodec.h"
+#include "Runtime/Simulation/World/WorldStorageError.h"
 #include <iostream>
 #include <stdexcept>
 

@@ -1,6 +1,6 @@
 #include "../Support/TestAccess.h"
-#include "PixelRender/DeviceFrame.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Render/DeviceFrame.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <iostream>
 #include <algorithm>
 #include <chrono>

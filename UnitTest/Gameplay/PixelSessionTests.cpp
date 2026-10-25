@@ -1,7 +1,7 @@
 #include "../Support/TestAccess.h"
-#include "Camera/GameCamera.h"
-#include "Gameplay/GameSession.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Gameplay/Camera/GameCamera.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <cmath>
 #include <iostream>
 #include <limits>

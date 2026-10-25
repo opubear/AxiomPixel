@@ -1,5 +1,5 @@
-#include "Camera/Camera2D.h"
-#include "PixelRender/PixelWorldPresentation.h"
+#include "Runtime/Gameplay/Camera/Camera2D.h"
+#include "Runtime/Render/PixelWorldPresentation.h"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>

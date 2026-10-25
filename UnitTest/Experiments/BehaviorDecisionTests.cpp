@@ -1,8 +1,8 @@
 #include "BehaviorDecision.h"
-#include "Gameplay/GameSession.h"
-#include "Gameplay/CommittedWorldView.h"
-#include "Gameplay/Home/GardenAidProgram.h"
-#include "WorldWill/WorldWill.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/Gameplay/CommittedWorldView.h"
+#include "Dev/Debug/Garden/GardenAidProgram.h"
+#include "Runtime/Gameplay/WorldWill/WorldWill.h"
 #include <array>
 #include <iostream>
 #include <stdexcept>

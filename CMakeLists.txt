@@ -28,7 +28,7 @@ if(NOT EXISTS "${AXIOM_ENGINE_DIR}/Source/Input/MousePointerState.h")
     message(FATAL_ERROR "Axiom/ lacks mouse event snapshots (Input/MousePointerState.h); the current engine submodule needs Pixel API adaptation; see README.md")
 endif()
 
-include(Pixel/Shader/Sources.cmake)
+include(Pixel/Source/Runtime/Render/Shader/Sources.cmake)
 add_subdirectory(Axiom)
 add_subdirectory(Pixel)
 add_subdirectory(UnitTest)

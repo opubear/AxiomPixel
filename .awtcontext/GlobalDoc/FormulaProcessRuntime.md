@@ -6,7 +6,7 @@
 
 | 层 | 实际入口 | 职责 |
 |---|---|---|
-| 语言 | `Pixel/Formula/Source/Language/ProcessCompiler.cpp` | 文本词法、作用域、类型和能力检查，编译控制指令与有界表达式树 |
+| 语言 | `Pixel/Source/Runtime/System/Formula/Source/Language/ProcessCompiler.cpp` | 文本词法、作用域、类型和能力检查，编译控制指令与有界表达式树 |
 | 产物 | `Include/Formula/Process/Program.h`、`Source/Language/ProcessArtifact.cpp` | 私有 `shared_ptr<const ArtifactData>`、原始源码及源映射、程序身份 |
 | 执行 | `Include/Formula/Process/Runtime.h`、`Source/Runtime/ProcessInstance.cpp` | 绑定产物的实例、局部值、PC、活动计时、等待状态、片段预算 |
 | 宿主合同 | `Include/Formula/Process/HostContract.h` | 冻结查询、效果请求、回执、命中、唤醒、终止清理 |
@@ -95,12 +95,12 @@ if outcome() == applied {
 ## 独立 CLI 和验证
 
 ```sh
-cmake -S Pixel/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
+cmake -S Pixel/Source/Runtime/System/Formula -B build-formula -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-formula -j4
 ctest --test-dir build-formula --output-on-failure
-./build-formula/PixelFormulaProcessDemo Pixel/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3
-./build-formula/PixelFormulaProcessDemo Pixel/Formula/Examples/Process/receipts.formula --reject
-./build-formula/PixelFormulaProcessDemo Pixel/Formula/Examples/Process/wake.formula --wake-at 3
+./build-formula/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3
+./build-formula/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Process/receipts.formula --reject
+./build-formula/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Process/wake.formula --wake-at 3
 ```
 
 CLI 默认执行 12 个活动边界；`--steps` 最多 100000，`--hit-at`/`--wake-at` 为提交事件的边界，最早下一边界可见。命中注入当时全部载体到 `(7,0)`，没有真实轨迹/碰撞。fake host 每次接受 dig 增加一单位库存，接受 wind 记录事实，bolt 最多 32 个，满额返回 rejected；按活动步到期产生 expired。它只排入可观察 token 的通知，同订阅的重复唤醒合并；操作队列硬上限 128，正常回执/终态不随输出历史增长。完整 Trace 为测试观察记录，按运行长度增长，不作为运行时待办或生产日志设计。
@@ -127,7 +127,7 @@ CLI 默认执行 12 个活动边界；`--steps` 最多 100000，`--hit-at`/`--wa
 
 | 配置 | 命令/目录 | 结果 |
 |---|---|---|
-| Debug | `cmake -S Pixel/Formula -B /private/tmp/pixel-process-verify -DCMAKE_BUILD_TYPE=Debug`，build 与 CTest | 5/5 |
+| Debug | `cmake -S Pixel/Source/Runtime/System/Formula -B /private/tmp/pixel-process-verify -DCMAKE_BUILD_TYPE=Debug`，build 与 CTest | 5/5 |
 | Release（独立验证 agent） | `/private/tmp/pixel-process-release`，build 与 CTest | 5/5 |
 | ASan/UBSan（独立验证 agent） | `/private/tmp/pixel-process-asan-ubsan`，`-Wall -Wextra -Wpedantic`，build 与 CTest | 5/5，无编译警告/检测报告 |
 | 根项目 Debug | `cmake --build build-cpu --target PixelFormulaProcessTests PixelFormulaProcessDemo -j4`；`ctest --test-dir build-cpu -R '^Pixel\.Formula($|\.|Validation$|Editing$|Gameplay$)' --output-on-failure` | 8/8 |

@@ -1,5 +1,5 @@
 #pragma once
-#include "LLM/DecisionAPI.h"
+#include "Runtime/Gameplay/LLM/DecisionAPI.h"
 #include <span>
 #include <variant>
 

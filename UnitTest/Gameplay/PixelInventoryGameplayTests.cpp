@@ -1,5 +1,5 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/Construction/DeviceCosts.h"
+#include "Runtime/Gameplay/Construction/DeviceCosts.h"
 #include "Formula/Process/Program.h"
 #include <array>
 #include <iostream>

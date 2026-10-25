@@ -1,13 +1,13 @@
 #pragma once
 #include "SimulatedWorld.h"
-#include "Actors/Actors.h"
+#include "Runtime/Gameplay/Actors/Actors.h"
 
 namespace pixel::testing {
 // Fixture composition for character/terrain integration, not a World ownership API.
 class SimulatedActorWorld : public SimulatedWorld {
   public:
     using SimulatedWorld::SimulatedWorld;
-    const Character *GetPlayer() const { return Characters.Player(); }
+    const Body *GetPlayer() const { return Characters.Player(); }
     void SpawnPlayer(double x, double y) { RestorePlayer(WorldPosition::FromAbsolute(x, y)); }
     void RestorePlayer(WorldPosition position) {
         Characters.SetPlayerPosition(position);

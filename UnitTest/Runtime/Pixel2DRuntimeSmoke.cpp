@@ -6,14 +6,14 @@
 #include "HAL/Shader/ShaderLibrary.h"
 #include "HAL/Vulkan/VulkanRasterResources.h"
 #include "InputManager.h"
-#include "Application/PixelGame.h"
-#include "Gameplay/FormulaBridge/ProcessExample.h"
-#include "Gameplay/Home/GardenAidProgram.h"
-#include "LLM/Testing/FakeModel.h"
+#include "Runtime/Gameplay/Application/PixelGame.h"
+#include "Runtime/Gameplay/FormulaBridge/ProcessExample.h"
+#include "Dev/Debug/Garden/GardenAidProgram.h"
+#include "Dev/Debug/LLM/FakeModel.h"
 #include "Asset/Loaders/AssetLoader.h"
-#include "Assets/ArtAssets.h"
-#include "PixelRender/BackgroundView.h"
-#include "PixelRender/PixelRender.h"
+#include "Runtime/Render/Assets/ArtAssets.h"
+#include "Runtime/Render/BackgroundView.h"
+#include "Runtime/Render/PixelRender.h"
 #include "SystemEnum.h"
 #include <algorithm>
 #include <array>
@@ -1046,7 +1046,7 @@ void BasicWorldGameplay() {
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
     Require(input->GetSession().GetPlayer()->X > playerX && input->GetView().OriginPixels[0] > camera[0], "standard mode must move and follow player");
-    const double targetX = input->GetSession().GetPlayer()->X + pixel::Character::Width / 2;
+    const double targetX = input->GetSession().GetPlayer()->X + pixel::Body::Width / 2;
     Require(input->GetCamera().GetPosition()[0] < targetX, "camera must approach player gradually instead of snapping");
     Require(std::abs(input->GetCamera().GetPosition()[0] - (playerX + 1 + (targetX - playerX - 1) * (1 - std::exp(-1.0)))) < 1e-6,
             "camera must follow distance-proportional speed");

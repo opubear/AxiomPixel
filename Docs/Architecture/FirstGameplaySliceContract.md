@@ -30,14 +30,14 @@
 
 | 当前代码与行为 | 后续职责 |
 | --- | --- |
-| [GameInput](../../Pixel/Source/Input/GameInput.cpp)：事件先经 `CanEditWorld`；左键直调 `PlaceDirt`，Shift＋右键直调 `TryRemoveMaterial`，右键调 `CastFormulaAt` | Input 只做事件过滤、事件尺寸选格和请求转换；世界修改进入 Session 动作端口 |
-| [PixelDebugUI](../../Pixel/Source/Debug/PixelDebugUI.cpp)：风、暂停、单步、保存、重试各自调用；[FormulaDebugUI](../../Pixel/Source/Debug/FormulaDebugUI.cpp) 直接 Apply/Clear | Debug 与输入复用领域动作和会话控制端口；草稿、相机、面板、外观仍由对应模块管理 |
-| [GameSession](../../Pixel/Source/Gameplay/GameSession.cpp)：持有 World/Runtime，检查发射路径、保存/恢复、管理暂停和成功步回调 | Session 拥有动作入口、主体上下文和阶段编排；存档格式提取到 SessionStore |
-| [World](../../Pixel/Source/World/World.cpp)：开采返回 Applied/Blocked/NotReady；放 Dirt 只允许空气且避开玩家 | 领域继续决定实际材料结果；不在 GameAPI 复制一套材料规则 |
-| [FormulaRuntime](../../Pixel/Source/Gameplay/FormulaRuntime.cpp)：每根独立 Simulator；先完成全部扫掠，再排序命中，再按根提交效果 | 保持旧版执行次序；用宿主意图与结果连接语言，世界不依赖语言 |
-| [FormulaWorldAdapter](../../Pixel/Source/Gameplay/FormulaWorldAdapter.cpp)：圆形开采按格部分成功；风仅限 Coarse 且网格≤1024 cells | 适配器负责坐标/单位转换，调用同一领域规则；不把受限风脉冲描述成通用物理冲量 |
-| [World::Tick](../../Pixel/Source/World/World.cpp)、[Environment::Tick](../../Pixel/Source/World/Environment/Environment.cpp)：风预推进→材料→风反馈→角色→构式 | M1 保留顺序；M2 由协调器明确成功提交与 PendingStep |
-| [PixelGame](../../Pixel/Source/Application/PixelGame.cpp)：帧首发布后接收输入/推进，Draw 消费已发布副本；GameEnd 保存 | 保留帧协议；M2 将可拒绝的保存退出提前到关闭请求阶段 |
+| [GameInput](../../Pixel/Source/Runtime/System/IO/Input/GameInput.cpp)：事件先经 `CanEditWorld`；左键直调 `PlaceDirt`，Shift＋右键直调 `TryRemoveMaterial`，右键调 `CastFormulaAt` | Input 只做事件过滤、事件尺寸选格和请求转换；世界修改进入 Session 动作端口 |
+| [PixelDebugUI](../../Pixel/Source/Dev/Debug/UI/PixelDebugUI.cpp)：风、暂停、单步、保存、重试各自调用；[FormulaDebugUI](../../Pixel/Source/Dev/Debug/UI/FormulaDebugUI.cpp) 直接 Apply/Clear | Debug 与输入复用领域动作和会话控制端口；草稿、相机、面板、外观仍由对应模块管理 |
+| [GameSession](../../Pixel/Source/Runtime/Gameplay/GameSession/GameSession.cpp)：持有 World/Runtime，检查发射路径、保存/恢复、管理暂停和成功步回调 | Session 拥有动作入口、主体上下文和阶段编排；存档格式提取到 SessionStore |
+| [World](../../Pixel/Source/Runtime/Simulation/World/World.cpp)：开采返回 Applied/Blocked/NotReady；放 Dirt 只允许空气且避开玩家 | 领域继续决定实际材料结果；不在 GameAPI 复制一套材料规则 |
+| [FormulaRuntime](../../Pixel/Source/Runtime/Gameplay/FormulaRuntime.cpp)：每根独立 Simulator；先完成全部扫掠，再排序命中，再按根提交效果 | 保持旧版执行次序；用宿主意图与结果连接语言，世界不依赖语言 |
+| [FormulaWorldAdapter](../../Pixel/Source/Runtime/Gameplay/FormulaWorldAdapter.cpp)：圆形开采按格部分成功；风仅限 Coarse 且网格≤1024 cells | 适配器负责坐标/单位转换，调用同一领域规则；不把受限风脉冲描述成通用物理冲量 |
+| [World::Tick](../../Pixel/Source/Runtime/Simulation/World/World.cpp)、[Environment::Tick](../../Pixel/Source/Runtime/Simulation/World/Environment/Environment.cpp)：风预推进→材料→风反馈→角色→构式 | M1 保留顺序；M2 由协调器明确成功提交与 PendingStep |
+| [PixelGame](../../Pixel/Source/Runtime/Gameplay/Application/PixelGame.cpp)：帧首发布后接收输入/推进，Draw 消费已发布副本；GameEnd 保存 | 保留帧协议；M2 将可拒绝的保存退出提前到关闭请求阶段 |
 
 当前 `FormulaRuntime::WorldEpoch()` 只是构式运行时的局部计数；当前 `Version()` 只是应用程序版本。它们都不能直接充当所有领域、所有 Session 实例的身份或提交版本。当前没有统一 CommitRevision、事实流、调用者会话或跨查询 view。
 
@@ -66,7 +66,7 @@ flowchart TD
 - SessionStore 接收保存 DTO、返回加载 DTO；不反向持有 Session，不规定固定步或世界退出策略。块 I/O 继续由 WorldStreamer 承担。
 - Formula 只依赖标准库与自身宿主契约。游戏的坐标、材料、资源和权限在 Bridge 适配；程序内部 AST、IR、VM 和新语法留给 M3。
 
-实际构建依据：[模块顺序](../../Pixel/Source/CMakeLists.txt)、[Gameplay](../../Pixel/Source/Gameplay/CMakeLists.txt)、[World](../../Pixel/Source/World/CMakeLists.txt)、[Editing](../../Pixel/Source/FormulaEditing/CMakeLists.txt)、[Input](../../Pixel/Source/Input/CMakeLists.txt)、[Presentation](../../Pixel/Source/PixelRender/CMakeLists.txt)、[独立 Formula](../../Pixel/Formula/CMakeLists.txt)。当前 `Input→Presentation→Gameplay→FormulaEditing→Formula`，World 只链接 Core/Performance。M1.3 去掉 Gameplay→Editing；M1.4 让写入口依赖 GameAPI。Input 的相机表现依赖可以保留，不为缩短依赖图重写相机。
+实际构建依据：[模块顺序](../../Pixel/Source/CMakeLists.txt)、[Gameplay](../../Pixel/Source/Runtime/Gameplay/CMakeLists.txt)、[World](../../Pixel/Source/Runtime/Simulation/World/CMakeLists.txt)、[Editing](../../Pixel/Source/Dev/Debug/FormulaEditing/CMakeLists.txt)、[Input](../../Pixel/Source/Runtime/System/IO/Input/CMakeLists.txt)、[Presentation](../../Pixel/Source/Runtime/Render/CMakeLists.txt)、[独立 Formula](../../Pixel/Source/Runtime/System/Formula/CMakeLists.txt)。当前 `Input→Presentation→Gameplay→FormulaEditing→Formula`，World 只链接 Core/Performance。M1.3 去掉 Gameplay→Editing；M1.4 让写入口依赖 GameAPI。Input 的相机表现依赖可以保留，不为缩短依赖图重写相机。
 
 ## 4 公共值、身份与坐标
 
@@ -88,7 +88,7 @@ flowchart TD
 
 坐标正 X 向右、正 Y 向下，单位 cell。`CellCoord` 是两个 int64；矩形是 `{origin, uint32 width, uint32 height}` 的半开范围。调用边界检查加法溢出、尺寸和工作量，不能先溢出再裁剪。第一版不对外暴露物理 ChunkEdge。
 
-连续位置 DTO 为 `{anchorCell: CellCoord, offset: [double,double]}`，规范化 offset∈[0,1)。Bridge 与现有 Chunk＋Local 的 [WorldPosition](../../Pixel/Source/World/WorldCoordinates.h) 转换；远坐标保持整数差加局部小数，不先转成绝对 double。JSON 中 int64/uint64 坐标、身份和计数均用十进制字符串；uint32 范围尺寸可用数值。API 坐标合法范围还受当前 WorldPosition 能力限制，超出返回 `InvalidArgument`，不承诺整个 int64 域都能模拟。
+连续位置 DTO 为 `{anchorCell: CellCoord, offset: [double,double]}`，规范化 offset∈[0,1)。Bridge 与现有 Chunk＋Local 的 [WorldPosition](../../Pixel/Source/Runtime/Simulation/World/WorldCoordinates.h) 转换；远坐标保持整数差加局部小数，不先转成绝对 double。JSON 中 int64/uint64 坐标、身份和计数均用十进制字符串；uint32 范围尺寸可用数值。API 坐标合法范围还受当前 WorldPosition 能力限制，超出返回 `InvalidArgument`，不承诺整个 int64 域都能模拟。
 
 风速与风脉冲 deltaVelocity 单位 cell/s，基础加速度 cell/s²，时间用成功 tick，半径 cell；分别命名字段。基础球 Damage 当前只是元数据，未实现健康结算；角色与弹体当前都不受风。
 

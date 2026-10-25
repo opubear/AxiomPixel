@@ -1,5 +1,5 @@
-#include "LLMView/QueryProjection.h"
-#include "LLMView/ViewService.h"
+#include "Runtime/Gameplay/LLMView/QueryProjection.h"
+#include "Runtime/Gameplay/LLMView/ViewService.h"
 #include <iostream>
 #include <stdexcept>
 

@@ -1,6 +1,6 @@
-#include "Gameplay/GameSession.h"
-#include "Gameplay/Construction/DeviceCosts.h"
-#include "LLMView/JsonAdapter.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/Gameplay/Construction/DeviceCosts.h"
+#include "Runtime/Gameplay/LLMView/JsonAdapter.h"
 #include "../Support/TestAccess.h"
 #include <iostream>
 #include <chrono>

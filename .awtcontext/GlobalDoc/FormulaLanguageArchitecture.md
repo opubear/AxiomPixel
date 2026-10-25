@@ -1,6 +1,6 @@
 # 构式语言架构（Formula DSL）
 
-更新日期：2026-10-20。范围：`Pixel/Formula` 独立模块的实际架构和执行契约。整体玩法与后续方向见 [构式系统](../../Docs/GameDesign/FormulaSystem.md)，完整语法、示例与构建命令见 [模块 README](../../Pixel/Formula/README.md)。游戏接入现已完成，实际碰撞、成功固定步、树形编辑器及额度见 [基础版实现](FormulaGameplayV1Implementation.md)；下文的独立模块与 CLI 边界不代表游戏缺少这些能力。
+更新日期：2026-10-20。范围：`Pixel/Source/Runtime/System/Formula` 独立模块的实际架构和执行契约。整体玩法与后续方向见 [构式系统](../../Docs/GameDesign/FormulaSystem.md)，完整语法、示例与构建命令见 [模块 README](../../Pixel/Source/Runtime/System/Formula/README.md)。游戏接入现已完成，实际碰撞、成功固定步、树形编辑器及额度见 [基础版实现](FormulaGameplayV1Implementation.md)；下文的独立模块与 CLI 边界不代表游戏缺少这些能力。
 
 “构式（Formula）”已同时用于领域与代码：类型 `Formula`、命名空间 `pixel::formula`、示例扩展名 `.formula` 和 `PixelFormula` 构建目标。2026-10-14 的迁移只统一名称；`cast` 语法及现有执行契约保持不变，迁移对照见系统文档。
 
@@ -19,10 +19,10 @@ flowchart LR
 
 | 层 | 责任 | 实际代码 |
 |---|---|---|
-| 语言层 | 解析文本、命名复用、管道展开、参数及源位置诊断；解析期间不执行效果 | [Parser.cpp](../../Pixel/Formula/Source/Parser.cpp) |
-| 描述层 | 构造同一类型的不可变节点结构，支持共享与再次组合；打印可重解析表达式 | [Formula.h](../../Pixel/Formula/Include/Formula/Formula.h)、[Formula.cpp](../../Pixel/Formula/Source/Formula.cpp)、私有 [Node.h](../../Pixel/Formula/Source/Node.h) |
-| 执行层 | 持有每次激活的状态、活动弹体、计划工作、独立 60 Hz 时钟和根激活 ID | [Simulator.cpp](../../Pixel/Formula/Source/Simulator.cpp) |
-| 效果层 | 用带标签事件表示弹体、风、挖掘、命中、到期及诊断；当前输出给测试和 CLI | [Simulator.h](../../Pixel/Formula/Include/Formula/Simulator.h)、[Main.cpp](../../Pixel/Formula/Source/Main.cpp) |
+| 语言层 | 解析文本、命名复用、管道展开、参数及源位置诊断；解析期间不执行效果 | [Parser.cpp](../../Pixel/Source/Runtime/System/Formula/Source/Parser.cpp) |
+| 描述层 | 构造同一类型的不可变节点结构，支持共享与再次组合；打印可重解析表达式 | [Formula.h](../../Pixel/Source/Runtime/System/Formula/Include/Formula/Formula.h)、[Formula.cpp](../../Pixel/Source/Runtime/System/Formula/Source/Formula.cpp)、私有 [Node.h](../../Pixel/Source/Runtime/System/Formula/Source/Node.h) |
+| 执行层 | 持有每次激活的状态、活动弹体、计划工作、独立 60 Hz 时钟和根激活 ID | [Simulator.cpp](../../Pixel/Source/Runtime/System/Formula/Source/Simulator.cpp) |
+| 效果层 | 用带标签事件表示弹体、风、挖掘、命中、到期及诊断；当前输出给测试和 CLI | [Simulator.h](../../Pixel/Source/Runtime/System/Formula/Include/Formula/Simulator.h)、[Main.cpp](../../Pixel/Source/Runtime/System/Formula/Source/Main.cpp) |
 
 这是直接解释不可变描述的领域语言原型，没有单独的字节码编译器、执行计划或 JIT。文件读取和命令行 I/O 在 Main，解释与模拟逻辑不依赖文件、引擎或 World。
 
@@ -110,7 +110,7 @@ Simulator 持有：绝对 tick、稳定入队序号、根激活 ID、弹体 ID�
 | 主题 | 2026-10-12 提案 | 当前可执行原型 |
 |---|---|---|
 | 描述入口 | 主要由可视槽位生成，保存白名单结构 | 文本 DSL，直接构造不可变描述；没有导入隔离机制 |
-| 目录 | 建议 `Pixel/Source/Spell`（历史名） | 实际 `Pixel/Formula` 独立 CMake 子系统 |
+| 目录 | 建议 `Pixel/Source/Spell`（历史名） | 实际 `Pixel/Source/Runtime/System/Formula` 独立 CMake 子系统 |
 | 执行形式 | 校验、归一化、成本编译后执行计划 | 解析和参数检查后直接递归解释 |
 | 到期与命中 | 曾建议同 tick 命中优先 | 生存区间右开，到期优先；到期后 Hit 被拒绝 |
 | 载荷时间 | 结合未来世界提交阶段讨论 | 所有命中载荷统一排到下一 tick，再执行其内部 delay |

@@ -1,6 +1,6 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/Actions/ActionValues.h"
-#include "GameAPI/Observations.h"
+#include "Runtime/Gameplay/Actions/ActionValues.h"
+#include "Runtime/Gameplay/GameAPI/Observations.h"
 #include <algorithm>
 #include <array>
 #include <chrono>

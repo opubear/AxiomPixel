@@ -10,9 +10,9 @@ AxiomPixel 需要在可接受的运行成本下，让风与普通小方块产生
 
 “没有作用”包含两个独立问题，需要分别验证。
 
-**风对方块的作用。** 粗风场仍可在每个方块位置连续采样，网格尺寸并不直接决定方块能否受到风影响。目前移动逻辑将 `60 * Force + wind` 的每个分量按 ±30 格/秒阈值转换成 -1、0、1，再移动到相邻格。方块没有自身速度与位移余量，因此弱风可能长期无法改变移动结果。提高风场分辨率不会消除这个阈值问题。实现见 [Environment.cpp](../../Pixel/Source/World/Environment/Environment.cpp)。
+**风对方块的作用。** 粗风场仍可在每个方块位置连续采样，网格尺寸并不直接决定方块能否受到风影响。目前移动逻辑将 `60 * Force + wind` 的每个分量按 ±30 格/秒阈值转换成 -1、0、1，再移动到相邻格。方块没有自身速度与位移余量，因此弱风可能长期无法改变移动结果。提高风场分辨率不会消除这个阈值问题。实现见 [Environment.cpp](../../Pixel/Source/Runtime/Simulation/World/Environment/Environment.cpp)。
 
-**方块对风的作用。** 默认 32×16 风网格覆盖 1024×424 个世界格，每个风单元覆盖约 32×26.5 个游戏格。现有按轴投影遮挡与加权压力修正已改善窄高土堆的反馈，但仍属于允许有限穿流的阻力近似，无法恢复单格附近的精确边界、两侧绕流与缝隙连通关系。实现见 [WindField.h](../../Pixel/Source/World/Environment/Wind/WindField.h) 和 [WindField.cpp](../../Pixel/Source/World/Environment/Wind/WindField.cpp)。
+**方块对风的作用。** 默认 32×16 风网格覆盖 1024×424 个世界格，每个风单元覆盖约 32×26.5 个游戏格。现有按轴投影遮挡与加权压力修正已改善窄高土堆的反馈，但仍属于允许有限穿流的阻力近似，无法恢复单格附近的精确边界、两侧绕流与缝隙连通关系。实现见 [WindField.h](../../Pixel/Source/Runtime/Simulation/World/Environment/Wind/WindField.h) 和 [WindField.cpp](../../Pixel/Source/Runtime/Simulation/World/Environment/Wind/WindField.cpp)。
 
 F1 当前显示叠加基础方向场后的单位化方向，不显示纯风速大小。风明显减速但合成方向变化很小时，颜色也可能几乎不变。评估新方案时，需要分别观察纯风向、风速、物体轮廓与最终移动，避免把显示限制误判为模拟没有反馈。已有模型和历史修复证据见 [风场接口与模型](WindField.md) 与 [风向反馈诊断](WindDirectionDiagnosis.md)。
 
@@ -43,7 +43,7 @@ F1 当前显示叠加基础方向场后的单位化方向，不显示纯风速�
 ```sh
 clang++ -std=c++20 -O2 -Wall -Wextra -I Pixel/Source \
   .awtcontext/排查泥土对风向影响不明显Task/Artifacts/WindCostProbe-2026-10-12.cpp \
-  Pixel/Source/World/WindField.cpp \
+  Pixel/Source/Runtime/Simulation/World/WindField.cpp \
   -o /private/tmp/axiompixel-wind-cost-probe
 /private/tmp/axiompixel-wind-cost-probe
 ```

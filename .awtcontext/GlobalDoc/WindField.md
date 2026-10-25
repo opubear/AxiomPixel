@@ -1,6 +1,6 @@
 # 简化 NS 风场
 
-实现位于 `Pixel/Source/World/Environment/Wind/WindField.*`，由 Environment 持有；使用纯 CPU 标准库，不修改引擎或渲染层。完整参数和使用示例见工程根 README 的“简化风场”章节。
+实现位于 `Pixel/Source/Runtime/Simulation/World/Environment/Wind/WindField.*`，由 Environment 持有；使用纯 CPU 标准库，不修改引擎或渲染层。完整参数和使用示例见工程根 README 的“简化风场”章节。
 
 ## 模型与更新
 

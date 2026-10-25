@@ -16,18 +16,18 @@
 
 | 当前事实与代码证据 | 架构意义 |
 | --- | --- |
-| [模块目标](../../Pixel/Source/CMakeLists.txt)、[World 目标](../../Pixel/Source/World/CMakeLists.txt)：World 只链接 Core 与 CPU 性能模块 | 保留无窗口、无 RHI、无 Formula 的底层模拟边界 |
-| [World](../../Pixel/Source/World/World.h) 同时拥有地图、环境、流式与唯一玩家，并暴露大量具体风后端入口 | 后续多角色和设备不宜继续扩展此门面；逐步收拢为世界领域与宿主编排 |
-| [GameSession](../../Pixel/Source/Gameplay/GameSession.cpp) 同时处理存档格式、创建/恢复、暂停、瞄准、风选择与构式 | 首先拆职责和依赖，不急于重写材料或求解算法 |
-| [Environment::Tick](../../Pixel/Source/World/Environment/Environment.cpp) 持有累加器；风预推进后材料预算不足会延期 | 时钟迁移必须保留“成功步才推进其他系统”和同一步不重复风更新 |
-| [FormulaRuntime（现 FormulaBridge）](../../Pixel/Source/Gameplay/FormulaBridge/FormulaBridge.cpp) 每次激活拥有 Simulator；所有扫掠先完成，再提交各根效果 | 保留可观察顺序作为旧版契约，语言新版如改变须明确标记 |
-| [FormulaDraft](../../Pixel/Source/FormulaEditing/FormulaDraft.h) 兼有编辑树与工作量分析；Gameplay 依赖 Editing | 将运行校验与 UI 草稿解耦，使无编辑器宿主也能执行程序 |
-| [GameInput](../../Pixel/Source/Input/GameInput.cpp)、[DebugUI](../../Pixel/Source/Debug/PixelDebugUI.cpp) 可直接调用 World、Session 与运行时 | 接入自动化、LLM 后需要统一操作入口，避免不同调用者绕过相同规则 |
-| [WorldSnapshot 与流式契约](../../Docs/WorldRepresentation.md)、[呈现转换](../../Pixel/Source/PixelRender/PixelWorldPresentation.h) 已有区域版本与独立副本 | 复用增量思路；LLM 语义摘要不复用渲染像素缓冲，也不持有 WorldMapView |
+| [模块目标](../../Pixel/Source/CMakeLists.txt)、[World 目标](../../Pixel/Source/Runtime/Simulation/World/CMakeLists.txt)：World 只链接 Core 与 CPU 性能模块 | 保留无窗口、无 RHI、无 Formula 的底层模拟边界 |
+| [World](../../Pixel/Source/Runtime/Simulation/World/World.h) 同时拥有地图、环境、流式与唯一玩家，并暴露大量具体风后端入口 | 后续多角色和设备不宜继续扩展此门面；逐步收拢为世界领域与宿主编排 |
+| [GameSession](../../Pixel/Source/Runtime/Gameplay/GameSession/GameSession.cpp) 同时处理存档格式、创建/恢复、暂停、瞄准、风选择与构式 | 首先拆职责和依赖，不急于重写材料或求解算法 |
+| [Environment::Tick](../../Pixel/Source/Runtime/Simulation/World/Environment/Environment.cpp) 持有累加器；风预推进后材料预算不足会延期 | 时钟迁移必须保留“成功步才推进其他系统”和同一步不重复风更新 |
+| [FormulaRuntime（现 FormulaBridge）](../../Pixel/Source/Runtime/Gameplay/FormulaBridge/FormulaBridge.cpp) 每次激活拥有 Simulator；所有扫掠先完成，再提交各根效果 | 保留可观察顺序作为旧版契约，语言新版如改变须明确标记 |
+| [FormulaDraft](../../Pixel/Source/Dev/Debug/FormulaEditing/FormulaDraft.h) 兼有编辑树与工作量分析；Gameplay 依赖 Editing | 将运行校验与 UI 草稿解耦，使无编辑器宿主也能执行程序 |
+| [GameInput](../../Pixel/Source/Runtime/System/IO/Input/GameInput.cpp)、[DebugUI](../../Pixel/Source/Dev/Debug/UI/PixelDebugUI.cpp) 可直接调用 World、Session 与运行时 | 接入自动化、LLM 后需要统一操作入口，避免不同调用者绕过相同规则 |
+| [WorldSnapshot 与流式契约](../../Docs/WorldRepresentation.md)、[呈现转换](../../Pixel/Source/Runtime/Render/PixelWorldPresentation.h) 已有区域版本与独立副本 | 复用增量思路；LLM 语义摘要不复用渲染像素缓冲，也不持有 WorldMapView |
 | [构式基础版](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md) 当前不保存配方或运行实例；metadata 已为 v4 | 持久玩法必须补独立程序版本、运行状态与一致的存档边界 |
 | [引擎运行接口](../../Axiom/Source/Engine.h)、[事件工具](../../Axiom/Source/Core/Events/EventDispatcher.h) 已存在 | 不另建全局服务框架；同步事件分发不是跨线程队列或模拟调度器 |
 
-历史 [模块化设计](../../Docs/Architecture/PixelModularDesign.docx) 可解释拆分来源；其中移动链、旧世界所有权等细节按现行代码判断。metadata 当前为 v4；M1.2 已将格式实现从 GameSession 提取到 [SessionStore](../../Pixel/Source/Persistence/SessionStore.cpp)，现行存储说明见 [世界表示文档](../../Docs/WorldRepresentation.md)。本规划中的其余现状表保留规划时基线，实施状态以代码与 AWT 为准。
+历史 [模块化设计](../../Docs/Architecture/PixelModularDesign.docx) 可解释拆分来源；其中移动链、旧世界所有权等细节按现行代码判断。metadata 当前为 v4；M1.2 已将格式实现从 GameSession 提取到 [SessionStore](../../Pixel/Source/Runtime/Gameplay/Persistence/SessionStore.cpp)，现行存储说明见 [世界表示文档](../../Docs/WorldRepresentation.md)。本规划中的其余现状表保留规划时基线，实施状态以代码与 AWT 为准。
 
 ## 2 先固定的边界与暂缓的决定
 
@@ -117,10 +117,10 @@ Actors、Items 等先以 Session 下的小领域模块开始，不为每个名�
 | --- | --- |
 | `Gameplay/GameSession.*` 的读写格式与文件路径代码 | M1 提取到 `Persistence/SessionStore.*`；Session 只协调保存与恢复时机 |
 | `Input/GameInput.cpp`、`Debug/PixelDebugUI.cpp` 的世界写入 | M1 改为 `Gameplay/Actions/` 的类型化请求；相机、面板显隐继续直接调用表现接口 |
-| `FormulaEditing/FormulaDraft.*` 的运行分析 | M1 先分离为无草稿依赖的验证组件；M3 按语义归属迁入 `Pixel/Formula`，游戏额度留在 Gameplay |
+| `FormulaEditing/FormulaDraft.*` 的运行分析 | M1 先分离为无草稿依赖的验证组件；M3 按语义归属迁入 `Pixel/Source/Runtime/System/Formula`，游戏额度留在 Gameplay |
 | `Environment::Tick`、`World::Tick`、Session 回调链 | M2 形成 `Gameplay/SimulationCoordinator.*` 与 World 一步推进接口，不同时改材料求解 |
 | 新的查询类型与聚合 | M2 增加 `GameAPI/` 的低依赖值契约及 `Observation/` 投影；`LLMView/` 只依赖契约 |
-| `Gameplay/FormulaRuntime.*`、`FormulaWorldAdapter.*` | M3 整理到 `Gameplay/FormulaBridge/`，与 `Pixel/Formula` 的宿主契约适配；碰撞与物理结果仍由游戏决定 |
+| `Gameplay/FormulaRuntime.*`、`FormulaWorldAdapter.*` | M3 整理到 `Gameplay/FormulaBridge/`，与 `Pixel/Source/Runtime/System/Formula` 的宿主契约适配；碰撞与物理结果仍由游戏决定 |
 | `World/Character.*` 与未来设备、库存 | M4 出现具体多对象场景时建立 `Actors/`、`Devices/`、`Items/`，不先搬出没有使用者的空库 |
 | 模型连接、决策与未来 DSL | M5/M6 置于 `WorldWill/` 和独立 `Behavior/`；供应商 SDK 只在连接适配目标中出现 |
 
@@ -188,7 +188,7 @@ M2 有意改变当前 v4 允许保存 deferred 标记的行为：`Save` 在 Pend
 
 ### 6.1 独立交付边界
 
-保留 `Pixel/Formula` 独立配置、构建、CLI 和测试入口，将语言所有权逐步收拢到其中。建议职责包括 `Language`（源文件/模块/类型/诊断）、`Runtime`（程序与实例）、`Tooling`（编辑模型、格式化与调试信息）和 `HostContract`（可查询与可作用的能力）。这些首先可以是目录，只有必要时才分库。
+保留 `Pixel/Source/Runtime/System/Formula` 独立配置、构建、CLI 和测试入口，将语言所有权逐步收拢到其中。建议职责包括 `Language`（源文件/模块/类型/诊断）、`Runtime`（程序与实例）、`Tooling`（编辑模型、格式化与调试信息）和 `HostContract`（可查询与可作用的能力）。这些首先可以是目录，只有必要时才分库。
 
 现有 `FormulaEditing::Analyze` 中语言结构与工作量分析迁入语言工具或验证组件；游戏的激活数量、风效果额度和玩法费用留在游戏执行策略。现有 FormulaRuntime 和 FormulaWorldAdapter 属于游戏接线，迁往 FormulaBridge；语言不能为了得到地形、WorldPosition 或资源规则直接链接 PixelWorld。
 
@@ -417,7 +417,7 @@ M5六项能力的当前整合合同见[阶段验收](../../.awtcontext/GlobalDoc
 | 错误语义 | 外部非法程序得到诊断；预期 NotReady 不崩溃；内部阶段违约触发致命失败而非被吞掉 |
 | 性能 | 相同内容对照有/无观测、有/无语言、不同活跃设备数；记录 P95、容量和上限触发，不只平均 FPS |
 
-实施使用 [README 的构建入口](../../README.md)，主要为 `cmake -S . -B build-cpu -DAXIOM_BUILD_RUNTIME=OFF` 后构建/CTest，以及 `cmake -S Pixel/Formula -B build-formula` 的独立语言测试。涉及输入与表现增加 PixelRuntimeSmoke；改 Axiom 时增加 AET 构建和相应生命周期/RHI 验证。块存储变动沿用 chunk64 专项，性能使用 Release 显式基准。新增目标名随实施定义，不能把表格当作已经执行的测试。
+实施使用 [README 的构建入口](../../README.md)，主要为 `cmake -S . -B build-cpu -DAXIOM_BUILD_RUNTIME=OFF` 后构建/CTest，以及 `cmake -S Pixel/Source/Runtime/System/Formula -B build-formula` 的独立语言测试。涉及输入与表现增加 PixelRuntimeSmoke；改 Axiom 时增加 AET 构建和相应生命周期/RHI 验证。块存储变动沿用 chunk64 专项，性能使用 Release 显式基准。新增目标名随实施定义，不能把表格当作已经执行的测试。
 
 本轮只核对设计、代码路径、文档引用和 AWT 状态，不执行 C++ 构建、GPU smoke 或性能测量。独立 review 提出的观察撤权、持续效果清理、延期保存/退出三项 P2 均已修订并复核关闭，事实查询上界的补充也已纳入，无未决重要意见。完整问题、处理和复核记录位于 AWT 任务“面向游戏愿景的架构规划与评审”的 Doc 索引。
 

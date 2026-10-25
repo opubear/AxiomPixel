@@ -20,7 +20,7 @@ M6阶段对当前整合代码的复核与独立复测另见[阶段验收](../../
 | “先帮助设备A，若失败再帮助B；以后重新观察” | C++可表达，但一次 DecisionAPI 只能终结一次；跨请求状态、重观测与时间语义目前没有公开合同 | 若玩法确需，先比较 WorldWill 小型状态机与独立有界过程 |
 | 从模型动态安装任意逻辑 | 现有提案不能选择新源码、能力、caller、执行额度或任意程序 | 尚无产品必要性；属于新授权与执行合同，不是 JSON 扩展即可完成 |
 
-证据入口：[LLM 输入值](../../Pixel/Source/LLM/LLM.h)、[DecisionAPI](../../Pixel/Source/LLM/DecisionAPI.cpp)、[WorldWill](../../Pixel/Source/WorldWill/WorldWill.cpp)、[援助程序](../../Pixel/Source/Gameplay/Home/GardenAidProgram.h)、[干预入口](../../Pixel/Source/Gameplay/SessionAuthority.cpp)。植物在原生 [GameplayObservation](../../Pixel/Source/Gameplay/SessionGameplayObservation.cpp) 中存在，不能因此假定它已授权给模型。
+证据入口：[LLM 输入值](../../Pixel/Source/Runtime/Gameplay/LLM/LLM.h)、[DecisionAPI](../../Pixel/Source/Runtime/Gameplay/LLM/DecisionAPI.cpp)、[WorldWill](../../Pixel/Source/Runtime/Gameplay/WorldWill/WorldWill.cpp)、[援助程序](../../Pixel/Source/Dev/Debug/Garden/GardenAidProgram.h)、[干预入口](../../Pixel/Source/Runtime/Gameplay/GameSession/SessionAuthority.cpp)。植物在原生 [GameplayObservation](../../Pixel/Source/Runtime/Gameplay/GameSession/SessionGameplayObservation.cpp) 中存在，不能因此假定它已授权给模型。
 
 ## 可运行对照
 

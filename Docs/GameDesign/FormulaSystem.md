@@ -1,6 +1,6 @@
 # 构式系统（Formula System）
 
-更新日期：2026-10-20。本文是 AWT 下的系统设计入口，汇总最初的封闭组合想法、整体玩法方案、语言原型和已确认命名。具体语言与实现边界见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)，语法及运行命令见 [原型说明](../../Pixel/Formula/README.md)。
+更新日期：2026-10-20。本文是 AWT 下的系统设计入口，汇总最初的封闭组合想法、整体玩法方案、语言原型和已确认命名。具体语言与实现边界见 [构式语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)，语法及运行命令见 [原型说明](../../Pixel/Source/Runtime/System/Formula/README.md)。
 
 2026-10-20 已按[独立评审通过的计划](../../.awtcontext/GlobalDoc/FormulaGameplayV1Design.md)完成游戏基础版：人物前方朝鼠标激活基础 Bolt 描述、独立树形 DebugUI、成功固定步、扫掠碰撞及受控世界效果。小球是完整描述求值后的结果，不要求预先显示输入实体。操作、代码职责、额度及验证见[基础版实现](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md)。
 
@@ -12,13 +12,13 @@
 |---|---|---|
 | 构式 Formula | 可复用、可组合、可执行的行为描述 | `Formula`；早期提案称 `SpellExpr` |
 | 构式系统 Formula System | 从组合、执行到世界反馈的整体玩法 | 法术系统 |
-| 构式语言 Formula DSL | 构式的文本描述语言 | `Pixel/Formula`，`.formula` 文件 |
+| 构式语言 Formula DSL | 构式的文本描述语言 | `Pixel/Source/Runtime/System/Formula`，`.formula` 文件 |
 | 激活 / 执行构式 | 接受一次运行请求并启动描述 | `cast`、`Simulator::Cast`、`CastId` |
 | 子构式 payload | 事件发生后独立启动的完整构式 | 子法术；`OnHitNode::Payload` |
 | 构式运行实例 | 一次激活产生的弹体、调度项与局部状态 | 与不可变 `Formula` 描述区分 |
 | 修改器 / 装饰器 | 改变参数 / 增加时间、复制与触发行为 | Modifier / Decorator，名称保留 |
 
-2026-10-14 按用户要求完成代码命名迁移：`Spell` → `Formula`、`pixel::spell` → `pixel::formula`、`Pixel/Spell` → `Pixel/Formula`、`PixelSpell*` → `PixelFormula*`、示例扩展名 `.spell` → `.formula`，测试名同步为 `Pixel.Formula*`。当前头文件入口为 `Formula/Formula.h` 与 `Formula/Simulator.h`，独立构建目录使用 `build-formula`。这次直接迁移原型名称，不提供旧类型、目标或头文件的兼容别名；调用方应更新引用。`cast`、`Simulator::Cast` 与 `CastId` 的激活语义保持不变。
+2026-10-14 按用户要求完成代码命名迁移：`Spell` → `Formula`、`pixel::spell` → `pixel::formula`、`Pixel/Spell` → `Pixel/Source/Runtime/System/Formula`、`PixelSpell*` → `PixelFormula*`、示例扩展名 `.spell` → `.formula`，测试名同步为 `Pixel.Formula*`。当前头文件入口为 `Formula/Formula.h` 与 `Formula/Simulator.h`，独立构建目录使用 `build-formula`。这次直接迁移原型名称，不提供旧类型、目标或头文件的兼容别名；调用方应更新引用。`cast`、`Simulator::Cast` 与 `CastId` 的激活语义保持不变。
 
 历史任务 ID 和原始 DOCX 保留，以便追溯。执行器、能量等其他科幻设定尚未命名定案。
 
@@ -77,7 +77,7 @@ flowchart TD
     Commands --> Presentation["渲染拥有的帧快照"]
 ```
 
-`Pixel/Formula` 仍可在没有 Axiom 引擎、窗口和 GPU 的条件下独立构建。游戏依赖为 `PixelGameplay → PixelWorld + PixelFormulaValidation → PixelFormula`；编辑器也使用共享的宿主校验，但Gameplay不链接编辑器。World 和引擎不依赖 Formula，游戏参数/额度留在纯CPU验证组件，ImGui 位于 Debug 层。Gameplay 提交世界效果，表现层发布独立圆形数组，Draw 不读取实时模拟状态。
+`Pixel/Source/Runtime/System/Formula` 仍可在没有 Axiom 引擎、窗口和 GPU 的条件下独立构建。游戏依赖为 `PixelGameplay → PixelWorld + PixelFormulaValidation → PixelFormula`；编辑器也使用共享的宿主校验，但Gameplay不链接编辑器。World 和引擎不依赖 Formula，游戏参数/额度留在纯CPU验证组件，ImGui 位于 Debug 层。Gameplay 提交世界效果，表现层发布独立圆形数组，Draw 不读取实时模拟状态。
 
 后续编译器可以在描述与运行时之间产生规范化执行计划、能力信息、费用和上界；当前没有独立字节码、计划缓存、`PlanId` 或成本编译阶段。优化应以原型测量为依据，不因长期架构预先引入完整框架。
 
@@ -131,7 +131,7 @@ Pixel 玩法层消费指令并回传事件，World 保持纯 CPU 领域模型：
 
 | 能力 | 状态 | 依据或下一步 |
 |---|---|---|
-| 文本 DSL 与不可变组合 | 已实现 | `Pixel/Formula`，详见语言架构 |
+| 文本 DSL 与不可变组合 | 已实现 | `Pixel/Source/Runtime/System/Formula`，详见语言架构 |
 | 时序、散射、命中子构式 | 已接入游戏 | 真实碰撞、次tick载荷、旧版本隔离 |
 | 语义/玩法回归与独立 review | 最终验证通过 | 根CPU53/53、独立2/2、chunk64专项5/5；Astra两项P2修订复核关闭 |
 | 结构及全部后代额度 | 已实现 | 游戏草稿预检与运行时预留；独立CLI不采用游戏额度 |
@@ -156,7 +156,7 @@ Pixel 玩法层消费指令并回传事件，World 保持纯 CPU 领域模型：
 | 2026-10-14 | 代码类型、命名空间、路径、构建目标及示例文件统一为 Formula | 任务 `构式代码命名迁移与提交` |
 | 2026-10-20 | 完成已评审的游戏基础版、独立代码审查修订及CPU/GPU/UI验证 | 任务 `实现构式基础版游戏与编辑器`；[基础版实现](../../.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md) |
 
-原始 [系统设计 DOCX](SpellProgrammingSystemDesign.docx) 保留为 2026-10-12 历史提案。本文负责维护当前设计状态，[语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md) 负责解释已实现语义，[模块 README](../../Pixel/Formula/README.md) 提供实际运行入口。出现差异时先核对当前代码和已接受决策，不从历史文档推定能力已实现。
+原始 [系统设计 DOCX](SpellProgrammingSystemDesign.docx) 保留为 2026-10-12 历史提案。本文负责维护当前设计状态，[语言架构](../../.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md) 负责解释已实现语义，[模块 README](../../Pixel/Source/Runtime/System/Formula/README.md) 提供实际运行入口。出现差异时先核对当前代码和已接受决策，不从历史文档推定能力已实现。
 
 通过 AWT CLI 查询历史任务与当前整理任务，状态以 CLI 返回为准。后续进入构式工作时可显式装入两个设计文档：
 

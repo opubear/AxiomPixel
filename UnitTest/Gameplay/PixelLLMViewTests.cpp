@@ -1,6 +1,6 @@
 #include "../Support/TestAccess.h"
-#include "LLMView/QueryProjection.h"
-#include "LLMView/ViewService.h"
+#include "Runtime/Gameplay/LLMView/QueryProjection.h"
+#include "Runtime/Gameplay/LLMView/ViewService.h"
 #include <algorithm>
 #include <array>
 #include <chrono>

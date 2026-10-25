@@ -4,7 +4,7 @@
 
 ## 所有权与边界
 
-`Pixel/Source/LLM/LLM.h` 定义抽象类 `pixel::llm::LLM`，统一 `TryStart / Poll / Cancel / Close / DisplayName` 生命周期，以及自有的输入、提案和回复值。`PixelGame` 以 `unique_ptr<LLM>` 持有实现；未传入时构造 `PseudoLLM`。`WorldWill` 借用LLM，只负责授权观测、祈祷状态和提案在游戏安全边界的执行。
+`Pixel/Source/Runtime/Gameplay/LLM/LLM.h` 定义抽象类 `pixel::llm::LLM`，统一 `TryStart / Poll / Cancel / Close / DisplayName` 生命周期，以及自有的输入、提案和回复值。`PixelGame` 以 `unique_ptr<LLM>` 持有实现；未传入时构造 `PseudoLLM`。`WorldWill` 借用LLM，只负责授权观测、祈祷状态和提案在游戏安全边界的执行。
 
 模型类型从 `pixel::will` 移至 `pixel::llm`；旧ModelPort接口已删除。`PixelLLM` 只链接观测值库；`PixelModelProtocol` 只链接PixelLLM，JSON头为私有依赖。两者均不链接WorldWill、Gameplay、World或引擎运行时。游戏语义仍在Pixel，不将祈祷/援助规则搬入引擎。
 

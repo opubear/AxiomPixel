@@ -1,5 +1,5 @@
-#include "Assets/ArtAssets.h"
-#include "PixelRender/BackgroundView.h"
+#include "Runtime/Render/Assets/ArtAssets.h"
+#include "Runtime/Render/BackgroundView.h"
 #include <nlohmann/json.hpp>
 #include <cmath>
 #include <filesystem>

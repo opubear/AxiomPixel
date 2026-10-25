@@ -1,9 +1,9 @@
-#include "LLM/PseudoLLM.h"
-#include "LLM/DecisionAPI.h"
-#include "LLM/Services/ProposalProtocol.h"
-#include "Gameplay/GameSession.h"
-#include "Gameplay/CommittedWorldView.h"
-#include "WorldWill/WorldWill.h"
+#include "Runtime/Gameplay/LLM/PseudoLLM.h"
+#include "Runtime/Gameplay/LLM/DecisionAPI.h"
+#include "Runtime/Gameplay/LLM/Services/ProposalProtocol.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/Gameplay/CommittedWorldView.h"
+#include "Runtime/Gameplay/WorldWill/WorldWill.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <stdexcept>

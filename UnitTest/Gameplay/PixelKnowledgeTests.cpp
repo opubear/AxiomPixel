@@ -1,7 +1,7 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/GameSession.h"
-#include "Ecology/ForceGarden.h"
-#include "World/WorldCoordinates.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Dev/Debug/Garden/ForceGarden.h"
+#include "Runtime/Simulation/World/WorldCoordinates.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -375,7 +375,7 @@ void GameSessionKnowledgeFlow() {
     Check(!missing.Applied() && missing.Rejection == api::Reason::NotReady,
         "measurement of a nonresident cell was accepted");
 
-    const auto surface = player.Y + int64_t(Character::Height);
+    const auto surface = player.Y + int64_t(Body::Height);
     for (int64_t x = 516; x <= 521; ++x) {
         const auto material = x < 520 ? CellTypeId::Stone : CellTypeId::CopperOre;
         const auto mined = session.Execute(NativeCaller::Input,

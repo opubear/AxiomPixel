@@ -27,16 +27,16 @@
 
 | 层 | 本轮实现 | 边界 |
 | --- | --- | --- |
-| 对照 A | [现有 Parser/Simulator](../../Pixel/Formula/Source/Simulator.cpp)，解析真实 `.formula` 文本 | 未修改旧实现；库存与 Wake 的 C++ 补充逻辑明确计数 |
-| 对照 B 前端 | [Process.h](../../Pixel/Formula/Experiments/Semantics/Process.h) 的类型化 AST 构造器 | C++ 嵌入式构造入口，可复用不可变表达式；没有新文本 parser，不能用它衡量玩家文本编辑体验 |
-| B 编译及运行 | [Process.cpp](../../Pixel/Formula/Experiments/Semantics/Process.cpp) | AST 一次降为带来源的线性控制指令；纯表达式仍为树。不是承诺最终 bytecode/VM 格式 |
-| 宿主及场景 | [Scenarios.cpp](../../Pixel/Formula/Experiments/Semantics/Scenarios.cpp) | 固定值快照、受控事件和效果接收；不依赖 Axiom、World、UI、网络或真实库存 |
-| 驱动 | [Main.cpp](../../Pixel/Formula/Experiments/Semantics/Main.cpp) | 默认验证，`--benchmark` 输出 CSV；异常直接传播 |
+| 对照 A | [现有 Parser/Simulator](../../Pixel/Source/Runtime/System/Formula/Source/Simulator.cpp)，解析真实 `.formula` 文本 | 未修改旧实现；库存与 Wake 的 C++ 补充逻辑明确计数 |
+| 对照 B 前端 | [Process.h](../../Pixel/Source/Runtime/System/Formula/Experiments/Semantics/Process.h) 的类型化 AST 构造器 | C++ 嵌入式构造入口，可复用不可变表达式；没有新文本 parser，不能用它衡量玩家文本编辑体验 |
+| B 编译及运行 | [Process.cpp](../../Pixel/Source/Runtime/System/Formula/Experiments/Semantics/Process.cpp) | AST 一次降为带来源的线性控制指令；纯表达式仍为树。不是承诺最终 bytecode/VM 格式 |
+| 宿主及场景 | [Scenarios.cpp](../../Pixel/Source/Runtime/System/Formula/Experiments/Semantics/Scenarios.cpp) | 固定值快照、受控事件和效果接收；不依赖 Axiom、World、UI、网络或真实库存 |
+| 驱动 | [Main.cpp](../../Pixel/Source/Runtime/System/Formula/Experiments/Semantics/Main.cpp) | 默认验证，`--benchmark` 输出 CSV；异常直接传播 |
 
 代码受 `PIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT=ON` 控制，默认关闭；`PixelFormulaProcessExperiment` 只依赖 C++20 标准库，比较驱动额外链接旧 `PixelFormula`。无游戏目标链接实验。
 
 ```sh
-cmake -S Pixel/Formula -B /private/tmp/pixel-formula-m31-release \
+cmake -S Pixel/Source/Runtime/System/Formula -B /private/tmp/pixel-formula-m31-release \
   -DCMAKE_BUILD_TYPE=Release -DPIXEL_FORMULA_BUILD_SEMANTICS_EXPERIMENT=ON
 cmake --build /private/tmp/pixel-formula-m31-release -j4
 ctest --test-dir /private/tmp/pixel-formula-m31-release --output-on-failure

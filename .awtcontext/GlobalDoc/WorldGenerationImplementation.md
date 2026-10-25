@@ -24,7 +24,7 @@ PIXEL_SAVE_ROOT=/private/tmp/pixel-flat PIXEL_WORLD_GENERATOR=flat PIXEL_WORLD_S
 - 湖泊使用独立且偏移的512格特征网格；地下积水完整检查有界128×128四邻接分量，拒绝侧/底泄漏。每个Chunk写入同一计划的交集，因此水位和材料不依赖生成先后。
 - 噪声为带稳定标签与整数格点哈希的Q16.16 Perlin；远坐标先做整数商余数分解。种子、版本与固定区域材质均有golden vectors。
 
-准确接口和被冻结的全部常量见[生成API](../../Pixel/Source/World/Generation/WorldGenerator.h)及[Version1合同](../../Pixel/Source/World/Generation/Version1.md)。实现使用稳定Kind值Flat=0/Natural=1，两种策略的Version均为1；原方案中的`flat/0`是兼容策略的概念命名，不是当前存档字段。
+准确接口和被冻结的全部常量见[生成API](../../Pixel/Source/Runtime/Simulation/World/Generation/WorldGenerator.h)及[Version1合同](../../Pixel/Source/Runtime/Simulation/World/Generation/Version1.md)。实现使用稳定Kind值Flat=0/Natural=1，两种策略的Version均为1；原方案中的`flat/0`是兼容策略的概念命名，不是当前存档字段。
 
 metadata升级为v3，保存Kind、Version、Seed、SurfaceY、WaterEnabled及覆盖全部可配置字段的指纹，并继续保存人物位置、暂停/时钟与风设置。不可配置常量由Version1合同冻结；修改常量必须保留旧版本实现并增加新版本，不能原地改变Version1结果。
 

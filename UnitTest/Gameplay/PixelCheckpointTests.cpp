@@ -1,7 +1,7 @@
 #include "../Support/TestAccess.h"
 #include "../Support/CheckpointFiles.h"
-#include "Persistence/GameplaySaveData.h"
-#include "World/WorldStorageError.h"
+#include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
+#include "Runtime/Simulation/World/WorldStorageError.h"
 #include <chrono>
 #include <cstdlib>
 #include <fstream>

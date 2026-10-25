@@ -1,6 +1,6 @@
 # 固定步协调与完整提交
 
-M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`GameSession.cpp`、`SessionPublication.cpp` 和 `CommittedWorldView.*`。它接替 Environment 的累加器和 World 的跨领域回调链。World 继续仅依赖 Core/Performance；60 Hz、暂停、单步和会话提交策略属于 Pixel Gameplay，引擎没有新增游戏调度规则。
+M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`Gameplay/GameSession/GameSession.cpp`、`Gameplay/GameSession/SessionPublication.cpp` 和 `Gameplay/CommittedWorldView.*`。它接替 Environment 的累加器和 World 的跨领域回调链。World 继续仅依赖 Core/Performance；60 Hz、暂停、单步和会话提交策略属于 Pixel Gameplay，引擎没有新增游戏调度规则。
 
 ## 推进与等待
 

@@ -1,0 +1,2 @@
+add_library(PixelGarden STATIC ForceGarden.cpp)
+target_link_libraries(PixelGarden PUBLIC PixelFormulaBridge PixelActors)

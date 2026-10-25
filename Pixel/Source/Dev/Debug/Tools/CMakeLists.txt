@@ -1,0 +1,5 @@
+add_executable(PixelObservationDemo ObservationDemo.cpp)
+target_link_libraries(PixelObservationDemo PRIVATE PixelGameplay PixelLLMView)
+if(BUILD_TESTING)
+    add_test(NAME Pixel.ObservationDemo COMMAND PixelObservationDemo)
+endif()

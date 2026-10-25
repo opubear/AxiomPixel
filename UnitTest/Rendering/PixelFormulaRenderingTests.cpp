@@ -1,8 +1,8 @@
 #include "../Support/TestAccess.h"
 #include "HAL/Shader/ShaderLibrary.h"
-#include "PixelRender/PixelRender.h"
-#include "PixelRender/FormulaFrame.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Render/PixelRender.h"
+#include "Runtime/Render/FormulaFrame.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -209,6 +209,14 @@ void FormulaPassLifecycle() {
         frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
         frame.Character = character ? std::optional<CharacterDraw>(CharacterDraw{{1, 1, 8, 16}, {1, 1, 1, 1}, {1, 1, 1, 1}}) : std::nullopt;
     });
+    uint32_t overlays = 0;
+    policy.SetOverlayDrawCallback([&](RHICommandList &commands) {
+        const auto &events = rhi.Commands.Events;
+        Check(&commands == &rhi.Commands && rhi.Commands.InPass, "overlay escaped the active presentation pass");
+        Check(events.size() >= 2 && events[events.size() - 2] == "post" && events.back() == "draw",
+              "overlay must follow post processing after every scene pass");
+        ++overlays;
+    });
     policy.Initialize();
     Check(policy.FormulaTargetBytes() == uint64_t(101) * 77 * 4 * 3, "formula GPU allocation was not reported by frame slot");
     std::array<const RHITexture *, 3> circleTargets{};
@@ -244,6 +252,7 @@ void FormulaPassLifecycle() {
     ResizePresentation(rhi, policy, {201, 121});
     policy.FrameBegin(); policy.Draw();
     Check(policy.SceneColor(2).Desc.Width == 201 && policy.SceneColor(2).Desc.Height == 121, "formula target was not rebuilt on resize");
+    Check(overlays == rhi.Submits, "scheduled frame omitted or duplicated the overlay");
     policy.Clear();
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Application/PixelGame.h"
-#include "Application/PixelApplication.h"
+#include "Runtime/Gameplay/Application/PixelGame.h"
+#include "Runtime/Gameplay/Application/PixelApplication.h"
 
 // Uses production game wiring without enabling environment-driven profiling.
 class PixelSmokeApplication final : public PixelApplication {

@@ -1,4 +1,4 @@
-#include "LLM/Services/ProposalProtocol.h"
+#include "Runtime/Gameplay/LLM/Services/ProposalProtocol.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <stdexcept>

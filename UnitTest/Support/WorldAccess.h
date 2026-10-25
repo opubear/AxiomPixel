@@ -1,5 +1,5 @@
 #pragma once
-#include "World/World.h"
+#include "Runtime/Simulation/World/World.h"
 
 namespace pixel::testing {
 struct WorldAccess {

@@ -4,7 +4,7 @@ M4.1 将玩家和第二类最小角色 Resident 放在 Session 拥有的 `Actors
 
 ## 状态与身份
 
-`ActorRecord` 保存 `ActorId`、`ActorKind` 和 `Character` 运动状态。Player 接收宿主输入；Resident 使用同样的重力、地形碰撞和水体响应，不接收玩家输入。Resident 是用于后续居民/对象发展的最小物理对象，目前没有 AI、生成玩法或单独的渲染入口。
+`ActorRecord` 保存 `ActorId`、`ActorKind` 和 `Body` 运动状态。`Body` 负责位置、速度、碰撞、移动和水体响应，`BodyState` 是可捕获与恢复的身体状态值；身份与生命周期由 `Actors` 管理。Player 接收宿主输入；Resident 使用同样的重力、地形碰撞和水体响应，不接收玩家输入。Resident 是用于后续居民/对象发展的最小物理对象，目前没有 AI、生成玩法或单独的渲染入口。
 
 `ActorId` 是世界内的值身份，从 1 单调分配。删除、复用 slot 或清空当前集合不会倒退 ID 分配器；0 表示无效。跨域引用使用 ID，并携带所属世界/会话上下文。`ActorHandle` 是本进程的 `{Slot, Generation, Owner}`：删除提升代次，其他集合/重建集合的 Owner 不同，旧句柄不会命中新对象。ID 与 slot 没有数值对应关系。
 
@@ -20,7 +20,7 @@ M4.1 将玩家和第二类最小角色 Resident 放在 Session 拥有的 `Actors
 
 Session 以玩家位置调用 `World::SetSimulationFocus`，World 只按明确的活动中心管理流式窗口。成功角色步后更新 focus；更新位置本身不会移动模拟域。安全边界的 `UpdateStreaming` / 可见区请求执行原有居中策略，pending 环境步仍禁止域重映射或接纳加载。
 
-`GameSession` 的 PlaceMaterial 先检查所有 Actors 的矩形占用，再写材料。World 的材料写入口只判断材料/驻留约束；它不会反向依赖 Actors。程序化材料变化进入角色身体时，原 Character 的向上解嵌行为保持。
+`GameSession` 的 PlaceMaterial 先检查所有 Actors 的矩形占用，再写材料。World 的材料写入口只判断材料/驻留约束；它不会反向依赖 Actors。程序化材料变化进入角色身体时，Body 的向上解嵌行为保持。
 
 ## 观测、呈现与保存边界
 
@@ -34,7 +34,9 @@ M4.6通过 `ActorsState` 保存所有角色的持久ID、next-ID、分段位置�
 
 新增 `Pixel.Actors` 覆盖删除复用、跨集合句柄、Clear、运行态恢复/运动延续、大 ID 和容量拒绝；同时验证 Resident 落地/水体/输入隔离、窗口外/部分身体缺失冻结与恢复、材料不被角色改写、±2^55 格以上的亚格运动/占用/相机/呈现，以及 Session 占用与观测身份。
 
-原 `Pixel.Character`、`Pixel.Liquids`、`Pixel.Input`、`Pixel.Session`、`Pixel.Persistence`、`Pixel.Camera`、`Pixel.Simulation`、`Pixel.Observation`、`Pixel.LLMView` 与呈现回归覆盖行为迁移。纯 World 测试使用无角色的 `SimulatedWorld`；需要角色组合的独立测试使用 `SimulatedActorWorld`。测试夹具不进入游戏公开 API。
+`Pixel.Body`、`Pixel.Liquids`、`Pixel.Input`、`Pixel.Session`、`Pixel.Persistence`、`Pixel.Camera`、`Pixel.Simulation`、`Pixel.Observation`、`Pixel.LLMView` 与呈现回归覆盖行为迁移。纯 World 测试使用无角色的 `SimulatedWorld`；需要角色组合的独立测试使用 `SimulatedActorWorld`。测试夹具不进入游戏公开 API。
+
+2026-10-25，身体类型及文件由 `Character` 改为 `Body`，`CharacterState` 改为 `BodyState`；测试目标由 `PixelCharacterTests` / `Pixel.Character` 改为 `PixelBodyTests` / `Pixel.Body`。运动规则与存档格式保持不变，渲染层 `CharacterDraw` 继续表示角色外观。下列历史验证记录保留当时的名称。
 
 2026-10-22，本机 Apple M5 / macOS，独立验证 Subagent 完成最终 Debug 全量构建及 CTest **71/71**（78.64 秒）；Release 最终相关 CTest **12/12**（12.44 秒），ASan/UBSan 最终相关 CTest **11/11**（29.22 秒），无诊断。Sanitizer 的 `Pixel.Cpu` 在本轮稍早通过（195.35 秒），最后的边缘冻结/身份测试改动未涉及该目标。运行时 `cmake --build build --target Pixel PixelRuntimeSmoke -j 6` 成功；`(cd Pixel && ../build/tests/PixelRuntimeSmoke)` 完整运行退出 0，包含角色/材质 GPU 读回、点击/移动、HiDPI 与模式切换、F1、构式及 ImGui、两轮 resize/minimize 生命周期。Vulkan validation layer 在本机不可用；没有把该运行称为 validation-layer 检查。没有引擎代码变动，本任务未重跑 AET。
 

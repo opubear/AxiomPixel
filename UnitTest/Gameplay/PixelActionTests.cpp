@@ -1,8 +1,8 @@
 #include "../Support/TestAccess.h"
-#include "Gameplay/GameSession.h"
-#include "Input/GameInput.h"
-#include "Camera/GameCamera.h"
-#include "PixelRender/GamePresentation.h"
+#include "Runtime/Gameplay/GameSession/GameSession.h"
+#include "Runtime/System/IO/Input/GameInput.h"
+#include "Runtime/Gameplay/Camera/GameCamera.h"
+#include "Runtime/Render/GamePresentation.h"
 #include <cmath>
 #include <iostream>
 #include <limits>

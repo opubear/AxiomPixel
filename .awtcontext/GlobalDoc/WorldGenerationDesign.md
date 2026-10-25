@@ -367,7 +367,7 @@ metadata与 `current.txt` 采用同目录临时文件完成写入后替换，防
 
 ## 10. 模块接口建议
 
-文件可以先放 `Pixel/Source/World/Generation/`，由PixelWorld编译，不建立新的通用引擎层：
+文件可以先放 `Pixel/Source/Runtime/Simulation/World/Generation/`，由PixelWorld编译，不建立新的通用引擎层：
 
 | 组件 | 职责 |
 |---|---|

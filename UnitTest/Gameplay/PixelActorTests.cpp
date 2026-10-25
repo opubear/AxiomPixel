@@ -1,7 +1,7 @@
-#include "Actors/Actors.h"
+#include "Runtime/Gameplay/Actors/Actors.h"
 #include "../Support/TestAccess.h"
-#include "Camera/GameCamera.h"
-#include "PixelRender/PixelWorldPresentation.h"
+#include "Runtime/Gameplay/Camera/GameCamera.h"
+#include "Runtime/Render/PixelWorldPresentation.h"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
