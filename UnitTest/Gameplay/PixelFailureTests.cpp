@@ -27,11 +27,6 @@ int main(int argc, char **argv) {
         World world(64, 64);
         FormulaBridge runtime;
         runtime.Cast(world, {{}, {std::numeric_limits<double>::quiet_NaN(), 0}}, 0);
-    } else if (mode == "invalid-artifact") {
-        GameSession session;
-        auto moved = formula::Formula::Bolt();
-        const auto owned = std::move(moved);
-        session.ApplyProgram(NativeCaller::Driver, moved);
     } else if (mode == "pending-step") {
         World world(64, 64);
         FormulaBridge runtime;

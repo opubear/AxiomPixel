@@ -28,17 +28,17 @@ std::array<int, 2> GameInput::Movement() const {
     return {int(Move[3]) - int(Move[1]), int(Move[2]) - int(Move[0])};
 }
 PlayerInput GameInput::ConsumePlayerInput() {
-    const PlayerInput input{Mode == ControlMode::Standard ? Movement()[0] : 0,
-                            Mode == ControlMode::Standard && JumpRequested};
+    const bool controlPlayer = Mode == ControlMode::Standard && !Session.IsPaused();
+    const PlayerInput input{controlPlayer ? Movement()[0] : 0, controlPlayer && JumpRequested};
     JumpRequested = false;
     return input;
 }
 void GameInput::UpdateCamera(float duration) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
-    if (Mode == ControlMode::Standard)
+    if (Mode == ControlMode::Standard && !Session.IsPaused())
         Camera.FollowPlayer(Session.GetPlayer(), duration);
-    else
+    else if (Mode == ControlMode::DebugCamera)
         Camera.Pan(Movement(), duration);
 }
 void GameInput::ResetView() {

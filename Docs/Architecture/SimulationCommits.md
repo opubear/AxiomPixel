@@ -1,6 +1,16 @@
 # 固定步协调与完整提交
 
-M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`Gameplay/GameSession/GameSession.cpp`、`Gameplay/GameSession/SessionPublication.cpp` 和 `Gameplay/CommittedWorldView.*`。它接替 Environment 的累加器和 World 的跨领域回调链。World 继续仅依赖 Core/Performance；60 Hz、暂停、单步和会话提交策略属于 Pixel Gameplay，引擎没有新增游戏调度规则。
+M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`Gameplay/GameSession/GameSession.cpp`、`Gameplay/GameSession/SessionPublication.cpp` 和 `Gameplay/CommittedWorldView.*`。它接替 Environment 的累加器和 World 的跨领域回调链。World 继续仅依赖 Core/Performance；60 Hz、单步和会话提交策略属于 Pixel Gameplay；全局暂停状态由GameSession持有，引擎没有新增游戏调度规则。
+
+## 全局暂停
+
+GameSession持有唯一的`Paused`状态，普通新世界和R重置后默认运行；SimulationCoordinator只管理固定步时钟、单步请求及完整提交，不再保存独立暂停。`SetPaused`控制整个会话，F2顶部的`Pause game`提供入口。
+
+暂停且没有显式单步请求时，Tick不推进流式服务、环境、角色、构式、设备或育圃，也不累计时间。输入丢弃暂停期间的跳跃；标准相机跟随停止，DebugCamera继续响应。世界修改、Apply和Clear返回`GamePaused`；恢复暂停、保存、重置及I/O重试属于宿主管理操作。`StepSimulation`仍表示一个包含全部领域的完整单步，暂停状态在单步后保留。
+
+WorldWill暂停轮询和发布模型结果，并延后在途请求的截止时间；后台模型计算可结束，但不会在冻结期间变成世界动作或历史。取消只停止后台请求，领域终态在恢复后的安全边界发布。呈现继续读取已提交快照，存储服务可完成必要的驻留与文件工作，但不会推进设备和构式活动。
+
+新世界元数据v6保存全局暂停；v2–v5中的暂停是已移除的环境开关，导入时转换为运行状态，保存余量和已提交时间保持原值。导入本身不执行欠步。
 
 ## 推进与等待
 
@@ -14,7 +24,7 @@ Session先在安全边界处理流式驻留，再由协调器累计最多0.25秒
 
 `GameAPI/CommitStamp.h` 提供 `{WorldId, WorldEpoch, Tick, Revision}`。初始完整状态 Revision=1，有限夹具 WorldId 为 `finite-world-<epoch>`；持久会话使用存档目录名。不同会话化身由宿主epoch区分，新建世界后Revision从1开始，恢复检查点时保留已保存的Tick/Revision。
 
-成功物理步同时增加 Tick 和 Revision；暂停开采、放置、激活、重建风、应用程序、清理现存运行实例、改变暂停设置，以及接纳驻留/风域变化只增加 Revision。下一世界的生成配置、单步请求、存储重试和运行诊断属于服务控制，不代表当前世界的物理提交。查询、拒绝、重复请求和无变化的暂停设置不增加版本。
+成功物理步同时增加 Tick 和 Revision；帧间开采、放置、激活、重建风、应用程序、清理现存运行实例、改变全局暂停设置，以及接纳驻留/风域变化只增加 Revision。全局暂停时拒绝上述世界修改动作，宿主管理与显式单步除外。下一世界的生成配置、单步请求、存储重试和运行诊断属于服务控制，不代表当前世界的物理提交。查询、拒绝、重复请求和无变化的暂停设置不增加版本。
 
 `ActionReceipt.ResolvedAt` 记录动作解决时的完整提交点。同步去重缓存保留原回执及其版本，即使世界后来继续运行，也不会用新 stamp 覆盖旧请求的结果。身份或版本耗尽、错误阶段提交仍直接抛出内部错误。
 
@@ -28,10 +38,10 @@ Session先在安全边界处理流式驻留，再由协调器累计最多0.25秒
 
 ## 存储与验证边界
 
-时钟由协调器导出/恢复，旧档成功tick从保存的已提交秒数转换；checkpoint/1恢复精确Tick/Revision并核对元数据时钟。M2.3将旧v2–v4 deferred转换为完整欠步；Save/Reset在Pending时返回Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。M4已持久化process/1运行实例及归属效果；活跃旧树实例仍拒绝保存，动态风扰动仍按配置重建，详见[检查点](../../.awtcontext/GlobalDoc/Checkpoints.md)。
+时钟由协调器导出/恢复，旧档成功tick从保存的已提交秒数转换；checkpoint/1恢复精确Tick/Revision并核对元数据时钟。M2.3将旧v2–v4 deferred转换为完整欠步；Save/Reset在Pending时返回Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。M4已持久化process/1运行实例及归属效果；旧树运行时已移除，默认程序和全部活动process实例支持保存；动态风扰动仍按配置重建，详见[检查点](../../.awtcontext/GlobalDoc/Checkpoints.md)。
 
 正常保存可以等待并接纳已完成的加载，因此无论随后块写入成功还是存储失败，返回前都同步已接纳状态的服务 Revision。延期保存仍不接纳加载，不发布准备中的风。
 
-`Pixel.Simulation` 验证提交版本、旧回执去重、暂停激活、完整构式提交、冻结输入、预算失败/恢复、呈现半步隔离和无样本回退；`Pixel.Session` 验证帧分段及单步余量，`Pixel.Persistence` 覆盖 v5、旧 v2–v4 欠步导入与 Deferred/流式回归，并覆盖成功与失败保存的服务版本同步。World、FormulaGameplay、Input 和呈现 CPU 回归继续执行。实际构建、CTest、GPU smoke 与独立审查结果记录于本任务 AWT 日志。
+`Pixel.Simulation` 验证提交版本、旧回执去重、帧间激活、全局冻结及完整构式提交、冻结输入、预算失败/恢复、呈现半步隔离和无样本回退；`Pixel.Session` 验证帧分段及单步余量，`Pixel.Persistence` 覆盖 v6、旧 v2–v5 导入及 v2–v4 欠步导入与 Deferred/流式回归，并覆盖成功与失败保存的服务版本同步。World、FormulaGameplay、Input 和呈现 CPU 回归继续执行。实际构建、CTest、GPU smoke 与独立审查结果记录于本任务 AWT 日志。
 
 M2.4已在相同完整提交边界接入独立ObservationProjector与DomainFact环，见[观测实现](../../.awtcontext/GlobalDoc/ObservationProjection.md)。呈现视图仍可请求可视区域加载；观测不会借用其缓冲或加载行为。

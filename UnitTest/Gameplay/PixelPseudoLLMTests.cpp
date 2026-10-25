@@ -121,8 +121,9 @@ void GameControlsExecution() {
     const auto request = decisions.Request(Input(1).Intent);
     Check(request.Status == will::RequestStatus::Accepted && session.GetAuthority().Resources().Available == 4,
         "pseudo request bypassed the game controller");
+    Check(session.Control(NativeCaller::Driver, api::SetPaused{true}).Succeeded(), "pause game failed");
     decisions.Service();
-    Check(decisions.Results().empty() && decisions.Statistics().Ready == 1
+    Check(decisions.Results().empty() && decisions.Statistics().Thinking == 1
         && session.GetAuthority().Resources().Available == 4, "paused pseudo proposal executed");
     Check(session.Control(NativeCaller::Driver, api::SetPaused{false}).Succeeded(), "unpause failed");
     decisions.Service();

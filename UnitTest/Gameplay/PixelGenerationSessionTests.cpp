@@ -46,7 +46,7 @@ void ConvertToLegacyMetadata(const std::filesystem::path &metadata, unsigned ver
     std::ostringstream rest;
     rest << input.rdbuf();
     input.close();
-    header.replace(header.find("World 5"), 7, "World " + std::to_string(version));
+    header.replace(header.find("World 6"), 7, "World " + std::to_string(version));
     double committedTime, remainder;
     std::istringstream clockInput(clock);
     clockInput >> committedTime >> remainder;
@@ -67,7 +67,7 @@ void NaturalPersistenceAndStrategySelection() {
     std::filesystem::path original;
     {
         GameSession session(true, natural);
-        Require(session.GetGenerationSettings() == natural && session.IsPaused(), "new world did not use natural strategy");
+        Require(session.GetGenerationSettings() == natural && !session.IsPaused(), "new world did not use natural strategy");
         auto &world = pixel::testing::SessionAccess::World(session);
         Require(world.GetCell(511, session.GetPlayer()->GetWorldPosition().Cell().Y + 4).Type == CellTypeId::GrassSoil,
                 "natural spawn lacks a grass platform");

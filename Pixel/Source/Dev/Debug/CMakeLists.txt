@@ -1,5 +1,4 @@
 add_subdirectory(Performance)
-add_subdirectory(FormulaEditing)
 add_subdirectory(Garden)
 if(BUILD_TESTING OR PIXEL_BUILD_SMOKE)
     add_subdirectory(LLM)

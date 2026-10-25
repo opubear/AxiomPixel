@@ -1,5 +1,0 @@
-// The shared base stays at damage 10. The other branches emit 30 and 25.
-let base = bolt();
-let add_then_multiply = base |> damage_add(5) |> damage_mul(2);
-let multiply_then_add = base |> damage_mul(2) |> damage_add(5);
-cast seq(base, add_then_multiply, multiply_then_add);

@@ -37,13 +37,15 @@ void CommitStampsAndPausedActions() {
         api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}});
     Require(cast.Applied() && cast.ResolvedAt.Tick == 0 && cast.ResolvedAt.Revision == 3,
             "paused activation masqueraded as a physical step");
+    Require(session.Control(NativeCaller::Driver, api::SetPaused{true}).Succeeded(), "game pause failed");
+    const auto frozen = session.CurrentCommit();
     const auto x = view->Projectiles().front().Position.Local[0];
     session.Tick(.1f, {});
-    Require(session.CurrentCommit() == cast.ResolvedAt && view->Projectiles().front().Position.Local[0] == x,
+    Require(session.CurrentCommit() == frozen && view->Projectiles().front().Position.Local[0] == x,
             "paused service frame advanced committed state");
     session.Control(NativeCaller::Driver, api::StepSimulation{});
     session.Tick(.1f, {});
-    Require(view->Stamp().Tick == 1 && view->Stamp().Revision == 4
+    Require(view->Stamp().Tick == 1 && view->Stamp().Revision == 5
                 && std::abs(view->Projectiles().front().Position.Local[0] - x - 1) < 1e-8,
             "single step did not publish the complete formula stage");
     const auto stepped = session.CurrentCommit();
@@ -52,7 +54,7 @@ void CommitStampsAndPausedActions() {
     session.Control(NativeCaller::Driver, api::SetPaused{true});
     Require(session.CurrentCommit() == stepped, "no-op pause manufactured a revision");
     session.Control(NativeCaller::Driver, api::SetPaused{false});
-    Require(session.CurrentCommit().Tick == 1 && session.CurrentCommit().Revision == 5,
+    Require(session.CurrentCommit().Tick == 1 && session.CurrentCommit().Revision == 6,
             "pause setting change lacks a revision");
     session.Control(NativeCaller::Driver, api::ResetWorld{});
     Require(session.CurrentCommit().WorldEpoch != initial.WorldEpoch && session.CurrentCommit().Revision == 1

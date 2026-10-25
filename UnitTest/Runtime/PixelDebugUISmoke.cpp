@@ -487,6 +487,68 @@ void RunPixelDebugUISmoke() {
     std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
 }
 
+void RunPixelGamePauseUISmoke() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *pixel = game.get();
+    PixelSmokeApplication app(std::move(game), {true});
+    app.Initialize();
+    app.Begin();
+    Draw(app, 3);
+    auto &session = pixel->GetSession();
+    auto &world = pixel::testing::SessionAccess::World(session);
+    Require(!session.IsPaused(), "normal game started globally frozen");
+    pixel->OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Draw(app, 2);
+    const auto start = session.GetPlayer()->GetWorldPosition();
+    SendKey(app, GLFW_KEY_D, true);
+    pixel->Tick(1.f / 60);
+    Require(session.GetPlayer()->GetWorldPosition().RelativeTo(start.Cell())[0] > start.RelativeTo(start.Cell())[0],
+            "default running game ignored platform movement input");
+    SendKey(app, GLFW_KEY_D, false);
+    world.SetCell(32, 10, {pixel::CellTypeId::Dirt});
+    pixel::testing::SessionAccess::PublishFixtureChanges(session);
+    pixel->OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Draw(app, 2);
+    Click(app, ControlPoint(app, "Pause game"));
+    Require(session.IsPaused(), "global pause checkbox did not freeze the session");
+    const auto frozen = session.GetPlayer()->CaptureState();
+    const auto stamp = session.CurrentCommit();
+    pixel->OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Draw(app, 2);
+    SendKey(app, GLFW_KEY_D, true);
+    SendKey(app, GLFW_KEY_SPACE, true);
+    pixel->Tick(.2f);
+    Require(session.CurrentCommit() == stamp && session.GetPlayer()->GetWorldPosition().Local == frozen.Position.Local
+                && world.GetCell(32, 10).Type == pixel::CellTypeId::Dirt,
+            "global pause advanced the clock, player or materials");
+    SendKey(app, GLFW_KEY_D, false);
+    SendKey(app, GLFW_KEY_SPACE, false);
+    SendKey(app, GLFW_KEY_F3, true);
+    SendKey(app, GLFW_KEY_F3, false);
+    const auto camera = pixel->GetCamera().GetPosition();
+    SendKey(app, GLFW_KEY_D, true);
+    pixel->Tick(.1f);
+    Require(pixel->GetCamera().GetPosition()[0] > camera[0] && session.CurrentCommit() == stamp,
+            "global pause blocked debug camera or advanced the world through it");
+    SendKey(app, GLFW_KEY_D, false);
+    pixel->OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Draw(app, 2);
+    Click(app, ControlPoint(app, "Pause game"));
+    Require(!session.IsPaused(), "global pause checkbox could not resume the session");
+    pixel->SetControlMode(PixelGame::ControlMode::Standard);
+    pixel->OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Draw(app, 2);
+    SendKey(app, GLFW_KEY_D, true);
+    SendKey(app, GLFW_KEY_SPACE, true);
+    pixel->Tick(1.f / 60);
+    const auto resumed = session.GetPlayer()->GetWorldPosition().RelativeTo(frozen.Position.Cell());
+    const auto before = frozen.Position.RelativeTo(frozen.Position.Cell());
+    Require(resumed[0] > before[0] && resumed[1] < before[1], "resume did not restore platform walking and jumping");
+    Draw(app, 2);
+    app.Shutdown();
+    std::cout << "Game pause GPU/UI passed: default walking, global freeze, debug camera, real pause checkbox and resumed jump\n";
+}
+
 void RunPixelGardenUISmoke() {
     auto game = std::make_unique<PixelGame>(false);
     auto *pixel = game.get();
@@ -516,8 +578,7 @@ void RunPixelGardenUISmoke() {
             initialText.find("Create garden: Applied.") != std::string::npos,
             "garden UI omitted coordinates, measured units, condition or creation receipt", initialText);
     Click(app, ControlPoint(app, "Apply crystal program"));
-    Require(session.GetFormulaRuntime().ActiveProcess() &&
-            session.GetFormulaRuntime().ActiveProcess()->Source() == pixel::ForceGardenSource,
+    Require(session.GetFormulaRuntime().ActiveProcess().Source() == pixel::ForceGardenSource,
             "garden Apply did not install the natural crystal program");
     // Position the player as a fixture, then exercise the actual platform input
     // and GameInput aiming path. Activation must remain player-local.
@@ -638,28 +699,9 @@ void RunPixelGardenAidUISmoke() {
         "production cancel button failed to retire the held prayer without effects");
     const auto beforePrayer = observation().Stamp;
     Click(app, ControlPoint(app, "Pray for home aid"));
-    Require(session.IsPaused() && observation().Stamp.Tick == beforePrayer.Tick &&
-            observation().WorldWill.Records.size() == 2 && observation().WorldWill.AidAccepted == 0 &&
-            observation().Garden->State.HomeGrowth == 0,
-            "prayer button advanced or resumed simulation, applied while paused, or omitted the persistent request");
-    for (int attempt = 0; attempt < 100 &&
-         observation().WorldWill.Records.back().State == pixel::api::DecisionState::Thinking; ++attempt) {
-        Draw(app);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    const auto &ready = observation().WorldWill.Records.back();
-    Require(ready.State == pixel::api::DecisionState::Ready && !ready.Action && ready.Facts.Count == 0 &&
-        ready.ResolvedAt == pixel::api::CommitStamp{} && session.IsPaused(),
-        "returned model proposal was not published as Ready without committed action evidence");
-    const auto queued = CaptureUiText(app);
-    RequireUiText(queued.find("Resume simulation to submit") != std::string::npos &&
-        queued.find("Status: model proposal, not applied.") != std::string::npos &&
-        queued.find("No committed game action.") != std::string::npos &&
-        queued.find("Player prayer: Help this home bed.") != std::string::npos &&
-        queued.find("Model adapter: Test fake model") != std::string::npos,
-        "paused prayer UI did not distinguish the proposal from a committed action", queued);
-
-    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "aid smoke resume failed");
+    Require(!session.IsPaused() && observation().Stamp.Tick == beforePrayer.Tick &&
+            observation().WorldWill.Records.size() == 2 && observation().Garden->State.HomeGrowth == 0,
+            "prayer button advanced physical time or omitted the durable request");
     for (int attempt = 0; attempt < 100 && observation().WorldWill.AidAccepted == 0; ++attempt) {
         Draw(app);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -672,6 +714,7 @@ void RunPixelGardenAidUISmoke() {
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{}).Succeeded(), "aid smoke step failed");
         pixel->Tick(1.f / 60);
     }
+    Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "resume before protection input");
     Draw(app);
     const auto running = observation();
     const auto instance = running.WorldWill.Records.back().InstanceId;
@@ -712,7 +755,7 @@ void RunPixelGardenAidUISmoke() {
     Require(observation().Protections.empty() && observation().WorldWill.AutonomyChosen && observation().WorldWill.AidAccepted == 1,
         "protection removal erased durable relationship choices");
     app.Shutdown();
-    std::cout << "Garden aid ImGui passed: real player text/prayer/cancel/protection controls, injected offline worker, Ready without action, committed instance/field/growth, revocation and frozen publication\n";
+    std::cout << "Garden aid ImGui passed: real player text/prayer/cancel/protection controls, injected offline worker, committed instance/field/growth, revocation and frozen publication\n";
 }
 
 void RunPixelFormulaUISmoke() {
@@ -734,30 +777,6 @@ void RunPixelFormulaUISmoke() {
     Require(runtime.Projectiles().empty() && CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore,
             "right click inside Formula Editor leaked into gameplay");
 
-    const auto choose = [&](const char *label, int row, const char *child = nullptr) {
-        Click(app, ControlPoint(app, label, "Formula Editor", child));
-        const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
-        Require(!popups.empty() && popups.back().Window, "Formula combo did not open");
-        const auto *popup = popups.back().Window;
-        const auto &style = ImGui::GetStyle();
-        Click(app, {popup->Pos.x + style.WindowPadding.x + 35,
-                    popup->Pos.y + style.WindowPadding.y + row * (ImGui::GetFontSize() + style.ItemSpacing.y) + ImGui::GetFontSize() / 2});
-    };
-    choose("Preset (draft only)", 1);
-    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Bolt,
-            "preset changed the active description before Apply");
-    Click(app, ControlPoint(app, "Apply", "Formula Editor"));
-    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Fan,
-            "production Apply did not install fan preset");
-
-    choose("New node type", int(pixel::formula::NodeKind::Sequence), "/Parameters_");
-    Click(app, ControlPoint(app, "Wrap selected", "Formula Editor", "/Parameters_"));
-    Click(app, ControlPoint(app, "Apply", "Formula Editor"));
-    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Sequence
-                && runtime.ActiveFormula().ChildCount() == 1
-                && runtime.ActiveFormula().Child(0).Kind() == pixel::formula::NodeKind::Fan,
-            "production tree wrap did not change the structure");
-
     SendKey(app, GLFW_KEY_F2, true);
     SendKey(app, GLFW_KEY_F2, false);
     Require(ImGui::FindWindowByName("Pixel Debug")->Active && editor->Active,
@@ -774,15 +793,11 @@ void RunPixelFormulaUISmoke() {
     int width = 0, height = 0;
     glfwGetWindowSize(platform->GetWindows(), &width, &height);
     ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_RIGHT);
-    Require(runtime.Projectiles().size() == 3, "real outside right click did not activate three-way fan");
+    Require(runtime.Projectiles().size() == 1, "real outside right click did not activate default process");
     SendKey(app, GLFW_KEY_F4, true);
     SendKey(app, GLFW_KEY_F4, false);
     Require(editor->Active && !ImGui::FindWindowByName("Pixel Debug")->Active,
             "F4 must reopen Formula Editor while Pixel Debug stays hidden");
-    Click(app, ControlPoint(app, "Delete", "Formula Editor", "/Parameters_"));
-    Click(app, ControlPoint(app, "Apply", "Formula Editor"));
-    Require(runtime.ActiveFormula().Kind() == pixel::formula::NodeKind::Empty && runtime.Projectiles().size() == 3,
-            "deleting the root did not produce Empty or mutated old instances");
     Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
     Require(runtime.Projectiles().empty() && runtime.Stats().Pending == 0, "Clear running retained active or delayed work");
 
@@ -821,7 +836,7 @@ void RunPixelFormulaUISmoke() {
     const auto oldProcessVersion = runtime.Projectiles()[0].Version;
     enterProcess("process 1; wait ticks(false);");
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
-    Require(runtime.Version() == oldProcessVersion && runtime.ActiveProcess()->Source().find("bolt(3") != std::string_view::npos,
+    Require(runtime.Version() == oldProcessVersion && runtime.ActiveProcess().Source().find("bolt(3") != std::string_view::npos,
         "invalid draft changed the published process");
     enterProcess("process 1; emit bolt(9, speed(0), ticks(100)); wait ticks(100);");
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
@@ -835,7 +850,7 @@ void RunPixelFormulaUISmoke() {
     editor = ImGui::FindWindowByName("Formula Editor");
     editor->Collapsed = true;
     Draw(app, 2);
-    Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI structure editing changed world cells");
+    Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI source editing changed world cells");
     app.Shutdown();
-    std::cout << "Formula ImGui passed: tree edits, process source/compile/Apply, invalid draft, version isolation, right capture, independent F2/F4 and clear\n";
+    std::cout << "Formula ImGui passed: process source/compile/Apply, invalid draft, version isolation, right capture, independent F2/F4 and clear\n";
 }

@@ -1,5 +1,7 @@
 # 构式基础版：游戏接入、结构编辑与实施计划
 
+> 历史记录：2026-10-25已删除旧cast语言、树形Simulator/编辑器/验证器和对照实验代码。本文中的旧代码路径、构建命令与验证数字仅描述当时状态。当前只保留[process运行时](FormulaProcessRuntime.md)与[FormulaBridge](FormulaBridge.md)。
+
 日期：2026-10-20。状态：已通过干净上下文 gpt-6-astra（xhigh）独立审查及修订复核，可作为实施基线；本文不表示功能已实现。评审证据位于 AWT 任务“构式基础版设计与独立评审”的 Doc 索引。
 
 后续用户调整（2026-10-20）：Formula Editor现由F4独立显隐，F2只控制Pixel Debug；下文F2统一显隐是原评审基线，当前操作见[实现说明](FormulaGameplayV1Implementation.md)。

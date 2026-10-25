@@ -11,13 +11,12 @@ namespace pixel {
 class SimulationCoordinator {
   public:
     static constexpr double StepSeconds = 1.0 / 60;
-    bool IsPaused() const { return Paused; }
+    bool HasStepRequest() const { return StepRequested; }
     bool HasPendingStep() const { return Pending; }
     uint64_t Tick() const { return CompletedTicks; }
     uint64_t Revision() const { return CommitRevision; }
     double Time() const { return CompletedTicks * StepSeconds; }
     double Remainder() const { return TimeRemainder; }
-    void SetPaused(bool paused) { Paused = paused; }
     void RequestStep() { StepRequested = true; }
     void CancelStepRequest() { StepRequested = false; }
     void ClearInput() { Input = {}; }
@@ -26,7 +25,6 @@ class SimulationCoordinator {
         if (!std::isfinite(duration) || duration <= 0) return false;
         Input.Horizontal = std::clamp(input.Horizontal, -1, 1);
         Input.Jump |= input.Jump;
-        if (Paused && !StepRequested) return false;
         if (StepRequested) {
             if (TimeRemainder < StepSeconds) TimeRemainder += StepSeconds;
         } else if (!Pending) {
@@ -89,7 +87,7 @@ class SimulationCoordinator {
   private:
     uint64_t CompletedTicks = 0, CommitRevision = 1;
     double TimeRemainder = 0;
-    bool Paused = true, StepRequested = false, Pending = false;
+    bool StepRequested = false, Pending = false;
     PlayerInput Input{}, StepInput{};
 };
 } // namespace pixel

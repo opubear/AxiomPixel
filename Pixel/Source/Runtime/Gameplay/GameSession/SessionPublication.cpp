@@ -45,7 +45,7 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
 void GameSession::PublishCommit() {
     if (Simulation.HasPendingStep()) throw std::logic_error("publication during pending step");
     PublishGameplayObservation();
-    Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(), Simulation.IsPaused(), Facts.HighWatermark());
+    Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(), Paused, Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
             if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
@@ -68,9 +68,11 @@ void GameSession::CommitChange() {
 
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
-    const auto deviceChanges = SynchronizeDeviceActivity();
-    const auto authorityChanges = ReconcileAuthority();
-    const bool activityChanged = Formulas.SynchronizeActivity(GameWorld);
+    // Residency may be serviced for rendering or saving while the game is
+    // frozen, but that must not start/stop programs or change domain activity.
+    const auto deviceChanges = Paused ? std::vector<api::DeviceChanged>{} : SynchronizeDeviceActivity();
+    const auto authorityChanges = Paused ? std::vector<api::FactPayload>{} : ReconcileAuthority();
+    const bool activityChanged = !Paused && Formulas.SynchronizeActivity(GameWorld);
     if (!authorityChanges.empty() || activityChanged || PublishedDeviceVersion != Machines.Revision()
         || PublishedFieldSourceVersion != GameWorld.GetEnvironment().GetFieldSources().Revision()
         || PublishedActorVersion != Characters.Revision()

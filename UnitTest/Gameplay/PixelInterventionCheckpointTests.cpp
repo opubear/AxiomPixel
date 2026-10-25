@@ -147,6 +147,7 @@ void AidSurvivesRestartAndProtection() {
             "old action session survived load");
         Step(loaded);
         Check(Snapshot(loaded).Garden->State.HomeGrowth == growth + 1, "resumed aid did not grow bed once");
+        Check(loaded.Control(NativeCaller::Driver, api::SetPaused{false}).Succeeded(), "resume before device input");
         auto reference = loaded.GetDevices().Find(device)->Value.Ref;
         Check(loaded.Execute(NativeCaller::Input, api::SetDeviceProtection{reference, true}).Applied(), "install shield");
         Check(loaded.GetWorld().GetForce(GardenHomeX, 511).X == 3600, "disabled device shield unexpectedly active");
@@ -207,11 +208,12 @@ void ReadyPrayerRestoresWithoutCancellingFreshWork() {
         llm::FakeModel model;
         will::WorldWill decisions(session, model);
         Check(decisions.Request(Goal(device)).Status == will::RequestStatus::Accepted, "ready save prayer request");
-        const auto until = llm::Clock::now() + 3s;
-        while (Snapshot(session).WorldWill.Records.back().State != api::DecisionState::Ready && llm::Clock::now() < until) {
-            decisions.Service();
-            std::this_thread::sleep_for(1ms);
-        }
+        // Exercise restoration of a legacy Ready record. A global pause no
+        // longer delivers worker replies, so stage this host lifecycle explicitly.
+        const auto prayer = Snapshot(session).WorldWill.Records.back();
+        session.ResolvePrayer(prayer.Id, api::DecisionState::Ready, "Saved proposal awaiting dispatch", {});
+        Check(session.Control(NativeCaller::Driver, api::SetPaused{true}).Succeeded(), "pause before checkpoint");
+        decisions.Service();
         const auto ready = Snapshot(session).WorldWill.Records.back();
         Check(ready.State == api::DecisionState::Ready && !ready.Action && ready.ResolvedAt == api::CommitStamp{},
             "paused model proposal was not published as unresolved ready state");
@@ -225,6 +227,7 @@ void ReadyPrayerRestoresWithoutCancellingFreshWork() {
             "load replayed a ready proposal or lost original text");
         llm::FakeModel model;
         will::WorldWill decisions(loaded, model);
+        loaded.Control(NativeCaller::Driver, api::SetPaused{false});
         Check(model.EnqueuePlan({0ms, true}), "fresh held worker plan");
         const auto fresh = decisions.Request(Goal(device));
         Check(fresh.Status == will::RequestStatus::Accepted, "fresh request after ready load");
@@ -236,6 +239,7 @@ void ReadyPrayerRestoresWithoutCancellingFreshWork() {
         loaded.Control(NativeCaller::Driver, api::SetPaused{true});
         Check(Snapshot(loaded).WorldWill.AidAccepted == 1 && !decisions.CancelPrayer(currentPrayer.Id, currentPrayer.ObservedAt),
             "fresh post-load work failed or completed prayer stayed cancellable");
+        loaded.Control(NativeCaller::Driver, api::SetPaused{false});
         Check(model.EnqueuePlan({0ms, true}), "cancel save worker plan");
         Check(decisions.Request(Goal(device)).Status == will::RequestStatus::Accepted, "cancel save request");
         const auto cancel = Snapshot(loaded).WorldWill.Records.back();
@@ -292,6 +296,7 @@ void FrozenLeaseUsesRemainingGlobalTime() {
     }
     // The untouched saved generation still contains the frozen intervention.
     GameSession revoked(true);
+    revoked.Control(NativeCaller::Driver, api::SetPaused{false});
     Check(revoked.SetWorldWillCapabilities(NativeCaller::Driver, {true, false}).Succeeded(), "frozen revoke");
     Save(revoked);
     GameSession afterRevoke(true);

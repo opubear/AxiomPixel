@@ -7,6 +7,10 @@
 namespace {
 using namespace pixel;
 using namespace pixel::items;
+formula::process::ProgramArtifact Program(std::string_view source) {
+    return std::get<formula::process::ProgramArtifact>(formula::process::Compile("test.process", source));
+}
+
 void Check(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
 void Stock(GameSession &session, ItemId item, uint32_t quantity) {
     auto &inventory = testing::SessionAccess::Inventory(session);
@@ -125,13 +129,15 @@ void WorkAndLifecycle() {
           std::get<api::ProgramEffectCause>(facts.Facts[0].Cause).Program == api::ProgramRef{3, 2} &&
           std::get<api::DeviceCause>(facts.Facts[1].Cause).DeviceId == id, "device facts lost ownership or source");
     const auto snapshot = device;
+    session.Control(NativeCaller::Driver, api::SetPaused{true});
     session.Tick(.1f, {});
     Check(Current(session, id) == snapshot, "paused device advanced");
+    session.Control(NativeCaller::Driver, api::SetPaused{false});
     for (int i = 0; i < 29; ++i) Step(session);
     Check(Current(session, id).Cycles == 1 && Current(session, id).Fuel == 1, "device restarted before its wait elapsed");
     Step(session);
     Check(Current(session, id).Cycles == 2 && Current(session, id).Fuel == 0, "device did not restart at its next cycle");
-    Check(bool(session.ApplyProgram(NativeCaller::Driver, formula::Formula::Dig(0))), "player program change failed");
+    Check(bool(session.ApplyProcess(NativeCaller::Driver, Program("process 1; emit dig(cells(0));"))), "player program change failed");
     Check(Current(session, id).Cycles == 2 && session.GetFormulaRuntime().HasCarrier(ProcessCarrierKind::Device, id),
           "player Apply replaced the installed device program");
     const auto removed = session.Execute(NativeCaller::Input, api::RemoveDevice{Current(session, id).Ref});

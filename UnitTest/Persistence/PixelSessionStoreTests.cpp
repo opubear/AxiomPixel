@@ -50,13 +50,13 @@ WorldGenerationSettings NaturalRecipe() {
 
 // Independent wire-format fixture: distinct settings for every wind backend and
 // distant split coordinates catch reordered/omitted fields during extraction.
-std::string MetadataFixture(uint32_t version) {
+std::string MetadataFixture(uint32_t version, bool paused = false) {
     std::ostringstream text;
     text << "AxiomPixelWorld " << version << ' ' << storage::ChunkEdge << " 256 123456789\n";
     if (version >= 3)
         text << "1 1 18446744073709551557 768 0 " << GenerationFingerprint(NaturalRecipe()) << '\n';
     text << "-1234567890123 2345678901234 0.125 63.75\n";
-    text << (version < 5 ? "12.5 12.25 0.125 1 -23456 1 0\n" : "12.25 0.125 -23456 1 0\n");
+    text << (version < 5 ? "12.5 12.25 0.125 1 -23456 1 " : "12.25 0.125 -23456 1 ") << paused << '\n';
     text << "3\n"
             "1 1.25 -2.5 3.75 4.5 0.5 11\n"
             "64 32 2.25\n"
@@ -75,7 +75,7 @@ void MetadataCompatibility() {
     SessionStore store(root.Path);
     const auto directory = store.CreateWorldDirectory(NaturalRecipe());
     const auto metadata = directory / "world.meta";
-    const auto fixture = MetadataFixture(5);
+    const auto fixture = MetadataFixture(6);
     WriteText(metadata, fixture);
     const auto data = store.ReadMetadata(directory);
     Require(data.WindowEdge == 256 && data.BudgetBytes == 123456789 && data.Generation == NaturalRecipe(),
@@ -92,16 +92,18 @@ void MetadataCompatibility() {
                 && wind.Adaptive.Flow.Seed == 33 && wind.Lbm.Ambient == WindVelocity{-13.5f, 14.25f}
                 && wind.Lbm.Seed == 44, "wind backend settings were mixed during decoding");
     store.WriteMetadata(directory, data);
-    Require(ReadText(metadata) == fixture, "v5 metadata wire format changed");
+    Require(ReadText(metadata) == fixture, "v6 metadata wire format changed");
+    WriteText(metadata, MetadataFixture(6, true));
+    Require(store.ReadMetadata(directory).Paused, "v6 lost the explicit global game pause");
 
-    for (const auto version : {2u, 3u, 4u}) {
-        WriteText(metadata, MetadataFixture(version));
+    for (const auto version : {2u, 3u, 4u, 5u}) {
+        WriteText(metadata, MetadataFixture(version, true));
         const auto legacy = store.ReadMetadata(directory);
         Require(legacy.Generation == (version == 2 ? WorldGenerationSettings{} : NaturalRecipe())
-                    && legacy.CommittedTime == 12.25 && legacy.TimeRemainder == .125,
+                    && legacy.CommittedTime == 12.25 && legacy.TimeRemainder == .125 && !legacy.Paused,
                 "legacy metadata lost committed time or full owed backlog");
         store.WriteMetadata(directory, legacy);
-        Require(ReadText(metadata).starts_with("AxiomPixelWorld 5 "), "legacy metadata was not saved as v5");
+        Require(ReadText(metadata).starts_with("AxiomPixelWorld 6 "), "legacy metadata was not saved as v6");
     }
     auto corruptGeneration = fixture;
     const auto surface = corruptGeneration.find(" 768 0 ");
@@ -110,7 +112,7 @@ void MetadataCompatibility() {
     const auto corruption = storage::CaptureFailure([&] { store.ReadMetadata(directory); });
     Require(corruption && corruption->find("generation coordinate exceeds supported range") != std::string::npos,
             "corrupt generation range escaped the persistence failure boundary");
-    WriteText(metadata, MetadataFixture(6));
+    WriteText(metadata, MetadataFixture(7));
     RequireFailure([&] { store.ReadMetadata(directory); }, "future metadata version was accepted");
     WriteText(metadata, fixture.substr(0, fixture.size() / 2));
     RequireFailure([&] { store.ReadMetadata(directory); }, "truncated metadata was accepted");
@@ -205,8 +207,8 @@ void LegacySourceImports() {
         WriteText(working / "chunks" / "0_0.bin", "imported working change");
         const auto checkpoint = store.PublishCheckpoint(destination, working, store.ReadMetadata(source), "imported domains");
         Require(store.ResolveCheckpoint(destination) == checkpoint
-                    && ReadText(checkpoint / "world.meta").starts_with("AxiomPixelWorld 5 "),
-                "legacy import did not create a new v5-backed checkpoint");
+                    && ReadText(checkpoint / "world.meta").starts_with("AxiomPixelWorld 6 "),
+                "legacy import did not create a new v6-backed checkpoint");
         Require(ReadText(source / "world.meta") == fixture
                     && ReadText(source / "chunks" / "0_0.bin") == "legacy chunk"
                     && !std::filesystem::exists(source / "checkpoint.current"),

@@ -1,5 +1,7 @@
 # 构式语言架构（Formula DSL）
 
+> 历史记录：2026-10-25已删除旧cast语言、树形Simulator/编辑器/验证器和对照实验代码。本文中的旧代码路径、构建命令与验证数字仅描述当时状态。当前只保留[process运行时](FormulaProcessRuntime.md)与[FormulaBridge](FormulaBridge.md)。
+
 更新日期：2026-10-20。范围：`Pixel/Source/Runtime/System/Formula` 独立模块的实际架构和执行契约。整体玩法与后续方向见 [构式系统](../../Docs/GameDesign/FormulaSystem.md)，完整语法、示例与构建命令见 [模块 README](../../Pixel/Source/Runtime/System/Formula/README.md)。游戏接入现已完成，实际碰撞、成功固定步、树形编辑器及额度见 [基础版实现](FormulaGameplayV1Implementation.md)；下文的独立模块与 CLI 边界不代表游戏缺少这些能力。
 
 “构式（Formula）”已同时用于领域与代码：类型 `Formula`、命名空间 `pixel::formula`、示例扩展名 `.formula` 和 `PixelFormula` 构建目标。2026-10-14 的迁移只统一名称；`cast` 语法及现有执行契约保持不变，迁移对照见系统文档。

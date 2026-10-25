@@ -75,14 +75,13 @@ void CapacityPlacementAndDeduplication() {
           inventory.Inspect(session.PlayerInventory()).Quantity == 0, "world reset retained old bag");
 }
 void FormulaCollectors() {
-    for (bool process : {false, true}) {
+    {
         World world(64, 64);
         Inventory inventory;
         const auto bag = inventory.Create(1);
         FormulaBridge bridge;
         bridge.BindPlayerInventory(inventory, bag);
-        if (process) bridge.ApplyProcess(DigProgram());
-        else Check(bridge.Apply(formula::Formula::Dig(0)), "legacy dig failed analysis");
+        bridge.ApplyProcess(DigProgram());
         for (int i = 0; i < 2; ++i) {
             world.SetCell(20, 20, {CellTypeId::CopperOre});
             Check(bridge.Cast(world, WorldPosition::FromAbsolute(20.5, 20.5), 0), "dig activation failed");
@@ -90,7 +89,7 @@ void FormulaCollectors() {
                   "formula lost ore at inventory capacity");
         }
         Check(inventory.Inspect(bag).Stacks == std::vector<Stack>{{ItemId::CopperOre, 1, 0}}, "formula product differs from direct mining");
-        if (process) Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Capacity, "process capacity refusal missing");
+        Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Capacity, "process capacity refusal missing");
     }
     World world(64, 64);
     Inventory inventory;

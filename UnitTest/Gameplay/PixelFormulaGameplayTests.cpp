@@ -3,23 +3,17 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
-#include <numbers>
 #include <stdexcept>
 
 namespace {
 using namespace pixel;
-using formula::Formula;
+formula::process::ProgramArtifact Program(std::string_view source) {
+    return std::get<formula::process::ProgramArtifact>(formula::process::Compile("gameplay.process", source));
+}
 
 void Require(bool value, const char *message) {
     if (!value)
         throw std::runtime_error(message);
-}
-
-bool HasDiagnostic(const FormulaBridge &runtime, const std::string &text) {
-    for (const auto &entry : runtime.Diagnostics())
-        if (entry.Message.find(text) != std::string::npos)
-            return true;
-    return false;
 }
 
 WorldPosition At(double x, double y) { return WorldPosition::FromAbsolute(x, y); }
@@ -28,30 +22,27 @@ void DefaultAndVersioning() {
     World world(64, 64);
     FormulaBridge runtime;
     Require(runtime.Cast(world, At(10.5, 10.5), 0), "default activation failed");
-    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 10, "default must only produce its final bolt");
+    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 10 && runtime.AppliedProgram().ResourceId == 2,
+            "default must produce a process bolt");
     runtime.Step(world);
     Require(std::abs(runtime.Projectiles()[0].Position.RelativeTo({10, 10})[0] - 1.5) < 1e-9, "bolt did not move one cell per tick");
     runtime.Clear(world);
-
-    Require(runtime.Apply(Formula{}), "empty apply failed");
-    Require(runtime.Cast(world, At(10.5, 10.5), 0) && runtime.Projectiles().empty() && runtime.Stats().Roots == 0, "empty must not create a placeholder");
-    Require(runtime.Apply(Formula::Bolt(30, 0).After(3)), "delayed apply failed");
+    runtime.ApplyProcess(Program("process 1;"));
+    Require(runtime.Cast(world, At(10.5, 10.5), 0) && runtime.Stats().Roots == 0, "empty process must retire");
+    runtime.ApplyProcess(Program("process 1; wait ticks(3); emit bolt(30, speed(0), ticks(10)); wait ticks(10);"));
     const auto oldVersion = runtime.Version();
     Require(runtime.Cast(world, At(10.5, 10.5), 0), "delayed cast failed");
-    Require(runtime.Projectiles().empty() && runtime.Stats().Roots == 1 && runtime.Stats().Pending == 1, "delayed root retired prematurely");
-    Require(runtime.Apply(Formula::Bolt(99, 0)), "new apply failed");
-    Require(runtime.Cast(world, At(20.5, 10.5), 0), "new version activation failed");
-    const auto goodVersion = runtime.Version();
-    Require(!runtime.Apply(Formula::Bolt().Spread(17, 10)) && runtime.Version() == goodVersion, "invalid apply replaced active description");
-    runtime.Step(world);
-    runtime.Step(world);
+    runtime.ApplyProcess(Program("process 1; emit bolt(99, speed(0), ticks(10)); wait ticks(10);"));
+    Require(runtime.Cast(world, At(20.5, 10.5), 0), "new activation failed");
+    runtime.Step(world); runtime.Step(world);
     Require(runtime.Projectiles().size() == 1, "delay advanced early");
     runtime.Step(world);
-    Require(runtime.Projectiles().size() == 2 && runtime.Projectiles()[0].Version == oldVersion && runtime.Projectiles()[0].Damage == 30,
-            "running root did not preserve its description version");
+    bool old = false;
+    for (const auto &bolt : runtime.Projectiles()) old |= bolt.Version == oldVersion && bolt.Damage == 30;
+    Require(runtime.Projectiles().size() == 2 && old, "old instance lost its program version");
 }
 
-void SweptGeometryAndExpiry() {
+void SweptGeometry() {
     World world(64, 64);
     world.SetCell(15, 10, {CellTypeId::Stone});
     auto hit = FormulaWorldAdapter::Sweep(world, At(10.5, 10.5), At(20.5, 10.5));
@@ -68,28 +59,13 @@ void SweptGeometryAndExpiry() {
     Require(FormulaWorldAdapter::Sweep(world, At(tangent, tangent), At(tangent, tangent)).Kind == FormulaContactKind::Solid,
             "closed-set tangent must count as contact");
     world.SetCell(10, 10, {});
-    world.SetCell(15, 10, {CellTypeId::Stone});
-
-    FormulaBridge runtime;
-    Require(runtime.Apply(Formula::Bolt(10, 600, 1).OnHit(Formula::Dig(3))), "expiry formula rejected");
-    runtime.Cast(world, At(10.5, 10.5), 0);
-    runtime.Step(world);
-    Require(runtime.Projectiles().empty() && !HasDiagnostic(runtime, "hit id=") && world.GetCell(15, 10).Type == CellTypeId::Stone,
-            "excluded expiration segment produced a false Hit");
-
-    runtime.Apply(Formula::Bolt(10, 600, 5).OnHit(Formula::Dig(3)));
-    runtime.Cast(world, At(10.5, 10.5), 0);
-    runtime.Step(world);
-    Require(runtime.Projectiles().empty() && world.GetCell(15, 10).Type == CellTypeId::Stone, "hit payload ran in the collision tick");
-    runtime.Step(world);
-    Require(world.GetCell(15, 10).Type == CellTypeId::Air && HasDiagnostic(runtime, "Dig applied=1"), "hit payload did not run on the next tick");
 }
 
 void ClosedSetFaceTangencies() {
     struct SolidCase {
         CellCoord Cell;
         WorldPosition Position;
-        formula::Vec2 AlongFace;
+        FormulaVector AlongFace;
     };
     const SolidCase solids[] = {
         {{0, 10}, At(1.35, 10.5), {0, .1}},
@@ -111,7 +87,7 @@ void ClosedSetFaceTangencies() {
 
     struct BoundaryCase {
         WorldPosition Position;
-        formula::Vec2 AlongFace;
+        FormulaVector AlongFace;
     };
     const BoundaryCase boundaries[] = {
         {At(.35, 8.5), {0, .1}},
@@ -145,36 +121,14 @@ void ClosedSetDigCenters() {
     }
 }
 
-void ImmediateHitsAndMapConsistency() {
-    World world(64, 64);
-    world.SetCell(10, 10, {CellTypeId::Stone});
-    FormulaBridge runtime;
-    runtime.Apply(Formula::Bolt(10, 0).OnHit(Formula::Bolt(7, 0)));
-    runtime.Cast(world, At(10.5, 10.5), 0);
-    Require(runtime.Projectiles().empty(), "tick-zero overlap did not consume carrier");
-    world.SetCell(10, 10, {});
-    runtime.Step(world);
-    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 7, "overlap payload did not wait exactly one tick");
-    runtime.Clear(world);
-
-    world.SetCell(15, 10, {CellTypeId::Stone});
-    runtime.Apply(Formula::Sequence({Formula::Dig(3).After(1), Formula::Bolt(10, 600)}));
-    runtime.Cast(world, At(10.5, 10.5), 0);
-    runtime.Apply(Formula::Bolt(10, 600).OnHit(Formula::Dig(1)));
-    runtime.Cast(world, At(10.5, 10.5), 0);
-    runtime.Step(world);
-    Require(runtime.Projectiles().empty(), "world effects were applied before all same-tick collision queries");
-    Require(HasDiagnostic(runtime, "hit id="), "same-tick shared wall was not hit");
-}
-
 void DomainExitAndDigRules() {
     World world(16, 16);
     world.SetCell(15, 8, {CellTypeId::Stone});
     FormulaBridge runtime;
-    runtime.Apply(Formula::Bolt(10, 600).OnHit(Formula::Dig(3)));
+    runtime.ApplyProcess(Program("process 1; emit bolt(10, speed(600), ticks(5)); await hit within ticks(10); if outcome() == hit { emit dig(cells(3)); }"));
     runtime.Cast(world, At(14.5, 4.5), 0);
     runtime.Step(world);
-    Require(runtime.Projectiles().empty() && HasDiagnostic(runtime, "OutOfSimulation") && !HasDiagnostic(runtime, "hit id="),
+    Require(runtime.Projectiles().empty() && world.GetCell(15, 8).Type == CellTypeId::Stone,
             "domain exit must discard without payload");
     world.SetCell(4, 4, {CellTypeId::Stone});
     world.SetCell(5, 4, {CellTypeId::GoldOre});
@@ -190,12 +144,12 @@ void DomainExitAndDigRules() {
     runtime.Cast(sparse, At(10.5, 4.5), 0);
     auto unloaded = pixel::testing::WorldAccess::Map(sparse).Remove({0, 0});
     runtime.Step(sparse);
-    Require(runtime.Projectiles().empty() && runtime.Stats().Roots == 1 && !HasDiagnostic(runtime, "hit id="),
+    Require(runtime.Projectiles().empty() && runtime.Stats().Roots == 1,
             "missing chunk must freeze without hit or forced residency");
     pixel::testing::WorldAccess::Map(sparse).Insert(std::move(unloaded));
     runtime.SynchronizeActivity(sparse);
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Position.Cell().X == 10,
-            "chunk return lost or advanced legacy projectile");
+            "chunk return lost or advanced process projectile");
 }
 
 WindStrategySettings Coarse() {
@@ -207,100 +161,37 @@ WindStrategySettings Coarse() {
     return settings;
 }
 
-void WindBoundariesAndDelayedConfiguration() {
+void WindAdapterBoundaries() {
     World world(64, 64);
     Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1, {60, 0}) == FormulaWindResult::Unavailable, "disabled wind was silently enabled");
-    for (const auto radius : {0.0, 1e-300, 1.0 / 256}) {
-        FormulaBridge runtime;
-        runtime.Apply(Formula::Sequence({Formula::Wind(radius, 120), Formula::Bolt(10, 0).After(2)}));
-        Require(runtime.Cast(world, At(10.5, 10.5), 0), "legal degenerate wind aborted root");
-        runtime.Step(world);
-        runtime.Step(world);
-        Require(runtime.Projectiles().size() == 1, "skipped wind canceled later bolt");
-    }
     world.ConfigureWindStrategy(64, Coarse());
     Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1.0 / 256, {60, 0}) == FormulaWindResult::Applied, "minimum resolved radius was rejected");
-    Require(FormulaWorldAdapter::Wind(world, At(64 - 1e-10, 10), 1, {60, 0}) == FormulaWindResult::Applied, "domain-inside float rounding reached outside boundary");
-    Require(FormulaWorldAdapter::Wind(world, At(64, 10), 1, {60, 0}) == FormulaWindResult::Unavailable, "outside wind point was clamped into domain");
-    auto tooLarge = Coarse();
-    tooLarge.Coarse.Columns = 33;
+    Require(FormulaWorldAdapter::Wind(world, At(64 - 1e-10, 10), 1, {60, 0}) == FormulaWindResult::Applied, "domain-inside rounding reached outside");
+    Require(FormulaWorldAdapter::Wind(world, At(64, 10), 1, {60, 0}) == FormulaWindResult::Unavailable, "outside wind was clamped into domain");
+    auto tooLarge = Coarse(); tooLarge.Coarse.Columns = 33;
     world.ConfigureWindStrategy(64, tooLarge);
-    Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1, {60, 0}) == FormulaWindResult::GridUnsupported, "grid larger than 1024 cells was accepted");
-
-    FormulaBridge runtime;
-    runtime.Apply(Formula::Sequence({Formula::Wind(1, 60).After(2), Formula::Bolt(10, 0).After(3)}));
-    runtime.Cast(world, At(10.5, 10.5), 0);
-    auto other = Coarse();
-    other.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindStrategy(64, other);
-    runtime.Step(world);
-    runtime.Step(world);
-    Require(HasDiagnostic(runtime, "WindBackendUnsupported"), "delayed wind did not recheck changed backend");
-    runtime.Step(world);
-    Require(runtime.Projectiles().size() == 1, "unsupported delayed wind canceled normal descendant");
+    Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1, {60, 0}) == FormulaWindResult::GridUnsupported, "grid limit was ignored");
 }
 
 void LimitsAndRetirement() {
     World world(64, 64);
     FormulaBridge runtime;
-    runtime.Apply(Formula::Bolt(10, 0).Spread(16, 10).Repeated(4, 1));
-    for (int i = 0; i < 4; ++i)
-        Require(runtime.Cast(world, At(30, 30), 0), "legal reserved root rejected");
-    Require(runtime.Stats().ReservedEffects == 256 && !runtime.Cast(world, At(30, 30), 0), "session total effects did not pre-reject");
-    runtime.Clear(world);
-    runtime.Apply(Formula::Bolt(10, 0).After(600));
+    runtime.ApplyProcess(Program("process 1; wait ticks(600);"));
     for (int frame = 0; frame < 2; ++frame) {
         runtime.BeginFrame();
-        for (int i = 0; i < 8; ++i)
-            Require(runtime.Cast(world, At(30, 30), 0), "legal delayed root rejected");
+        for (int i = 0; i < 8; ++i) Require(runtime.Cast(world, At(30, 30), 0), "legal instance rejected");
+        Require(!runtime.Cast(world, At(30, 30), 0), "frame activation limit ignored");
     }
     runtime.BeginFrame();
-    Require(runtime.Stats().Roots == 16 && !runtime.Cast(world, At(30, 30), 0), "root limit ignored delayed instances without balls");
+    Require(runtime.Stats().Roots == 16 && !runtime.Cast(world, At(30, 30), 0), "instance limit ignored");
     runtime.Clear(world);
     runtime.BeginFrame();
-    runtime.Apply(Formula{});
-    for (int i = 0; i < 8; ++i)
-        Require(runtime.Cast(world, At(30, 30), 0), "frame accepted fewer than 8 activations");
-    Require(!runtime.Cast(world, At(30, 30), 0), "frame activation limit was bypassed by instant retirement");
-
-    runtime.BeginFrame();
-    runtime.Apply(Formula::Sequence({Formula::Wind(1, 60).Repeated(16, 0), Formula::Wind(1, 60).Repeated(16, 0),
-                                  Formula::Wind(1, 60).Repeated(16, 0), Formula::Wind(1, 60).Repeated(16, 0)}));
-    world.ConfigureWindStrategy(64, Coarse());
-    const auto started = std::chrono::steady_clock::now();
-    Require(runtime.Cast(world, At(30, 30), 0), "maximum legal wind batch rejected");
-    const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
-    Require(runtime.Stats().WindCallsThisFrame == 64 && runtime.Stats().RetiredWind == 64, "wind calls or retired reservations incorrect");
-    const auto rejectStarted = std::chrono::steady_clock::now();
-    for (int i = 0; i < 16; ++i)
-        Require(!runtime.Cast(world, At(30, 30), 0), "instant wind retirement restored same-frame quota");
-    const auto rejectElapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - rejectStarted).count();
-    Require(runtime.Stats().WindCallsThisFrame == 64, "rejected activations called wind backend");
-    runtime.Clear(world);
-    runtime.OnWorldReplaced(world);
-    Require(!runtime.Cast(world, At(30, 30), 0), "clear/reset restored same-frame wind quota");
-    runtime.BeginFrame();
-    Require(runtime.Cast(world, At(30, 30), 0), "BeginFrame failed to release retired wind quota");
-    std::cout << "64 Coarse impulses over 1024 cells: " << elapsed << " ms; backend calls=64; 16 same-frame rejections: " << rejectElapsed << " ms\n";
-
-    runtime.Clear(world);
-    runtime.BeginFrame();
-    runtime.Apply(Formula::Wind(1, 60).Repeated(16, 2));
-    Require(runtime.Cast(world, At(30, 30), 0) && runtime.Stats().ReservedWind == 16, "delayed wind root reservation missing");
-    runtime.BeginFrame();
-    Require(runtime.Stats().ReservedWind == 16, "BeginFrame refunded live root wind reservation");
+    runtime.ApplyProcess(Program("process 1;"));
+    for (int i = 0; i < 8; ++i) Require(runtime.Cast(world, At(30, 30), 0), "instant process rejected");
+    Require(!runtime.Cast(world, At(30, 30), 0), "instant retirement bypassed activation limit");
     const auto epoch = runtime.WorldEpoch();
     runtime.OnWorldReplaced(world);
-    Require(runtime.WorldEpoch() == epoch + 1 && runtime.Stats().Roots == 0 && runtime.Stats().RetiredWind == 16,
-            "world replacement did not clear queues and preserve retired wind quota");
-    Require(runtime.Diagnostics().empty(), "clear retained old runtime diagnostics");
-
-    runtime.BeginFrame();
-    runtime.Apply(Formula::Dig(0).Repeated(16, 0).Spread(4, 10));
-    for (int i = 0; i < 8; ++i)
-        runtime.Cast(world, At(30, 30), 0);
-    Require(runtime.Diagnostics().size() == 256 && runtime.Stats().DiagnosticBytes > 0 && runtime.Stats().SnapshotBytes > 0,
-            "diagnostic ring is unbounded or tracked snapshot capacity is missing");
+    Require(runtime.WorldEpoch() == epoch + 1 && runtime.Stats().Roots == 0, "world replacement retained work");
 }
 
 void DistantCoordinates() {
@@ -328,7 +219,7 @@ void DistantCoordinates() {
                     "far coordinate bolt lost fractional movement");
             for (int i = 0; i < 4; ++i)
                 runtime.Step(world);
-            Require(runtime.Projectiles().empty() && HasDiagnostic(runtime, "hit id="), "far coordinate wall collision lost precision");
+            Require(runtime.Projectiles().empty(), "far coordinate wall collision lost precision");
             world.ConfigureWindDomain(baseY + storage::ChunkEdge, Coarse());
             Require(FormulaWorldAdapter::Wind(world, anchor, 2, {60, 0}) == FormulaWindResult::Applied, "far coordinate wind did not use integer-relative conversion");
         }
@@ -343,12 +234,11 @@ void DistantCoordinates() {
 int main() {
     try {
         DefaultAndVersioning();
-        SweptGeometryAndExpiry();
+        SweptGeometry();
         ClosedSetFaceTangencies();
         ClosedSetDigCenters();
-        ImmediateHitsAndMapConsistency();
         DomainExitAndDigRules();
-        WindBoundariesAndDelayedConfiguration();
+        WindAdapterBoundaries();
         LimitsAndRetirement();
         DistantCoordinates();
         std::cout << "Pixel formula gameplay contracts passed\n";

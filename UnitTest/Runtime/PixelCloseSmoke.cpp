@@ -74,6 +74,9 @@ void CloseAtSaveBoundary() {
     auto *platform = app.Engine->GetPlatform();
     const auto metadata = session.GetSaveDirectory() / "checkpoint.current";
     const auto before = Read(metadata);
+    Require(session.Execute(pixel::NativeCaller::Driver,
+                pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(),
+            "default process close fixture could not launch");
     const auto stamp = session.CurrentCommit();
     pixel::testing::SessionAccess::RestoreClock(session, 0, 1.0 / 60, true);
     game.OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
@@ -109,17 +112,23 @@ void CloseAtSaveBoundary() {
             "explicit Escape retry did not save and accept closing");
     const auto saved = Read(metadata);
     Require(saved != before && saved.starts_with("AxiomPixelCheckpoint 1"), "accepted close did not persist the committed clock");
+    Require(session.GetFormulaRuntime().Projectiles().size() == 1, "close lost the active default bolt");
+    const auto running = session.GetFormulaRuntime().CaptureState();
     // A second save from GameEnd would fail here. Teardown must only clean up.
     std::filesystem::create_directory(temporary);
     app.Shutdown();
     Require(Read(metadata) == saved, "GameEnd rewrote the accepted save");
+    std::filesystem::remove(temporary);
+    pixel::GameSession restored(true);
+    Require(restored.GetFormulaRuntime().CaptureState() == running,
+            "accepted close did not restore the active default process exactly");
 }
 } // namespace
 
 int main() {
     try {
         CloseAtSaveBoundary();
-        std::cout << "Pixel close passed: pending/failed save refusal, visible notice, explicit retry and teardown-only GameEnd\n";
+        std::cout << "Pixel close passed: pending/failed save refusal, visible notice, explicit retry with active default process, restore and teardown-only GameEnd\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
         return 1;

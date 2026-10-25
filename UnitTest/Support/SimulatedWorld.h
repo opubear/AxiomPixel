@@ -12,7 +12,6 @@ class SimulatedWorld : public World {
 
     uint32_t Tick(float duration, const std::function<void()> &onStep = {}, bool singleStep = false) {
         UpdateStreaming();
-        Coordinator.SetPaused(false);
         if (singleStep)
             Coordinator.RequestStep();
         if (!Coordinator.BeginFrame(duration, {}))

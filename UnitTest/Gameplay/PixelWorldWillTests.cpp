@@ -301,9 +301,13 @@ void HoldUntilSafeBoundary() {
     Fixture f;
     const auto id = f.Request();
     f.Pause(true);
+    const auto frozen = f.Source.Session.CurrentCommit();
     f.Model.Reply(id);
     f.Service();
-    Check(f.Will.Statistics().Ready == 1 && f.Source.Submissions == 0, "paused world accepted model action");
+    Check(f.Will.Statistics().Thinking == 1 && f.Will.Statistics().Ready == 0 && f.Source.Submissions == 0
+              && f.Source.Session.CurrentCommit() == frozen && f.Model.Replies.size() == 1,
+          "global pause polled a model reply or changed the world");
+    Check(f.Will.Request(CellGoal, f.Now).Status == will::RequestStatus::NotReady, "paused game opened a decision");
     f.Pause(false);
     f.Source.Pending = true;
     f.Service();
@@ -322,8 +326,10 @@ void HoldUntilSafeBoundary() {
     timeout.Pause(true);
     timeout.Model.Reply(waiting);
     timeout.Service(5s);
-    Check(timeout.Result(waiting).State == will::DecisionState::TimedOut && timeout.Source.Submissions == 0,
-        "paused ready proposal escaped deadline");
+    Check(timeout.Will.Results().empty() && timeout.Model.Cancelled.empty(), "global pause consumed the model timeout");
+    timeout.Pause(false);
+    timeout.Service();
+    CheckApplied(timeout, waiting);
 
     for (const bool pendingStep : {true, false}) {
         Fixture blocked;
@@ -435,8 +441,8 @@ void PlayerTextIsOwnedAndBounded() {
     f.Pause(true);
     f.Service();
     const auto ready = Prayers(f.Source.Session).Records.back();
-    Check(ready.State == api::DecisionState::Ready && ready.Prayer == original && !ready.Action
-        && ready.Facts.Count == 0 && ready.ResolvedAt == api::CommitStamp{} && !ready.Explanation.empty(),
+    Check(ready.State == api::DecisionState::Thinking && ready.Prayer == original && !ready.Action
+        && ready.Facts.Count == 0 && ready.ResolvedAt == api::CommitStamp{} && ready.Explanation.empty(),
         "ready proposal became action evidence or lost its player source");
     const auto revision = f.Source.Session.CurrentCommit().Revision;
     f.Service();
@@ -465,9 +471,10 @@ void ExplicitCancellationWaitsForCommitAndRejectsLateReplies() {
             "cancellation waited for the worker or changed an incomplete game commit");
         f.Model.Reply(id);
         f.Service();
-        Check(f.Will.Statistics().IgnoredReplies == 1 && f.Source.Submissions == 0 && f.Will.Results().empty(),
+        Check(f.Will.Statistics().IgnoredReplies == (pendingStep ? 0 : 1) && f.Source.Submissions == 0 && f.Will.Results().empty(),
             "cancelled worker's late response was retained or submitted");
         f.Source.Pending = f.Source.NotReady = false;
+        f.Pause(false);
         f.Service();
         const auto cancelled = Prayers(f.Source.Session).Records.back();
         Check(f.Result(id).State == api::DecisionState::Cancelled && cancelled.State == api::DecisionState::Cancelled

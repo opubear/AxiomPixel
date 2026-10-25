@@ -1,5 +1,7 @@
 # 构式基础版游戏接入实现
 
+> 历史记录：2026-10-25已删除旧cast语言、树形Simulator/编辑器/验证器和对照实验代码。本文中的旧代码路径、构建命令与验证数字仅描述当时状态。当前只保留[process运行时](FormulaProcessRuntime.md)与[FormulaBridge](FormulaBridge.md)。
+
 日期：2026-10-20。依据：[已评审设计与实施计划](FormulaGameplayV1Design.md)。实现、验证及代码审查证据归属 AWT 任务“实现构式基础版游戏与编辑器”；设计阶段证据仍归属原设计任务。
 
 ## 使用方式

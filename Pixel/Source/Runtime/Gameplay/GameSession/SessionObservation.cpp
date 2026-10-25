@@ -3,14 +3,14 @@
 namespace pixel {
 api::ObservationResult GameSession::Observe(NativeCaller observer, api::Rect scope) {
     auto result = Observations.Capture(size_t(observer), scope, GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(),
-        Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
+        Paused, Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
     if (result.Snapshot) result.Snapshot->Knowledge = Knowledge.Capture(result.Snapshot->Stamp);
     return result;
 }
 
 api::ObservationResult GameSession::CaptureObservation(api::Rect scope) {
     auto result = Observations.Capture(3, scope, GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(),
-        Simulation.IsPaused(), Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
+        Paused, Ready, Simulation.HasPendingStep(), Facts.HighWatermark());
     // LLMView owns its frozen copy. No abandoned external cache keeps sampling
     // every commit after its view is closed or its lease expires.
     Observations.Close(3);

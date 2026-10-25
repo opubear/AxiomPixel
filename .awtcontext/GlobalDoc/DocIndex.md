@@ -9,7 +9,7 @@
 | 世界与力场内存统计 | `workspace:Docs/MemoryProfiling.md` | 帧末所有权计量、size/capacity、七风策略、窗口峰值与默认/暂停实测；排除RSS、临时分配及渲染资源 | 已实现并实测 |
 | 风场可视化双模式 | `workspace:Docs/WindVisualizationSystemDesign.docx` | 纯风速GPU纹理、短轨迹/柔和折光、人物前合成、参数与验证 | 首版实现并独立审查通过 |
 | 构式系统（Formula System） | `workspace:Docs/GameDesign/FormulaSystem.md` | 核心玩法、封闭组合、作用域、已实现的游戏基础版及后续边界 | 当前系统入口；基础版游戏已实现 |
-| 构式语言架构（Formula DSL） | `context:GlobalDoc/FormulaLanguageArchitecture.md` | 独立语言四层、不可变访问、调度作用域、宿主诊断与内部早失败边界 | 独立模块架构；游戏接入见基础版实现 |
+| 构式语言架构（历史cast原型） | `context:GlobalDoc/FormulaLanguageArchitecture.md` | 旧cast原型的历史架构；代码已删除，当前入口为process/1 | 独立模块架构；游戏接入见基础版实现 |
 | 构式语言原型使用说明 | `workspace:Pixel/Source/Runtime/System/Formula/README.md` | System下独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
 | 早期法术编程系统设计（历史提案） | `workspace:Docs/GameDesign/SpellProgrammingSystemDesign.docx` | 2026-10-12 原始设计；当前名称为构式，现行规则与实现边界见构式系统及语言架构 | 保留 v0.1 历史依据，不作为实现完成声明 |
 | Astra 独立全代码审查（2026-10-05） | `CodeReview-Astra-2026-10-05.md` | 干净上下文 xhigh 审查 Pixel 与本地 Axiom，P2 Cross、P3 Quaternion；覆盖清单与独立验证证据 | 两项已修复，原 Astra 复核通过 |
@@ -33,8 +33,8 @@
 | 分块程序化世界生成方案 | `context:GlobalDoc/WorldGenerationDesign.md` | 已评审设计基线；实现与当前接口、材质JSON和验证入口见WorldGenerationImplementation | |
 | 火焰水体与水汽静态纹理 | `workspace:ArtRaw/Materials/Elements/README.md` | 六项64和256像素静态材质与透明效果、密度图、重复方向及已有动画入口 | |
 | 世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | Natural/Flat策略选择、种子版本及旧档、有限水体、Content纹理JSON和验证入口 | |
-| 构式基础版游戏接入设计与实施计划 | `context:GlobalDoc/FormulaGameplayV1Design.md` | 已评审实施基线与验收计划；当前快捷键调整及实现见基础版实现说明 | |
-| 构式基础版游戏接入实现 | `context:GlobalDoc/FormulaGameplayV1Implementation.md` | 操作入口、模块职责、共享宿主校验与编辑依赖隔离、固定步额度及验证边界 | |
+| 构式基础版游戏接入设计（历史） | `context:GlobalDoc/FormulaGameplayV1Design.md` | 旧树构式接入设计与验收基线，仅供历史查阅 | |
+| 构式基础版游戏接入实现（历史） | `context:GlobalDoc/FormulaGameplayV1Implementation.md` | 旧树宿主、校验与编辑器的历史实现记录，已由process取代 | |
 | Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 核心愿景、隐性流程、构式作为世界运行原理的设想、家园与世界意志及设计取舍 | |
 | 游戏设计与策划文档目录 | `workspace:Docs/GameDesign/README.md` | 游戏总纲、构式设计与参考资料的阅读入口，以及相关工程文档和维护约定 | |
 | Gemini 游戏设计讨论原文 | `workspace:Docs/GameDesign/Pixel项目像素沙盒游戏设计探讨 - Google Gemini.pdf` | 流程与玩法参考：祈祷、自主成长、世界意志、环境改造与家园；术语和技术假设需辨别 | |
@@ -42,17 +42,17 @@
 | Pixel面向游戏愿景的架构规划 | `workspace:Docs/Architecture/GameplayArchitecturePlan.md` | 执行前必读；独立构式语言、领域模块、LLMView、引擎职责和分阶段迁移方案 | |
 | 首个贯穿场景与GameAPI契约 | `workspace:Docs/Architecture/FirstGameplaySliceContract.md` | M1.1执行规格：观测与开采/激活场景、身份单位、动作效果事实、提交查询及验收映射 | |
 | 统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | M1动作去重、只读公开访问、内部早失败、存储错误边界与M2待办 | |
-| 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 固定步时钟、等待冻结和提交副本；M4.1由Session编排World与Actors | |
+| 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | GameSession全局暂停、单步与完整提交；预算等待冻结输入，旧档暂停语义迁移 | |
 | 正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | M2.2 Application钩子、请求消费与拒绝后继续、AET默认行为及M2.3保存接入边界 | |
 | 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | Deferred和关闭协商；M4.6多域检查点、v2-v5导入与验证入口 | |
 | 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2投影与事实；M4.7加入同提交设备库存程序和场源值 | |
 | 领域观测Release基准原始数据 | `context:GlobalDoc/ObservationBenchmark-2026-10-22.csv` | M2.4三轮128帧静态与动态风有无投影的P50/P95、导出字节及容量 | |
 | LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | 授权冻结分页与JSON；M4.7库存设备、M5.1知识历史和来源摘要 | |
 | LLMView Release基准原始数据 | `context:GlobalDoc/LLMViewBenchmark-2026-10-22.csv` | M2.5三轮128帧、三个观察者完整分页和JSON序列化耗时与保留字节 | |
-| 构式语言最小语义选择与可执行对照 | `context:GlobalDoc/FormulaSemanticsExperiment.md` | M3.1五场景原型、过程语义、成本测量及M3.2边界；未替换游戏运行时 | |
+| 构式语言语义选择（历史实验） | `context:GlobalDoc/FormulaSemanticsExperiment.md` | 五场景对照与采用显式过程的依据；实验代码已移除 | |
 | 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
-| 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | M3.2文本编译产物、绑定实例、宿主终态与预算清理；含CLI和新旧兼容范围 | |
-| FormulaBridge与三类程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 宿主接线、作用范围和额度、批次碰撞、区域冻结与跨进程程序恢复 | |
+| 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | 唯一process/1入口、编译产物、等待终态、额度与宿主清理 | |
+| FormulaBridge与程序承载者 | `context:GlobalDoc/FormulaBridge.md` | process宿主、默认程序、作用范围、批次碰撞、冻结与保存恢复 | |
 | 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 独立运行DTO、源码编辑及M4.6程序产物/continuation磁盘恢复 | |
 | Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 角色身份、运动和地形边界；M4.6完整状态与next-ID持久化 | |
 | 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 物品、容器与资源操作；检查点保存及M4.7库存投影和UI | |

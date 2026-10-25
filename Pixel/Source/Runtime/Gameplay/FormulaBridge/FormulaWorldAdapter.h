@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Formula/Simulator.h"
 #include "Runtime/Simulation/World/World.h"
 #include "Runtime/Gameplay/Actions/Mining.h"
 
 namespace pixel {
+struct FormulaVector { double X = 0, Y = 0; };
 enum class FormulaContactKind { None, Solid, OutOfSimulation, NotReady };
 struct FormulaContact {
     FormulaContactKind Kind = FormulaContactKind::None;
@@ -24,9 +24,9 @@ class FormulaWorldAdapter {
     static FormulaContact Sweep(const World &world, WorldPosition from, WorldPosition to, double radius = BoltRadius);
     static FormulaDigResult Dig(World &world, WorldPosition position, double radius,
                                 const std::optional<MiningCollector> &collector = std::nullopt);
-    static FormulaWindResult Wind(World &world, WorldPosition position, double radius, formula::Vec2 velocity);
+    static FormulaWindResult Wind(World &world, WorldPosition position, double radius, FormulaVector velocity);
     static FormulaWindResult WindAvailability(const World &world, WorldPosition position);
     static const char *WindResultName(FormulaWindResult result);
-    static WorldPosition Offset(WorldPosition anchor, formula::Vec2 displacement);
+    static WorldPosition Offset(WorldPosition anchor, FormulaVector displacement);
 };
 } // namespace pixel

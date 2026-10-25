@@ -11,6 +11,10 @@
 namespace {
 using namespace pixel;
 using namespace pixel::api;
+formula::process::ProgramArtifact Program(std::string_view source) {
+    return std::get<formula::process::ProgramArtifact>(formula::process::Compile("test.process", source));
+}
+
 void Require(bool value, const char *message) {
     if (!value) throw std::runtime_error(message);
 }
@@ -29,7 +33,7 @@ void ThreeEntrances() {
         const auto result = std::get<MaterialResult>(receipt.Result);
         Require(receipt.Applied() && result.Changed == 1 && result.Before == 10 && result.After == 0,
             "input/debug/driver mining must return identical domain results");
-        Require(session.IsPaused() && session.GetSimulationTime() == 0, "paused edits advanced the clock");
+        Require(!session.IsPaused() && session.GetSimulationTime() == 0, "dispatching an action advanced the clock");
         Require(session.Execute(caller, PlaceMaterial{{511, 508}}).Rejection == Reason::Blocked,
             "placement inside the player must fail");
         pixel::testing::SessionAccess::World(session).SetCell(20, 20, {CellTypeId::Water, {0, 1}});
@@ -86,17 +90,19 @@ void RequestLifetimeAndValidation() {
 void ProgramAndControls() {
     GameSession session;
     const auto oldProgram = session.AppliedProgram();
-    const auto invalid = session.ApplyProgram(NativeCaller::Debug, formula::Formula::Bolt().Spread(17, 10));
-    Require(!invalid && invalid.Rejection == Reason::InvalidProgram && session.AppliedProgram() == oldProgram,
+    const auto invalid = formula::process::Compile("invalid", "process 1; wait ticks(false);");
+    Require(std::holds_alternative<formula::process::Diagnostic>(invalid) && session.AppliedProgram() == oldProgram,
             "invalid user program must return diagnostics and preserve the applied version");
     const auto cast = session.Execute(NativeCaller::Input, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}});
     Require(cast.Applied() && std::get<ActivationResult>(cast.Result).ActivationId != 0, "activation identity missing");
     const auto original = session.GetFormulaRuntime().Projectiles().front();
     const auto position = original.Position.RelativeTo({513, 510});
     Require(std::abs(position[0] - .6) < 1e-9 && std::abs(position[1]) < 1e-9, "muzzle geometry changed");
+    session.Control(NativeCaller::Driver, SetPaused{true});
     session.Tick(.1f, {});
     Require(session.GetFormulaRuntime().Projectiles().front().Position.Local == original.Position.Local, "pause moved a ball");
-    const auto applied = session.ApplyProgram(NativeCaller::Debug, formula::Formula{});
+    session.Control(NativeCaller::Driver, SetPaused{false});
+    const auto applied = session.ApplyProcess(NativeCaller::Debug, Program("process 1;"));
     Require(bool(applied) && applied.Program != oldProgram, "apply did not publish a new version");
     Require(session.Execute(NativeCaller::Input, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}}).Rejection == Reason::StaleProgram,
             "old program version accepted");
@@ -128,7 +134,7 @@ void WaitingAndFarCoordinates() {
         Require(session.Execute(caller, ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Rejection == Reason::WaitingForBudget,
             "waiting did not refuse activation");
     }
-    Require(session.ApplyProgram(NativeCaller::Debug, formula::Formula{}).Rejection == Reason::WaitingForBudget,
+    Require(session.ApplyProcess(NativeCaller::Debug, Program("process 1;")).Rejection == Reason::WaitingForBudget,
             "waiting did not refuse program mutation");
     Require(session.Control(NativeCaller::Debug, ClearRunning{}).Rejection == Reason::WaitingForBudget,
             "waiting did not refuse clearing running state");

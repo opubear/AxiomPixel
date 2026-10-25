@@ -15,7 +15,7 @@ void Require(bool value, const char *message) {
 void SessionAndPublicationContracts() {
     pixel::GameSession session;
     auto &world = pixel::testing::SessionAccess::World(session);
-    Require(session.IsPaused(), "session must start paused");
+    Require(!session.IsPaused(), "session must start running");
     Require(world.GetWindEndRow() == 424 && session.GetPlayer(), "default scene changed");
     Require(&world.GetBaseForceField() == &world.GetEnvironment().GetBaseForceField(),
             "environment must own the world base field");
@@ -27,7 +27,7 @@ void SessionAndPublicationContracts() {
     session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Empty});
     Require(world.SampleWind(12.5f, 12.5f) == pixel::WindVelocity{} && world.GetWindEndRow() == 424,
             "empty comparison must clear wind and preserve height");
-    Require(session.IsPaused(), "switching wind must not resume simulation");
+    Require(!session.IsPaused(), "switching wind must not pause the game");
     world.SetBaseForce(12, 12, {123, 456});
     pixel::testing::SessionAccess::World(session).DisableWind();
     session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{424});
@@ -94,14 +94,14 @@ void SessionAndPublicationContracts() {
     session.Tick(1.f / 60, {});
     Require(session.GetSimulationTime() > time, "explicit resume must advance simulation");
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
-    Require(session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && session.GetPlayer(),
+    Require(!session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && session.GetPlayer(),
             "reset must restore scene and simulation controls");
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty, "reset must restore empty wind");
     const auto resetForce = world.GetBaseForceField().Get(12, 12);
     Require(resetForce.X == 0 && resetForce.Y == 3600, "terrain reset must restore base gravity");
     pixel::testing::SessionAccess::World(session).DisableWind();
     session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Reference});
-    Require(session.IsPaused() && world.GetWindEndRow() == 0,
+    Require(!session.IsPaused() && world.GetWindEndRow() == 0,
             "selecting expensive strategy while off must preserve disabled wind");
 }
 void FixedClockAndLatchedJump() {

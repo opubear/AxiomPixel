@@ -8,7 +8,7 @@
 
 namespace pixel {
 // Game host for process/1. The bridge evaluates every instance and sweeps every
-// carrier before either language version commits world effects.
+// carrier before committing world effects.
 class ProcessHost {
   public:
     static constexpr size_t MaximumInstances = 16, MaximumProjectiles = 128;

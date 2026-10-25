@@ -70,7 +70,7 @@ bool Earlier(const FormulaContact &candidate, const FormulaContact &current) {
 }
 } // namespace
 
-WorldPosition FormulaWorldAdapter::Offset(WorldPosition anchor, formula::Vec2 displacement) {
+WorldPosition FormulaWorldAdapter::Offset(WorldPosition anchor, FormulaVector displacement) {
     anchor.Local[0] += displacement.X;
     anchor.Local[1] += displacement.Y;
     anchor.Normalize();
@@ -157,7 +157,7 @@ FormulaDigResult FormulaWorldAdapter::Dig(World &world, WorldPosition position, 
     return result;
 }
 
-FormulaWindResult FormulaWorldAdapter::Wind(World &world, WorldPosition position, double radius, formula::Vec2 velocity) {
+FormulaWindResult FormulaWorldAdapter::Wind(World &world, WorldPosition position, double radius, FormulaVector velocity) {
     if (!std::isfinite(radius) || radius < 0 || radius > 16 || !std::isfinite(velocity.X) || !std::isfinite(velocity.Y)
         || std::hypot(velocity.X, velocity.Y) > 600 + ContactEpsilon)
         throw std::invalid_argument("invalid formula wind impulse");

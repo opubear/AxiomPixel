@@ -93,6 +93,7 @@ void GameSession::InitializeScene() {
     }
     WindKind = WindStrategyKind::Empty;
     Simulation = {};
+    Paused = false;
     WindStrategySettings wind;
     wind.Kind = WindKind;
     GameWorld.ConfigureWindDomain(generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88), wind);
@@ -145,7 +146,7 @@ void GameSession::Reset() {
                 SaveError = "world recovery failed: " + *recovery;
             }
         }
-        if (!Ready) Simulation.SetPaused(true);
+        if (!Ready) Paused = true;
         std::rethrow_exception(failure);
     }
 }
@@ -171,7 +172,7 @@ bool GameSession::TryRecover() {
     if (failure) {
         GameWorld.DiscardStreaming();
         Ready = false;
-        Simulation.SetPaused(true);
+        Paused = true;
         SaveError = "world recovery failed: " + *failure;
         return false;
     }
@@ -230,7 +231,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
     }
     SaveDirectory = directory;
     StreamConfiguration = stream;
-    Simulation.SetPaused(data.Paused);
+    Paused = data.Paused;
     WindKind = data.Wind.Kind;
     Ready = true;
     SynchronizeReadViews();
@@ -247,7 +248,7 @@ SessionSaveData GameSession::CaptureSaveData() const {
     data.TimeRemainder = Simulation.Remainder();
     data.WindBoundary = GameWorld.GetWindBoundary();
     data.WindEnabled = GameWorld.IsWindEnabled();
-    data.Paused = Simulation.IsPaused();
+    data.Paused = Paused;
     data.Wind = GameWorld.GetWindSettings();
     return data;
 }
@@ -289,6 +290,10 @@ bool GameSession::TrySave() {
 
 void GameSession::Tick(float duration, PlayerInput input) {
     if (!Ready) return;
+    if (Paused && !Simulation.HasStepRequest()) {
+        Simulation.ClearInput();
+        return;
+    }
     ServiceStreaming();
     if (!Simulation.BeginFrame(duration, input)) return;
     performance::FrameProfiler::Count(performance::Counter::SimulationInputMicroseconds,
@@ -329,8 +334,6 @@ bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
     settings.Kind = kind;
     GameWorld.ConfigureWindDomain(GameWorld.GetWindBoundary(), settings, GameWorld.IsWindEnabled());
     WindKind = kind;
-    if (kind == WindStrategyKind::Reference || kind == WindStrategyKind::Adaptive || kind == WindStrategyKind::Lbm)
-        Simulation.SetPaused(true);
     Simulation.CancelStepRequest();
     return true;
 }
@@ -343,6 +346,7 @@ void GameSession::ReplacingWorld() {
     Knowledge.BeginRuntime(Epoch);
     WillMemory = {};
     Simulation = {};
+    Paused = false;
     PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
     PublishedFieldSourceVersion = 0;
     for (const auto &weak : ReadViews)

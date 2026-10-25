@@ -2,7 +2,6 @@
 
 #include "ProcessCarrier.h"
 #include "Runtime/System/Serialization/TextArchive.h"
-#include "Formula/Formula.h"
 #include <charconv>
 #include <cmath>
 #include <iomanip>
@@ -196,40 +195,4 @@ inline ProcessCarrier ReadCarrier(Reader &in) {
     return value;
 }
 
-// Encode legacy descriptions structurally: Format uses exponent notation for
-// tiny doubles while its source grammar does not accept every such value.
-inline void Write(Writer &out, const formula::Formula &value) {
-    out.Enum(value.Kind());
-    const auto v = value.Values();
-    out.Numbers(v.Damage, v.Speed, v.Lifetime, v.Radius, v.Impulse, v.Amount, v.Factor, v.Ticks, v.Count, v.Interval, v.SpacingDegrees);
-    out.Numbers(value.ChildCount());
-    for (size_t i = 0; i < value.ChildCount(); ++i) Write(out, value.Child(i));
-}
-inline formula::Formula ReadFormula(Reader &in, size_t &nodes, size_t depth = 1) {
-    Require(++nodes <= 64 && depth <= 16, "legacy checkpoint formula exceeds tree bounds");
-    const auto kind = in.Enum(formula::NodeKind::OnHit);
-    formula::NodeValues v;
-    in.Numbers(v.Damage, v.Speed, v.Lifetime, v.Radius, v.Impulse, v.Amount, v.Factor, v.Ticks, v.Count, v.Interval, v.SpacingDegrees);
-    const auto count = in.Count(64);
-    const size_t expected = kind <= formula::NodeKind::Dig ? 0 : kind == formula::NodeKind::OnHit ? 2 : 1;
-    Require(kind == formula::NodeKind::Sequence || count == expected, "invalid legacy checkpoint child count");
-    std::vector<formula::Formula> children;
-    children.reserve(count);
-    for (size_t i = 0; i < count; ++i) children.push_back(ReadFormula(in, nodes, depth + 1));
-    switch (kind) {
-    case formula::NodeKind::Empty: return {};
-    case formula::NodeKind::Bolt: return formula::Formula::Bolt(v.Damage, v.Speed, v.Lifetime);
-    case formula::NodeKind::Wind: return formula::Formula::Wind(v.Radius, v.Impulse);
-    case formula::NodeKind::Dig: return formula::Formula::Dig(v.Radius);
-    case formula::NodeKind::Sequence: return formula::Formula::Sequence(std::move(children));
-    case formula::NodeKind::AddDamage: return children[0].AddDamage(v.Amount);
-    case formula::NodeKind::MultiplyDamage: return children[0].MultiplyDamage(v.Factor);
-    case formula::NodeKind::MultiplySpeed: return children[0].MultiplySpeed(v.Factor);
-    case formula::NodeKind::Delay: return children[0].After(v.Ticks);
-    case formula::NodeKind::Repeat: return children[0].Repeated(v.Count, v.Interval);
-    case formula::NodeKind::Fan: return children[0].Spread(v.Count, v.SpacingDegrees);
-    case formula::NodeKind::OnHit: return children[0].OnHit(children[1]);
-    }
-    throw std::invalid_argument("invalid legacy checkpoint node");
-}
 } // namespace pixel::checkpoint

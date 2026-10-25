@@ -141,7 +141,7 @@ void ProjectilesEventsAndCancellation() {
         && world.GetEnvironment().GetFieldSources().Size() == 0, "frozen cancellation resurrected ownership");
 }
 
-void ScopeCapacityAndLegacyDelay() {
+void ScopeCapacityAndProcessDelay() {
     World world;
     Initialize(world);
     FormulaBridge bridge;
@@ -168,15 +168,15 @@ void ScopeCapacityAndLegacyDelay() {
           "suspension evaded instance capacity");
     bridge.Clear(world);
     Move(world, bridge, 0);
-    Check(bridge.Apply(formula::Formula::Dig(0).After(2)), "legacy fixture failed");
-    Check(bridge.Cast(world, Carrier().Origin, 0), "legacy cast failed");
+    bridge.ApplyProcess(Program("process 1; wait ticks(2); emit dig(cells(0));"));
+    Check(bridge.Cast(world, Carrier().Origin, 0), "process cast failed");
     Move(world, bridge, 64);
     for (int i = 0; i < 8; ++i) Step(world, bridge, tick);
     Move(world, bridge, 0);
     Step(world, bridge, tick);
-    Check(world.GetCell(20, 20).Type == CellTypeId::Stone, "legacy delay caught up while frozen");
+    Check(world.GetCell(20, 20).Type == CellTypeId::Stone, "process delay caught up while frozen");
     Step(world, bridge, tick);
-    Check(world.GetCell(20, 20).Type == CellTypeId::Air, "legacy delay did not resume");
+    Check(world.GetCell(20, 20).Type == CellTypeId::Air, "process delay did not resume");
 }
 
 void Stock(GameSession &session, items::ItemId item, uint32_t quantity) {
@@ -318,7 +318,7 @@ int main() {
     try {
         ContinuationAndOwnedSources();
         ProjectilesEventsAndCancellation();
-        ScopeCapacityAndLegacyDelay();
+        ScopeCapacityAndProcessDelay();
         DeviceInvalidation();
         DeviceStreamingAndDestruction();
         std::cout << "Region activity, frozen ownership and continuation passed\n";

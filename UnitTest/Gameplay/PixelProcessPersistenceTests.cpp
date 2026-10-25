@@ -128,7 +128,7 @@ void ImmutableArtifactsAndIdentities() {
     const auto instances = bridge.InspectProcesses();
     Check(instances.size() == 2 && instances[0].Program == old.Identity() && instances[0].Version == oldVersion
         && instances[1].Program == newer.Identity() && instances[1].Version == newVersion
-        && bridge.ActiveProcess()->Identity() == newer.Identity() && bridge.Version() == newVersion,
+        && bridge.ActiveProcess().Identity() == newer.Identity() && bridge.Version() == newVersion,
         "old running artifact was rebound to active version");
     Check(bridge.CastCarrier(world, Carrier(30.5)) && bridge.LastActivationId() == 3,
         "restored activation identity was reused");
@@ -183,33 +183,33 @@ void DistantPositionPrecision() {
     }
 }
 
-void CorruptionAndLegacyPolicy() {
+void CorruptionAndDefaultProcess() {
     World world(64, 64);
     FormulaBridge bridge;
-    const auto tree = formula::Formula::Bolt(0.12345678901234567, 0.0000000123456789, 3).After(2);
-    Check(bridge.Apply(tree), "legacy description setup failed");
-    RoundTrip(bridge, world);
-    Check(bridge.ActiveFormula().Child(0).Values().Damage == tree.Child(0).Values().Damage
-        && bridge.ActiveFormula().Child(0).Values().Speed == tree.Child(0).Values().Speed,
-        "legacy selected description lost double precision");
     const auto valid = bridge.CaptureState();
+    auto obsolete = valid;
+    const auto version = obsolete.find("\n2\n");
+    Check(version != std::string::npos, "checkpoint fixture version missing");
+    obsolete[version + 1] = '1';
     for (const auto &invalid : {valid.substr(0, valid.size() - 1), valid + "trailing", std::string("invalid\n"),
-                               std::string(2 * 1024 * 1024 + 1, '0')}) {
+                               std::string(2 * 1024 * 1024 + 1, '0'), obsolete}) {
         bool rejected = false;
         try { bridge.RestoreState(invalid); } catch (const std::invalid_argument &) { rejected = true; }
-        Check(rejected && bridge.CaptureState() == valid, "corrupt restore mutated the existing bridge");
+        Check(rejected && bridge.CaptureState() == valid, "corrupt or obsolete restore mutated the existing bridge");
     }
-    bridge.Cast(world, WorldPosition::FromAbsolute(10.5, 10.5), 0);
-    bool unsupported = false;
-    try { (void)bridge.CaptureState(); } catch (const WorldStorageError &) { unsupported = true; }
-    Check(unsupported && bridge.Stats().Roots == 1, "live legacy process was silently omitted from save");
+    Check(bridge.Cast(world, WorldPosition::FromAbsolute(10.5, 10.5), 0), "default cast failed");
+    RoundTrip(bridge, world);
+    Check(bridge.Stats().Roots == 1 && bridge.Projectiles().size() == 1 && bridge.Projectiles()[0].ResourceId == 2,
+          "default active bolt was not preserved by save");
+    bridge.Step(world);
+    Check(bridge.Projectiles()[0].Position.Cell().X == 11, "restored default bolt did not resume");
 }
 } // namespace
 
 int main() {
     try {
         CommittedMiningAndWaitingReceipt(); PendingAndCachedHit(); FrozenProjectileLifetime();
-        ImmutableArtifactsAndIdentities(); TypedLocalsAndHandleInspection(); DistantPositionPrecision(); CorruptionAndLegacyPolicy();
+        ImmutableArtifactsAndIdentities(); TypedLocalsAndHandleInspection(); DistantPositionPrecision(); CorruptionAndDefaultProcess();
         std::cout << "process checkpoint continuation, ownership and rejection tests passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

@@ -137,6 +137,8 @@ api::Reason GameSession::WriteRejection() const {
         return api::Reason::SessionUnavailable;
     if (GameWorld.GetEnvironment().IsWaitingForBudget())
         return api::Reason::WaitingForBudget;
+    if (Paused)
+        return api::Reason::GamePaused;
     return api::Reason::None;
 }
 api::ActionReceipt GameSession::Execute(NativeCaller caller, api::Action action) {
@@ -387,11 +389,11 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             if (!Ready)
                 return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
             if constexpr (std::is_same_v<T, api::SetPaused>) {
-                if (value.Paused != Simulation.IsPaused()) {
-                    const auto reason = WriteRejection();
-                    if (reason != api::Reason::None)
-                        return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
-                    Simulation.SetPaused(value.Paused);
+                if (value.Paused != Paused) {
+                    if (Simulation.HasPendingStep())
+                        return {api::ControlStatus::Rejected, api::Reason::WaitingForBudget, "WaitingForBudget"};
+                    Paused = value.Paused;
+                    Simulation.ClearInput();
                     CommitChange();
                 }
             } else if constexpr (std::is_same_v<T, api::StepSimulation>)
@@ -406,18 +408,6 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
         || std::holds_alternative<api::CreateForceGarden>(control) || std::holds_alternative<api::RecoverWorld>(control))
         PersistenceResult = result;
     return result;
-}
-
-ApplyProgramResult GameSession::ApplyProgram(api::CallerSessionId caller, const formula::Formula &description) {
-    const auto *state = FindCaller(caller);
-    api::Reason reason = !state ? api::Reason::CallerExpired : !state->Debug ? api::Reason::PermissionDenied
-                                                                             : WriteRejection();
-    if (reason != api::Reason::None)
-        return {reason, {}, api::ReasonName(reason)};
-    if (!Formulas.Apply(description))
-        return {api::Reason::InvalidProgram, {}, Formulas.LastError()};
-    CommitChange();
-    return {api::Reason::None, AppliedProgram(), {}};
 }
 
 ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program) {

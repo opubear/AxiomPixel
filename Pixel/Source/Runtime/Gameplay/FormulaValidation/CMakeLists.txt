@@ -1,3 +1,0 @@
-add_library(PixelFormulaValidation STATIC FormulaAnalysis.cpp)
-target_include_directories(PixelFormulaValidation PUBLIC "${PIXEL_SOURCE_DIR}")
-target_link_libraries(PixelFormulaValidation PUBLIC PixelFormula)

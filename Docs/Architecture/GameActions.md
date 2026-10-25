@@ -23,7 +23,7 @@ const auto result = session.Execute(pixel::NativeCaller::Driver,
 - PlaceMaterial 只支持 Dirt，检查空气、所有角色和设备占用，不覆盖水，不新增距离或模拟窗口限制。M4.2 消耗一份 soil；缺料返回 InsufficientItems，成功回执包含 Consumed。所有原生来源使用相同资源规则。库存合同与保存边界见[物品库存](../../.awtcontext/GlobalDoc/Items.md)。
 - ActivateProgram 核验当前 ProgramRef、连续目标、会话阶段、发射路径和既有额度；返回本次激活身份和当前运行数量。Empty/延迟程序成功时可以没有球。拒绝发射不会改变上次成功瞄准方向。
 - InstallIntervention、InterveneAtDevice 仅由宿主世界意志身份提交，核验当前程序、资源版本、区域控制及目标设备版本。成功干预占用4个并发槽之一，结束归还；模型不消耗玩家库存。动作序号在安全提交边界分配，异步调度与离线演示见 [WorldWill](../../.awtcontext/GlobalDoc/WorldWill.md)。
-- SelectWindStrategy、SetWindBoundary 需要 Debug 能力。保留原有七策略及高成本后端自动暂停行为；没有通用属性写入接口。
+- SelectWindStrategy、SetWindBoundary 需要 Debug 能力。保留原有七策略；切换不自动改变GameSession全局暂停；没有通用属性写入接口。
 
 坐标使用 int64 cell 和 [0,1) double offset，转换先保留整数格再处理局部小数，不经过绝对 double。边界拒绝非有限值、非法offset、不受支持的材料/枚举及超出当前 WorldPosition 能力的坐标；极端chunk预留给内部邻域和发射偏移。动作入口没有通用JSON写接口；外围模型协议只解析受限提案，由WorldWill构造获准动作。
 
@@ -41,14 +41,16 @@ M1.5已移除Session与PixelGame的可变World访问器、Session的可变Runtim
 
 ## 失败语义
 
-FormulaBridge的Apply先分析外部程序，参数/结构/工作量不符合宿主规则时返回诊断，保留原版本。预算等待、激活/根/效果/风额度不足仍是可预期拒绝。分析后执行、碰撞解析、效果提交、快照生成中发生的内部异常直接传播；不再标记Failed、清掉该根后继续游戏。已经提交的早先效果不回滚，发生内部错误后宿主不能继续使用该会话。PendingStep期间非法调用FormulaBridge::Step、碰撞引用已退休弹体及身份耗尽使用发布构建仍生效的检查，不能依赖assert。
+process源码先在独立编译器完成语法、类型和静态额度检查，失败不发布产物；GameSession::ApplyProcess只接受ProgramArtifact。全局暂停、预算等待、激活/实例/效果/风额度不足仍是可预期拒绝。执行、碰撞解析、效果提交、快照生成中发生的内部异常直接传播；不再标记Failed、清掉该根后继续游戏。已经提交的早先效果不回滚，发生内部错误后宿主不能继续使用该会话。PendingStep期间非法调用FormulaBridge::Step、碰撞引用已退休弹体及身份耗尽使用发布构建仍生效的检查，不能依赖assert。
 
 保存、恢复与后台块I/O只处理文件系统错误、流I/O错误和明确的WorldStorageError（损坏存档或加载必需存储不足）。磁盘数据的非法配置在读取/恢复边界转换为存储诊断。生成器不变量、分配失败和运行器错误不再被宽泛std::exception捕获转换成StorageFailure；Reset中的清理与恢复保护仍会重新抛出原故障。应用生命周期通过Session::BeginFrame重置本帧额度；PixelApplication在关闭请求阶段保存并裁决是否退出，GameEnd关闭WorldWill/模型并清理输入，不再次保存。
 
 ## 验证入口
 
-`Pixel.InternalFailure.*`通过独立进程核验内部无效坐标、移后程序产物、非法PendingStep推进和损坏会话状态会传播至terminate；同时检查特定诊断与终止码，Debug/Release均执行。编译断言保证Session公开World/Runtime为const引用、WorldMap写入口非公开。
+`Pixel.InternalFailure.*`通过独立进程核验内部无效坐标、非法PendingStep推进和损坏会话状态会传播至terminate；同时检查特定诊断与终止码，Debug/Release均执行。编译断言保证Session公开World/Runtime为const引用、WorldMap写入口非公开。
 
 `Pixel.Actions`覆盖三入口开采结果、玩家/水放置阻挡、缺失格优先级、材料前置条件、重复和淘汰、调用者/epoch替换、权限、非法坐标、预算等待、暂停激活、单步及旧程序隔离。既有Input、Session、FormulaGameplay、FormulaRendering与存储回归继续验证完整行为。
 
 `PixelRuntimeSmoke --debug-ui-only`使用真实生产按钮验证Debug开采和放置，并保留七风策略、int64边界、UI捕获和窗口重建；`--formula-only`验证真实Apply/Clear、版本隔离、输入捕获及GPU合成。执行结果以当前AWT任务日志为准，本文不替代测试报告。
+
+当前`SetPaused`控制GameSession全局冻结，默认运行。暂停时世界修改及Apply/Clear返回`GamePaused`；保存/恢复/重置和显式完整单步仍可使用。Simulation不再提供独立暂停。

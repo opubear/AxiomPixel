@@ -47,7 +47,7 @@ void WorldWill::Finish(size_t index, DecisionState state, std::optional<api::Act
     if (pending.Reply && pending.Reply->Explanation.size() <= llm::ModelLimits::ExplanationBytes)
         result.Explanation = std::move(pending.Reply->Explanation);
     const auto host = Host.WorldWillStatus();
-    if (pending.PrayerId && host.Stamp.WorldEpoch == pending.ObservedAt.WorldEpoch && host.Ready && !host.Pending)
+    if (pending.PrayerId && host.Stamp.WorldEpoch == pending.ObservedAt.WorldEpoch && host.Ready && !host.Pending && !host.Paused)
         Host.ResolvePrayer(pending.PrayerId, state, result.Explanation, result.Action);
     if (!pending.ModelCancelled) Model.Cancel(pending.Id);
     if (Completed.size() == llm::ModelLimits::Results) Completed.pop_front();
@@ -104,7 +104,7 @@ RequestResult WorldWill::Request(llm::Goal goal, llm::Clock::time_point now) {
     if (Stopped) return {RequestStatus::Closed};
     if (Active.size() == llm::ModelLimits::InFlight) return {RequestStatus::Capacity};
     const auto status = Host.WorldWillStatus();
-    if (!status.Ready || status.Pending) return {RequestStatus::NotReady};
+    if (!status.Ready || status.Pending || status.Paused) return {RequestStatus::NotReady};
     if (!llm::ValidRect(goal.Scope) || goal.Scope.Width > 64 || goal.Scope.Height > 64
         || (!goal.Device && !llm::Contains(goal.Scope, {goal.Target, 1, 1}))
         || (goal.Device && !*goal.Device) || !api::ValidPrayerText(goal.Prayer)) return {RequestStatus::InvalidGoal};
@@ -140,7 +140,7 @@ bool WorldWill::CancelPrayer(uint64_t durablePrayerId, const api::CommitStamp &o
     found->CancelRequested = true;
     found->ModelCancelled = true;
     Model.Cancel(found->Id);
-    if (status.Ready && !status.Pending) Finish(size_t(found - Active.begin()), DecisionState::Cancelled);
+    if (status.Ready && !status.Pending && !status.Paused) Finish(size_t(found - Active.begin()), DecisionState::Cancelled);
     return true;
 }
 
@@ -163,8 +163,19 @@ std::optional<api::Action> WorldWill::ActionFor(const Pending &pending) const {
 }
 
 void WorldWill::Service(llm::Clock::time_point now) {
+    const auto previousService = LastService;
     CheckTime(now);
     if (Stopped) return;
+    if (Host.WorldWillStatus().Paused) {
+        if (!PausedAt) PausedAt = previousService;
+        return;
+    }
+    if (PausedAt) {
+        // A paused game must not consume model-response deadlines or publish
+        // completed proposals. Delivery resumes at the next service boundary.
+        for (auto &pending : Active) pending.Deadline += now - *PausedAt;
+        PausedAt.reset();
+    }
     Views.AdvanceServiceFrame();
 
     // Drain at most a fixed number, even if an adapter misbehaves. Duplicates
@@ -207,14 +218,6 @@ void WorldWill::Service(llm::Clock::time_point now) {
         } else if (pending.Reply->Choice.Kind == llm::ProposalKind::None) {
             Finish(i, DecisionState::NoAction);
         } else if (const auto action = ActionFor(pending)) {
-            if (status.Paused) {
-                if (pending.PrayerId && !pending.PrayerReady) {
-                    Host.ResolvePrayer(pending.PrayerId, DecisionState::Ready, pending.Reply->Explanation, {});
-                    pending.PrayerReady = true;
-                }
-                ++i;
-                continue;
-            }
             // No equality check against the global revision: the action owns
             // program/device/resource preconditions and rechecks current control.
             auto receipt = Host.Submit(pending.Caller, {pending.ObservedAt.WorldEpoch, status.NextSequence, *action});

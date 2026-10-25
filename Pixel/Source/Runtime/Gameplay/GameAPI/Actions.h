@@ -48,7 +48,7 @@ enum class Reason {
     None, InvalidArgument, Unsupported, StaleEpoch, CallerExpired, DuplicateExpired,
     SessionUnavailable, WaitingForBudget, PermissionDenied, NotReady, Blocked,
     PreconditionFailed, StaleProgram, LaunchBlocked, LimitExceeded, StorageFailure, InvalidProgram,
-    InventoryFull, InsufficientItems
+    InventoryFull, InsufficientItems, GamePaused
 };
 const char *ReasonName(Reason reason);
 struct MaterialResult {
@@ -76,6 +76,7 @@ struct ActionReceipt {
     bool Applied() const { return Status == ActionStatus::Applied; }
 };
 
+// Global GameSession freeze, including actors, environment and gameplay services.
 struct SetPaused { bool Paused; };
 struct StepSimulation {};
 struct SaveWorld {};

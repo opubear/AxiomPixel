@@ -70,6 +70,39 @@ void HeldInputAndModes() {
     Require(after[0] == before[0] && after[1] >= before[1],
             "clear must remove intent queued in the session before the next step");
 }
+void RunningPlayerAndGlobalPause() {
+    Fixture f;
+    Require(!f.Session.IsPaused(), "normal game must start running");
+    const auto start = f.Session.GetPlayer()->GetWorldPosition();
+    f.KeyEvent(Key::KEY_D);
+    f.KeyEvent(Key::KEY_SPACE);
+    f.Session.Tick(1.f / 60, f.Input.ConsumePlayerInput());
+    const auto moved = f.Session.GetPlayer()->GetWorldPosition().RelativeTo(start.Cell());
+    const auto initial = start.RelativeTo(start.Cell());
+    Require(moved[0] > initial[0] && moved[1] < initial[1], "new game must accept walking and jumping without a resume action");
+
+    Require(f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true}).Succeeded(), "game pause failed");
+    const auto stamp = f.Session.CurrentCommit();
+    const auto frozen = f.Session.GetPlayer()->CaptureState();
+    const auto camera = f.Camera.GetCamera().GetWorldPosition();
+    f.KeyEvent(Key::KEY_SPACE);
+    f.Session.Tick(.2f, f.Input.ConsumePlayerInput());
+    f.Input.UpdateCamera(.2f);
+    Require(f.Session.CurrentCommit() == stamp && f.Session.GetPlayer()->GetWorldPosition().Local == frozen.Position.Local
+                && f.Camera.GetCamera().GetWorldPosition().Local == camera.Local,
+            "global pause must freeze the player, game clock and following camera");
+    Require(f.Session.Execute(pixel::NativeCaller::Input, pixel::api::MineRegion{{520, 512}}).Rejection == pixel::api::Reason::GamePaused,
+            "global pause accepted a world-changing input action");
+    f.KeyEvent(Key::KEY_F3);
+    const auto debug = f.Camera.GetCamera().GetPosition();
+    f.KeyEvent(Key::KEY_D);
+    f.Input.UpdateCamera(.1f);
+    Require(f.Camera.GetCamera().GetPosition()[0] > debug[0] && f.Session.CurrentCommit() == stamp,
+            "global pause must leave debug camera responsive without changing the world");
+    f.KeyEvent(Key::KEY_F3);
+    Require(f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "game resume failed");
+    Require(!f.Input.ConsumePlayerInput().Jump, "resume replayed a jump pressed while paused");
+}
 void CommandsAndReset() {
     Fixture f;
     f.KeyEvent(Key::KEY_F1);
@@ -107,7 +140,7 @@ void CommandsAndReset() {
     f.Camera.GetCamera().SetFollowRate(4);
     f.Framebuffer = {1600, 1200};
     f.KeyEvent(Key::KEY_R);
-    Require(f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && pixel::testing::SessionAccess::World(f.Session).GetWindEndRow() == 424 &&
+    Require(!f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && pixel::testing::SessionAccess::World(f.Session).GetWindEndRow() == 424 &&
                 pixel::testing::SessionAccess::World(f.Session).GetCell(20, 512).Type == pixel::CellTypes::Dirt,
             "R must reset simulation and terrain");
     Require(f.Input.GetControlMode() == pixel::ControlMode::DebugCamera && f.Presentation.DisplayMode == GridDisplayMode::ForceField,
@@ -172,6 +205,7 @@ void FormulaInputAndContinuousAim() {
     Require(std::abs(relative[0] - 1.6) < 1e-9 && std::abs(relative[1]) < 1e-9,
             "zero-distance aim must use right-facing muzzle outside the player");
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_RELEASE, 0, centre);
+    f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     f.Session.Tick(.2f, {});
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles().front().Position.Local == ball.Position.Local,
             "release or pause moved/repeated the bolt");
@@ -224,6 +258,7 @@ void DeviceInput() {
 int main() {
     try {
         HeldInputAndModes();
+        RunningPlayerAndGlobalPause();
         CommandsAndReset();
         PendingResetKeepsView();
         MouseEditing();

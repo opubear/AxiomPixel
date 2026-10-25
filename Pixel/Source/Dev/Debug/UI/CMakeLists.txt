@@ -1,2 +1,2 @@
 add_library(PixelDebugUI STATIC PixelDebugUI.cpp FormulaDebugUI.cpp ForceGardenUI.cpp)
-target_link_libraries(PixelDebugUI PUBLIC PixelPresentation PixelInput PixelGameProfiling PRIVATE ImGui PixelFormulaEditing PixelWorldWill)
+target_link_libraries(PixelDebugUI PUBLIC PixelPresentation PixelInput PixelGameProfiling PRIVATE ImGui PixelFormulaProcess PixelWorldWill)

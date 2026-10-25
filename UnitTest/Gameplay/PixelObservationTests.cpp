@@ -12,6 +12,10 @@
 
 using namespace pixel;
 namespace {
+formula::process::ProgramArtifact Program(std::string_view source) {
+    return std::get<formula::process::ProgramArtifact>(formula::process::Compile("test.process", source));
+}
+
 void Require(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(message);
 }
@@ -292,8 +296,7 @@ void FactRangesCursorsAndWindSemantics() {
 
     // Procedural is unsupported by the wind-pulse adapter. The cast may still
     // apply, but its skipped wind effect must not be described as submitted.
-    const auto applied = session.ApplyProgram(NativeCaller::Driver,
-        formula::Formula::Wind(1, 120));
+    const auto applied = session.ApplyProcess(NativeCaller::Driver, Program("process 1; emit wind(cells(1), speed(120), speed(0));"));
     Require(bool(applied), "wind formula could not be applied");
     const auto beforeUnsupported = session.FactHighWatermark();
     const auto unsupportedCast = session.Execute(NativeCaller::Driver,
@@ -305,7 +308,7 @@ void FactRangesCursorsAndWindSemantics() {
     Require(unsupportedFacts.size() == 1 && std::holds_alternative<api::ProgramActivated>(unsupportedFacts[0].Payload),
             "unsupported wind emitted a false WindPulseSubmitted fact");
     const auto stableHighWatermark = session.FactHighWatermark();
-    const auto noOpFormula = session.ApplyProgram(NativeCaller::Driver, formula::Formula::Dig(2));
+    const auto noOpFormula = session.ApplyProcess(NativeCaller::Driver, Program("process 1; emit dig(cells(2));"));
     Require(bool(noOpFormula), "zero-change dig formula could not be applied");
     const auto noOpCast = session.Execute(NativeCaller::Driver,
         api::ActivateProgram{*noOpFormula.Program, {{600, 100}, {0, 0}}});
@@ -347,8 +350,7 @@ void FactRangesCursorsAndWindSemantics() {
     coarse.Coarse.Columns = coarse.Coarse.Rows = 16;
     testing::SessionAccess::World(emissionSession).ConfigureWindDomain(600, coarse);
     testing::SessionAccess::PublishFixtureChanges(emissionSession);
-    const auto delayed = emissionSession.ApplyProgram(NativeCaller::Driver,
-        formula::Formula::Sequence({formula::Formula::Wind(1, 60), formula::Formula::Wind(1, 60).After(2)}));
+    const auto delayed = emissionSession.ApplyProcess(NativeCaller::Driver, Program("process 1; emit wind(cells(1), speed(60), speed(0)); wait ticks(2); emit wind(cells(1), speed(60), speed(0));"));
     Require(bool(delayed), "cross-tick wind formula could not be applied");
     const auto activation = emissionSession.Execute(NativeCaller::Driver,
         api::ActivateProgram{*delayed.Program, {{600, 100}, {0, 0}}});

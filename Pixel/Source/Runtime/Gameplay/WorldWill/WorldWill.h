@@ -49,7 +49,7 @@ class WorldWill {
         llm::Clock::time_point Deadline;
         std::optional<llm::ModelReply> Reply;
         uint64_t PrayerId = 0;
-        bool ModelCancelled = false, CancelRequested = false, PrayerReady = false;
+        bool ModelCancelled = false, CancelRequested = false;
     };
     api::WorldWillHost &Host;
     llm::LLM &Model;
@@ -58,6 +58,7 @@ class WorldWill {
     uint64_t BoundCaller = 0, IgnoredReplies = 0;
     std::chrono::milliseconds Timeout;
     llm::Clock::time_point LastService{};
+    std::optional<llm::Clock::time_point> PausedAt;
     bool Stopped = false;
     std::vector<Pending> Active;
     std::deque<DecisionResult> Completed;

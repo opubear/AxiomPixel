@@ -55,18 +55,18 @@ void CollisionOrderAndExpiry() {
     World world(64, 64);
     world.SetCell(15, 10, {CellTypeId::Stone});
     FormulaBridge bridge;
-    // A legacy delayed dig removes the wall in the same boundary as process sweeps.
-    bridge.Apply(formula::Formula::Dig(6).After(1));
+    // A delayed dig removes the wall in the same boundary as the other process sweeps.
+    bridge.ApplyProcess(Program("process 1; wait ticks(1); emit dig(cells(6));"));
     bridge.Cast(world, At(10.5, 10.5), 0);
     bridge.ApplyProcess(Program("process 1; emit bolt(10, speed(600), ticks(5)); await hit within ticks(10); if outcome() == hit { emit dig(cells(1)); }"));
     Check(bridge.CastCarrier(world, Carrier()), "process bolt refused");
     Check(bridge.Projectiles().size() == 1 && bridge.Projectiles()[0].Position.Cell().X == 10, "birth moved early");
     bridge.Step(world);
     Check(bridge.Projectiles().empty() && world.GetCell(15, 10).Type == CellTypeId::Air, "sweep observed same-batch dig");
-    Check(bridge.ProcessReceipts().size() == 1, "hit resumed in collision boundary");
+    Check(bridge.ProcessReceipts().size() == 2, "hit resumed in collision boundary");
     world.SetCell(15, 10, {CellTypeId::GoldOre});
     bridge.Step(world);
-    Check(world.GetCell(15, 10).Type == CellTypeId::Air && bridge.ProcessReceipts().size() == 2,
+    Check(world.GetCell(15, 10).Type == CellTypeId::Air && bridge.ProcessReceipts().size() == 3,
         "hit did not resume next boundary at exact contact position");
     Check(bridge.Stats().Roots == 0, "EOF cleanup failed");
 
@@ -246,6 +246,7 @@ void SessionIntegration() {
     const auto activation = session.Execute(NativeCaller::Input, api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {.5, .5}}});
     Check(activation.Applied() && session.GetFormulaRuntime().Projectiles().size() == 1, "player action did not route process");
     const auto initial = session.GetFormulaRuntime().Projectiles().front().Position;
+    session.Control(NativeCaller::Driver, api::SetPaused{true});
     session.Tick(.1f, {});
     Check(session.GetFormulaRuntime().Projectiles().front().Position.Cell() == initial.Cell(), "paused process advanced");
     auto view = session.Observe(NativeCaller::Driver, {480, 480, 64, 64});
@@ -260,6 +261,7 @@ void SessionIntegration() {
         "pending step accepted process mutation");
     Check(session.GetFormulaRuntime().Projectiles().front().Position.Cell() == before.Cell(), "refused activation aged process");
     testing::SessionAccess::RestoreClock(session, session.GetSimulationTime(), 0, false);
+    session.Control(NativeCaller::Driver, api::SetPaused{false});
     session.Control(NativeCaller::Driver, api::ClearRunning{});
     Check(session.GetFormulaRuntime().Stats().Roots == 0, "session clear leaked process");
 }
@@ -298,7 +300,7 @@ void ProcessEditingAndInspection() {
     Check(draft.Build(), "editor process compile failed");
     bridge.ApplyProcess(*draft.Program());
     const auto oldVersion = bridge.Version();
-    const auto oldIdentity = bridge.ActiveProcess()->Identity();
+    const auto oldIdentity = bridge.ActiveProcess().Identity();
     Check(bridge.CastCarrier(world, Carrier()), "old draft activation failed");
     auto inspection = bridge.InspectProcesses();
     Check(inspection.size() == 1 && inspection[0].Version == oldVersion
@@ -307,7 +309,7 @@ void ProcessEditingAndInspection() {
     draft.SetSource("process 1; emit bolt(9, speed(0), ticks(10)); wait ticks(10);");
     Check(draft.Build(), "replacement draft compile failed");
     bridge.ApplyProcess(*draft.Program());
-    Check(bridge.ActiveProcess()->Identity() == draft.Program()->Identity() && bridge.Version() == oldVersion + 1,
+    Check(bridge.ActiveProcess().Identity() == draft.Program()->Identity() && bridge.Version() == oldVersion + 1,
         "Apply did not publish a new version");
     Check(bridge.CastCarrier(world, Carrier()), "replacement activation failed");
     inspection = bridge.InspectProcesses();

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Formula/Formula.h"
 #include "FormulaTypes.h"
 #include "ProcessCarrier.h"
 #include "Formula/Process/Program.h"
@@ -12,18 +11,17 @@
 #include <vector>
 
 namespace pixel {
-// Game-owned adapter for process/1 and the temporary legacy tree editor. All
-// collision queries precede either backend's effects; only successful steps age instances.
+// Game-owned process/1 adapter. All collision queries precede effect commits;
+// only successful world steps age instances.
 class FormulaBridge {
   public:
-    static constexpr size_t MaximumEffects = 512;
+    static constexpr size_t MaximumEffects = 256;
     FormulaBridge();
     ~FormulaBridge();
     // Host assembly at world replacement, before any instance can run.
     void BindPlayerInventory(items::Inventory &inventory, items::ContainerId container);
     FormulaBridge(const FormulaBridge &) = delete;
     FormulaBridge &operator=(const FormulaBridge &) = delete;
-    bool Apply(const formula::Formula &description);
     void ApplyProcess(const formula::process::ProgramArtifact &program);
     api::ProgramRef AppliedProgram() const;
     bool CastCarrier(World &world, const ProcessCarrier &carrier,
@@ -35,10 +33,9 @@ class FormulaBridge {
     void WakeCarrier(ProcessCarrierKind kind, uint64_t subject);
     ProcessHostStats ProcessStats() const;
     std::vector<ProcessInspection> InspectProcesses() const;
-    const std::optional<formula::process::ProgramArtifact> &ActiveProcess() const;
+    const formula::process::ProgramArtifact &ActiveProcess() const;
     const std::deque<ProcessReceipt> &ProcessReceipts() const;
     const std::deque<FormulaRuntimeDiagnostic> &ProcessDiagnostics() const;
-    const formula::Formula &ActiveFormula() const;
     uint64_t Version() const;
     uint64_t LastActivationId() const;
     const std::string &LastError() const;

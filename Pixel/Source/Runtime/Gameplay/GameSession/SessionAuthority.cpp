@@ -7,7 +7,7 @@ api::WorldWillHostStatus GameSession::WorldWillStatus() const {
     const auto &caller = Callers[3];
     if (caller.HighWatermark == UINT64_MAX) throw std::overflow_error("world-will action sequence exhausted");
     return {CurrentCommit(), caller.Id, caller.HighWatermark + 1, AppliedProgram(), Authority.Resources(),
-        Ready, Simulation.HasPendingStep(), Simulation.IsPaused()};
+        Ready, Simulation.HasPendingStep(), Paused};
 }
 
 api::ObservationAuthorization GameSession::AuthorizeObservation(uint64_t subject, api::Rect scope) const {
@@ -65,10 +65,6 @@ api::ActionReceipt GameSession::InstallIntervention(const api::InstallInterventi
     }
     if (action.Program != AppliedProgram()) {
         result.Rejection = api::Reason::StaleProgram;
-        return result;
-    }
-    if (!Formulas.ActiveProcess()) {
-        result.Rejection = api::Reason::Unsupported;
         return result;
     }
     if (!Authority.Resources().Available) {

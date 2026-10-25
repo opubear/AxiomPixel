@@ -167,10 +167,12 @@ void GardenScenario(bool graph, Scenario scenario) {
         auto program = formula::process::Compile("new-offer", "process 1; wait ticks(1);");
         Check(bool(session.ApplyProcess(NativeCaller::Driver, std::get<formula::process::ProgramArtifact>(program))), "replace offer");
     }
+    const bool pauseForReply = scenario == Scenario::Aid || scenario == Scenario::StaleProgram || scenario == Scenario::FullCapacity;
+    if (pauseForReply) Check(session.Control(NativeCaller::Driver, api::SetPaused{true}).Succeeded(), "pause game");
     model.Complete(scenario == Scenario::OutsideScope);
     decisions.Service();
     if (scenario == Scenario::Aid || scenario == Scenario::StaleProgram || scenario == Scenario::FullCapacity) {
-        Check(decisions.Statistics().Ready == 1 && session.GetAuthority().Resources().Available == 4,
+        Check(decisions.Statistics().Thinking == 1 && session.GetAuthority().Resources().Available == 4,
             "paused proposal applied early");
         Check(session.Control(NativeCaller::Driver, api::SetPaused{false}).Succeeded(), "resume simulation");
         decisions.Service();

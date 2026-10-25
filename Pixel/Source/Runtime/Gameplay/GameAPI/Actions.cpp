@@ -12,6 +12,7 @@ const char *ReasonName(Reason reason) {
     PIXEL_REASON(StaleProgram); PIXEL_REASON(LaunchBlocked); PIXEL_REASON(LimitExceeded);
     PIXEL_REASON(StorageFailure); PIXEL_REASON(InvalidProgram);
     PIXEL_REASON(InventoryFull); PIXEL_REASON(InsufficientItems);
+    PIXEL_REASON(GamePaused);
 #undef PIXEL_REASON
     }
     throw std::logic_error("unknown action rejection reason");

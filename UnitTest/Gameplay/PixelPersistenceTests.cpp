@@ -59,7 +59,6 @@ void SessionRoundTrip() {
         for (int i = 0; i < 60; ++i)
             session.Tick(1.f / 60, {});
         session.Tick(1.f / 120, {});
-        session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
         pixel::testing::SessionAccess::SetPlayerPosition(session, position);
         world.LoadSimulationNow();
         Require(world.GetSimulationBounds().X < 0 && world.TryGetCell(-24, 10), "player window did not load negative chunks");
@@ -67,6 +66,7 @@ void SessionRoundTrip() {
         world.SetBaseForce(-24, 10, {123.25f, -456.5f});
         session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{450});
         session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
+        session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
         savedWind = world.SampleWind(100.5, 100.5);
         savedPhysicsTime = session.GetSimulationTime();
         savedRemainder = session.GetTimeRemainder();
@@ -153,6 +153,7 @@ void PendingRefusesPersistence() {
         if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
             pixel::testing::WorldAccess::Map(world).Remove(coordinate);
     world.SetPublicationBytes(pixel::storage::DefaultBudget - world.GetStreamer()->RetainedBytes() - 128);
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(1.f / 60, {});
     Require(world.GetEnvironment().IsWaitingForBudget(), "test did not exhaust material scratch budget");
@@ -211,7 +212,7 @@ void LegacyPendingImportsAtCommittedTime() {
         std::string header, generation, player, clock;
         std::getline(input, header); std::getline(input, generation);
         std::getline(input, player); std::getline(input, clock);
-        header.replace(header.find(" 5 "), 3, " " + std::to_string(version) + " ");
+        header.replace(header.find(" 6 "), 3, " " + std::to_string(version) + " ");
         double time, remainder;
         std::istringstream clockInput(clock);
         clockInput >> time >> remainder;
@@ -225,12 +226,13 @@ void LegacyPendingImportsAtCommittedTime() {
 
         pixel::GameSession restored(true);
         const auto &world = restored.GetWorld();
-        Require(restored.IsPaused() && !world.GetEnvironment().IsWaitingForBudget()
+        Require(!restored.IsPaused() && !world.GetEnvironment().IsWaitingForBudget()
                     && restored.CurrentCommit().Tick == 6 && restored.GetTimeRemainder() == .05
                     && SamePosition(restored.GetPlayer()->GetWorldPosition(), savedPlayer) && world.GetCell(32, 10).Type == pixel::CellTypes::Dirt
                     && world.SampleWind(100.5, 100.5) == savedWind
                     && world.GetEnvironment().GetWindSimulation().GetSimulationTime() == restored.GetSimulationTime(),
                 "legacy pending import lost committed state/backlog or restored preadvanced wind");
+        restored.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
         restored.Tick(.2f, {});
         Require(restored.CurrentCommit().Tick == 6 && restored.GetTimeRemainder() == .05, "paused import consumed its backlog");
         for (unsigned step = 1; step <= 3; ++step) {
@@ -248,7 +250,7 @@ void LegacyPendingImportsAtCommittedTime() {
         restored.Tick(.2f, {});
         Require(restored.CurrentCommit().Tick == 9, "paused legacy backlog replayed without a request");
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded()
-                    && ReadText(pixel::testing::CheckpointDirectory(directory) / "world.meta").starts_with("AxiomPixelWorld 5 "), "legacy import did not upgrade to v5");
+                    && ReadText(pixel::testing::CheckpointDirectory(directory) / "world.meta").starts_with("AxiomPixelWorld 6 "), "legacy import did not upgrade to v6");
     }
 }
 
@@ -387,15 +389,13 @@ void SuccessfulSingleStepBacklogRoundTrip() {
         Require(!world.GetEnvironment().IsWaitingForBudget()
                     && std::abs(session.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
                 "single-step did not preserve unadvanced backlog");
-        Require(!session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded()
-                    && session.GetSaveError().find("legacy") != std::string::npos,
-                "unsupported live legacy execution was silently dropped");
-        pixel::testing::SessionAccess::Runtime(session).Clear(world);
-        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
+        Require(session.GetFormulaRuntime().Projectiles().size() == 1
+                    && session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(),
+                "active default process prevented saving the committed backlog");
     }
     pixel::GameSession loaded(true);
     auto &world = pixel::testing::SessionAccess::World(loaded);
-    Require(loaded.GetFormulaRuntime().Projectiles().empty(), "live formula instances entered a world save");
+    Require(loaded.GetFormulaRuntime().Projectiles().size() == 1, "save lost the active default process");
     Require(!world.GetEnvironment().IsWaitingForBudget()
                 && std::abs(loaded.GetTimeRemainder() - (.1 - 1.0 / 60)) < 1e-10,
             "v5 failed to restore complete backlog without preadvanced wind");

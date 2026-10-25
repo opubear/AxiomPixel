@@ -51,7 +51,7 @@ fake host 的 `ReleaseCarrier` 显式把测试载体转交世界列表，之后�
 
 F4 的 Formula Editor 展开 **Process source**：载入三脉冲草稿或当前过程源码，编辑 **Process text**，点击 **Compile process**，再点击 **Apply process**。编译不发布；编辑文本会撤销旧编译结果，编译错误显示资源、行列和说明，Apply 在无有效产物时禁用。此最小编辑器固定使用 `editor.process` 资源，载入其他程序相当于把源码复制到此草稿。
 
-Apply 经 GameSession 安全边界发布新版本，只影响后续玩家/承载者激活；原实例不重启、不补跑、不改绑。旧树编辑器的 Apply 切回旧语言。**Process: three carriers** 继续提供天然来源与固定夹具启动按钮，并按实例显示版本、内容 hash、PC、等待阶段、ActiveSteps、Remaining 和剩余 credits。只读 InspectProcesses 返回值副本，不泄漏执行器可变句柄，也不导出完整存档。
+Apply 经 GameSession 安全边界发布新版本，只影响后续玩家/承载者激活；原实例不重启、不补跑、不改绑。旧树编辑器已删除，当前只保留process源码入口。**Process: three carriers** 继续提供天然来源与固定夹具启动按钮，并按实例显示版本、内容 hash、PC、等待阶段、ActiveSteps、Remaining 和剩余 credits。只读 InspectProcesses 返回值副本，不泄漏执行器可变句柄，也不导出完整存档。
 
 ## 验证入口
 
@@ -68,7 +68,7 @@ Apply 经 GameSession 安全边界发布新版本，只影响后续玩家/承载
 | 独立验证 agent：Release Formula 相关目标 build；`ctest --test-dir /private/tmp/pixel-bridge-release -R Formula --output-on-failure` | 11/11 |
 | 独立验证 agent：ASan+UBSan Formula 相关目标 build；`ctest --test-dir /private/tmp/pixel-bridge-sanitize -R Formula --output-on-failure` | 11/11，无 sanitizer 报告 |
 | `cmake --build build --target Pixel PixelRuntimeSmoke -j4` | 游戏与 GPU/UI 测试均构建通过 |
-| 在 `Pixel/` 运行 `../build/tests/PixelRuntimeSmoke --formula-only` | GPU 黄色球读回、三承载者、旧树编辑器、新过程源码编译/Apply、无效草稿、新旧实例隔离全部通过 |
+| 在 `Pixel/` 运行 `../build/tests/PixelRuntimeSmoke --formula-only` | GPU 黄色球读回、三承载者、过程源码编译/Apply、无效草稿、新旧实例隔离全部通过 |
 | 独立 review | 源码、上下游和本合同无发现；独立重建与 CTest 6/6、Bridge 1/1 |
 
 GPU 首次测试在编辑器展开时误把右键投到其覆盖的坐标，输入被 UI 正常捕获；测试改为真实 F4 收起/重开面板后通过，没有更改输入过滤。当前环境未安装 Vulkan validation layer，因此 GPU 成功结果不包含该层检查。未改引擎，未运行 AET；游戏跨领域磁盘保存不在本轮验收范围。

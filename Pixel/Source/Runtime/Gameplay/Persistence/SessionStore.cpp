@@ -273,6 +273,9 @@ SessionSaveData SessionStore::ReadMetadata(const std::filesystem::path &director
         input >> data.CommittedTime >> data.TimeRemainder;
     }
     input >> data.WindBoundary >> data.WindEnabled >> data.Paused;
+    // Old metadata paused the environment by default. That removed simulation
+    // switch must not turn into a global game freeze when an old world loads.
+    if (version < 6) data.Paused = false;
     try { data.Player.Normalize(); }
     catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
     catch (const std::out_of_range &error) { throw WorldStorageError(error.what()); }

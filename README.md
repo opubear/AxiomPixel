@@ -37,15 +37,15 @@ Pixel/Source/
 | `Runtime/Gameplay/Items, Devices, Authority, Knowledge/` | 游戏物品、设备、权限、知识与重要历史 |
 | `Runtime/Gameplay/GameAPI, Observation, LLMView/` | 类型化动作/回执、领域观测投影、授权冻结查询与模型派生记忆 |
 | `Runtime/Gameplay/LLM, WorldWill/` | 游戏目标/提案、DecisionAPI、PseudoLLM、游戏JSON协议、服务适配与世界意志行为 |
-| `Runtime/Gameplay/FormulaBridge, FormulaValidation, Persistence/` | 构式游戏宿主和额度规则、领域保存DTO/编解码、SessionStore存档世代策略 |
+| `Runtime/Gameplay/FormulaBridge, Persistence/` | 构式游戏宿主和额度规则、领域保存DTO/编解码、SessionStore存档世代策略 |
 | `Runtime/Gameplay/Application/` | 组合根：装配游戏、Input、系统提供者、Render与DebugUI，编排引擎生命周期 |
 | `Runtime/Simulation/World/` | WorldMap、WorldStreamer、Generation、Environment；被动接收修改/推进并提供状态查询 |
 | `Runtime/Render/` | CPU呈现与外观映射、快照和GPU缓存；`Assets/`管理游戏美术清单，`Shader/`保存Pixel shader |
 | `Runtime/System/LLM, IO, Serialization/` | 与游戏领域无关的异步文本模型接口、文件发布/校验/错误处理、有界文本序列化 |
-| `Runtime/System/Formula/` | 独立C++20构式语言、编译产物、运行时、CLI与语言实验，可单独构建 |
+| `Runtime/System/Formula/` | 独立C++20过程构式语言、编译产物、运行时与CLI，可单独构建 |
 | `Runtime/System/IO/Input/` | GameInput处理键鼠、控制模式和设备布置；PresentationControl表达显示意图，宿主回调提供应用操作 |
 | `Dev/Debug/Garden, Performance/` | 显式育圃贯穿场景；无UI采样核心与运行时性能报告 |
-| `Dev/Debug/UI, FormulaEditing, LLM, Tools/` | ImGui面板与树草稿编辑器、测试专用FakeModel和观察demo |
+| `Dev/Debug/UI, LLM, Tools/` | ImGui面板与过程源码编辑器、测试专用FakeModel和观察demo |
 
 `Pixel/Content` 和 `Pixel/Config` 保留运行时资源/配置，自动化测试继续集中在 `UnitTest`，引擎及AET留在 `Axiom` 子模块。
 
@@ -63,7 +63,7 @@ System中的通用服务不包含角色、设备、世界或权限类型；`Syst
 
 Dev/Debug保留当前可运行的开发功能。各领域允许调用无UI的Performance插桩；GameSession在显式选择育圃场景后调用Garden规则，仍由Session持有场景状态并按原存档格式保存。Garden只接收所需世界/角色/构式对象，不访问GameSession私有实现。它依赖底层`PixelFormulaBridge`，不会反向链接`PixelGameplay`；DebugUI由Application装配。这些诊断/场景接点不改变Simulation的单向边界。
 
-核心构建依赖为`PixelGameplay → PixelActors → PixelWorld`、`PixelGameplay → PixelFormulaBridge → PixelFormula/PixelFormulaProcess`和`PixelPresentation → PixelGameplay/PixelCamera`；`System/IO/Input`构建的`PixelInput`仅链接Gameplay与Camera。`Pixel.System`单独链接System工具验证可复用边界，`Pixel.ModelService`验证协议适配/取消/容量/错误，`Pixel.ModuleBoundaries`检查System通用服务、Simulation、Gameplay与IO/Input的引用方向。旧模块设计图中的目录与世界所有权以此处及[世界表示约定](Docs/WorldRepresentation.md)为准。
+核心构建依赖为`PixelGameplay → PixelActors → PixelWorld`、`PixelGameplay → PixelFormulaBridge → PixelFormulaProcess`和`PixelPresentation → PixelGameplay/PixelCamera`；`System/IO/Input`构建的`PixelInput`仅链接Gameplay与Camera。`Pixel.System`单独链接System工具验证可复用边界，`Pixel.ModelService`验证协议适配/取消/容量/错误，`Pixel.ModuleBoundaries`检查System通用服务、Simulation、Gameplay与IO/Input的引用方向。旧模块设计图中的目录与世界所有权以此处及[世界表示约定](Docs/WorldRepresentation.md)为准。
 
 角色身份与生命周期见 [Actors 合同](.awtcontext/GlobalDoc/Actors.md)：玩家已移出 World，Resident 验证第二对象的物理与生命周期；当前呈现仍仅玩家；M4.6检查点已保存所有角色的身份和完整运动状态。
 
@@ -130,7 +130,7 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 
 世界正Y向下，任意正负坐标按需延伸。Natural通过版本化种子按Chunk生成，出生点有干燥安全平台；Superflat严格保留y<512空气、y>=512泥土，旧v2存档也继续使用该平坦策略。玩家模拟窗口默认1024×1024，按64格对齐并在玩家离开中央512×512后重新居中；远处冻结并卸载保存。自由相机只改变显示加载范围。
 
-`PIXEL_WORLD_GENERATOR=natural|flat`和`PIXEL_WORLD_SEED=<uint64>`可设置新世界，已有世界以存档为准；环境变量与面板选择不会改写旧世界。R使用面板当前选定的生成器和种子。
+`PIXEL_WORLD_GENERATOR=natural|flat`和`PIXEL_WORLD_SEED=<uint64>`可设置新世界，已有世界以存档为准；环境变量与面板选择不会改写旧世界。 世界元数据v6保存全局暂停；v2–v5中的旧环境暂停标记在导入时忽略，旧世界不会因此全局冻结。R使用面板当前选定的生成器和种子。
 
 | 操作 | 行为 |
 |---|---|
@@ -147,7 +147,7 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 
 Input、Debug和CPU driver的开采、放置与激活共用Session动作入口，返回明确结果；调用者token与epoch在世界替换时失效，每调用者保留最近64条回执用于同步去重。F2的 `Game actions` 可输入格坐标执行同类操作并查看Input/Debug回执。风设置、会话控制及Formula工具栏也经Session端口；Session对外只提供World/Runtime的const引用；内部运行错误直接传播，存档I/O与领域拒绝保留明确结果。公开契约、权限与M1/M2边界见[动作实现说明](Docs/Architecture/GameActions.md)。
 
-启动和R后默认暂停。Environment的 `Pause simulation` 和 `Step 1/60 second` 控制运行；暂停冻结材料、风和动画，相机/加载仍工作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
+启动和R后默认运行；暂停由GameSession统一管理，Simulation不再维护独立暂停开关。F2主面板顶部的 `Pause game` 冻结角色、材料、风场、构式、设备、育圃和世界意志结果交付，世界修改动作返回 `GamePaused`；`Step game 1/60 second` 可显式推进一个完整固定步。暂停不积累游戏时间或缓存跳跃，F3 DebugCamera及显示控制仍可使用；保存、重置和I/O管理仍可操作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
 
 固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式→设备一步才增加Tick，暂停编辑只增加CommitRevision，动作回执携带CommitStamp。预算等待期间呈现继续读取最后完整副本，流式加载与步首输入保持冻结；细节及后续边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
 
@@ -189,11 +189,13 @@ world.FillRegion({-64, 0, 64, 64}, {pixel::CellTypes::Empty, {0, 1}});
 
 角色为独立2×4格矩形，速度16格/秒、跳跃32格/秒、重力90格/秒²，按≤0.25格分段碰撞。角色不受风，不向泥土施力；地图缺失作为实体阻挡。相机与人物使用块坐标加块内double，GPU接收相机附近相对值，远距离仍保留亚格精度。相机跟随系数默认8/s，可在面板调整；角色使用连续屏幕矩形覆盖合成，不写入地图材料。
 
+全局暂停的原生窗口专项：`(cd Pixel && ../build/tests/PixelRuntimeSmoke --pause-only)`，覆盖默认移动、真实暂停复选框、暂停中的DebugCamera和恢复跳跃。
+
 ## 风场和显示
 
 普通视图已接入四层山林背景，使用 `Pixel/Content/ArtAssets.json` 配置内容目录内的相对PNG路径、镜像重复周期和显示高度。原件留在 `ArtRaw/`；运行时只读取 `Pixel/Content/Art/NaturalParallax/` 的复制件。清单和解码图片在应用生命周期内缓存，背景GPU纹理只在策略初始化后首次绘制上传一次，切换frame slot或调整窗口不重复读取/上传。F1诊断视图关闭背景；背景不参与材料、碰撞或存档。接口、内存成本及替换方法见 [美术资源接入](Docs/ArtAssetIntegration.md)。
 
-Environment可在Empty、Coarse NS、Pixel reference、Procedural、Hybrid、Adaptive NS、LBM D2Q9七策略间切换，默认Empty。Reference、Adaptive和LBM切换后自动暂停，建议先单步。切换重建当前风后端，保留地图、基础力及物理时钟；不保存每策略的独立运行历史。
+Environment可在Empty、Coarse NS、Pixel reference、Procedural、Hybrid、Adaptive NS、LBM D2Q9七策略间切换，默认Empty。Reference、Adaptive和LBM计算成本较高，可用全局暂停和单步进行诊断；切换风后端不再自动改变暂停状态。切换重建当前风后端，保留地图、基础力及物理时钟；不保存每策略的独立运行历史。
 
 `Wind boundary Y`是世界坐标：Superflat默认424，Natural默认360，后者按地表最高可能位置上方88格设置；它仍是水平风域，不贴合每个山坡。旧档保留已保存的边界。风域随玩家移动，迁移重叠速度/分布，新进入区域由背景风初始化；离开窗口的动态扰动丢弃。正常游戏使用流入/流出开放边界，周期模式仅在显式数值测试中开启。
 
@@ -261,38 +263,31 @@ Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置�
 
 ## 构式（Formula）与编辑器
 
-右键从人物前方朝鼠标方向激活当前构式。默认基础输入为黄色球描述，速度60格/秒、寿命120 tick、半径0.35格；先求值整个构式再产生弹体，Empty或延迟期间没有占位球。高速球按圆形扫掠与固体碰撞，水可穿过，离开玩家模拟窗口或遇缺失块时无触发退场。Shift＋右键保留开采。
+项目只支持 `process 1;` 构式。旧 cast 语言、树形描述、Simulator、树形编辑器及其校验/实验目标均已删除；本地旧存档已清空，不转换旧构式存档。
 
-F2只控制Pixel Debug，F4独立控制 `Formula Editor`，主面板的 `Formula editor (F4)` 也可重新打开编辑器；隐藏普通调试面板不影响编辑器使用。结构树支持选择节点、修改参数、包裹/解包、增删、复制和顺序调整；右侧选择新节点类型，再操作选中节点。预设只改变草稿，点击 `Apply` 后用于下一次右键；已有弹体及其延迟/命中子构式保持旧版本。`Revert to applied` 恢复已应用结构，`Clear running` 无触发清除全部实例与排队任务。
+右键从人物前方向鼠标激活当前程序，Shift＋右键开采。默认程序为黄色球：伤害元数据10、速度60格/秒、寿命120活动步、半径0.35格。它显式等待命中或到期，程序结束清理归属效果。球使用圆形扫掠碰撞；作用区域不活跃或必要块缺失时冻结，返回后按剩余活动时间继续。
 
-默认仍暂停：右键可生成当前tick的球，使用Environment的单步或取消暂停推进。构式、角色和材料共享成功提交的60Hz固定步；预算等待不推进构式，并拒绝新激活和地形编辑。checkpoint/1保存完整时间余量、已应用程序及process/1运行实例，继续导入v2–v5。未应用编辑草稿不保存；有活跃旧树实例时明确拒绝保存，须完成或Clear running。动态风仍按配置和相位重建，不保存扰动。
+F2控制Pixel Debug，F4独立控制 `Formula Editor`。编辑器初始化为已应用程序，可直接修改 `Process text` 或载入三脉冲草稿，依次点击 `Compile process`、`Apply process`。编辑源码会撤销编译结果，错误显示行列；Apply仅影响后续实例，运行中的实例保留原版本。`Load applied process`恢复已应用源码，`Clear running`清理运行实例及归属效果。
 
-基础版支持既有全部节点：序列、伤害/速度修改、延迟、重复、散射、命中载荷，以及挖掘和风脉冲。伤害目前是元数据。风效果仅适配启用的Coarse后端且网格至多1024 cells；其他策略、域外、零/极小半径有明确诊断并跳过风，不取消同根其他效果。草稿至多64节点/16层，每根至多64个效果、会话至多16根/256个预留效果，窗口显示拒绝原因及运行日志。黄色球独立于地图材料，F1隐藏实体表现但不改变执行。
+`Process: three carriers`可从玩家附近启动NaturalSource和FixedFixture调试承载者，使用同一程序和宿主规则；额度分别为6、4，玩家为64。真实Device另有物品和燃料规则。这些承载者共享 `ProcessHost`，World不依赖构式或渲染。
 
-实现入口是 `Pixel/Source/Runtime/Gameplay/FormulaBridge/FormulaBridge.*`、同目录的 `ProcessHost.*` / `FormulaWorldAdapter.*`、`Runtime/Gameplay/FormulaValidation/FormulaAnalysis.*`、`Dev/Debug/FormulaEditing/FormulaDraft.*` 和 `Dev/Debug/UI/FormulaDebugUI.*`。运行分析直接读取不可变Formula，保留64节点/16层及所有后代额度；这些是游戏宿主策略，不进入独立语言。编辑器保留ID/空槽等草稿检查，共用参数和运行分析规则。`Pixel/Source/Runtime/System/Formula` 继续提供独立DSL、不可变组合、CPU模拟器及CLI：
+游戏默认运行。GameSession全局暂停冻结角色、构式、环境、设备和育圃，DebugCamera仍可移动；单步推进完整的1/60秒。预算等待不推进实例，并拒绝新激活和编辑。检查点保存已应用程序、运行实例、事件、弹体及持续场源；默认球存活时也能保存并正常关闭。未应用编辑草稿不保存，动态风扰动仍按配置和相位重建。
+
+实现入口：`Runtime/System/Formula`提供独立编译器、运行时和草稿；`Runtime/Gameplay/FormulaBridge`负责承载者、领域权限、效果提交及快照；`Dev/Debug/UI/FormulaDebugUI`提供源码编辑界面。语言和领域合同见[模块README](Pixel/Source/Runtime/System/Formula/README.md)、[过程运行时](.awtcontext/GlobalDoc/FormulaProcessRuntime.md)和[FormulaBridge](.awtcontext/GlobalDoc/FormulaBridge.md)。
 
 ```sh
 cmake -S Pixel/Source/Runtime/System/Formula -B build-formula-system -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-formula-system -j4
 ctest --test-dir build-formula-system --output-on-failure
-./build-formula-system/PixelFormulaDemo Pixel/Source/Runtime/System/Formula/Examples/impact_burst.formula --ticks 30 --hit-at 6
-```
+./build-formula-system/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3
 
-`--hit-at`是显式命中注入。语法见 [Formula README](Pixel/Source/Runtime/System/Formula/README.md)，独立语言架构见 [构式语言架构](.awtcontext/GlobalDoc/FormulaLanguageArchitecture.md)，游戏接入、额度及验证范围见 [基础版实现](.awtcontext/GlobalDoc/FormulaGameplayV1Implementation.md)。
-
-M3.2 的 `PixelFormulaProcessDemo` 使用新的 `process 1;` 入口，包含不可变编译产物、片段预算、终态等待和独立 fake host。可执行 `./build-formula-system/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3`；M3.3 已通过 FormulaBridge 接入游戏，树形编辑器保留旧入口。新合同与明确的兼容范围见[过程语言 v1](.awtcontext/GlobalDoc/FormulaProcessRuntime.md)。
-
-F4 编辑器展开 `Process source`，载入三脉冲草稿或直接编辑源码，依次点击 `Compile process` 和 `Apply process` 后右键使用新过程。编辑会撤销旧编译结果，错误显示行列；Apply 只影响新实例。展开 `Process: three carriers`，`Start natural source` 和 `Start fixed fixture` 从玩家附近启动同一程序，并查看各实例的版本、PC、活动计时与剩余等待。三脉冲示例会发球、命中挖掘并延时重复，需取消暂停或单步推进。固定装置只是有限夹具；示例额度每次激活独立，天然源6、固定装置4、玩家64，每个成功效果扣1。`Clear running` 统一清理，树形 `Apply` 切回旧程序，既有实例保留旧版本。领域效果与边界见 [FormulaBridge](.awtcontext/GlobalDoc/FormulaBridge.md)。
-
-M3.4 已实现独立程序与实例状态 DTO，在 fake host 验证挂起后重建解释器、剩余延迟/事件/效果寿命接续及不重放已提交请求。具体见[状态与编辑合同](.awtcontext/GlobalDoc/FormulaStateAndEditing.md)。M4.5游戏区域离开会冻结程序与归属效果，返回后按剩余活动时间续接；M4.6已保存过程、承载者与归属效果；未应用编辑草稿不保存。
-
-CPU行为测试包括 `Pixel.FormulaValidation`、`Pixel.FormulaEditing`、`Pixel.FormulaGameplay`、`Pixel.FormulaRendering`。前者只链接共享验证和独立Formula，FormulaGameplay也不链接编辑器或ImGui。实际球颜色/合成、窗口资源与编辑器操作可专项验证：
-
-```sh
-cmake --build build --target PixelRuntimeSmoke -j4
+cmake --build build --target PixelRuntimeSmoke PixelCloseSmoke -j4
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --formula-only)
+(cd Pixel && ../build/tests/PixelCloseSmoke)
 ```
 
-本布局AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`；状态通过CLI维护，工程文档见 [.awtcontext/GlobalDoc/DocIndex.md](.awtcontext/GlobalDoc/DocIndex.md)。
+2026-10-25移除旧构式后的验证：CPU全量92/92、独立语言5/5通过；Pixel、PixelRuntimeSmoke和PixelCloseSmoke编译通过。RTX 3070/X11的构式GPU/源码编辑器、育圃UI及带活动默认弹丸的保存关闭恢复专项通过；本轮未重跑完整GPU生命周期或AET。
 
-持续场程序使用 `field(cells(r), acceleration(ax), acceleration(ay), ticks(life))`，其中加速度为格/秒²；`await result` 后的 `effect_handle()` 返回不透明句柄，保存到local后可 `update_field(handle, field(...))` 或 `stop_field(handle)`。来源由Environment拥有，程序终止/故障/撤销或设备拆除都清理；已有一次性挖掘与风脉冲不回滚。HostContractVersion与运行快照schema升至2，旧快照不兼容；`process 1`语法保留。当前来源容量256，完整圆盘必须在活动域内，寿命仅随成功环境步推进。更多示例见 [field.formula](Pixel/Source/Runtime/System/Formula/Examples/Process/field.formula)。
+持续场使用 `field(cells(r), acceleration(ax), acceleration(ay), ticks(life))`，加速度单位为格/秒²。`await result` 后以 `effect_handle()`取得不透明句柄，可保存后用于 `update_field`或`stop_field`；程序终止、故障、撤销或设备拆除都会清理所属场源。示例见[field.formula](Pixel/Source/Runtime/System/Formula/Examples/Process/field.formula)。
+
+AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`，工程文档见[索引](.awtcontext/GlobalDoc/DocIndex.md)。

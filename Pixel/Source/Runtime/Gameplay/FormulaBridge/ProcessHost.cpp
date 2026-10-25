@@ -46,7 +46,7 @@ double ScopeExit(WorldRect scope, WorldPosition from, WorldPosition to) {
     }
     return std::clamp(first, 0.0, 1.0);
 }
-formula::Vec2 Velocity(const ProcessCarrier &carrier, double speed) {
+FormulaVector Velocity(const ProcessCarrier &carrier, double speed) {
     const auto angle = std::remainder(carrier.AngleDegrees, 360.0) * std::numbers::pi / 180;
     return {speed * std::cos(angle), speed * std::sin(angle)};
 }
@@ -70,7 +70,7 @@ struct Running {
 struct Projectile {
     process::RequestId Request;
     WorldPosition Position;
-    formula::Vec2 Velocity;
+    FormulaVector Velocity;
     double Damage;
     uint64_t Remaining;
 };

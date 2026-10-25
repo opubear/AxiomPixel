@@ -678,13 +678,15 @@ void FormulaGameplayGpu() {
     app.Initialize();
     app.Begin();
     auto &runtime = input->GetSession().GetFormulaRuntime();
-    Require(bool(input->GetSession().ApplyProgram(pixel::NativeCaller::Driver, pixel::formula::Formula::Bolt().Spread(3, 12))), "GPU formula fixture rejected a fan");
+    const auto triple = std::get<pixel::formula::process::ProgramArtifact>(pixel::formula::process::Compile("gpu-triple",
+        "process 1; var n = 0; while n < 3 { emit bolt(10, speed(60), ticks(120)); n = n + 1; } wait ticks(120);"));
+    Require(bool(input->GetSession().ApplyProcess(pixel::NativeCaller::Driver, triple)), "GPU process fixture rejected three bolts");
     Require(input->GetSession().Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{input->GetSession().AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "GPU fixture failed to launch");
     const auto verifyYellow = [&] {
         const auto token = Draw(app);
         app.Engine->GetRHI()->WaitIdle();
         const auto frame = policy->PublishedFrame();
-        Require(frame.FormulaDraws.size() == 3, "GPU publication lost fan projectiles");
+        Require(frame.FormulaDraws.size() == 3, "GPU publication lost process projectiles");
         const auto &scene = policy->SceneColor(token.Slot);
         const auto pixels = ReadColor(scene);
         for (const auto &draw : frame.FormulaDraws) {
@@ -834,7 +836,7 @@ void FormulaGameplayGpu() {
     Require(session.GetFormulaRuntime().Stats().Roots == 0 && fieldWorld.GetEnvironment().GetFieldSources().Size() == 0,
             "GPU removal retained device runtime or field");
     app.Shutdown();
-    std::cout << "Formula GPU passed: legacy fan and process three carriers, yellow readback, slots, step, F1, resize, device body/port and sustained field install/remove readback\n";
+    std::cout << "Formula GPU passed: process triple bolt and three carriers, yellow readback, slots, step, F1, resize, device body/port and sustained field install/remove readback\n";
 }
 
 void ForceGardenGameplayGpu(bool aid = false) {
@@ -977,7 +979,7 @@ void BasicWorldGameplay() {
                 "GPU click fixture could not supply soil");
     };
     supplySoil();
-    Require(input->GetSession().IsPaused(), "application must preserve the default paused session");
+    Require(!input->GetSession().IsPaused(), "application must start with a running session");
     const auto initialWind = world.GetWind().Sample(512.5f, 200.5f);
     std::vector<uint32_t> expectedCells(Grid2D::CellCount);
     std::fill(expectedCells.begin() + 512 * Grid2D::Width, expectedCells.end(), 1);
@@ -1218,7 +1220,7 @@ void BasicWorldGameplay() {
     world.FillForceDirection({0, 0});
     world.AddWindImpulse(512, 200, 64, {0, -120});
     input->OnKeyEvent(Key::KEY_R, 0, ButtonAction::ACTION_PRESS, Mod{});
-    Require(input->GetSession().IsPaused(), "reset must pause the session");
+    Require(!input->GetSession().IsPaused(), "reset must start a running session");
     supplySoil();
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     VerifyDefaultWorldField(world);
@@ -1645,11 +1647,16 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
 }
 } // namespace
 void RunPixelDebugUISmoke();
+void RunPixelGamePauseUISmoke();
 void RunPixelFormulaUISmoke();
 void RunPixelGardenUISmoke();
 void RunPixelGardenAidUISmoke();
 int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--pause-only") {
+            RunPixelGamePauseUISmoke();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--art-only") {
             ArtBackgroundGpu();
             ArtBackgroundGpu(true);

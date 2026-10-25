@@ -276,11 +276,6 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
             if (ImGui::Button("Save world"))
                 session.Control(NativeCaller::Debug, api::SaveWorld{});
         }
-        bool paused = session.IsPaused();
-        if (ImGui::Checkbox("Pause simulation", &paused))
-            session.Control(NativeCaller::Debug, api::SetPaused{paused});
-        if (paused && ImGui::Button("Step 1/60 second"))
-            session.Control(NativeCaller::Debug, api::StepSimulation{});
         if (World.UsesPixelWind()) {
             const auto &report = World.GetPixelWind().GetReport();
             ImGui::Text("Divergence RMS: %.3g (%s)", report.RmsDivergence, report.Converged ? "converged" : "NOT converged");
@@ -336,6 +331,16 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
         ImGui::SetNextWindowSizeConstraints({300, 120}, {std::max(300.f, ImGui::GetIO().DisplaySize.x - 32),
                                                        std::max(120.f, ImGui::GetIO().DisplaySize.y - 32)});
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::BeginDisabled(!session.IsReady());
+            bool paused = session.IsPaused();
+            if (ImGui::Checkbox("Pause game", &paused))
+                session.Control(NativeCaller::Debug, api::SetPaused{paused});
+            if (paused) {
+                ImGui::TextDisabled("World logic is frozen; F3 debug camera remains available.");
+                if (ImGui::Button("Step game 1/60 second"))
+                    session.Control(NativeCaller::Debug, api::StepSimulation{});
+            }
+            ImGui::EndDisabled();
             DrawGeneration(session);
             DrawForceGardenUI(session, presentation, worldWill, GardenUI);
             DrawActions(session, ActionCell);

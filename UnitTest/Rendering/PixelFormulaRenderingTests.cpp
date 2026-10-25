@@ -279,7 +279,7 @@ void PublisherIsolation() {
     Check(first.Read().FormulaDraws.empty(), "F1 publication retained stale formula data");
 }
 
-void FormulaValidation() {
+void ProjectileValidation() {
     WorldGridFrame frame;
     frame.FormulaDraws.push_back({{10, 10, 2, 2}});
     ValidateWorldGridFrame(frame.Read(), 4, 100, 100);
@@ -294,7 +294,7 @@ const SPIRVInfo &GetShaderInfo(std::string_view) { static SPIRVInfo info; return
 int main() {
     try {
         CircleProjection();
-        FormulaValidation();
+        ProjectileValidation();
         PublisherIsolation();
         FormulaPassLifecycle();
         std::cout << "Formula snapshot and render composition passed\n";

@@ -55,10 +55,6 @@ class GameSession : public api::WorldWillHost {
     api::ControlReceipt Control(NativeCaller caller, const api::SessionControl &control) {
         return Control(CallerSession(caller), control);
     }
-    ApplyProgramResult ApplyProgram(api::CallerSessionId caller, const formula::Formula &description);
-    ApplyProgramResult ApplyProgram(NativeCaller caller, const formula::Formula &description) {
-        return ApplyProgram(CallerSession(caller), description);
-    }
     ApplyProgramResult ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program);
     api::ControlReceipt StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier);
     api::ControlReceipt CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
@@ -72,7 +68,7 @@ class GameSession : public api::WorldWillHost {
     items::ContainerId PlayerInventory() const { return PlayerBag; }
     const Body *GetPlayer() const { return Characters.Player(); }
     bool IsReady() const { return Ready; }
-    bool CanEditWorld() const { return Ready && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
+    bool CanEditWorld() const { return Ready && !Paused && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
     const FormulaBridge &GetFormulaRuntime() const { return Formulas; }
     const std::string &GetFormulaError() const { return FormulaError; }
     const WorldGenerationSettings &GetGenerationSettings() const { return StreamConfiguration.Generation; }
@@ -80,7 +76,7 @@ class GameSession : public api::WorldWillHost {
     const std::string &GetSaveError() const { return SaveError; }
     const api::ControlReceipt &LastPersistenceResult() const { return PersistenceResult; }
     void Tick(float duration, PlayerInput input);
-    bool IsPaused() const { return Simulation.IsPaused(); }
+    bool IsPaused() const { return Paused; }
     double GetSimulationTime() const { return Simulation.Time(); }
     double GetTimeRemainder() const { return Simulation.Remainder(); }
     api::CommitStamp CurrentCommit() const;
@@ -159,6 +155,7 @@ class GameSession : public api::WorldWillHost {
     std::string FormulaError;
     std::optional<SessionStore> Store;
     SimulationCoordinator Simulation;
+    bool Paused = false;
     ObservationProjector Observations;
     api::GameplayObservation GameplayValues;
     void PublishGameplayObservation();
