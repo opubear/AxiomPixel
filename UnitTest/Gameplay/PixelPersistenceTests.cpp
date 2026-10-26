@@ -152,9 +152,9 @@ void PendingRefusesPersistence() {
     for (auto coordinate : world.GetMap().ChunkCoordinates())
         if (!world.GetSimulationBounds().Contains({coordinate.X * pixel::storage::ChunkEdge, coordinate.Y * pixel::storage::ChunkEdge}))
             pixel::testing::WorldAccess::Map(world).Remove(coordinate);
-    world.SetPublicationBytes(pixel::storage::DefaultBudget - world.GetStreamer()->RetainedBytes() - 128);
     session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
+    pixel::testing::WorldAccess::SaturateBudget(world);
     session.Tick(1.f / 60, {});
     Require(world.GetEnvironment().IsWaitingForBudget(), "test did not exhaust material scratch budget");
     const auto stamp = session.CurrentCommit();
@@ -329,6 +329,7 @@ void DeferredStepKeepsStreamingDomain() {
     wind.Coarse.GustSpeed = 0;
     world.ConfigureWindDomain(256, wind);
     world.AddWindImpulse(190, 128, 16, {100, 0});
+    world.SetCell(10, 10, {pixel::CellTypeId::Dirt, {0, 1}});
     world.WaitForStreaming();
 
     pixel::GameCamera camera;
@@ -346,8 +347,8 @@ void DeferredStepKeepsStreamingDomain() {
                 pixel::testing::WorldAccess::Map(world).Remove(coordinate);
     };
     discardOptional();
-    world.SetCell(10, 10, {pixel::CellTypeId::Dirt, {0, 1}});
-    world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
+    pixel::testing::SessionAccess::PublishFixtureChanges(session);
+    pixel::testing::WorldAccess::SaturateBudget(world);
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(1.f / 60, {1, false});
     Require(world.GetEnvironment().IsWaitingForBudget()

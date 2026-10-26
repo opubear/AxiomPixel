@@ -13,3 +13,6 @@ add_executable(PixelFieldSourceBenchmark EXCLUDE_FROM_ALL PixelFieldSourceBenchm
 target_link_libraries(PixelFieldSourceBenchmark PRIVATE PixelWorld)
 add_executable(PixelForceGardenBenchmark EXCLUDE_FROM_ALL PixelForceGardenBenchmark.cpp)
 target_link_libraries(PixelForceGardenBenchmark PRIVATE PixelGameplay)
+
+add_executable(PixelWorldBufferBenchmark EXCLUDE_FROM_ALL PixelWorldBufferBenchmark.cpp)
+target_link_libraries(PixelWorldBufferBenchmark PRIVATE PixelPresentation)

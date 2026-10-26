@@ -30,11 +30,15 @@ void Read(std::istream &input, T &value) {
 } // namespace
 
 WorldStreamer::WorldStreamer(WorldMap &map, WorldStreamSettings settings)
-    : Map(map), Configuration(std::move(settings)) {
+    : WorldStreamer([&map]() -> const WorldMap & { return map; }, [&map]() -> WorldMap & { return map; }, std::move(settings)) {}
+
+WorldStreamer::WorldStreamer(std::function<const WorldMap &()> read, std::function<WorldMap &()> write, WorldStreamSettings settings,
+                             std::function<uint64_t()> retained)
+    : ReadMap(std::move(read)), WriteMap(std::move(write)), BufferBytes(std::move(retained)), Configuration(std::move(settings)) {
     if (Configuration.Generation.Kind == WorldGeneratorKind::Flat)
         Configuration.Generation.SurfaceY = Configuration.SurfaceY;
     Generator = CreateWorldGenerator(Configuration.Generation);
-    if (Map.IsFinite() || Configuration.Directory.empty() || Configuration.BudgetBytes < 2 * LoadReservation() || Configuration.WindowEdge < storage::RegionEdge || Configuration.WindowEdge % storage::RegionEdge)
+    if (ReadMap().IsFinite() || Configuration.Directory.empty() || Configuration.BudgetBytes < 2 * LoadReservation() || Configuration.WindowEdge < storage::RegionEdge || Configuration.WindowEdge % storage::RegionEdge)
         throw std::invalid_argument("invalid streaming world configuration");
     std::filesystem::create_directories(Configuration.Directory / "chunks");
     Worker = std::jthread([this] { Run(); });
@@ -68,13 +72,14 @@ axiom::Array<CellCoord> WorldStreamer::Coordinates(WorldRect bounds) {
 uint64_t WorldStreamer::RetainedBytes() const {
     // Keep the I/O and index headroom while resident too: moving a dirty chunk
     // into the worker queue must not itself require extra budget.
-    return Map.GetMemoryUsage().ReservedBytes() + Map.ChunkCount() * ChunkWorkingReserve + InFlightBytes + ExternalBytes;
+    return ReadMap().GetMemoryUsage().ReservedBytes() + ReadMap().ChunkCount() * ChunkWorkingReserve + InFlightBytes + ExternalBytes
+        + (BufferBytes ? BufferBytes() : 0);
 }
 
 size_t WorldStreamer::PendingCount() const { return Pending.size(); }
 
 ChunkResidency WorldStreamer::GetState(CellCoord coordinate) const {
-    if (Map.FindChunk(coordinate))
+    if (ReadMap().FindChunk(coordinate))
         return ChunkResidency::Resident;
     const auto pending = Pending.find(coordinate);
     if (pending != Pending.end())
@@ -125,6 +130,17 @@ void WorldStreamer::Poll(bool acceptLoads) {
     axiom::Array<Work> completed;
     {
         std::lock_guard lock(Mutex);
+        // Prepare the writer before removing completed work from the queue. A
+        // retained read version may prevent allocation; its I/O result must stay
+        // queued so the next service boundary can retry without losing a chunk.
+        for (const auto &work : Completed) {
+            if (!acceptLoads && work.Kind != Operation::Save) continue;
+            if (work.Chunk && (work.Kind == Operation::Load || work.Retain || !work.Error.empty())
+                && !ReadMap().FindChunk(work.Coordinate)) {
+                WriteMap();
+                break;
+            }
+        }
         if (acceptLoads) {
             completed.swap(Completed);
         } else {
@@ -147,22 +163,22 @@ void WorldStreamer::Poll(bool acceptLoads) {
         } else {
             Failures.erase(work.Coordinate);
         }
-        if (work.Chunk && (work.Kind == Operation::Load || work.Retain || !work.Error.empty()) && !Map.FindChunk(work.Coordinate))
-            Map.Insert(std::move(work.Chunk));
+        if (work.Chunk && (work.Kind == Operation::Load || work.Retain || !work.Error.empty()) && !ReadMap().FindChunk(work.Coordinate))
+            WriteMap().Insert(std::move(work.Chunk));
     }
 }
 
 bool WorldStreamer::MakeRoom(uint64_t bytes, const axiom::Map<CellCoord, uint8_t, CellCoordLess> &wanted) {
     if (RetainedBytes() + bytes <= Configuration.BudgetBytes)
         return true;
-    for (const auto coordinate : Map.ChunkCoordinates()) {
+    for (const auto coordinate : ReadMap().ChunkCoordinates()) {
         if (wanted.contains(coordinate) || Pending.contains(coordinate) || Failures.contains(coordinate))
             continue;
-        auto *chunk = Map.FindChunk(coordinate);
+        auto *chunk = ReadMap().FindChunk(coordinate);
         if (chunk->Dirty)
-            Enqueue({Operation::Save, coordinate, Map.Remove(coordinate), {}});
+            Enqueue({Operation::Save, coordinate, WriteMap().Remove(coordinate), {}});
         else
-            Map.Remove(coordinate);
+            WriteMap().Remove(coordinate);
         if (RetainedBytes() + bytes <= Configuration.BudgetBytes)
             return true;
     }
@@ -180,7 +196,7 @@ void WorldStreamer::Update(WorldRect simulation, WorldRect visible) {
     MakeRoom(0, wanted);
 
     for (const auto coordinate : requests) {
-        if (Map.FindChunk(coordinate) || Pending.contains(coordinate) || Failures.contains(coordinate))
+        if (ReadMap().FindChunk(coordinate) || Pending.contains(coordinate) || Failures.contains(coordinate))
             continue;
         if (Pending.size() >= 2 || !MakeRoom(LoadReservation(), wanted))
             break;
@@ -193,7 +209,7 @@ void WorldStreamer::Update(WorldRect simulation, WorldRect visible) {
         for (int64_t y = first.Y - 1; y <= last.Y + 1 && Pending.size() < 2; ++y)
             for (int64_t x = first.X - 1; x <= last.X + 1 && Pending.size() < 2; ++x) {
                 const CellCoord coordinate{x, y};
-                if (!Map.FindChunk(coordinate) && !Pending.contains(coordinate) && !Failures.contains(coordinate) && RetainedBytes() + LoadReservation() <= Configuration.BudgetBytes)
+                if (!ReadMap().FindChunk(coordinate) && !Pending.contains(coordinate) && !Failures.contains(coordinate) && RetainedBytes() + LoadReservation() <= Configuration.BudgetBytes)
                     Enqueue({Operation::Load, coordinate, {}, {}});
             }
     }
@@ -206,7 +222,7 @@ void WorldStreamer::LoadNow(WorldRect bounds) {
     for (const auto coordinate : coordinates)
         wanted[coordinate] = 1;
     for (const auto coordinate : coordinates) {
-        if (Map.FindChunk(coordinate))
+        if (ReadMap().FindChunk(coordinate))
             continue;
         if (!MakeRoom(LoadReservation(), wanted)) {
             Wait();
@@ -215,7 +231,7 @@ void WorldStreamer::LoadNow(WorldRect bounds) {
         }
         Enqueue({Operation::Load, coordinate, {}, {}});
         Wait();
-        if (!Map.FindChunk(coordinate))
+        if (!ReadMap().FindChunk(coordinate))
             throw WorldStorageError(Error.empty() ? "required chunk failed to load" : Error);
     }
 }
@@ -248,12 +264,12 @@ void WorldStreamer::WaitForSaves() {
 void WorldStreamer::Save(bool acceptLoads) {
     if (acceptLoads) Wait();
     else WaitForSaves();
-    for (const auto coordinate : Map.ChunkCoordinates()) {
-        if (!Map.FindChunk(coordinate)->Dirty)
+    for (const auto coordinate : ReadMap().ChunkCoordinates()) {
+        if (!ReadMap().FindChunk(coordinate)->Dirty)
             continue;
-        Enqueue({Operation::Save, coordinate, Map.Remove(coordinate), {}, true});
+        Enqueue({Operation::Save, coordinate, WriteMap().Remove(coordinate), {}, true});
         WaitForSaves();
-        if (Map.FindChunk(coordinate)->Dirty)
+        if (ReadMap().FindChunk(coordinate)->Dirty)
             throw WorldStorageError(Error.empty() ? "world save failed" : Error);
     }
 }
@@ -275,7 +291,7 @@ void WorldStreamer::CancelOptionalLoads(const axiom::Map<CellCoord, uint8_t, Cel
     discard(Completed);
 }
 
-bool WorldStreamer::ReserveExternalBytes(uint64_t bytes, WorldRect simulation, bool acceptCompleted) {
+bool WorldStreamer::ReserveExternalBytes(uint64_t bytes, WorldRect simulation, bool acceptCompleted, std::span<const CellCoord> protectedChunks) {
     if (bytes > Configuration.BudgetBytes)
         return false;
     const auto previous = ExternalBytes;
@@ -285,11 +301,18 @@ bool WorldStreamer::ReserveExternalBytes(uint64_t bytes, WorldRect simulation, b
     axiom::Map<CellCoord, uint8_t, CellCoordLess> required;
     for (const auto coordinate : Coordinates(simulation))
         required[coordinate] = 1;
+    for (const auto coordinate : protectedChunks)
+        required[coordinate] = 1;
     CancelOptionalLoads(required);
-    if (acceptCompleted)
-        Poll();
-    if (MakeRoom(0, required))
-        return true;
+    try {
+        if (acceptCompleted)
+            Poll();
+        if (MakeRoom(0, required))
+            return true;
+    } catch (const WorldBudgetUnavailable &) {
+        // A sealed map cannot be evicted until another version fits. Preserve
+        // the bool reservation contract and restore the previous owner charge.
+    }
     ExternalBytes = previous;
     return false;
 }

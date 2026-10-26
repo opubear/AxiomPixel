@@ -214,14 +214,13 @@ void SustainedForceOutput() {
     world.FillBaseForceRegion({85, 85, 33, 33}, {0, 0});
     world.SetCell(104, 101, {CellTypeId::Dirt, {0, 0}});
     Step(session); // Install after the environment step.
-    const auto &sources = world.GetEnvironment().GetFieldSources();
-    Check(sources.Size() == 1 && world.GetForce(104, 101).X == 3600 &&
+    Check(world.GetEnvironment().GetFieldSources().Size() == 1 && world.GetForce(104, 101).X == 3600 &&
           world.GetBaseForceField().Get(104, 101).X == 0, "device did not install a separate force source");
     for (int i = 0; i < 4; ++i) Step(session);
-    Check(world.GetCell(108, 101).Type == CellTypeId::Dirt && sources.Size() == 1,
+    Check(world.GetCell(108, 101).Type == CellTypeId::Dirt && world.GetEnvironment().GetFieldSources().Size() == 1,
           "persistent field did not keep pushing dirt across successful steps");
     Check(session.Execute(NativeCaller::Input, api::SetDeviceEnabled{Current(session, id).Ref, false}).Applied(), "disable failed");
-    Check(sources.Size() == 0 && world.GetForce(108, 101).X == 0, "disable left permanent acceleration");
+    Check(world.GetEnvironment().GetFieldSources().Size() == 0 && world.GetForce(108, 101).X == 0, "disable left permanent acceleration");
     Step(session);
     Check(world.GetCell(108, 101).Type == CellTypeId::Dirt, "dirt kept moving after source removal");
     Check(Current(session, id).Cycles == 1 && Current(session, id).Fuel == 0, "source charged fuel each tick");

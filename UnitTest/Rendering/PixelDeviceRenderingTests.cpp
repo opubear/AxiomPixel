@@ -219,17 +219,17 @@ void FieldResidencyPublicationWithoutWind() {
     BuildForceFieldFrame(world, direct);
     BuildForceFieldFrame(*view, published);
     const auto before = direct.Cells()[20 * 32];
-    const auto regionVersion = map.RegionVersion({edge, 20});
+    const auto regionVersion = world.GetMap().RegionVersion({edge, 20});
     for (int cycle = 0; cycle < 2; ++cycle) {
-        auto unloaded = map.Remove({0, 0});
+        auto unloaded = testing::WorldAccess::Map(world).Remove({0, 0});
         testing::SessionAccess::PublishFixtureChanges(session);
-        Check(view->GetFieldVelocity(edge, 20).X == 0 && map.RegionVersion({edge, 20}) == regionVersion,
+        Check(view->GetFieldVelocity(edge, 20).X == 0 && world.GetMap().RegionVersion({edge, 20}) == regionVersion,
               "neighbor view retained force after center unloaded");
         BuildForceFieldFrame(world, direct);
         BuildForceFieldFrame(*view, published);
         Check(direct.Cells()[20 * 32] != before && published.Cells()[20 * 32] == direct.Cells()[20 * 32],
               "direct or committed F1 cache retained a missing-center source");
-        map.Insert(std::move(unloaded));
+        testing::WorldAccess::Map(world).Insert(std::move(unloaded));
         testing::SessionAccess::PublishFixtureChanges(session);
         Check(view->GetFieldVelocity(edge, 20).X == 60, "center reload did not refresh neighbor view");
         BuildForceFieldFrame(world, direct);

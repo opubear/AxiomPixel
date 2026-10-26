@@ -13,6 +13,10 @@ namespace pixel {
 // Environment composes temporary FieldSources without changing these values.
 class ForceField {
   public:
+    ForceField(const ForceField &) = delete;
+    ForceField &operator=(const ForceField &) = delete;
+    ForceField(ForceField &&) = default;
+    ForceField &operator=(ForceField &&) = default;
     performance::MemoryUsage GetMemoryUsage() const {
         if (Map)
             return Map->GetForceMemoryUsage();

@@ -25,7 +25,7 @@ api::Reason GameSession::AuthorizeAction(api::CallerSessionId caller, const api:
 api::ControlReceipt GameSession::SetWorldWillCapabilities(NativeCaller caller, authority::Capabilities capabilities) {
     if (caller != NativeCaller::Debug && caller != NativeCaller::Driver)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
-    const auto reason = WriteRejection();
+    const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     if (!Authority.SetCapabilities(capabilities)) return {api::ControlStatus::Applied};
     const auto changes = ReconcileAuthority();

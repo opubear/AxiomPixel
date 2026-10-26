@@ -351,6 +351,7 @@ void PendingAndPersistence() {
     testing::SessionAccess::PublishFixtureChanges(session);
     const auto stamp = session.CurrentCommit();
     const auto authorization = session.GetAuthority().Version();
+    testing::WorldAccess::SaturateBudget(world);
     Step(session);
     Check(world.GetEnvironment().IsWaitingForBudget() && session.CurrentCommit() == stamp, "real pending step not reached");
     Check(session.SetWorldWillCapabilities(NativeCaller::Driver, {false, false}).Rejection == api::Reason::WaitingForBudget,

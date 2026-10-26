@@ -42,7 +42,7 @@
 | Pixel面向游戏愿景的架构规划 | `workspace:Docs/Architecture/GameplayArchitecturePlan.md` | 执行前必读；独立构式语言、领域模块、LLMView、引擎职责和分阶段迁移方案 | |
 | 首个贯穿场景与GameAPI契约 | `workspace:Docs/Architecture/FirstGameplaySliceContract.md` | M1.1执行规格：观测与开采/激活场景、身份单位、动作效果事实、提交查询及验收映射 | |
 | 统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | M1动作去重、只读公开访问、内部早失败、存储错误边界与M2待办 | |
-| 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | GameSession全局暂停、单步与完整提交；预算等待冻结输入，旧档暂停语义迁移 | |
+| 固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 固定步与预算重试、WorldBuffers只读双缓冲、观测按需导出及GPU交接边界 | |
 | 正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | M2.2 Application钩子、请求消费与拒绝后继续、AET默认行为及M2.3保存接入边界 | |
 | 会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | Deferred和关闭协商；M4.6多域检查点、v2-v5导入与验证入口 | |
 | 有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | M2投影与事实；M4.7加入同提交设备库存程序和场源值 | |
@@ -81,5 +81,8 @@
 | 构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | formula/2函数、时序、Actor绑定、错误和旧源码存档兼容合同 | |
 | 构式升级验证 | `workspace:Docs/Architecture/FormulaCompositionVerification.md` | 独立CPU与sanitizer复核，主agent GPU、关闭、Release成本及覆盖边界 | |
 | 构式函数组合Release成本 | `workspace:Docs/Architecture/FormulaCompositionCost.txt` | 三轮编译与包装/展开首片段成本；不含实例创建、世界提交和GPU | |
+| 水蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 单格材料形态规则、调试笔刷、同步提交、存档与验证入口 | |
+| 世界双缓冲验证与性能 | `workspace:Docs/WorldBuffersValidation.md` | 只读版本、预算事务、独立审查、CPU/GPU验证及三轮Release取舍 | |
+| 世界双缓冲Release原始数据 | `workspace:Docs/WorldBuffersBenchmark-2026-10-26.csv` | 三轮同源基准的提交与F1打包耗时、World预留容量和校验值 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

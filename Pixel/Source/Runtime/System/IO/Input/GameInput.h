@@ -9,6 +9,7 @@ namespace pixel {
 class GameSession;
 class GameCamera;
 class PresentationControl;
+enum class ElementBrush { Disabled, Water, Steam, Fire };
 enum class ControlMode { Standard, DebugCamera };
 
 // Runtime operations supplied by the application; input itself stays CPU-testable.
@@ -32,7 +33,9 @@ class GameInput {
     void SetControlMode(ControlMode mode);
     ControlMode GetControlMode() const { return Mode; }
     bool IsDevicePlacementEnabled() const { return DevicePlacementMode; }
-    void SetDevicePlacementEnabled(bool enabled) { DevicePlacementMode = enabled; }
+    void SetDevicePlacementEnabled(bool enabled) { DevicePlacementMode = enabled; if (enabled) Brush = ElementBrush::Disabled; }
+    ElementBrush GetElementBrush() const { return Brush; }
+    void SetElementBrush(ElementBrush brush) { Brush = brush; DevicePlacementMode = false; }
     PlayerInput ConsumePlayerInput();
     // Called after simulation; standard following uses the player's new position.
     void UpdateCamera(float duration);
@@ -48,6 +51,7 @@ class GameInput {
     std::array<bool, 4> Move{};
     bool JumpRequested = false;
     bool DevicePlacementMode = false;
+    ElementBrush Brush = ElementBrush::Disabled;
     std::array<int, 2> Movement() const;
     void ResetGame();
 };

@@ -13,7 +13,11 @@ struct WindDomain {
 // coordinates; callers with world coordinates convert only at this boundary.
 class WindSimulation {
   public:
+    WindSimulation() = default;
+    WindSimulation(const WindSimulation &) = delete;
+    WindSimulation &operator=(const WindSimulation &) = delete;
     performance::MemoryUsage GetMemoryUsage() const;
+    const void *StorageIdentity() const { return Backend.get(); }
 
     void Configure(WorldMapView world, uint32_t endRow, const WindStrategySettings &settings);
     void ConfigureCoarse(uint32_t width, uint32_t endRow, const WindSettings &settings);
@@ -25,6 +29,7 @@ class WindSimulation {
     void SetSimulationTime(double seconds);
     double GetSimulationTime() const { return SimulationTime; }
     WindStrategyKind GetKind() const { return Configured ? Settings.Kind : WindStrategyKind::Empty; }
+    const WindStrategySettings &GetSettings() const { return Settings; }
     bool UsesReference() const { return GetKind() == WindStrategyKind::Reference; }
     bool NeedsMaterialMotion() const { return Backend && Backend->NeedsMaterialMotion(); }
     uint32_t GetEndRow() const { return Domain.Height; }
@@ -46,7 +51,11 @@ class WindSimulation {
     const PixelWindField &GetReference() const;
 
   private:
-    std::unique_ptr<WindStrategy> Backend;
+    friend class WorldBuffer;
+    friend class World;
+    void ShareFrom(const WindSimulation &source);
+    std::shared_ptr<WindStrategy> Backend;
+    void PrepareWrite();
     WindStrategySettings Settings;
     WindDomain Domain;
     uint32_t ConfiguredEndRow = 0;

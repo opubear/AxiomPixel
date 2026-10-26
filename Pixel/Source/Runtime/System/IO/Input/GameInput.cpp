@@ -60,6 +60,11 @@ void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int 
     const auto cell = Camera.PickCell(pointer);
     if (!cell)
         return;
+    if (button == MouseButton::MOUSE_BUTTON_LEFT && Brush != ElementBrush::Disabled) {
+        constexpr std::array materials{CellTypeId::Air, CellTypeId::Water, CellTypeId::Steam, CellTypeId::Fire};
+        Session.Execute(NativeCaller::Debug, api::SpawnElement{{(*cell)[0], (*cell)[1]}, uint32_t(materials.at(size_t(Brush)))});
+        return;
+    }
     if (button == MouseButton::MOUSE_BUTTON_LEFT && DevicePlacementMode) {
         Session.Execute(NativeCaller::Input, api::PlaceDevice{{(*cell)[0], (*cell)[1]}});
         return;
@@ -100,7 +105,11 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
             Presentation.ToggleTint();
         break;
     case Key::KEY_T: Presentation.ToggleTint(); break;
-    case Key::KEY_B: DevicePlacementMode = !DevicePlacementMode; break;
+    case Key::KEY_B: SetDevicePlacementEnabled(!DevicePlacementMode); break;
+    case Key::KEY_1: SetElementBrush(ElementBrush::Disabled); break;
+    case Key::KEY_2: SetElementBrush(ElementBrush::Water); break;
+    case Key::KEY_3: SetElementBrush(ElementBrush::Steam); break;
+    case Key::KEY_4: SetElementBrush(ElementBrush::Fire); break;
     case Key::KEY_F1: Presentation.ToggleFieldView(); break;
     case Key::KEY_F2: Host.ToggleDebugUI(); break;
     case Key::KEY_F3:
@@ -118,6 +127,6 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     }
 }
 const char *GameInput::ControlsDescription() {
-    return "Pixel: left click place dirt; B toggle device placement (4 stone + 2 copper ore); right click device enable/disable, otherwise activate formula; Shift+right click device recycle, otherwise mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
+    return "Pixel: 1 normal tool, 2 water, 3 steam, 4 fire; element brush left click spawns a disk; normal left click place dirt; B toggle device placement (4 stone + 2 copper ore); right click device enable/disable, otherwise activate formula; Shift+right click device recycle, otherwise mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
 }
 } // namespace pixel

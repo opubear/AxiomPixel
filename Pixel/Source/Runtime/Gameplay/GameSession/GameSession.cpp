@@ -351,7 +351,7 @@ void GameSession::ReplacingWorld() {
     PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
     PublishedFieldSourceVersion = 0;
     for (const auto &weak : ReadViews)
-        if (auto view = weak.lock()) view->CommittedAt = {};
+        if (auto view = weak.lock()) { view->CommittedAt = {}; view->Buffer.reset(); }
     Formulas.OnWorldReplaced(GameWorld);
     Machines.Clear();
     Garden = {};

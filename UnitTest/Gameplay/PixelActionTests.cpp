@@ -148,10 +148,49 @@ void WaitingAndFarCoordinates() {
     Require(session.Execute(NativeCaller::Driver, ActivateProgram{session.AppliedProgram(), dto}).Applied(),
             "valid distant target rejected");
 }
+void ElementBrushActions() {
+    GameSession session;
+    const SpawnElement brush{{100, 100}, uint32_t(CellTypeId::Steam), 2};
+    Require(session.Execute(NativeCaller::Input, brush).Rejection == Reason::PermissionDenied,
+            "normal gameplay acquired the debug element brush");
+    auto &world = testing::SessionAccess::World(session);
+    world.SetCell(100, 100, {CellTypeId::Stone});
+    world.SetBaseForce(101, 100, {123, 456});
+    const auto before = session.CurrentCommit();
+    const ActionRequest request{session.WorldEpoch(), 10, brush};
+    const auto receipt = session.Submit(session.CallerSession(NativeCaller::Debug), request);
+    const auto result = std::get<ElementsSpawned>(receipt.Result);
+    Require(receipt.Applied() && result.Changed == 12 && result.Radius == 2,
+            "element brush failed to fill just the empty cells in a bounded disk");
+    Require(world.GetCell(100, 100).Type == CellTypeId::Stone
+                && world.GetCell(101, 100).Type == CellTypeId::Steam
+                && world.GetBaseForceField().Get(101, 100) == ForceVector{123, 456},
+            "brush overwrote terrain or spatial forces");
+    Require(session.CurrentCommit().Tick == before.Tick && session.CurrentCommit().Revision == before.Revision + 1,
+            "brush did not publish exactly one non-physics commit");
+    const auto facts = session.ReadFacts(session.WorldEpoch(), receipt.Facts.FirstSequence - 1,
+                                          receipt.Facts.FirstSequence, 1);
+    Require(facts.Facts.size() == 1 && std::get<ElementsSpawned>(facts.Facts.front().Payload).Changed == 12,
+            "element brush lost its committed fact");
+    const auto duplicate = session.Submit(session.CallerSession(NativeCaller::Debug), request);
+    Require(duplicate.ResolvedAt == receipt.ResolvedAt && session.CurrentCommit() == receipt.ResolvedAt,
+            "duplicate brush request ran twice");
+    Require(session.Execute(NativeCaller::Debug, SpawnElement{{100, 100}, 999, 2}).Rejection == Reason::Unsupported,
+            "brush accepted an unregistered material");
+    Require(session.Execute(NativeCaller::Debug, SpawnElement{{100, 100}, 50, 9}).Rejection == Reason::InvalidArgument,
+            "brush accepted an unbounded disk");
+    session.Control(NativeCaller::Debug, SetPaused{true});
+    Require(session.Execute(NativeCaller::Debug, SpawnElement{{110, 100}, 52, 0}).Rejection == Reason::GamePaused,
+            "paused game accepted element creation");
+    const auto cells = world.ReadState().AtLocal(101, 100);
+    session.Tick(.2f, {});
+    Require(world.ReadState().AtLocal(101, 100) == cells, "paused game simulated steam");
+}
+
 } // namespace
 int main() {
     try {
-        ThreeEntrances(); RequestLifetimeAndValidation(); ProgramAndControls(); WaitingAndFarCoordinates();
+        ElementBrushActions(); ThreeEntrances(); RequestLifetimeAndValidation(); ProgramAndControls(); WaitingAndFarCoordinates();
         std::cout << "Pixel actions passed\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }

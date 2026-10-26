@@ -49,13 +49,15 @@ void MixedConflictAndSpaceForces() {
     World world(8, 8);
     world.SetCell(2, 1, {CellTypeId::Dirt});
     world.SetCell(1, 2, {CellTypeId::Water});
+    world.SetCell(1, 1, {CellTypeId::Water});
+    world.SetCell(2, 3, {CellTypeId::Stone});
     world.SetCell(0, 2, {CellTypeId::Stone});
     world.SetCell(1, 3, {CellTypeId::Stone});
     world.SetBaseForce(1, 2, {123, 456});
     world.Tick(1.f / 60);
     Require(world.GetCell(2, 2).Type == CellTypeId::Dirt && world.GetCell(1, 2).Type == CellTypeId::Water,
             "water/dirt target conflict lost step-start ordering or material identity");
-    Require(WaterCount(world) == 1, "mixed conflict lost water");
+    Require(WaterCount(world) == 2, "mixed conflict lost water");
     world.SetCell(1, 3, {});
     world.Tick(1.f / 60);
     Require(world.GetCell(1, 3).Type == CellTypeId::Water, "water was converted to dirt during commit");

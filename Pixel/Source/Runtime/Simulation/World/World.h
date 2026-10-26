@@ -2,6 +2,7 @@
 
 #include "Runtime/Simulation/World/Environment/Environment.h"
 #include "WorldStreamer.h"
+#include "WorldBuffers.h"
 #include <optional>
 
 namespace pixel {
@@ -20,19 +21,19 @@ class World {
     World(uint32_t width, uint32_t height);
     World();
     performance::MemorySnapshot GetMemoryUsage() const;
-    CellState GetCell(int64_t x, int64_t y) const { return Map.Get({x, y}); }
-    std::optional<CellState> TryGetCell(int64_t x, int64_t y) const { return Map.TryGet({x, y}); }
+    CellState GetCell(int64_t x, int64_t y) const { return GetMap().Get({x, y}); }
+    std::optional<CellState> TryGetCell(int64_t x, int64_t y) const { return GetMap().TryGet({x, y}); }
     CellQuery QueryCell(int64_t x, int64_t y) const;
-    void SetCell(int64_t x, int64_t y, CellState cell) { Map.Set({x, y}, cell); }
+    void SetCell(int64_t x, int64_t y, CellState cell) { GetMutableMap().Set({x, y}, cell); }
     void Fill(CellState cell);
-    void FillRegion(WorldRect region, CellState cell) { Map.Fill(region, cell); }
+    void FillRegion(WorldRect region, CellState cell) { GetMutableMap().Fill(region, cell); }
     void SetForceDirection(int64_t x, int64_t y, ForceDirection direction);
     void FillForceDirection(ForceDirection direction);
     void RandomizeForceDirections(uint32_t endRow, uint32_t seed);
-    void SetBaseForce(int64_t x, int64_t y, ForceVector force) { Map.SetForce({x, y}, force); }
+    void SetBaseForce(int64_t x, int64_t y, ForceVector force) { GetMutableMap().SetForce({x, y}, force); }
     void AddBaseForce(int64_t x, int64_t y, ForceVector force);
     void FillBaseForce(ForceVector force);
-    void FillBaseForceRegion(WorldRect region, ForceVector force) { Map.FillForce(region, force); }
+    void FillBaseForceRegion(WorldRect region, ForceVector force) { GetMutableMap().FillForce(region, force); }
     const ForceField &GetBaseForceField() const { return Environment.GetBaseForceField(); }
     ForceVector GetForce(int64_t x, int64_t y) const { return Environment.SampleForce({x, y}, GetSimulationBounds()); }
     WindVelocity GetFieldVelocity(int64_t x, int64_t y) const;
@@ -79,22 +80,28 @@ class World {
         return Environment.GetWindSimulation().AddWorldImpulse(position, radius, delta);
     }
     WorldRect GetWindBounds() const;
-    WorldMapView GetWindView() const { return Map.View(GetWindBounds()); }
+    WorldMapView GetWindView() const { return GetMap().View(GetWindBounds()); }
 
     void GenerateTerrain(uint32_t surfaceRow);
     bool PlaceDirt(int64_t x, int64_t y);
     bool RemoveDirt(int64_t x, int64_t y);
     CellEditResult TryPlaceDirt(int64_t x, int64_t y);
+    CellEditResult TryPlaceMaterial(CellCoord cell, CellTypeId material);
     CellEditResult TryRemoveDirt(int64_t x, int64_t y);
     CellEditResult TryRemoveMaterial(int64_t x, int64_t y);
+    // Reserve/copy before a caller changes inventory or starts a multi-cell edit.
+    bool TryPrepareMaterialWrite(WorldRect bounds);
+    bool TryPrepareBuffers();
     void RetryStreaming() {
         if (Streamer)
             Streamer->RetryFailures();
     }
     bool StepEnvironment(double committedSeconds) { return Environment.TryStep(*this, committedSeconds); }
     const pixel::Environment &GetEnvironment() const { return Environment; }
-    const WorldMap &GetMap() const { return Map; }
-    WorldMapView ReadState() const { return Map.View(GetSimulationBounds()); }
+    const WorldMap &GetMap() const { return Buffers.Current().GetMap(); }
+    WorldBuffers::ReadLease ReadBuffers() const { return Buffers.Published(); }
+    void PublishBuffers();
+    WorldMapView ReadState() const { return GetMap().View(GetSimulationBounds()); }
     void PublishState(WorldSnapshot &destination) const;
     void PublishSnapshot(WorldRect bounds, WorldSnapshot &destination) const;
 
@@ -123,14 +130,14 @@ class World {
     void ReserveSimulationBytes(uint64_t bytes);
     uint64_t PublicationBudget() const { return Streamer ? Streamer->Settings().BudgetBytes / 3 : storage::DefaultBudget / 3; }
     std::weak_ptr<const int> PublicationLifetime() const { return Lifetime; }
-    WorldRect GetSimulationBounds() const { return Map.IsFinite() ? Map.Bounds() : SimulationBounds; }
+    WorldRect GetSimulationBounds() const { return GetMap().IsFinite() ? GetMap().Bounds() : SimulationBounds; }
     const WorldStreamer *GetStreamer() const { return Streamer.get(); }
 
   private:
     friend class Environment;
     friend struct testing::WorldAccess;
-    WorldMap &GetMutableMap() { return Map; }
-    WorldMap Map;
+    WorldMap &GetMutableMap() { return Buffers.Write().Map; }
+    WorldBuffers Buffers;
     pixel::Environment Environment;
     std::unique_ptr<WorldStreamer> Streamer;
     WorldRect SimulationBounds{0, 0, storage::DefaultWindowEdge, storage::DefaultWindowEdge};
@@ -144,5 +151,7 @@ class World {
     axiom::Map<const void *, uint64_t> PublicationOwners;
     std::shared_ptr<const int> Lifetime = std::make_shared<const int>(0);
     void RequireFinite() const;
+    void InitializeBufferBudget();
+    void ReserveBufferWrite(uint64_t bytes, std::span<const CellCoord> protectedChunks);
 };
 } // namespace pixel

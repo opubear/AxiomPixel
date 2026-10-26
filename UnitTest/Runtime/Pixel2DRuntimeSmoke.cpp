@@ -1487,7 +1487,7 @@ void TerrainMaterialsGpu() {
     constexpr std::array types{pixel::CellTypeId::Dirt, pixel::CellTypeId::GroundSoil,
         pixel::CellTypeId::GrassSoil, pixel::CellTypeId::Stone, pixel::CellTypeId::CoalOre,
         pixel::CellTypeId::CopperOre, pixel::CellTypeId::IronOre, pixel::CellTypeId::TungstenOre,
-        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water};
+        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water, pixel::CellTypeId::Steam, pixel::CellTypeId::Fire};
     for (uint32_t i = 0; i < types.size(); ++i)
         world.FillRegion({0, 2 + i * 4, 64, 3}, {types[i]});
     std::array<int64_t, 2> origin{};
@@ -1518,6 +1518,64 @@ void TerrainMaterialsGpu() {
     }
     app.Shutdown();
     std::cout << "Terrain GPU passed: Content PNGs, all materials, water alpha/surface strips, frame slots and distant UV phases\n";
+}
+
+void ElementMotionGpu() {
+    pixel::ArtAssetStore assets(AssetLoader::LoadContentFile);
+    pixel::GamePresentation presentation;
+    const auto catalog = presentation.LoadTextures(assets);
+    World world(128, 128);
+    world.FillRegion({0, 120, 128, 8}, {pixel::CellTypeId::Stone});
+    world.FillRegion({2, 55, 2, 65}, {pixel::CellTypeId::Stone});
+    world.FillRegion({40, 55, 2, 65}, {pixel::CellTypeId::Stone});
+    world.FillRegion({16, 45, 20, 2}, {pixel::CellTypeId::Stone});
+    world.FillRegion({48, 55, 25, 2}, {pixel::CellTypeId::Stone});
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto render = std::make_unique<PixelRender>(rhi, catalog, [&](WorldGridFrame &frame) {
+            BuildWorldGridFrame(world.ReadState(), presentation.Appearances, frame);
+            frame.View.CellSizePixels = {4, 4};
+            frame.View.Background = {.07f, .10f, .14f, 1};
+        });
+        policy = render.get();
+        return render;
+    };
+    PixelSmokeApplication app(std::make_unique<PixelGame>(false));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    for (int step = 0; step < 144; ++step) {
+        if (step % 3 == 0) {
+            for (int x = -4; x <= 4; ++x) {
+                world.TryPlaceMaterial({24 + x, 10}, pixel::CellTypeId::Water);
+                world.TryPlaceMaterial({60 + x, 110}, pixel::CellTypeId::Steam);
+                world.TryPlaceMaterial({96 + x, 110}, pixel::CellTypeId::Fire);
+            }
+        }
+        Require(world.Tick(1.f / 60) == 1, "element smoke did not advance one fixed step");
+        const auto token = Draw(app);
+        if ((step + 1) % 24 != 0) continue;
+        app.Engine->GetRHI()->WaitIdle();
+        const auto &color = policy->WorldColor(token.Slot);
+        VerifyColor(policy->PublishedFrame(), color, catalog);
+        if (const auto *directory = std::getenv("PIXEL_ELEMENT_CAPTURE_DIR")) {
+            std::filesystem::create_directories(directory);
+            const auto pixels = ReadColor(color);
+            const auto extent = color.Desc;
+            const auto path = std::filesystem::path(directory) / ("elements-" + std::to_string(step + 1) + ".ppm");
+            std::ofstream file(path, std::ios::binary);
+            file << "P6\n" << extent.Width << ' ' << extent.Height << "\n255\n";
+            for (size_t pixel = 0; pixel < size_t(extent.Width) * extent.Height; ++pixel)
+                for (size_t channel = 0; channel < 3; ++channel) {
+                    const float linear = pixels[pixel * 4 + channel] / 255.f;
+                    file.put(char(uint8_t(std::lround(255 * (linear <= .0031308f ? 12.92f * linear
+                        : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f)))));
+                }
+        }
+    }
+    app.Shutdown();
+    std::cout << "Element GPU motion passed: falling water, rising steam/fire, alpha and changing region uploads\n";
 }
 
 void ArtBackgroundGpu(bool exactMirrorEdge = false) {
@@ -1662,6 +1720,10 @@ int main(int argc, char **argv) {
             ArtBackgroundGpu(true);
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--elements-only") {
+            ElementMotionGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--terrain-only") {
             TerrainMaterialsGpu();
             return 0;
@@ -1691,6 +1753,7 @@ int main(int argc, char **argv) {
             return 0;
         }
         TerrainMaterialsGpu();
+        ElementMotionGpu();
         ArtBackgroundGpu();
         ArtBackgroundGpu(true);
         WindVisualizationGpu();

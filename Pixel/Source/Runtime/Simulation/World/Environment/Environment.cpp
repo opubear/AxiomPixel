@@ -1,5 +1,6 @@
 #include "Environment.h"
 #include "FieldResponse.h"
+#include "CellularMaterials.h"
 #include "Dev/Debug/Performance/FrameProfiler.h"
 #include "Runtime/Simulation/World/World.h"
 #include <algorithm>
@@ -28,51 +29,31 @@ void AppendScratch(axiom::Array<T> &values, T value, World &world, const Environ
     values.push_back(value);
 }
 
-std::optional<CellCoord> WaterDestination(const WorldMap &map, WorldRect bounds, CellCoord source) {
-    const auto is = [&](CellCoord cell, CellTypeId type) {
-        const auto value = bounds.Contains(cell) ? map.TryGet(cell) : std::nullopt;
-        return value && value->Type == type;
-    };
-    const CellCoord below{source.X, source.Y + 1};
-    if (is(below, CellTypeId::Air))
-        return below;
-    // A side step must lead downhill, or have a second water cell providing
-    // head above the source. A lone surface cell cannot oscillate sideways.
-    const bool hasHead = is({source.X, source.Y - 1}, CellTypeId::Water);
-    const int first = (uint64_t(source.X) ^ uint64_t(source.Y)) & 1 ? -1 : 1;
-    for (const int dx : {first, -first}) {
-        const CellCoord side{source.X + dx, source.Y};
-        const bool dropsFromSide = is({side.X, side.Y + 1}, CellTypeId::Air);
-        // Do not follow a supporting water cell into its lateral vacancy in
-        // the same synchronous step. That translates whole columns forever.
-        if (dropsFromSide && is(below, CellTypeId::Water))
-            continue;
-        if (is(side, CellTypeId::Air) && (hasHead || dropsFromSide))
-            return side;
-    }
-    return std::nullopt;
-}
 } // namespace
 performance::MemoryUsage Environment::GetMemoryUsage() const {
-    auto usage = performance::MeasureObject(*this, Proposals, DirtMovements, Winners, WinnerEpochs);
-    usage.AddEmbedded(Wind.GetMemoryUsage());
+    auto usage = performance::MeasureObject(*this, Proposals, Changes, DirtMovements, Winners, WinnerEpochs);
+    usage.AddEmbedded(GetWindSimulation().GetMemoryUsage());
     return usage;
 }
 
 ForceVector Environment::SampleForce(CellCoord cell, WorldRect bounds) const {
-    auto result = FieldResponse::AddWind(BaseForces.Get(cell.X, cell.Y), Wind.SampleForMaterial(cell));
-    const auto acceleration = Sources.Sample(cell, bounds);
+    auto result = FieldResponse::AddWind(GetBaseForceField().Get(cell.X, cell.Y), GetWindSimulation().SampleForMaterial(cell));
+    const auto acceleration = GetFieldSources().Sample(cell, bounds);
     result.X += acceleration.X;
     result.Y += acceleration.Y;
     return result;
 }
 
-void Environment::Reset(WorldMap &map) {
+void Environment::Reset() {
     RequireSourceMutation();
-    const auto next = Sources.NextId, revision = Sources.Version + 1;
-    *this = Environment(map);
-    Sources.NextId = next;
-    Sources.Version = revision;
+    auto &buffer = Buffers->Write();
+    buffer.BaseForces = ForceField(buffer.Map);
+    const auto next = buffer.Sources.NextId, revision = buffer.Sources.Version + 1;
+    buffer.Sources = FieldSources(buffer.Map);
+    buffer.Sources.NextId = next;
+    buffer.Sources.Version = revision;
+    buffer.Wind.Clear();
+    *this = Environment(*Buffers);
 }
 
 void Environment::RequireSourceMutation() const {
@@ -84,19 +65,19 @@ void Environment::SimulationDomainChanged() {
     RequireSourceMutation();
     // Source eligibility depends on the full disk fitting the active domain.
     // Publication must observe that change even when no wind backend is enabled.
-    if (Sources.Size() != 0) ++Sources.Version;
+    if (MutableSources().Size() != 0) ++MutableSources().Version;
 }
 
 std::optional<FieldSourceHandle> Environment::InstallFieldSource(World &world, uint64_t owner, const FieldSourceSpec &input) {
     RequireSourceMutation();
     const auto spec = FieldSources::Validate(owner, input);
-    if (!Sources.HasCapacity() || !FieldSources::Fits(spec, world.GetSimulationBounds())
+    if (!MutableSources().HasCapacity() || !FieldSources::Fits(spec, world.GetSimulationBounds())
         || !world.TryGetCell(spec.Center.Cell().X, spec.Center.Cell().Y)) return std::nullopt;
-    if (!Sources.NextId) throw std::overflow_error("field source identity exhausted");
+    if (!MutableSources().NextId) throw std::overflow_error("field source identity exhausted");
 
-    const FieldSourceHandle handle{Sources.NextId++};
-    Sources.Values[Sources.Count++] = {handle, owner, spec, spec.Lifetime};
-    ++Sources.Version;
+    const FieldSourceHandle handle{MutableSources().NextId++};
+    MutableSources().Values[MutableSources().Count++] = {handle, owner, spec, spec.Lifetime};
+    ++MutableSources().Version;
     world.GetMutableMap().Wake(FieldSources::Bounds(spec));
     return handle;
 }
@@ -104,53 +85,53 @@ std::optional<FieldSourceHandle> Environment::InstallFieldSource(World &world, u
 bool Environment::UpdateFieldSource(World &world, uint64_t owner, FieldSourceHandle handle, const FieldSourceSpec &input) {
     RequireSourceMutation();
     const auto spec = FieldSources::Validate(owner, input);
-    auto *source = Sources.Find(owner, handle);
+    auto *source = MutableSources().Find(owner, handle);
     if (!source || source->Suspended || !FieldSources::Fits(spec, world.GetSimulationBounds())
         || !world.TryGetCell(spec.Center.Cell().X, spec.Center.Cell().Y)) return false;
 
     world.GetMutableMap().Wake(FieldSources::Bounds(source->Spec));
     source->Spec = spec;
     source->Remaining = spec.Lifetime;
-    ++Sources.Version;
+    ++MutableSources().Version;
     world.GetMutableMap().Wake(FieldSources::Bounds(spec));
     return true;
 }
 
 bool Environment::StopFieldSource(World &world, uint64_t owner, FieldSourceHandle handle) {
     RequireSourceMutation();
-    const auto *source = Sources.Find(owner, handle);
+    const auto *source = MutableSources().Find(owner, handle);
     if (!source) return false;
-    Sources.Remove(size_t(source - Sources.Values.data()), world.GetMutableMap());
+    MutableSources().Remove(size_t(source - MutableSources().Values.data()), world.GetMutableMap());
     return true;
 }
 
 void Environment::StopFieldSources(World &world, uint64_t owner) {
     RequireSourceMutation();
     size_t index = 0;
-    while (index < Sources.Count)
-        if (Sources.Values[index].Owner == owner)
-            Sources.Remove(index, world.GetMutableMap());
+    while (index < MutableSources().Count)
+        if (MutableSources().Values[index].Owner == owner)
+            MutableSources().Remove(index, world.GetMutableMap());
         else
             ++index;
 }
 
 void Environment::SuspendFieldSources(World &world, uint64_t owner, bool suspended) {
     RequireSourceMutation();
-    for (auto &source : std::span(Sources.Values.data(), Sources.Count)) {
+    for (auto &source : std::span(MutableSources().Values.data(), MutableSources().Count)) {
         if (source.Owner != owner || source.Suspended == suspended) continue;
         source.Suspended = suspended;
-        ++Sources.Version;
+        ++MutableSources().Version;
         world.GetMutableMap().Wake(FieldSources::Bounds(source.Spec));
     }
 }
 
 void Environment::RestoreFieldSources(World &world, const FieldSourcesState &state) {
     RequireSourceMutation();
-    Sources.RestoreState(state, world.GetMutableMap());
+    MutableSources().RestoreState(state, world.GetMutableMap());
 }
 
 void Environment::RestorePendingStep(double seconds, bool deferredStep) {
-    Wind.SetSimulationTime(seconds + (deferredStep ? FieldResponse::StepSeconds : 0));
+    GetWindSimulation().SetSimulationTime(seconds + (deferredStep ? FieldResponse::StepSeconds : 0));
     PendingSeconds = seconds;
     WindAdvancedForStep = deferredStep;
     WaitingForBudget = deferredStep;
@@ -161,24 +142,24 @@ bool Environment::TryStep(World &world, double committedSeconds) {
     constexpr double stepSeconds = FieldResponse::StepSeconds;
     VisitedCells = 0;
     ActiveRegions = 0;
-    if (!WindAdvancedForStep) {
-        PendingSeconds = committedSeconds;
-        Wind.SetSimulationTime(committedSeconds);
-        Wind.AdvanceBeforeMaterials(world.GetWindView(), float(stepSeconds));
-        Wind.SetSimulationTime(committedSeconds + stepSeconds);
-        WindAdvancedForStep = true;
-    } else if (PendingSeconds != committedSeconds) {
-        throw std::logic_error("pending environment step changed its clock");
-    }
     try {
+        if (!WindAdvancedForStep) {
+            PendingSeconds = committedSeconds;
+            GetWindSimulation().SetSimulationTime(committedSeconds);
+            GetWindSimulation().AdvanceBeforeMaterials(world.GetWindView(), float(stepSeconds));
+            GetWindSimulation().SetSimulationTime(committedSeconds + stepSeconds);
+            WindAdvancedForStep = true;
+        } else if (PendingSeconds != committedSeconds) {
+            throw std::logic_error("pending environment step changed its clock");
+        }
         StepMaterials(world);
     } catch (const WorldBudgetUnavailable &) {
-        world.GetMutableMap().Wake(world.GetSimulationBounds());
+        if (!Buffers->Sealed) world.GetMutableMap().Wake(world.GetSimulationBounds());
         WaitingForBudget = true;
         return false;
     }
-    Wind.UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
-    Sources.CompleteStep(world.GetMutableMap(), world.GetSimulationBounds());
+    GetWindSimulation().UpdateAfterMaterials(world.GetWindView(), DirtMovements, float(stepSeconds));
+    MutableSources().CompleteStep(world.GetMutableMap(), world.GetSimulationBounds());
     WindAdvancedForStep = false;
     WaitingForBudget = false;
     performance::FrameProfiler::Count(performance::Counter::SimulationSteps);
@@ -188,21 +169,28 @@ bool Environment::TryStep(World &world, double committedSeconds) {
 void Environment::ProposeRegion(World &world, WorldRect region) {
     auto &map = world.GetMutableMap();
     const auto bounds = world.GetSimulationBounds();
+    const auto step = uint64_t(std::round(PendingSeconds * FieldResponse::StepsPerSecond));
+    bool hasTransient = false;
     for (uint32_t row = 0; row < region.Height; ++row) {
         const CellCoord begin{region.X, region.Y + row};
         const auto materials = map.MaterialRow(begin, region.Width);
         for (uint32_t column = 0; column < region.Width; ++column) {
             const auto type = materials[column];
-            if (type != CellTypeId::Dirt && type != CellTypeId::Water)
+            if (type != CellTypeId::Dirt && type != CellTypeId::Water && !cellular::IsTransient(type))
                 continue;
             const CellCoord source{begin.X + column, begin.Y};
             ForceDirection direction{0, 0};
-            if (type == CellTypeId::Water) {
-                const auto destination = WaterDestination(map, bounds, source);
-                if (destination)
-                    direction = {int32_t(destination->X - source.X), int32_t(destination->Y - source.Y)};
-            } else {
+            if (type == CellTypeId::Dirt) {
                 direction = FieldResponse::MovementDirection(world.GetFieldVelocity(source.X, source.Y));
+            } else {
+                hasTransient |= cellular::IsTransient(type);
+                const auto update = cellular::Evaluate(map, bounds, source, type, step, GetWindSimulation().SampleWorld(source));
+                if (update.Material != type) {
+                    AppendScratch(Changes, MaterialChange{source, type, update.Material}, world, *this);
+                    continue;
+                }
+                if (update.Destination)
+                    direction = {int32_t(update.Destination->X - source.X), int32_t(update.Destination->Y - source.Y)};
             }
             if (direction.X == 0 && direction.Y == 0)
                 continue;
@@ -219,16 +207,20 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
             }
         }
     }
+    // A trapped or momentarily idle wisp still has a time-dependent rule.
+    if (hasTransient)
+        map.Wake(region);
 }
 
 void Environment::StepMaterials(World &world) {
     PIXEL_PROFILE_SCOPE(MaterialStep);
     Proposals.clear();
+    Changes.clear();
     SharedProposalDirection = true;
     DirtMovements.clear();
     auto &map = world.GetMutableMap();
-    Sources.WakeActive(map, world.GetSimulationBounds());
-    const auto dynamicForces = Wind.GetKind() == WindStrategyKind::Empty ? WorldRect{} : world.GetWindBounds();
+    MutableSources().WakeActive(map, world.GetSimulationBounds());
+    const auto dynamicForces = GetWindSimulation().GetKind() == WindStrategyKind::Empty ? WorldRect{} : world.GetWindBounds();
     const auto regions = map.TakeActiveRegions(world.GetSimulationBounds(), dynamicForces);
     ActiveRegions += regions.size();
     performance::FrameProfiler::Count(performance::Counter::ActiveRegions, regions.size());
@@ -240,17 +232,17 @@ void Environment::StepMaterials(World &world) {
     }
 
     ResolveConflicts(world, world.GetSimulationBounds());
-    if (Wind.NeedsMaterialMotion())
+    if (GetWindSimulation().NeedsMaterialMotion())
         std::sort(Proposals.begin(), Proposals.end(), [](const MaterialMove &a, const MaterialMove &b) {
             return CellCoordLess{}(a.Destination, b.Destination);
         });
     const auto windOrigin = world.GetWindView().Origin;
     for (const auto &move : Proposals) {
-        if (move.Type == CellTypeId::Dirt && Wind.NeedsMaterialMotion() && world.GetWindBounds().Contains(move.Destination)) {
+        if (move.Type == CellTypeId::Dirt && GetWindSimulation().NeedsMaterialMotion() && world.GetWindBounds().Contains(move.Destination)) {
             AppendScratch(DirtMovements, DirtMotion{uint32_t(move.Destination.X - windOrigin.X), uint32_t(move.Destination.Y - windOrigin.Y), {float(move.Destination.X - move.Source.X) * FieldResponse::StepsPerSecond, float(move.Destination.Y - move.Source.Y) * FieldResponse::StepsPerSecond}}, world, *this);
         }
     }
-    map.CommitMaterialMoves(Proposals);
+    map.CommitMaterialMoves(Proposals, Changes);
 }
 
 void Environment::ResolveConflicts(World &world, WorldRect bounds) {

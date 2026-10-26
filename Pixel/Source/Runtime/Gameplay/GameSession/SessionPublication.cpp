@@ -38,12 +38,14 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
     if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.RequestVisibleRegion(bounds);
     SynchronizeReadViews();
+    if (!GameWorld.ReadBuffers()) GameWorld.PublishBuffers();
     view.Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
     GameWorld.SetPublicationBytes(&view, std::max(reserve, view.ReservedBytes()));
 }
 
 void GameSession::PublishCommit() {
     if (Simulation.HasPendingStep()) throw std::logic_error("publication during pending step");
+    GameWorld.PublishBuffers();
     PublishGameplayObservation();
     Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(), Paused, Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
@@ -68,6 +70,7 @@ void GameSession::CommitChange() {
 
 void GameSession::SynchronizeReadViews() {
     if (Simulation.HasPendingStep()) return;
+    if (!GameWorld.TryPrepareBuffers()) return;
     // Residency may be serviced for rendering or saving while the game is
     // frozen, but that must not start/stop programs or change domain activity.
     const auto deviceChanges = Paused ? std::vector<api::DeviceChanged>{} : SynchronizeDeviceActivity();

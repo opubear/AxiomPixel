@@ -343,6 +343,11 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
             ImGui::EndDisabled();
             DrawGeneration(session);
             DrawForceGardenUI(session, presentation, worldWill, GardenUI);
+            int brush = int(input.GetElementBrush());
+            if (ImGui::Combo("Element brush (1-4)", &brush, "Normal tool\0Water\0Steam\0Fire\0"))
+                input.SetElementBrush(ElementBrush(brush));
+            if (brush != 0)
+                ImGui::TextWrapped("Left click the world to spawn a radius-4 disk in empty cells. 1 restores the normal tool.");
             DrawActions(session, ActionCell);
             DrawInventory(presentation);
             DrawDevices(session, presentation, input, DeviceCell, SelectedDevice);

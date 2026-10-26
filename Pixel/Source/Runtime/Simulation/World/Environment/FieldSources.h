@@ -9,6 +9,7 @@
 
 namespace pixel {
 class Environment;
+class WorldBuffer;
 class WorldMap;
 
 // Handles belong to one World lifetime; reset never recycles an earlier ID.
@@ -52,6 +53,7 @@ class FieldSources {
 
   private:
     friend class Environment;
+    friend class WorldBuffer;
     std::array<FieldSourceSnapshot, Capacity> Values{};
     size_t Count = 0;
     uint64_t NextId = 1;

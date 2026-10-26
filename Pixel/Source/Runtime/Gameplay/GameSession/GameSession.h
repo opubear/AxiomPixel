@@ -120,6 +120,7 @@ class GameSession : public api::WorldWillHost {
     std::array<CallerState, 4> Callers;
     CallerState *FindCaller(api::CallerSessionId caller);
     api::Reason WriteRejection() const;
+    api::Reason PrepareWorldMutation();
     api::ActionReceipt Dispatch(const api::Action &action, api::RequestKey request);
     api::Reason ActivateAt(WorldPosition target, api::RequestKey request);
     void RenewActionSessions();

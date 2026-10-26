@@ -285,6 +285,7 @@ void PendingMeasurementIsNotLearned() {
     Check(session.Control(NativeCaller::Driver, api::StepSimulation{}).Succeeded(),
         "pending measurement fixture step request failed");
     const auto stamp = session.CurrentCommit();
+    testing::WorldAccess::SaturateBudget(world);
     session.Tick(1.f / 60.f, {});
     Check(world.GetEnvironment().IsWaitingForBudget() && session.CurrentCommit() == stamp,
         "pending measurement fixture did not enter a real budget-blocked step");

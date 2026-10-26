@@ -36,7 +36,7 @@ M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数�
 
 世界现支持策略化Natural与Superflat：游戏新建默认自然土岩、洞穴、五矿种、湖泊/地下积水和干燥草皮；调试Flat保留y<512空气、其他泥土。旧v2存档映射到Flat，当前checkpoint/1持久化多领域一致状态，内部v5元数据保存生成器/种子/版本与完整固定步余量（可导入v2–v5），不重涂已有块。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。自然生成额外scratch单独预留。
 
-F2的World generation选择下一世界生成器与seed，R保存旧世界后创建；应用也支持PIXEL_WORLD_GENERATOR/PIXEL_WORLD_SEED。固定地层可开采而不坍塌，旧Dirt保持动态；Water按四邻接有限水量与Dirt同步提交，角色可入水与上浮，风将水视为边界。ArtRaw所需材质原样复制到Content，由ArtAssets.json的Terrain配置路径、映射与表面条带。具体合同见GlobalDoc/WorldGenerationImplementation.md及源码Generation/Version1.md。
+F2的World generation选择下一世界生成器与seed，R保存旧世界后创建；应用也支持PIXEL_WORLD_GENERATOR/PIXEL_WORLD_SEED。固定地层可开采而不坍塌，旧Dirt保持动态；Water下落与铺展并保持格数，Steam上升扩散，Fire上窜摆动，两者按可复现概率消退，水接触火时灭火。所有材料共用世界格与60Hz同步提交，不模拟压力、氧气或热量；2/3/4选择元素调试笔刷，1恢复普通工具，详见GlobalDoc/CellularMaterials.md。角色可入水与上浮，风将水视为边界。ArtRaw所需材质原样复制到Content，由ArtAssets.json的Terrain配置路径、映射与表面条带。生成合同见GlobalDoc/WorldGenerationImplementation.md及源码Generation/Version1.md。
 
 材料采用同步60 Hz：只申请步首空气，按源(y,x)裁决后批量提交，长链空位逐步传递；空间力不随材料移动。无风静止区域休眠，编辑、力变化、加载和移动唤醒邻域。未驻留区域阻挡角色/材料并显示占位，编辑返回NotReady。存档为Saves/<world-id>，R保存后创建新世界且保留旧文件。
 

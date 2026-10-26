@@ -167,6 +167,10 @@ Json FactPayloadJson(const api::FactPayload &payload) {
             return {{"kind", "MaterialPlaced"}, {"target", CellJson(value.Target)},
                     {"oldMaterial", value.OldMaterial}, {"newMaterial", value.NewMaterial}};
         },
+        [](const api::ElementsSpawned &value) -> Json {
+            return {{"kind", "ElementsSpawned"}, {"center", CellJson(value.Center)},
+                    {"materialId", value.MaterialId}, {"radius", value.Radius}, {"changed", value.Changed}};
+        },
         [](const api::ProgramActivated &value) -> Json {
             return {{"kind", "ProgramActivated"}, {"program", ProgramJson(value.Program)},
                     {"activationId", std::to_string(value.ActivationId)}};
@@ -685,6 +689,7 @@ Json ToJson(const api::ActionReceipt &receipt) {
         [&](const api::DeviceChanged &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::ForceObserved &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::AuthorityChanged &value) { result["result"] = FactPayloadJson(value); },
+        [&](const api::ElementsSpawned &value) { result["result"] = FactPayloadJson(value); },
         [&](const api::MaterialResult &value) {
             Json data{{"kind", "material"}, {"target", CellJson(value.Target)}, {"changed", value.Changed},
                       {"blocked", value.Blocked}, {"notReady", value.NotReady}};

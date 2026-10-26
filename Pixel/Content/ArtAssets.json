@@ -63,6 +63,14 @@
             {
                 "Layer": 10,
                 "Path": "Art/Elements/02_water_surface.png"
+            },
+            {
+                "Layer": 11,
+                "Path": "Art/Elements/05_steam_density.png"
+            },
+            {
+                "Layer": 12,
+                "Path": "Art/Elements/03_fire_body.png"
             }
         ],
         "Materials": [
@@ -112,6 +120,14 @@
                 "Layer": 9,
                 "SurfaceLayer": 10,
                 "SurfaceStrip": 3
+            },
+            {
+                "TypeId": 51,
+                "Layer": 11
+            },
+            {
+                "TypeId": 52,
+                "Layer": 12
             }
         ]
     }

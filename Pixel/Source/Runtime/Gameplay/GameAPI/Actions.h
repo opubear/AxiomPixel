@@ -11,6 +11,8 @@ namespace pixel::api {
 enum class GeneratorKind { Flat, Natural };
 struct MineRegion { Cell Target; std::optional<uint32_t> ExpectedMaterial; };
 struct PlaceMaterial { Cell Target; uint32_t MaterialId = 10; };
+// Native debug brush; fills only resident air inside the active window.
+struct SpawnElement { Cell Target; uint32_t MaterialId = 50; uint32_t Radius = 4; };
 struct ActivateProgram { ProgramRef Program; Position Target; };
 struct SelectWindStrategy { WindKind Kind; };
 struct SetWindBoundary { int64_t Y; };
@@ -35,7 +37,7 @@ struct InterveneAtDevice {
     DeviceRef Device;
     uint64_t ExpectedResourceVersion = 0;
 };
-using Action = std::variant<MineRegion, PlaceMaterial, ActivateProgram, SelectWindStrategy, SetWindBoundary,
+using Action = std::variant<MineRegion, PlaceMaterial, SpawnElement, ActivateProgram, SelectWindStrategy, SetWindBoundary,
                             PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection,
                             InstallIntervention, InterveneAtDevice>;
 struct ActionRequest {
@@ -63,7 +65,7 @@ struct ActivationResult {
     uint64_t RunningRoots = 0, Projectiles = 0, Pending = 0;
 };
 struct WindResult { WindKind Kind; int64_t BoundaryY; };
-using ActionResult = std::variant<std::monostate, MaterialResult, ActivationResult, WindResult, DeviceChanged, ForceObserved, AuthorityChanged>;
+using ActionResult = std::variant<std::monostate, MaterialResult, ElementsSpawned, ActivationResult, WindResult, DeviceChanged, ForceObserved, AuthorityChanged>;
 // Synchronous terminal result at a complete committed state.
 struct ActionReceipt {
     RequestKey Key;

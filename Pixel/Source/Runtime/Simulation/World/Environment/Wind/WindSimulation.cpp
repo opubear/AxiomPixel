@@ -5,6 +5,22 @@
 #include <stdexcept>
 
 namespace pixel {
+void WindSimulation::ShareFrom(const WindSimulation &source) {
+    Backend = source.Backend;
+    Settings = source.Settings;
+    Domain = source.Domain;
+    ConfiguredEndRow = source.ConfiguredEndRow;
+    Configured = source.Configured;
+    FollowsView = source.FollowsView;
+    SimulationTime = source.SimulationTime;
+    Revision = source.Revision;
+}
+
+void WindSimulation::PrepareWrite() {
+    if (Backend && Backend.use_count() != 1) {
+        Backend = Backend->Clone();
+    }
+}
 performance::MemoryUsage WindSimulation::GetMemoryUsage() const {
     auto usage = performance::MeasureObject(*this);
     if (Backend)
@@ -53,6 +69,7 @@ void WindSimulation::MoveDomain(WorldMapView world, uint32_t endRow) {
     const bool overlaps = dx < int64_t(Domain.Width) && dy < int64_t(Domain.Height)
                        && dx > -int64_t(world.Width) && dy > -int64_t(endRow);
     if (Backend && overlaps) {
+        PrepareWrite();
         Backend->MoveDomain(world, endRow, dx, dy);
     } else {
         auto next = MakeWindStrategy(world, endRow, Settings);
@@ -88,6 +105,7 @@ void WindSimulation::AdvanceBeforeMaterials(WorldMapView world, float seconds) {
     PIXEL_PROFILE_SCOPE(WindAdvance);
     MoveDomain(world, FollowsView ? world.Height : std::min(world.Height, ConfiguredEndRow));
     if (Backend) {
+        PrepareWrite();
         Backend->AdvanceBeforeMaterials(world, seconds);
         if (Backend->Kind() != WindStrategyKind::Empty && std::isfinite(seconds) && seconds > 0)
             ++Revision;
@@ -98,6 +116,7 @@ void WindSimulation::AdvanceBeforeMaterials(WorldMapView world, float seconds) {
 void WindSimulation::UpdateAfterMaterials(WorldMapView world, std::span<const DirtMotion> motion, float seconds) {
     PIXEL_PROFILE_SCOPE(WindFeedback);
     if (Backend) {
+        PrepareWrite();
         Backend->UpdateAfterMaterials(world, motion, seconds);
         if (Backend->Kind() != WindStrategyKind::Empty && std::isfinite(seconds) && seconds > 0)
             ++Revision;
@@ -106,6 +125,7 @@ void WindSimulation::UpdateAfterMaterials(WorldMapView world, std::span<const Di
 void WindSimulation::AddImpulse(float x, float y, float radius, WindVelocity delta) {
     if (!Backend)
         throw std::invalid_argument("wind impulse requires an active domain");
+    PrepareWrite();
     Backend->AddImpulse(x, y, radius, delta);
     if (Backend->Kind() != WindStrategyKind::Empty && (delta.X != 0 || delta.Y != 0))
         ++Revision;
@@ -115,9 +135,11 @@ void WindSimulation::SetSimulationTime(double seconds) {
         throw std::invalid_argument("wind simulation time must be finite and nonnegative");
     if (SimulationTime == seconds)
         return;
-    SimulationTime = seconds;
-    if (Backend)
+    if (Backend && GetKind() == WindStrategyKind::Procedural) {
+        PrepareWrite();
         Backend->SetSimulationTime(seconds);
+    }
+    SimulationTime = seconds;
     if (GetKind() == WindStrategyKind::Procedural)
         ++Revision;
 }

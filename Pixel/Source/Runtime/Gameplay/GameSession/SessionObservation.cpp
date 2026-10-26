@@ -57,6 +57,8 @@ void GameSession::RecordActionFacts(api::ActionReceipt &receipt, api::WindConfig
             RecordFact(stamp, receipt.Key, api::MaterialRemoved{material->Target, *material->Before, *material->After});
         else
             RecordFact(stamp, receipt.Key, api::MaterialPlaced{material->Target, *material->Before, *material->After});
+    } else if (const auto *spawned = std::get_if<api::ElementsSpawned>(&receipt.Result)) {
+        RecordFact(stamp, receipt.Key, *spawned);
     } else if (const auto *activation = std::get_if<api::ActivationResult>(&receipt.Result)) {
         RecordFact(stamp, receipt.Key, api::ProgramActivated{activation->Program, activation->ActivationId});
         RecordFormulaFacts();

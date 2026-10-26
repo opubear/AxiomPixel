@@ -13,7 +13,7 @@ namespace pixel {
 // A fixed step may retry after caches or publications release their storage.
 class WorldBudgetUnavailable final : public std::runtime_error {
   public:
-    WorldBudgetUnavailable() : std::runtime_error("world budget cannot fit material scratch storage") {}
+    WorldBudgetUnavailable() : std::runtime_error("world budget cannot fit simulation storage") {}
 };
 
 struct WorldStreamSettings {
@@ -34,6 +34,8 @@ class WorldStreamer {
   public:
     static constexpr uint64_t ChunkWorkingReserve = 128 * 1024;
     WorldStreamer(WorldMap &map, WorldStreamSettings settings);
+    WorldStreamer(std::function<const WorldMap &()> read, std::function<WorldMap &()> write, WorldStreamSettings settings,
+                  std::function<uint64_t()> retained = {});
     ~WorldStreamer();
     WorldStreamer(const WorldStreamer &) = delete;
     WorldStreamer &operator=(const WorldStreamer &) = delete;
@@ -45,14 +47,14 @@ class WorldStreamer {
     void Wait();
     void WaitForSaves();
     void SetExternalBytes(uint64_t bytes) { ExternalBytes = bytes; }
-    bool ReserveExternalBytes(uint64_t bytes, WorldRect simulation, bool acceptCompleted = true);
+    bool ReserveExternalBytes(uint64_t bytes, WorldRect simulation, bool acceptCompleted = true, std::span<const CellCoord> protectedChunks = {});
     ChunkResidency GetState(CellCoord coordinate) const;
     void RetryFailures() {
         Failures.clear();
         Error.clear();
     }
     uint64_t RetainedBytes() const;
-    performance::MemoryUsage GetMemoryUsage() const { return {sizeof(*this), InFlightBytes, InFlightBytes + Map.ChunkCount() * ChunkWorkingReserve}; }
+    performance::MemoryUsage GetMemoryUsage() const { return {sizeof(*this), InFlightBytes, InFlightBytes + ReadMap().ChunkCount() * ChunkWorkingReserve}; }
     size_t PendingCount() const;
     const std::string &LastError() const { return Error; }
     const WorldStreamSettings &Settings() const { return Configuration; }
@@ -71,7 +73,9 @@ class WorldStreamer {
         bool Retain = false;
         uint64_t Reservation = 0;
     };
-    WorldMap &Map;
+    std::function<const WorldMap &()> ReadMap;
+    std::function<WorldMap &()> WriteMap;
+    std::function<uint64_t()> BufferBytes;
     WorldStreamSettings Configuration;
     std::unique_ptr<IWorldGenerator> Generator;
     mutable std::mutex Mutex;

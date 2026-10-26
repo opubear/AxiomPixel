@@ -59,11 +59,45 @@ WorldRect Intersection(WorldRect a, WorldRect b) {
 } // namespace
 
 WorldChunk::WorldChunk(CellCoord coordinate) : Coordinate(coordinate) {
+    static std::atomic<uint64_t> nextGeneration{1};
+    Generation = nextGeneration.fetch_add(1);
     if (coordinate.X <= -CoordinateLimit / storage::ChunkEdge || coordinate.X >= CoordinateLimit / storage::ChunkEdge || coordinate.Y <= -CoordinateLimit / storage::ChunkEdge || coordinate.Y >= CoordinateLimit / storage::ChunkEdge)
         throw std::out_of_range("chunk coordinate exceeds supported range");
     ValidateAlignment();
-    Payload.resize(1);
+    Payload = std::make_shared<PayloadStorage>();
+    Payload->resize(1);
     Initialize(std::nullopt);
+}
+
+ChunkPayload &WorldChunk::Data() {
+    if (Payload.use_count() != 1) Payload = std::make_shared<PayloadStorage>(*Payload);
+    return Payload->front();
+}
+
+void WorldChunk::ShareFrom(const WorldChunk &source) {
+    if (Payload == source.Payload || Payload.use_count() != 1 || Generation != source.Generation) {
+        *this = source;
+        return;
+    }
+    // Reuse the other ping-pong allocation, synchronizing only changed regions.
+    // A replacement/resident chunk has a different generation even if its
+    // region revisions happen to match the previous occupant.
+    auto &target = Payload->front();
+    const auto &input = source.Data();
+    for (size_t region = 0; region < storage::RegionsPerChunk; ++region) {
+        if (RegionVersions[region] == source.RegionVersions[region]) continue;
+        const auto x = (region % storage::RegionsPerAxis) * storage::RegionEdge;
+        const auto y = (region / storage::RegionsPerAxis) * storage::RegionEdge;
+        for (size_t row = 0; row < storage::RegionEdge; ++row) {
+            const auto offset = (y + row) * storage::ChunkEdge + x;
+            std::copy_n(input.Materials.begin() + offset, storage::RegionEdge, target.Materials.begin() + offset);
+            std::copy_n(input.Directions.begin() + offset, storage::RegionEdge, target.Directions.begin() + offset);
+            std::copy_n(input.BaseForces.begin() + offset, storage::RegionEdge, target.BaseForces.begin() + offset);
+        }
+    }
+    auto allocation = std::move(Payload);
+    *this = source;
+    Payload = std::move(allocation);
 }
 
 void WorldChunk::Initialize(std::optional<int64_t> surface) {
@@ -84,7 +118,7 @@ void WorldChunk::Recount() {
     MaterialCounts.fill(0);
     for (uint32_t y = 0; y < storage::ChunkEdge; ++y)
         for (uint32_t x = 0; x < storage::ChunkEdge; ++x)
-            if (Data().Materials[size_t(y) * storage::ChunkEdge + x] != CellTypes::Empty)
+            if (std::as_const(*this).Data().Materials[size_t(y) * storage::ChunkEdge + x] != CellTypes::Empty)
                 ++MaterialCounts[size_t(y / storage::RegionEdge) * storage::RegionsPerAxis + x / storage::RegionEdge];
 }
 
@@ -173,6 +207,58 @@ struct WorldMap::Node {
     }
 };
 
+void WorldMap::PrepareChunks(std::span<const CellCoord> coordinates) {
+    uint64_t bytes = 0;
+    for (const auto coordinate : coordinates)
+        if (const auto *chunk = FindChunk(coordinate); chunk && chunk->SharesStorage())
+            bytes += storage::ChunkReservedBytes;
+    if (!bytes) return;
+    if (ReserveWrite) ReserveWrite(bytes, coordinates);
+    // Allocate every copy before the batch changes any cells.
+    for (const auto coordinate : coordinates)
+        if (auto *chunk = FindChunk(coordinate)) chunk->Data();
+}
+
+void WorldMap::PrepareWrite(WorldRect bounds) {
+    std::vector<CellCoord> coordinates;
+    for (const auto &[coordinate, chunk] : Chunks)
+        if (!Intersection(bounds, {coordinate.X * storage::ChunkEdge, coordinate.Y * storage::ChunkEdge,
+                                   storage::ChunkEdge, storage::ChunkEdge}).Empty())
+            coordinates.push_back(coordinate);
+    PrepareChunks(coordinates);
+}
+
+void WorldMap::ShareFrom(const WorldMap &source) {
+    if (this == &source) return;
+    const bool sameTopology = Identity == source.Identity && ResidencyVersion == source.ResidencyVersion;
+    if (!sameTopology) Root.reset();
+    for (auto it = Chunks.begin(); it != Chunks.end();)
+        if (!source.Chunks.contains(it->first)) it = Chunks.erase(it);
+        else ++it;
+    for (const auto &[coordinate, chunk] : source.Chunks) {
+        auto &target = Chunks[coordinate];
+        if (target) target->ShareFrom(*chunk);
+        else target = std::make_unique<WorldChunk>(*chunk);
+    }
+    Extent = source.Extent;
+    Finite = source.Finite;
+    Identity = source.Identity;
+    Version = source.Version;
+    ResidencyVersion = source.ResidencyVersion;
+    if (sameTopology && Root) Root->RefreshAll();
+    else RebuildIndex();
+}
+
+performance::MemoryUsage WorldMap::UniqueStorage(std::unordered_set<const void *> &seen) const {
+    auto usage = GetMemoryUsage();
+    for (const auto &[coordinate, chunk] : Chunks)
+        if (!seen.insert(chunk->StorageIdentity()).second) {
+            usage.UsedHeapBytes -= sizeof(ChunkPayload);
+            usage.ReservedHeapBytes -= storage::ChunkReservedBytes;
+        }
+    return usage;
+}
+
 WorldMap::WorldMap(uint32_t width, uint32_t height)
     : Extent{0, 0, width, height}, Finite(true), Identity(NextMapIdentity.fetch_add(1)) {
     if (!width || !height || uint64_t(width) * height > (uint64_t{1} << 32))
@@ -243,6 +329,7 @@ void WorldMap::Set(CellCoord coordinate, CellState cell) {
     if (!cell.Force.IsValid())
         throw std::invalid_argument("force direction must select a neighbour or zero");
     Get(coordinate);
+    PrepareWrite({coordinate.X, coordinate.Y, 1, 1});
     auto &chunk = *FindChunk(ChunkOf(coordinate));
     const auto index = Index(coordinate), region = RegionIndex(coordinate);
     const auto before = chunk.Data().Materials[index];
@@ -257,9 +344,9 @@ void WorldMap::Set(CellCoord coordinate, CellState cell) {
 void WorldMap::SetMaterial(CellCoord coordinate, CellTypeId type) {
     Get(coordinate);
     auto &chunk = *FindChunk(ChunkOf(coordinate));
+    if (std::as_const(chunk).Data().Materials[Index(coordinate)] == type) return;
+    PrepareWrite({coordinate.X, coordinate.Y, 1, 1});
     auto &old = chunk.Data().Materials[Index(coordinate)];
-    if (old == type)
-        return;
     auto &count = chunk.MaterialCounts[RegionIndex(coordinate)];
     count -= old != CellTypes::Empty;
     count += type != CellTypes::Empty;
@@ -272,14 +359,14 @@ void WorldMap::SetForce(CellCoord coordinate, ForceVector force) {
         throw std::invalid_argument("force must be finite");
     Get(coordinate);
     auto &chunk = *FindChunk(ChunkOf(coordinate));
-    if (chunk.Data().BaseForces[Index(coordinate)] == force)
-        return;
+    if (std::as_const(chunk).Data().BaseForces[Index(coordinate)] == force) return;
+    PrepareWrite({coordinate.X, coordinate.Y, 1, 1});
     chunk.Data().BaseForces[Index(coordinate)] = force;
     Changed(chunk, coordinate, false);
 }
 
-void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves) {
-    if (moves.empty())
+void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves, std::span<const MaterialChange> changes) {
+    if (moves.empty() && changes.empty())
         return;
     // Validate against the same step-start state before any source is cleared.
     for (const auto &move : moves) {
@@ -287,6 +374,20 @@ void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves) {
         if (!source || !target || source->Type != move.Type || target->Type != CellTypeId::Air)
             throw std::logic_error("material commit requires matching sources and empty resident targets");
     }
+    for (const auto &change : changes) {
+        const auto cell = TryGet(change.Cell);
+        if (!cell || cell->Type != change.Before || !IsKnownCellType(change.After))
+            throw std::logic_error("material change requires a matching resident source and registered result");
+    }
+    std::vector<CellCoord> changedChunks;
+    const auto include = [&](CellCoord cell) {
+        const auto coordinate = ChunkOf(cell);
+        if (std::find(changedChunks.begin(), changedChunks.end(), coordinate) == changedChunks.end())
+            changedChunks.push_back(coordinate);
+    };
+    for (const auto &move : moves) { include(move.Source); include(move.Destination); }
+    for (const auto &change : changes) include(change.Cell);
+    PrepareChunks(changedChunks);
     const auto revision = ++Version;
     WorldChunk *sourceChunk = nullptr, *destinationChunk = nullptr;
     CellCoord sourceKey, destinationKey;
@@ -310,6 +411,16 @@ void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves) {
         destinationChunk->RegionVersions[RegionIndex(move.Destination)] = revision;
         sourceChunk->Revision = destinationChunk->Revision = revision;
         sourceChunk->Dirty = destinationChunk->Dirty = true;
+    }
+    for (const auto &change : changes) {
+        auto &chunk = *FindChunk(ChunkOf(change.Cell));
+        chunk.Data().Materials[Index(change.Cell)] = change.After;
+        auto &count = chunk.MaterialCounts[RegionIndex(change.Cell)];
+        count -= change.Before != CellTypeId::Air;
+        count += change.After != CellTypeId::Air;
+        chunk.RegionVersions[RegionIndex(change.Cell)] = revision;
+        chunk.Revision = revision;
+        chunk.Dirty = true;
     }
     // Wake at region granularity once, rather than updating the tree per particle.
     for (auto &[coordinate, chunk] : Chunks) {
@@ -337,6 +448,7 @@ void WorldMap::Fill(WorldRect region, CellState cell) {
     RequireResident(region);
     if (!cell.Force.IsValid())
         throw std::invalid_argument("invalid fill direction");
+    PrepareWrite(region);
     for (auto &[coordinate, chunk] : Chunks) {
         const WorldRect chunkBounds{coordinate.X * storage::ChunkEdge, coordinate.Y * storage::ChunkEdge,
                                     storage::ChunkEdge, storage::ChunkEdge};
@@ -366,6 +478,7 @@ void WorldMap::FillForce(WorldRect region, ForceVector force) {
         throw std::invalid_argument("force must be finite");
     ValidateRect(region);
     RequireResident(region);
+    PrepareWrite(region);
     for (auto &[coordinate, chunk] : Chunks) {
         const WorldRect chunkBounds{coordinate.X * storage::ChunkEdge, coordinate.Y * storage::ChunkEdge, storage::ChunkEdge, storage::ChunkEdge};
         auto overlap = Intersection(region, chunkBounds);
@@ -406,7 +519,8 @@ void WorldMap::FillDirection(WorldRect region, ForceDirection direction) {
     }
 }
 
-void WorldMap::WakeNeighbours(CellCoord cell) { Wake({cell.X - 1, cell.Y - 1, 3, 3}); }
+// Water inspects outlets up to four cells away; edits must wake their readers.
+void WorldMap::WakeNeighbours(CellCoord cell) { Wake({cell.X - 4, cell.Y - 4, 9, 9}); }
 
 void WorldMap::Invalidate(WorldRect region) {
     if (!Root)

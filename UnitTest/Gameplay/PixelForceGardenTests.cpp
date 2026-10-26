@@ -251,7 +251,7 @@ void VerifyPauseAndPendingCommit() {
     testing::SessionAccess::PublishFixtureChanges(session);
     Check(session.Control(NativeCaller::Driver, api::StepSimulation{}).Succeeded(), "pending fixture step request failed");
     const auto stamp = session.CurrentCommit();
-    world.SetPublicationBytes(stream->Settings().BudgetBytes - stream->RetainedBytes() - 128);
+    testing::WorldAccess::SaturateBudget(world);
     session.Tick(1.f / 60.f, {});
     if (!world.GetEnvironment().IsWaitingForBudget() || session.CurrentCommit() != stamp)
         throw std::runtime_error("environment did not enter a real pending budget step (waiting="

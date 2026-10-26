@@ -138,6 +138,7 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | F3 | 切换自由调试相机，清理持续按键状态 |
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
 | 左键 | 消耗一份土料放置Dirt；先开采取得土料，不覆盖水或人物 |
+| 2 / 3 / 4，1 | 选择水 / 蒸汽 / 火调试笔刷，左键投放一团；1恢复普通工具；F2也可选择 |
 | 右键 / Shift＋右键 | 设备内启停 / 回收；其他位置激活当前构式 / 开采固体 |
 | B | 切换设备布置工具；开启时左键放置推力发生器 |
 | F1 | 材料 / 合成力场方向视图 |
@@ -174,7 +175,7 @@ ctest --test-dir build-cpu -R '^Pixel\.(WorldWill|WorldWillWorker|Authority|Auth
 
 材料采用60 Hz同步规则：只向步首为空的邻格申请；同目标按源坐标(y,x)裁决；统一提交后反馈风场。长链空位通过多个步传播，规则不依赖四叉树遍历顺序。静止无风区域休眠；编辑、材料成功移动、基础力变化和加载唤醒邻域。方块不保存速度/惯性，空间力不随材料搬迁。
 
-`CellTypeId`为32位强类型枚举，保留Air=0、Dirt=10，新增固定土/草皮20/21、岩石30、矿石40～44及水50。静态定义区分角色碰撞、风障碍及开采；固定地层不自动坍塌，Dirt保留原规则。Water按四邻接有限体积规则与Dirt同步裁决和提交，保持水量；排空块会保存，加载不补水。角色可入水，风域将水视为边界。存档拒绝未知材料ID；缺失区域占位继续作为障碍，不进入材料定义查询。外观映射只在表现层。
+`CellTypeId`为32位强类型枚举，保留Air=0、Dirt=10，固定土/草皮20/21、岩石30、矿石40～44、水50、蒸汽51和火52。静态定义区分角色碰撞、风障碍及开采；固定地层不自动坍塌，Dirt保留原规则。Water下落、斜落与铺展，保持格数；Steam上升扩散，Fire上窜摆动，两者按可复现概率消退，水接触火时灭火。三种元素共用世界格、同步裁决、提交与存档，不增加压力、氧气或热量字段。角色可入水，风域将水视为边界，蒸汽和火可穿行。操作、规则与验证见[元胞材料模拟](.awtcontext/GlobalDoc/CellularMaterials.md)。排空块会保存，加载不补水；存档拒绝未知材料ID，缺失区域继续作为障碍。外观映射只在表现层。
 
 ```cpp
 world.SetForceDirection(-1, 500, {1, 0}); // 兼容八方向；不改变材料
@@ -213,7 +214,9 @@ world.AddWindImpulse(100, 200, 64, {0, -120});
 
 F1在格中心把合成速度单位方向映射为 `RGB=(.5+.5*dx, .5+.5*dy, .5)`；零向量灰色，颜色不表示强度，跳过人物、构式球与风效。普通视图顺序为世界 → 风效 → 设备 → 构式球 → 人物 → 后处理 → UI。Wind appearance可选Off、Short trails、Air refraction，调可见度/折光/视觉流速不改变物理。
 
-发布只复制可见64格区域的变化版本，额外覆盖32格风回溯边界；每个frame slot独占动态尺寸纹理与版本。稳定材料区域不重复映射或上传；F1/外观切换、进入新区、加载/卸载及GPU重建分别失效。风纹理每分量signed16、单位1/32格/秒，固体特殊标记；shader和缓存均属于Pixel。本地引擎只增加通用纹理区域上传接口，保留整图入口。
+世界材料、基础力、风后端和场源由 `WorldBuffers` 统一双缓冲。模拟独占可写槽，呈现和观测共享完整提交的只读版本；读者持有期间不覆盖旧槽。材料载荷在写入时分离并复用旧槽的脏区域，观测只在查询时采样。生命周期、预算及GPU接入边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
+
+渲染打包只复制可见64格区域的变化版本，额外覆盖32格风回溯边界；每个frame slot独占动态尺寸纹理与版本。稳定材料区域不重复映射或上传；F1/外观切换、进入新区、加载/卸载及GPU重建分别失效。风纹理每分量signed16、单位1/32格/秒，固体特殊标记；shader和缓存均属于Pixel。本地引擎只增加通用纹理区域上传接口，保留整图入口。
 
 ## 验证和性能
 
@@ -236,6 +239,8 @@ ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-fail
 (cd Pixel && ../build/tests/PixelCloseSmoke)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
+# 连续144步的水、蒸汽、火及动态区域上传；可选导出每24步截图
+(cd Pixel && PIXEL_ELEMENT_CAPTURE_DIR=/private/tmp/pixel-elements ../build/tests/PixelRuntimeSmoke --elements-only)
 # 持续场安装/清理的F1实际GPU读回，可导出对比截图
 (cd Pixel && PIXEL_FIELD_CAPTURE_DIR=/private/tmp/pixel-fields ../build/tests/PixelRuntimeSmoke --formula-only)
 # 只验证本轮背景PNG、sRGB/alpha、视差与F1（可选输出PPM截图）
@@ -253,9 +258,13 @@ cmake --build build-region-release --target PixelRegionBenchmark -j4
 ./build-region-release/bin/Release/PixelRegionBenchmark /private/tmp/pixel-regions.csv 40
 cmake --build build-region-release --target PixelFieldSourceBenchmark -j4
 ./build-region-release/bin/Release/PixelFieldSourceBenchmark /private/tmp/pixel-fields.csv
+cmake --build build-region-release --target PixelWorldBufferBenchmark -j4
+./build-region-release/bin/Release/PixelWorldBufferBenchmark > /private/tmp/pixel-world-buffers.csv
 ```
 
 Environment显示驻留/排队块、预算与I/O错误；Performance显示阶段时间、P95、材料访问格数、活动区域、上传量及内存，支持CSV。内存为所有权容量与工作预留，不等于进程RSS；风求解器单列，GPU不计。自动捕获和扩展方式见 [采样模块](Pixel/Source/Dev/Debug/Performance/README.md)。本轮结果以 [新规则基准和最终验证](Docs/WorldRepresentationValidation.md) 为准，早期测量保留于Docs/PerformanceProfiling.md、MemoryProfiling.md和MaterialUpdatePerformance.md。
+
+2026-10-26世界双缓冲：CPU 97/97、64格专项12/12、Apple M5元素GPU专项及独立review通过。动态风配合1–3个读视图的CPU提交与场图打包总耗时下降19%–26%；无读者及运动材料的时间/内存取舍见[双缓冲验证与三轮性能对照](Docs/WorldBuffersValidation.md)。
 
 Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置光标，可设置 `XDG_SESSION_TYPE=x11` 运行smoke。2026-10-19历史RTX 3070/X11完整Pixel smoke曾在后续生命周期阶段报 `no drawable 2D frame`；Axiom `--skip-minimize`两轮通过，该历史结果不覆盖最小化恢复。本机Apple M5完整Pixel smoke通过（含两轮最小化恢复），AET --skip-minimize两轮通过；validation layer不可用，完整范围见验证报告。
 

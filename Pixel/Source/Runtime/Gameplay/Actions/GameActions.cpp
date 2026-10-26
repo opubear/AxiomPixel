@@ -38,6 +38,12 @@ api::Reason Validate(const api::Action &action) {
                 return api::Reason::InvalidArgument;
             if (value.MaterialId != uint32_t(CellTypeId::Dirt))
                 return api::Reason::Unsupported;
+        } else if constexpr (std::is_same_v<T, api::SpawnElement>) {
+            if (!ValidCell(value.Target) || value.Radius > 8)
+                return api::Reason::InvalidArgument;
+            const auto type = CellTypeId(value.MaterialId);
+            if (type != CellTypeId::Water && type != CellTypeId::Steam && type != CellTypeId::Fire)
+                return api::Reason::Unsupported;
         } else if constexpr (std::is_same_v<T, api::ActivateProgram>) {
             if (!ValidPosition(value.Target))
                 return api::Reason::InvalidArgument;
@@ -141,6 +147,11 @@ api::Reason GameSession::WriteRejection() const {
         return api::Reason::GamePaused;
     return api::Reason::None;
 }
+api::Reason GameSession::PrepareWorldMutation() {
+    const auto reason = WriteRejection();
+    if (reason != api::Reason::None) return reason;
+    return GameWorld.TryPrepareBuffers() ? api::Reason::None : api::Reason::WaitingForBudget;
+}
 api::ActionReceipt GameSession::Execute(NativeCaller caller, api::Action action) {
     const auto id = CallerSession(caller);
     const auto high = FindCaller(id)->HighWatermark;
@@ -175,11 +186,11 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
                            ? api::Reason::InvalidArgument
                            : Validate(request.Payload);
     if (reason == api::Reason::None)
-        reason = WriteRejection();
+        reason = PrepareWorldMutation();
     if (reason == api::Reason::None)
         reason = AuthorizeAction(caller, request.Payload);
     const bool wind = std::holds_alternative<api::SelectWindStrategy>(request.Payload) || std::holds_alternative<api::SetWindBoundary>(request.Payload);
-    if (reason == api::Reason::None && wind && !state->Debug)
+    if (reason == api::Reason::None && (wind || std::holds_alternative<api::SpawnElement>(request.Payload)) && !state->Debug)
         reason = api::Reason::PermissionDenied;
     if (reason != api::Reason::None) {
         receipt = reject(reason);
@@ -236,12 +247,15 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                             receipt.Rejection = api::Reason::InventoryFull;
                             break;
                         case MiningStatus::NotReady:
-                            throw std::logic_error("resident mining became unavailable");
+                            receipt.Rejection = api::Reason::WaitingForBudget;
+                            break;
                         }
                     } else {
                         if (before->Type != CellTypeId::Air || Characters.Occupies({value.Target.X, value.Target.Y})
                             || Machines.FindAt(value.Target.X, value.Target.Y)) {
                             receipt.Rejection = api::Reason::Blocked;
+                        } else if (!GameWorld.TryPrepareMaterialWrite({value.Target.X, value.Target.Y, 1, 1})) {
+                            receipt.Rejection = api::Reason::WaitingForBudget;
                         } else {
                             const std::array cost{items::ItemAmount{items::ItemId::Soil, 1}};
                             const auto reserved = Inventory.Reserve(Inventory.Reference(PlayerBag), cost);
@@ -264,6 +278,35 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                     }
                 }
             }
+            receipt.Result = result;
+        } else if constexpr (std::is_same_v<T, api::SpawnElement>) {
+            api::ElementsSpawned result{value.Target, value.MaterialId, value.Radius};
+            const int radius = int(value.Radius);
+            if (!GameWorld.TryPrepareMaterialWrite({value.Target.X - radius, value.Target.Y - radius,
+                                                    uint32_t(radius * 2 + 1), uint32_t(radius * 2 + 1)})) {
+                receipt.Rejection = api::Reason::WaitingForBudget;
+                receipt.Result = result;
+                return;
+            }
+            bool resident = false;
+            for (int y = -radius; y <= radius; ++y) {
+                for (int x = -radius; x <= radius; ++x) {
+                    if (x * x + y * y > radius * radius)
+                        continue;
+                    const CellCoord cell{value.Target.X + x, value.Target.Y + y};
+                    if (!GameWorld.GetSimulationBounds().Contains(cell))
+                        continue;
+                    const auto before = GameWorld.TryGetCell(cell.X, cell.Y);
+                    resident |= before.has_value();
+                    if (!before || before->Type != CellTypeId::Air || Machines.FindAt(cell.X, cell.Y))
+                        continue;
+                    if (GameWorld.TryPlaceMaterial(cell, CellTypeId(value.MaterialId)) != CellEditResult::Applied)
+                        throw std::logic_error("preflighted element placement failed");
+                    ++result.Changed;
+                }
+            }
+            if (!result.Changed)
+                receipt.Rejection = resident ? api::Reason::Blocked : api::Reason::NotReady;
             receipt.Result = result;
         } else if constexpr (std::is_same_v<T, api::ActivateProgram>) {
             if (value.Program != AppliedProgram()) {
@@ -329,7 +372,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
     auto result = std::visit([&](const auto &value) -> api::ControlReceipt {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, api::ClearRunning>) {
-            const auto reason = WriteRejection();
+            const auto reason = PrepareWorldMutation();
             if (reason != api::Reason::None)
                 return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
             const bool changed = Formulas.Stats().Roots != 0;
@@ -413,7 +456,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
 ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program) {
     if (caller == NativeCaller::Input)
         return {api::Reason::PermissionDenied, {}, "PermissionDenied"};
-    const auto reason = WriteRejection();
+    const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None)
         return {reason, {}, api::ReasonName(reason)};
     Formulas.ApplyProcess(program);
@@ -424,7 +467,7 @@ ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula:
 api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier) {
     if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player || carrier.Kind == ProcessCarrierKind::Device || carrier.Kind == ProcessCarrierKind::Intervention)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "Fixture requires native host assembly"};
-    const auto reason = WriteRejection();
+    const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None)
         return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     if (!Formulas.CastCarrier(GameWorld, carrier))
@@ -440,7 +483,7 @@ api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const 
 api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
     if (caller == NativeCaller::Input || kind == ProcessCarrierKind::Device)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
-    const auto reason = WriteRejection();
+    const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None)
         return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.CancelCarrier(GameWorld, kind, subject);
@@ -454,7 +497,7 @@ api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, Proce
 api::ControlReceipt GameSession::WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
     if (caller == NativeCaller::Input || kind == ProcessCarrierKind::Device)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
-    const auto reason = WriteRejection();
+    const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None)
         return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.WakeCarrier(kind, subject);

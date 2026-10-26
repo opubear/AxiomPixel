@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_set>
 
 namespace pixel {
 class WorldMap;
@@ -39,6 +40,11 @@ struct MaterialMove {
     CellTypeId Type = CellTypeId::Dirt;
 };
 
+struct MaterialChange {
+    CellCoord Cell;
+    CellTypeId Before, After;
+};
+
 // One allocation, with material scans independent of direction and force storage.
 struct ChunkPayload {
     axiom::StaticArray<CellTypeId, storage::ChunkCells> Materials;
@@ -50,8 +56,9 @@ static_assert(sizeof(ChunkPayload) == storage::ChunkCells * 14);
 class WorldChunk {
   public:
     explicit WorldChunk(CellCoord coordinate);
-    WorldChunk(const WorldChunk &) = delete;
-    WorldChunk &operator=(const WorldChunk &) = delete;
+    WorldChunk(const WorldChunk &) = default;
+    WorldChunk &operator=(const WorldChunk &) = default;
+    void ShareFrom(const WorldChunk &source);
     CellCoord Coordinate;
     bool Dirty = false;
     uint64_t Revision = 1;
@@ -59,14 +66,18 @@ class WorldChunk {
     axiom::StaticArray<uint32_t, storage::RegionsPerChunk> MaterialCounts{};
     axiom::StaticArray<uint8_t, storage::RegionsPerChunk> Active{};
 
-    ChunkPayload &Data() { return Payload.front(); }
-    const ChunkPayload &Data() const { return Payload.front(); }
+    ChunkPayload &Data();
+    const ChunkPayload &Data() const { return Payload->front(); }
+    const void *StorageIdentity() const { return Payload.get(); }
+    bool SharesStorage() const { return Payload.use_count() > 1; }
     performance::MemoryUsage GetMemoryUsage() const;
     void Initialize(std::optional<int64_t> surface);
     void Recount();
 
   private:
-    axiom::Array<ChunkPayload, axiom::Allocator<ChunkPayload, storage::ChunkAlignment>> Payload;
+    using PayloadStorage = axiom::Array<ChunkPayload, axiom::Allocator<ChunkPayload, storage::ChunkAlignment>>;
+    std::shared_ptr<PayloadStorage> Payload;
+    uint64_t Generation = 0;
 };
 
 class WorldMap {
@@ -74,6 +85,11 @@ class WorldMap {
     WorldMap(uint32_t width, uint32_t height);
     WorldMap();
     WorldMap(const WorldMap &) = delete;
+    void ShareFrom(const WorldMap &source);
+    performance::MemoryUsage UniqueStorage(std::unordered_set<const void *> &seen) const;
+    // The world reserves all affected copies before the first material changes.
+    void SetWriteReservation(std::function<void(uint64_t, std::span<const CellCoord>)> reserve) { ReserveWrite = std::move(reserve); }
+    void PrepareWrite(WorldRect bounds);
     WorldMap &operator=(const WorldMap &) = delete;
     ~WorldMap();
 
@@ -87,7 +103,7 @@ class WorldMap {
     ForceVector GetForce(CellCoord cell) const;
     void Set(CellCoord coordinate, CellState cell);
     void SetMaterial(CellCoord coordinate, CellTypeId type);
-    void CommitMaterialMoves(std::span<const MaterialMove> moves);
+    void CommitMaterialMoves(std::span<const MaterialMove> moves, std::span<const MaterialChange> changes = {});
     void SetForce(CellCoord coordinate, ForceVector force);
     void Fill(WorldRect region, CellState cell);
     void FillForce(WorldRect region, ForceVector force);
@@ -128,6 +144,8 @@ class WorldMap {
     uint64_t Version = 1;
     uint64_t ResidencyVersion = 1;
     uint64_t Identity = 0;
+    std::function<void(uint64_t, std::span<const CellCoord>)> ReserveWrite;
+    void PrepareChunks(std::span<const CellCoord> coordinates);
     static size_t Index(CellCoord cell);
     static size_t RegionIndex(CellCoord cell);
     void Changed(WorldChunk &chunk, CellCoord cell, bool material);

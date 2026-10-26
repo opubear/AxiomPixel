@@ -461,7 +461,7 @@ void PendingSessionKeepsOnlyTheFrozenExternalView() {
             "committed view could not open before the pending step");
     const auto originalRevision = original.View->Stamp.Revision;
 
-    world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
+    testing::WorldAccess::SaturateBudget(world);
     session.Tick(.1f, {1, false});
     Require(world.GetEnvironment().IsWaitingForBudget(), "fixture did not enter WaitingForBudget");
     llm::QuerySpec windQuery;

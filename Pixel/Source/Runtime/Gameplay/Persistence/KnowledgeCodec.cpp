@@ -149,6 +149,10 @@ void WritePayload(std::ostream &out, const api::MaterialPlaced &value) {
     WriteAll(out, "material_placed", value.Target.X, value.Target.Y, value.OldMaterial, value.NewMaterial);
 }
 
+void WritePayload(std::ostream &out, const api::ElementsSpawned &value) {
+    WriteAll(out, "elements_spawned", value.Center.X, value.Center.Y, value.MaterialId, value.Radius, value.Changed);
+}
+
 void WritePayload(std::ostream &out, const api::ProgramActivated &value) {
     WriteAll(out, "program_activated", value.Program.ResourceId, value.Program.Version, value.ActivationId);
 }
@@ -208,6 +212,11 @@ api::FactPayload ReadPayload(std::istream &in) {
     if (tag == "material_placed") {
         api::MaterialPlaced value;
         ReadAll(in, value.Target.X, value.Target.Y, value.OldMaterial, value.NewMaterial);
+        return value;
+    }
+    if (tag == "elements_spawned") {
+        api::ElementsSpawned value;
+        ReadAll(in, value.Center.X, value.Center.Y, value.MaterialId, value.Radius, value.Changed);
         return value;
     }
     if (tag == "program_activated") {

@@ -67,6 +67,9 @@ void SnapshotValuesAndIncrementalSampling() {
     const auto mined = session.Execute(NativeCaller::Driver,
         api::MineRegion{{520, 512}, uint32_t(CellTypeId::Dirt)});
     Require(mined.Applied() && mined.Facts.Count == 1, "material action did not publish one fact");
+    Require(session.ObservationStats().MaterialCellsSampled == sameMetrics.MaterialCellsSampled
+                && session.ObservationStats().WindCellsSampled == sameMetrics.WindCellsSampled,
+            "commit eagerly generated a cell snapshot for an idle observer");
     const auto newer = session.Observe(NativeCaller::Driver, scope);
     const auto &updated = Available(newer);
     const auto updatedMetrics = session.ObservationStats();
@@ -187,7 +190,7 @@ void PendingStepUsesOnlyCompleteCopies() {
     const auto frozenWind = Available(initial).Cells[sampleIndex].AirVelocity;
     const auto frozenSource = Available(initial).Gameplay.FieldSources.at(0);
     Require(frozenWind.has_value(), "pending fixture air cell was not sampled");
-    world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
+    testing::WorldAccess::SaturateBudget(world);
     session.Tick(.1f, {1, false});
     Require(world.GetEnvironment().IsWaitingForBudget(), "fixture did not enter pending-step state");
     const auto preparedWind = world.SampleWind(CellCoord{100, 100});

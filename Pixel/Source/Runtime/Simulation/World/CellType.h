@@ -17,6 +17,8 @@ enum class CellTypeId : uint32_t {
     TungstenOre = 43,
     GoldOre = 44,
     Water = 50,
+    Steam = 51,
+    Fire = 52,
 };
 
 // Compatibility names for existing world operations; empty space is air.
@@ -57,6 +59,8 @@ template <> struct CellDefinition<CellTypeId::IronOre> { inline static constexpr
 template <> struct CellDefinition<CellTypeId::TungstenOre> { inline static constexpr CellInfo Info{2.f}; };
 template <> struct CellDefinition<CellTypeId::GoldOre> { inline static constexpr CellInfo Info{2.f}; };
 template <> struct CellDefinition<CellTypeId::Water> { inline static constexpr CellInfo Info{1.f, false, true, false}; };
+template <> struct CellDefinition<CellTypeId::Steam> { inline static constexpr CellInfo Info{0.f, false, false, false}; };
+template <> struct CellDefinition<CellTypeId::Fire> { inline static constexpr CellInfo Info{0.f, false, false, false}; };
 
 constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     switch (type) {
@@ -73,6 +77,8 @@ constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     case CellTypeId::TungstenOre: return CellDefinition<CellTypeId::TungstenOre>::Info;
     case CellTypeId::GoldOre: return CellDefinition<CellTypeId::GoldOre>::Info;
     case CellTypeId::Water: return CellDefinition<CellTypeId::Water>::Info;
+    case CellTypeId::Steam: return CellDefinition<CellTypeId::Steam>::Info;
+    case CellTypeId::Fire: return CellDefinition<CellTypeId::Fire>::Info;
     }
     throw std::invalid_argument("cell type has no static information");
 }
@@ -82,7 +88,8 @@ constexpr bool IsKnownCellType(CellTypeId type) {
     case CellTypeId::Air: case CellTypeId::Dirt: case CellTypeId::GroundSoil:
     case CellTypeId::GrassSoil: case CellTypeId::Stone: case CellTypeId::CoalOre:
     case CellTypeId::CopperOre: case CellTypeId::IronOre: case CellTypeId::TungstenOre:
-    case CellTypeId::GoldOre: case CellTypeId::Water: return true;
+    case CellTypeId::GoldOre: case CellTypeId::Water:
+    case CellTypeId::Steam: case CellTypeId::Fire: return true;
     }
     return false;
 }

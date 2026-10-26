@@ -4,7 +4,7 @@ namespace pixel {
 std::optional<items::ItemAmount> MiningYield(CellTypeId material) {
     using items::ItemId;
     switch (material) {
-    case CellTypeId::Air: case CellTypeId::Water: return std::nullopt;
+    case CellTypeId::Air: case CellTypeId::Water: case CellTypeId::Steam: case CellTypeId::Fire: return std::nullopt;
     case CellTypeId::Dirt: case CellTypeId::GroundSoil: case CellTypeId::GrassSoil: return {{ItemId::Soil, 1}};
     case CellTypeId::Stone: return {{ItemId::Stone, 1}};
     case CellTypeId::CoalOre: return {{ItemId::Coal, 1}};
@@ -21,6 +21,7 @@ MiningResult MineCell(World &world, CellCoord cell, const std::optional<MiningCo
     const auto yield = MiningYield(before->Type);
     if (!yield) return {MiningStatus::Blocked, {}};
     if (world.GetEnvironment().IsWaitingForBudget()) return {MiningStatus::NotReady, {}};
+    if (!world.TryPrepareMaterialWrite({cell.X, cell.Y, 1, 1})) return {MiningStatus::NotReady, {}};
     if (collector) {
         const auto added = collector->Inventory.Add(collector->Inventory.Reference(collector->Container), {&*yield, 1});
         if (added == items::Result::CapacityExceeded) return {MiningStatus::InventoryFull, {}};

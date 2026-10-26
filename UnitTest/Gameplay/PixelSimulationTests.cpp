@@ -83,6 +83,9 @@ void PendingStepRetainsCompleteProjection() {
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindDomain(256, wind);
     world.SetCell(32, 10, {CellTypeId::Dirt, {0, 1}});
+    world.SetCell(32, 9, {CellTypeId::Fire});
+    world.SetCell(33, 9, {CellTypeId::Water});
+    world.SetCell(30, 10, {CellTypeId::Steam});
     session.Control(NativeCaller::Driver, api::SetPaused{false});
     Require(session.Execute(NativeCaller::Driver,
         api::ActivateProgram{session.AppliedProgram(), {{240, 130}, {0, 0}}}).Applied(), "pending fixture cast failed");
@@ -106,9 +109,11 @@ void PendingStepRetainsCompleteProjection() {
     const auto player = view->GetPlayer()->GetWorldPosition();
     const auto bolt = view->Projectiles().front().Position;
     const std::vector<uint32_t> colors(frame.Cells().begin(), frame.Cells().end());
-    world.SetPublicationBytes(settings.BudgetBytes - world.GetStreamer()->RetainedBytes() - 128);
+    testing::WorldAccess::SaturateBudget(world);
     session.Tick(.1f, {1, false});
     Require(world.GetEnvironment().IsWaitingForBudget(), "fixture did not exhaust scratch budget");
+    Require(world.GetCell(32, 9).Type == CellTypeId::Fire && world.GetCell(30, 10).Type == CellTypeId::Steam,
+            "failed material step partially committed decay or motion");
     Require(session.CurrentCommit() == stamp && view->Stamp() == stamp && view->SampleWind({100, 100}) == sample,
             "prepared wind leaked into the committed view");
     Require(world.SampleWind(CellCoord{100, 100}) != sample, "fixture must actually change prepared wind");
@@ -156,8 +161,11 @@ void PendingStepRetainsCompleteProjection() {
                 && view->Stamp() == session.CurrentCommit()
                 && std::abs(session.GetTimeRemainder() - (pendingRemainder - 1.0 / 60)) < 1e-10,
             "budget recovery did not commit exactly one complete step with retained backlog");
-    Require(session.GetPlayer()->GetWorldPosition().Local[0] > player.Local[0]
-                && session.GetPlayer()->GetWorldPosition().Local[1] >= player.Local[1],
+    // The frozen input moves x=191.9 across a 64-cell chunk boundary.
+    // Compare in one coordinate frame rather than comparing wrapped locals.
+    const auto beforePosition = player.RelativeTo(player.Cell());
+    const auto afterPosition = session.GetPlayer()->GetWorldPosition().RelativeTo(player.Cell());
+    Require(afterPosition[0] > beforePosition[0] && afterPosition[1] >= beforePosition[1],
             "input or clear during waiting replaced frozen movement/jump intent");
     Require(std::abs(view->Projectiles().front().Position.Local[0] - bolt.Local[0] - 1) < 1e-8,
             "formula did not advance exactly once after budget recovery");

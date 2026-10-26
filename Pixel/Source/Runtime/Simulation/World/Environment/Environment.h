@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ForceField.h"
+#include "Runtime/Simulation/World/WorldBuffers.h"
 #include "FieldSources.h"
 #include "Runtime/Simulation/World/Environment/Wind/WindSimulation.h"
 
@@ -10,15 +10,15 @@ class World;
 
 class Environment {
   public:
-    explicit Environment(WorldMap &map) : BaseForces(map), Sources(map) {}
+    explicit Environment(WorldBuffers &buffers) : Buffers(&buffers) {}
     performance::MemoryUsage GetMemoryUsage() const;
-    const ForceField &GetBaseForceField() const { return BaseForces; }
+    const ForceField &GetBaseForceField() const { return Buffers->Current().BaseForces; }
     // A retry preserves the already advanced wind and all material inputs.
     bool TryStep(World &world, double committedSeconds);
     ForceVector SampleForce(CellCoord cell, WorldRect bounds) const;
-    const FieldSources &GetFieldSources() const { return Sources; }
-    WindSimulation &GetWindSimulation() { return Wind; }
-    const WindSimulation &GetWindSimulation() const { return Wind; }
+    const FieldSources &GetFieldSources() const { return Buffers->Current().Sources; }
+    WindSimulation &GetWindSimulation() { return Buffers->Write().Wind; }
+    const WindSimulation &GetWindSimulation() const { return Buffers->Current().Wind; }
     uint64_t LastVisitedCells() const { return VisitedCells; }
     uint64_t LastActiveRegions() const { return ActiveRegions; }
     bool IsWaitingForBudget() const { return WaitingForBudget; }
@@ -27,10 +27,10 @@ class Environment {
   private:
     friend class World;
     double PendingSeconds = 0;
-    ForceField BaseForces;
-    FieldSources Sources;
-    WindSimulation Wind;
+    WorldBuffers *Buffers;
+    FieldSources &MutableSources() { return Buffers->Write().Sources; }
     axiom::Array<MaterialMove> Proposals;
+    axiom::Array<MaterialChange> Changes;
     axiom::Array<uint32_t> Winners, WinnerEpochs;
     uint32_t Epoch = 0;
     ForceDirection ProposalDirection;
@@ -40,7 +40,7 @@ class Environment {
     uint64_t ActiveRegions = 0;
     bool WindAdvancedForStep = false;
     bool WaitingForBudget = false;
-    void Reset(WorldMap &map);
+    void Reset();
     void SimulationDomainChanged();
     void RequireSourceMutation() const;
     std::optional<FieldSourceHandle> InstallFieldSource(World &world, uint64_t owner, const FieldSourceSpec &spec);

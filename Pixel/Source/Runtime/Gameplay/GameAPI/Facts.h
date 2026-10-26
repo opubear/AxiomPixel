@@ -70,6 +70,7 @@ struct DeviceChanged { DeviceSnapshot Device; DeviceEvent Event; };
 
 struct MaterialRemoved { Cell Target; uint32_t OldMaterial = 0, NewMaterial = 0; };
 struct MaterialPlaced { Cell Target; uint32_t OldMaterial = 0, NewMaterial = 0; };
+struct ElementsSpawned { Cell Center; uint32_t MaterialId = 0, Radius = 0, Changed = 0; };
 struct ProgramActivated { ProgramRef Program; uint64_t ActivationId = 0; };
 struct WindConfiguration { WindKind Kind = WindKind::Empty; int64_t BoundaryY = 0; };
 struct WindConfigured { WindConfiguration Before, After; };
@@ -110,7 +111,7 @@ struct InterventionStopped {
     CallerSessionId Subject = 0;
     InterventionStopReason Reason = InterventionStopReason::ControlRevoked;
 };
-using FactPayload = std::variant<MaterialRemoved, MaterialPlaced, ProgramActivated,
+using FactPayload = std::variant<MaterialRemoved, MaterialPlaced, ElementsSpawned, ProgramActivated,
                                  WindConfigured, WindPulseSubmitted, MaterialRemovedInDisk, DeviceChanged, FieldSourceChanged, ForceObserved, AuthorityChanged, InterventionStopped>;
 struct DomainFact {
     FactId Id;

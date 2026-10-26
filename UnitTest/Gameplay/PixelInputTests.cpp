@@ -254,6 +254,29 @@ void DeviceInput() {
     Require(!f.Input.IsDevicePlacementEnabled() && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Dirt,
             "leaving build mode did not restore material placement");
 }
+void ElementBrushInput() {
+    Fixture f;
+    f.Camera.GetCamera().SetPosition({100, 100});
+    const MousePointerState pointer{{400, 300}, {800, 600}, {800, 600}};
+    for (const auto [key, type] : {std::pair{Key::KEY_2, pixel::CellTypeId::Water},
+                                  std::pair{Key::KEY_3, pixel::CellTypeId::Steam},
+                                  std::pair{Key::KEY_4, pixel::CellTypeId::Fire}}) {
+        pixel::testing::SessionAccess::World(f.Session).FillRegion({90, 90, 20, 20}, {});
+        f.KeyEvent(key);
+        f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+        Require(f.Session.GetWorld().GetCell(100, 100).Type == type
+                    && f.Session.LastAction(pixel::NativeCaller::Debug)->Applied(),
+                "element shortcut did not paint the clicked world position");
+    }
+    f.KeyEvent(Key::KEY_B);
+    Require(f.Input.GetElementBrush() == pixel::ElementBrush::Disabled && f.Input.IsDevicePlacementEnabled(),
+            "device and element tools overlap");
+    f.KeyEvent(Key::KEY_3);
+    Require(!f.Input.IsDevicePlacementEnabled(), "element tool retained device placement");
+    f.KeyEvent(Key::KEY_1);
+    Require(f.Input.GetElementBrush() == pixel::ElementBrush::Disabled, "normal tool shortcut did not leave the brush");
+}
+
 } // namespace
 int main() {
     try {
@@ -264,6 +287,7 @@ int main() {
         MouseEditing();
         FormulaInputAndContinuousAim();
         DeviceInput();
+        ElementBrushInput();
         std::cout << "Pixel input behavior passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

@@ -76,6 +76,7 @@ bool FormulaBridge::CastProcess(World &world, const formula::process::ProgramArt
                                const ProcessCarrier &carrier, std::optional<api::RequestKey> request) {
     Data->EffectCount = 0;
     if (world.GetEnvironment().IsWaitingForBudget()) return Data->Reject("WaitingForBudget");
+    if (!world.TryPrepareBuffers()) return Data->Reject("WaitingForBudget");
     if (Data->Accepted >= MaxActivations || Data->Statistics().Roots >= ProcessHost::MaximumInstances) return Data->Reject("ProcessActivationLimit");
     if (Data->NextCast == UINT64_MAX) throw std::overflow_error("formula activation identity exhausted");
     if (!Data->Processes.Start(program, Data->NextCast, identity.Version, carrier, world, request, Data->Error, identity.ResourceId))

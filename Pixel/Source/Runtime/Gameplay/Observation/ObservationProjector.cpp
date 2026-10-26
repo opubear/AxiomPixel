@@ -8,6 +8,8 @@
 namespace pixel {
 struct ObservationProjector::Entry {
     api::ObservationSnapshot Snapshot;
+    WorldBuffers::ReadLease Buffer;
+    bool SamplesCurrent = false;
     std::array<uint64_t, 4> RegionVersions{};
     uint64_t MapIdentity = 0, WindVersion = 0;
 };
@@ -28,12 +30,12 @@ api::ObservationStatus ValidateScope(api::Rect scope) {
     return api::ObservationStatus::Available;
 }
 
-api::WindSampling WindMetadata(const World &world) {
+api::WindSampling WindMetadata(const WorldBuffer &world) {
     api::WindSampling result;
-    const auto &settings = world.GetWindSettings();
+    const auto &settings = world.GetWind().GetSettings();
     result.Backend = api::WindKind(settings.Kind);
     result.Enabled = world.IsWindEnabled();
-    const auto bounds = world.GetWindBounds();
+    const auto bounds = world.WindBounds();
     result.Domain = PublicBounds(bounds);
     switch (settings.Kind) {
     case WindStrategyKind::Coarse: case WindStrategyKind::Hybrid: {
@@ -55,7 +57,7 @@ api::WindSampling WindMetadata(const World &world) {
     return result;
 }
 
-void SampleAir(api::ObservedCell &sample, CellCoord cell, const World &world, const api::WindSampling &metadata) {
+void SampleAir(api::ObservedCell &sample, CellCoord cell, const WorldBuffer &world, const api::WindSampling &metadata) {
     sample.AirVelocity.reset();
     if (!sample.MaterialId) { sample.AirKind = api::AirSampleKind::NotResident; return; }
     if (*sample.MaterialId != uint32_t(CellTypeId::Air)) { sample.AirKind = api::AirSampleKind::NotApplicable; return; }
@@ -135,6 +137,7 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
         }
         Update(*entry, world, actors, formulas, gameplay, stamp, paused, factHighWatermark);
     }
+    Materialize(*entry);
     auto result = api::ObservationResult{api::ObservationStatus::Available, entry->Snapshot};
     Counters.ExportedBytes += result.Snapshot->RetainedBytes();
     return result;
@@ -145,16 +148,33 @@ void ObservationProjector::Update(Entry &entry, const World &world, const Actors
     if (world.GetEnvironment().IsWaitingForBudget()) throw std::logic_error("observation during pending step");
     auto &snapshot = entry.Snapshot;
     if (snapshot.Stamp == stamp) return;
-    const bool changedWorld = entry.MapIdentity != world.GetMap().GetIdentity();
-    const auto windVersion = world.GetEnvironment().GetWindSimulation().GetRevision();
+    entry.Buffer = world.ReadBuffers();
+    if (!entry.Buffer) throw std::logic_error("observation has no published world version");
+    entry.SamplesCurrent = false;
+    snapshot.Wind = WindMetadata(*entry.Buffer);
+    snapshot.Stamp = stamp;
+    snapshot.FactHighWatermark = factHighWatermark;
+    snapshot.Paused = paused;
+    UpdateObjects(snapshot, actors, formulas);
+    UpdateGameplay(snapshot, gameplay);
+    if (snapshot.RetainedBytes() > MaximumSnapshotBytes)
+        throw std::logic_error("observation exceeded its fixed payload budget");
+}
+
+void ObservationProjector::Materialize(Entry &entry) {
+    if (entry.SamplesCurrent) return;
+    auto &snapshot = entry.Snapshot;
+    const auto &buffer = entry.Buffer;
+    if (!buffer) throw std::logic_error("observation has no published world version");
+    const bool changedWorld = entry.MapIdentity != buffer->GetMap().GetIdentity();
+    const auto windVersion = buffer->GetWind().GetRevision();
     const bool changedWind = changedWorld || entry.WindVersion != windVersion;
-    snapshot.Wind = WindMetadata(world);
     const auto bounds = WorldBounds(snapshot.Scope);
     size_t regionIndex = 0;
     const auto first = RegionOf({bounds.X, bounds.Y});
     for (auto ry = first.Y * storage::RegionEdge; ry < bounds.Y + bounds.Height; ry += storage::RegionEdge) {
         for (auto rx = first.X * storage::RegionEdge; rx < bounds.X + bounds.Width; rx += storage::RegionEdge) {
-            const auto version = world.GetMap().RegionVersion({rx, ry});
+            const auto version = buffer->GetMap().RegionVersion({rx, ry});
             auto &previous = entry.RegionVersions.at(regionIndex++);
             const bool changedMaterial = changedWorld || previous != version;
             previous = version;
@@ -163,30 +183,24 @@ void ObservationProjector::Update(Entry &entry, const World &world, const Actors
                 for (auto x = std::max(rx, bounds.X); x < std::min(rx + storage::RegionEdge, bounds.X + bounds.Width); ++x) {
                     auto &sample = snapshot.Cells[size_t(y - bounds.Y) * bounds.Width + size_t(x - bounds.X)];
                     if (changedMaterial) {
-                        const auto cell = world.TryGetCell(x, y);
+                        const auto cell = buffer->GetMap().TryGet({x, y});
                         if (sample.MaterialId) --snapshot.ResidentCellCount;
                         sample.MaterialId = cell ? std::optional(uint32_t(cell->Type)) : std::nullopt;
                         if (sample.MaterialId) ++snapshot.ResidentCellCount;
-                        sample.MaterialSampledAtRevision = stamp.Revision;
+                        sample.MaterialSampledAtRevision = snapshot.Stamp.Revision;
                         ++Counters.MaterialCellsSampled;
                     }
-                    SampleAir(sample, {x, y}, world, snapshot.Wind);
-                    sample.WindSampledAtRevision = stamp.Revision;
+                    SampleAir(sample, {x, y}, *buffer, snapshot.Wind);
+                    sample.WindSampledAtRevision = snapshot.Stamp.Revision;
                     ++Counters.WindCellsSampled;
                     Counters.CellBytesWritten += sizeof(api::ObservedCell);
                 }
             }
         }
     }
-    entry.MapIdentity = world.GetMap().GetIdentity();
+    entry.MapIdentity = buffer->GetMap().GetIdentity();
     entry.WindVersion = windVersion;
-    snapshot.Stamp = stamp;
-    snapshot.FactHighWatermark = factHighWatermark;
-    snapshot.Paused = paused;
-    UpdateObjects(snapshot, actors, formulas);
-    UpdateGameplay(snapshot, gameplay);
-    if (snapshot.RetainedBytes() > MaximumSnapshotBytes)
-        throw std::logic_error("observation exceeded its fixed payload budget");
+    entry.SamplesCurrent = true;
 }
 
 void ObservationProjector::Publish(const World &world, const Actors &actors, const FormulaBridge &formulas,

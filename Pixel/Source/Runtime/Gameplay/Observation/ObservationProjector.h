@@ -27,6 +27,7 @@ class ObservationProjector {
 
   private:
     struct Entry;
+    void Materialize(Entry &entry);
     std::array<std::unique_ptr<Entry>, MaximumScopes> Entries;
     api::ObservationMetrics Counters;
     void Update(Entry &entry, const World &world, const Actors &actors, const FormulaBridge &formulas,

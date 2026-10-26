@@ -38,6 +38,7 @@ class WindStrategy {
     // Includes the concrete adapter and every allocation retained by its solver.
     virtual performance::MemoryUsage GetMemoryUsage() const = 0;
 
+    virtual std::shared_ptr<WindStrategy> Clone() const = 0;
     virtual WindStrategyKind Kind() const = 0;
     virtual uint32_t GetEndRow() const = 0;
     virtual void MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY) = 0;

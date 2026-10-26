@@ -39,6 +39,8 @@ WindVelocity SampleExposedAir(uint32_t width, uint32_t height, uint32_t x, uint3
 // Keep the configured region for comparison, without solver or geometry storage.
 class EmptyWindStrategy final : public WindStrategy {
   public:
+    std::shared_ptr<WindStrategy> Clone() const override { return std::make_shared<EmptyWindStrategy>(*this); }
+
     performance::MemoryUsage GetMemoryUsage() const override {
         return performance::MeasureObject(*this);
     }
@@ -59,6 +61,8 @@ class EmptyWindStrategy final : public WindStrategy {
 
 class CoarseWindStrategy final : public WindStrategy {
   public:
+    std::shared_ptr<WindStrategy> Clone() const override { return std::make_shared<CoarseWindStrategy>(*this); }
+
     performance::MemoryUsage GetMemoryUsage() const override {
         auto usage = performance::MeasureObject(*this);
         usage.AddEmbedded(Wind.GetMemoryUsage());
@@ -82,6 +86,8 @@ class CoarseWindStrategy final : public WindStrategy {
 };
 class ReferenceWindStrategy final : public WindStrategy {
   public:
+    std::shared_ptr<WindStrategy> Clone() const override { return std::make_shared<ReferenceWindStrategy>(*this); }
+
     performance::MemoryUsage GetMemoryUsage() const override {
         auto usage = performance::MeasureObject(*this);
         usage.AddEmbedded(Wind.GetMemoryUsage());
@@ -115,6 +121,8 @@ class ReferenceWindStrategy final : public WindStrategy {
 template <class Solver, WindStrategyKind kind>
 class SolidWindStrategy final : public WindStrategy {
   public:
+    std::shared_ptr<WindStrategy> Clone() const override { return std::make_shared<SolidWindStrategy>(*this); }
+
     performance::MemoryUsage GetMemoryUsage() const override {
         auto usage = performance::MeasureObject(*this);
         usage.AddEmbedded(Wind.GetMemoryUsage());
@@ -178,6 +186,8 @@ class LocalWindStrategy : public WindStrategy {
 };
 class ProceduralWindStrategy final : public LocalWindStrategy {
   public:
+    std::shared_ptr<WindStrategy> Clone() const override { return std::make_shared<ProceduralWindStrategy>(*this); }
+
     performance::MemoryUsage GetMemoryUsage() const override {
         auto usage = performance::MeasureObject(*this);
         usage.AddEmbedded(Geometry.GetMemoryUsage());
@@ -207,6 +217,8 @@ class ProceduralWindStrategy final : public LocalWindStrategy {
 };
 class HybridWindStrategy final : public LocalWindStrategy {
   public:
+    std::shared_ptr<WindStrategy> Clone() const override { return std::make_shared<HybridWindStrategy>(*this); }
+
     performance::MemoryUsage GetMemoryUsage() const override {
         auto usage = performance::MeasureObject(*this);
         usage.AddEmbedded(Geometry.GetMemoryUsage());

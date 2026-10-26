@@ -4,9 +4,9 @@ if(NOT PIXEL_CHUNK_EDGE MATCHES "^[0-9]+$")
     message(FATAL_ERROR "PIXEL_CHUNK_EDGE must be an integer")
 endif()
 add_library(PixelWorld STATIC
-    World.cpp WorldMap.cpp WorldStreamer.cpp
+    World.cpp WorldMap.cpp WorldStreamer.cpp WorldBuffers.cpp
     Generation/WorldGenerator.cpp Generation/GenerationNoise.cpp
-    Environment/Environment.cpp Environment/FieldSources.cpp
+    Environment/Environment.cpp Environment/FieldSources.cpp Environment/CellularMaterials.cpp
     Environment/Wind/PixelWindField.cpp
     Environment/Wind/WindSimulation.cpp
     Environment/Wind/WindStrategy.cpp

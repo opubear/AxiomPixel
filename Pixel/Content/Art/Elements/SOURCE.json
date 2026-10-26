@@ -15,6 +15,20 @@
             "SHA256": "1e2e29d1028113c8440ce00a36912930c0540458fd2682e181d0d2bdb357f920",
             "Width": 64,
             "Height": 64
+        },
+        {
+            "Path": "05_steam_density.png",
+            "Source": "ArtRaw/Materials/Elements/Textures64/05_steam_density.png",
+            "SHA256": "984a6440bf2e4ba21ad59e2ef4af702ff0c6d99634c81e520b32dbdb81a781d0",
+            "Width": 64,
+            "Height": 64
+        },
+        {
+            "Path": "03_fire_body.png",
+            "Source": "ArtRaw/Materials/Elements/Textures64/03_fire_body.png",
+            "SHA256": "af6c8b2d88c9ed75546f7751950c7d6fd6db78392891325a803d222a66f6f176",
+            "Width": 64,
+            "Height": 64
         }
     ]
 }
