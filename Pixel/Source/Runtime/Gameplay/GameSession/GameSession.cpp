@@ -54,6 +54,7 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
 
 GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
     : NextGeneration(generation) {
+    Formulas.BindActors(Characters);
     ValidateGenerationSettings(generation);
     items::ValidateCost(ForceEmitterCost());
     if (persistent) {

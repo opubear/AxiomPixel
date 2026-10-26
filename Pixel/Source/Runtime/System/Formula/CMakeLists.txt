@@ -8,6 +8,7 @@ endif()
 add_library(PixelFormulaProcess STATIC
     Source/Language/ProcessArtifact.cpp
     Source/Language/ProcessCompiler.cpp
+    Source/Language/CompositionCompiler.cpp
     Source/Language/ProcessEditing.cpp
     Source/Runtime/ProcessInstance.cpp)
 target_include_directories(PixelFormulaProcess PUBLIC Include)

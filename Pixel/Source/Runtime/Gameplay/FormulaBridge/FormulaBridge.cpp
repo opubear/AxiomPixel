@@ -11,6 +11,7 @@ constexpr size_t MaxActivations = 8;
 struct FormulaBridge::State {
     ProcessHost Processes;
     std::optional<MiningCollector> PlayerCollector;
+    const Actors *Characters = nullptr;
     formula::process::ProgramArtifact ActiveProcess = DefaultPlayerProcess();
     uint64_t Version = 1, Epoch = 1, NextCast = 1;
     uint64_t Accepted = 0, Rejected = 0;
@@ -51,6 +52,10 @@ struct FormulaBridge::State {
 };
 FormulaBridge::FormulaBridge() : Data(std::make_unique<State>()) {}
 FormulaBridge::~FormulaBridge() = default;
+void FormulaBridge::BindActors(const Actors &actors) {
+    Data->Processes.BindActors(actors);
+    Data->Characters = &actors;
+}
 void FormulaBridge::BindPlayerInventory(items::Inventory &inventory, items::ContainerId container) {
     if (Data->Statistics().Roots != 0) throw std::logic_error("cannot rebind running formula inventory");
     inventory.Reference(container);
@@ -160,8 +165,12 @@ void FormulaBridge::RestoreState(std::string_view encoded) {
         throw std::logic_error("formula restore requires an empty bridge");
     checkpoint::Reader in(encoded);
     checkpoint::Require(in.String(32) == "Pixel.FormulaBridge" && in.Number<uint32_t>() == 2,
-                        "unsupported formula bridge checkpoint; only process/1 is supported");
+                        "unsupported formula bridge checkpoint");
     auto restored = std::make_unique<State>();
+    if (Data->Characters) {
+        restored->Characters = Data->Characters;
+        restored->Processes.BindActors(*Data->Characters);
+    }
     in.Numbers(restored->Version, restored->Epoch, restored->NextCast);
     checkpoint::Require(restored->Version && restored->Epoch && restored->NextCast,
                         "invalid checkpoint bridge identity");

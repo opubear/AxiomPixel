@@ -9,7 +9,7 @@ target_link_libraries(PixelObservationValues PUBLIC PixelDevices)
 
 add_library(PixelFormulaBridge STATIC Actions/Mining.cpp FormulaBridge/FormulaBridge.cpp
     FormulaBridge/FormulaWorldAdapter.cpp FormulaBridge/ProcessHost.cpp)
-target_link_libraries(PixelFormulaBridge PUBLIC PixelWorld PixelItems
+target_link_libraries(PixelFormulaBridge PUBLIC PixelWorld PixelItems PixelActors
     PixelFormulaProcess PixelObservationValues PixelSerialization)
 
 add_library(PixelGameplay STATIC

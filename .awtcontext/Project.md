@@ -8,7 +8,7 @@ Pixel 的高层设计以探索、构式创造、环境改造与家园生活为�
 
 游戏设计与策划资料统一维护在 [Docs/GameDesign](../Docs/GameDesign/README.md)，AWT 索引通过 `workspace:` 地址引用正文。
 
-总纲另包含构式作为世界底层运行原理之一的设计设想：在基础物理与角色活动等系统之上，优先用构式组织世界现象、设备行为和玩家能力。其覆盖范围及长期运行方式仍待验证，现有 Formula 语义与代码依赖保持原契约。
+构式根据世界上下文组织何时、以什么参数调用游戏 API，全部作用限于游戏世界。当前已实现 `formula 2;` 的类型化函数、动作组合与参数封装，并由 Gameplay metadata 表达固定世界位置或 Actor 附着。定位与远期方向见[构式系统](../Docs/GameDesign/FormulaSystem.md)，当前语法、绑定和生命周期合同见[函数组合与世界绑定](../Docs/Architecture/FormulaComposition.md)。旧 process/1 源码和检查点保留显式兼容路径。
 
 ## 工程现状
 
@@ -24,11 +24,11 @@ M2.4已在完整提交边界加入独立的 `ObservationProjector`：三个原�
 
 ## 构式系统（Formula）
 
-当前仅保留`process 1;`构式：System/Formula提供不可变ProgramArtifact、显式控制流、有界片段执行、等待/回执和状态快照。旧cast语言、不可变树/Simulator、树形草稿编辑器、旧分析器及语义对照实验代码已删除。用户确认没有有效存档，项目本地Saves已清空；不迁移旧构式检查点。
+当前默认采用 `formula 2;`：System/Formula 提供类型化纯函数与不可变动作描述，在编译阶段展开为有界过程指令；运行时保留独立实例、等待/回执、额度和状态快照。支持 sequence、delay、repeat、on_hit、if_credits、on_wake 以及开采、风、弹体和持续场 API。process/1 的身份和 continuation 语义保持兼容；旧 cast 树原型仍仅为历史资料。
 
-Gameplay/FormulaBridge只编排ProcessHost，玩家默认黄色球也使用process程序。玩家、天然源、固定夹具、设备和干预共用承载者与效果规则；Apply仅影响后续激活。全局暂停由GameSession持有，DebugCamera不受影响。程序、宿主事件、弹体和持续场源均可保存，存活的默认球不会阻止关闭游戏。F4仅保留过程源码Compile/Apply与实例观察，草稿不保存。
+Gameplay/FormulaBridge 编排 ProcessHost；玩家默认弹体、天然晶体、设备和援助程序已迁移 formula/2。Actor 绑定以稳定 ID 跟随位置，命中子构式固定在命中点，已发出的效果保持世界位置；离开活动区冻结，Actor 消失或越出授权范围则取消并清理归属效果。宿主 v2 检查点保存绑定与作用域，同时读取旧 v1；恢复不重发请求。Apply 仅影响后续激活。F4 提供源码 Compile/Apply、绑定与回执观察和 Actor 附着测试入口，草稿不保存。
 
-当前入口见[过程运行时](GlobalDoc/FormulaProcessRuntime.md)、[FormulaBridge](GlobalDoc/FormulaBridge.md)、[状态与编辑](GlobalDoc/FormulaStateAndEditing.md)和[工程README](../README.md)。旧树设计文档和旧轮次验证仅作历史依据，不代表当前构建目标。
+当前入口见[函数组合合同](../Docs/Architecture/FormulaComposition.md)、[升级验证](../Docs/Architecture/FormulaCompositionVerification.md)和[工程README](../README.md)。[过程运行时](GlobalDoc/FormulaProcessRuntime.md)、[FormulaBridge](GlobalDoc/FormulaBridge.md)与[状态和编辑](GlobalDoc/FormulaStateAndEditing.md)保留基础层历史合同；新版本差异以函数组合合同为准。
 
 M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数量容量、版本化转移及显式预留/释放/消费。玩家直接开采和构式开采收进同一背包，满包保留地形；放土消耗 soil。首个设备成本已用开采所得验证，放置由 M4.3 实现。M4.6已保存库存，R建新世界仍为空；M4.7已接库存/设备/程序/场源的授权观测与同帧UI，详见[物品库存合同](GlobalDoc/Items.md)。
 

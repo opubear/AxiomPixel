@@ -9,4 +9,5 @@
 - 保留帧首发布、按区域版本复制、Skip 不推进游戏、Draw 不读取实时游戏状态的契约。
 - 不修改第三方源码或锁定版本。准备依赖可初始化本地引擎的锁定子模块。
 - 测试区分 CPU/mock、编译、GPU 与视觉；未执行项不能据历史记录宣称通过。
-- 核心组合玩法及代码统一为“构式（Formula）”，模块为 Pixel/Source/Runtime/System/Formula，类型/目标为 Formula/PixelFormula，示例扩展名为 .formula；cast 仍表示激活构式。设计与实现边界见 [构式系统](../Docs/GameDesign/FormulaSystem.md) 和 [构式语言架构](GlobalDoc/FormulaLanguageArchitecture.md)。历史提案中的费用、预算与世界接入尚未实现。
+- 核心组合玩法统一为“构式（Formula）”，模块为 Pixel/Source/Runtime/System/Formula，示例扩展名为 .formula。当前默认采用 formula/2 函数组合，继续读取 process/1；现行语法与游戏合同见 [模块README](../Pixel/Source/Runtime/System/Formula/README.md) 和 [FormulaBridge](GlobalDoc/FormulaBridge.md)，旧cast语言与树形编辑器已删除。
+- 构式设计定位为组织游戏API调用的逻辑层，全部世界作用限于游戏提供的能力。函数式组合、统一函数接口与封装、世界元信息metadata见[构式系统](../Docs/GameDesign/FormulaSystem.md)；已实现的最小语法、绑定、生命周期及兼容保存见[formula/2合同](../Docs/Architecture/FormulaComposition.md)；并行散射等扩展仍待设计。

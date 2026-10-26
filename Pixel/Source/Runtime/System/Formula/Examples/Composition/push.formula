@@ -1,0 +1,5 @@
+formula 2;
+fn push(radius: cells, force: acceleration, duration: ticks) -> action =
+    field(radius, force, acceleration(0), duration);
+let pulse = push(cells(8), acceleration(3600), ticks(30));
+run if_credits(3, repeat(3, ticks(10), pulse), nothing());

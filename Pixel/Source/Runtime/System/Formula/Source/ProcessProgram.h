@@ -19,13 +19,16 @@ struct Expression {
     std::array<std::size_t, 4> Arguments{};
     std::size_t Slot = 0, Depth = 1;
 };
-enum class InstructionKind { Assign, Emit, Branch, Jump, Wait, Await, Stop, Complete };
+enum class InstructionKind { Assign, Emit, Branch, Jump, Wait, Await, Stop, Complete, ScopeBegin, ScopeHit, ScopeEnd };
 struct Instruction {
     InstructionKind Kind;
     SourceSpan Source;
     std::size_t Expression = 0, Target = 0, Slot = 0;
     AwaitKind Await = AwaitKind::Result;
     std::uint16_t LiveLocals = 0;
+    std::size_t LiveOriginScopes = 0;
+    std::uint32_t PinnedOriginScopes = 0;
+    bool OriginPinned = false;
 };
 struct ArtifactData {
     ProgramIdentity Identity;

@@ -1,0 +1,7 @@
+trial=1 form=wrapped compile_us=13.7097 start_slice_p50_us=0.25 p95_us=0.25 work=17 instructions=22
+trial=1 form=expanded compile_us=13.7097 start_slice_p50_us=0.25 p95_us=0.25 work=17 instructions=22
+trial=2 form=wrapped compile_us=11.8365 start_slice_p50_us=0.208 p95_us=0.25 work=17 instructions=22
+trial=2 form=expanded compile_us=11.8365 start_slice_p50_us=0.208 p95_us=0.25 work=17 instructions=22
+trial=3 form=wrapped compile_us=10.8147 start_slice_p50_us=0.208 p95_us=0.209 work=17 instructions=22
+trial=3 form=expanded compile_us=10.8147 start_slice_p50_us=0.208 p95_us=0.209 work=17 instructions=22
+formula/2 composition tests passed

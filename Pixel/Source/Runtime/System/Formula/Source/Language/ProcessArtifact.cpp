@@ -17,7 +17,9 @@ CompileResult ImportProgram(const ProgramRecord &record, Capabilities available)
     const auto refuse = [&](const char *message) -> CompileResult {
         return Diagnostic{record.Identity.Resource, {}, message};
     };
-    if (record.SchemaVersion != 1 || record.Identity.SemanticsVersion != 1 || record.Identity.HostContractVersion != 2)
+    const bool supported = (record.Identity.SemanticsVersion == 1 && record.Identity.HostContractVersion == 2)
+        || (record.Identity.SemanticsVersion == 2 && record.Identity.HostContractVersion == 3);
+    if (record.SchemaVersion != 1 || !supported)
         return refuse("unsupported program record, language or host contract version");
 
     auto result = Compile(record.Identity.Resource, record.Source, available);

@@ -1,5 +1,7 @@
 # FormulaBridge 与三种程序承载者
 
+> 2026-10-26 更新：默认程序与编辑器已支持 formula/2 函数组合和 World/Actor 绑定；process/1 仍保持原语义。新函数、事件作用域、状态格式3及宿主格式2兼容策略以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。下文保留过程执行核心和历史验证记录，不代表最新功能范围。
+
 2026-10-25。游戏适配位于`Runtime/Gameplay/FormulaBridge`，仅编排process/1实例。`ProcessHost`处理承载者与效果，`FormulaWorldAdapter`负责扫掠、开采和Coarse风脉冲。System的`PixelFormulaProcess`只依赖标准库，World不依赖构式、RHI或UI。旧cast语言、Simulator、树形编辑器、FormulaValidation及实验代码已删除。
 
 ## 使用与范围

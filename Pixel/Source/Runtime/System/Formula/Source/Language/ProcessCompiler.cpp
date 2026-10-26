@@ -1,4 +1,5 @@
 #include "../ProcessProgram.h"
+#include "CompositionCompiler.h"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -87,16 +88,18 @@ constexpr std::array Builtins{
 
 class Compiler {
   public:
-    Compiler(std::string_view resource, std::string_view source, Capabilities available)
-        : Data(std::make_shared<ArtifactData>()), Available(available) {
+    Compiler(std::string_view resource, std::string_view source, Capabilities available,
+             const CompositionSource *composition = nullptr, std::string_view original = {})
+        : Data(std::make_shared<ArtifactData>()), Available(available), Composition(composition) {
         if (resource.empty() || resource.size() > 256)
             throw CompileFailure{{}, "resource name must contain 1..256 bytes"};
-        if (source.size() > 16384)
-            throw CompileFailure{{}, "source exceeds 16384 bytes"};
+        if (source.size() > (Composition ? 65536 : 16384))
+            throw CompileFailure{{}, "source storage limit exceeded"};
         Data->Identity.Resource = resource;
         Data->Identity.ContentSha256 = ContentSha256(source);
         Data->Source = source;
         Tokens = Lex(Data->Source);
+        if (Composition) Original = original;
     }
     ProgramArtifact Run() {
         Expect("process");
@@ -104,6 +107,14 @@ class Compiler {
         Expect(";");
         while (!Peek().Text.empty()) Statement();
         AddInstruction({InstructionKind::Complete, Peek().Source});
+        if (Composition) {
+            for (auto &instruction : Data->Instructions) instruction.Source = Composition->Original(instruction.Source);
+            for (auto &expression : Data->Expressions) expression.Source = Composition->Original(expression.Source);
+            Data->Source = Original;
+            Data->Identity.ContentSha256 = ContentSha256(Original);
+            Data->Identity.SemanticsVersion = 2;
+            Data->Identity.HostContractVersion = 3;
+        }
         return ProgramArtifact(std::move(Data));
     }
 
@@ -141,6 +152,9 @@ class Compiler {
         if (Data->Instructions.size() >= 512) Fail(instruction.Source, "instruction limit exceeded");
         if (instruction.Kind == InstructionKind::Wait || instruction.Kind == InstructionKind::Await)
             for (const auto &binding : Bindings) instruction.LiveLocals |= std::uint16_t(1u << binding.Slot);
+        instruction.LiveOriginScopes = OriginScopes;
+        instruction.PinnedOriginScopes = PinnedOriginScopes;
+        instruction.OriginPinned = OriginPinned;
         Data->Instructions.push_back(instruction);
         return Data->Instructions.size() - 1;
     }
@@ -206,7 +220,22 @@ class Compiler {
     }
     void Statement() {
         const auto token = Take();
-        if (token.Text == "let" || token.Text == "var") Declare(token.Text == "var", token.Source);
+        if (Composition && (token.Text == "scope_begin" || token.Text == "scope_hit" || token.Text == "scope_end")) {
+            Expect(";");
+            const auto kind = token.Text == "scope_begin" ? InstructionKind::ScopeBegin
+                : token.Text == "scope_hit" ? InstructionKind::ScopeHit : InstructionKind::ScopeEnd;
+            AddInstruction({kind, token.Source});
+            if (kind == InstructionKind::ScopeBegin) {
+                if (OriginPinned) PinnedOriginScopes |= 1u << OriginScopes;
+                ++OriginScopes;
+            }
+            if (kind == InstructionKind::ScopeHit) OriginPinned = true;
+            if (kind == InstructionKind::ScopeEnd) {
+                --OriginScopes;
+                OriginPinned = (PinnedOriginScopes & (1u << OriginScopes)) != 0;
+                PinnedOriginScopes &= ~(1u << OriginScopes);
+            }
+        } else if (token.Text == "let" || token.Text == "var") Declare(token.Text == "var", token.Source);
         else if (token.Text == "if" || token.Text == "while") Conditional(token.Source, token.Text == "while");
         else if (token.Text == "await") Await(token.Source);
         else if (token.Text == "stop") {
@@ -328,13 +357,25 @@ class Compiler {
     std::vector<Token> Tokens;
     std::vector<Binding> Bindings;
     std::size_t Cursor = 0, NextSlot = 0, ExpressionDepth = 0, BlockDepth = 0;
+    const CompositionSource *Composition = nullptr;
+    std::string_view Original;
+    std::size_t OriginScopes = 0;
+    std::uint32_t PinnedOriginScopes = 0;
+    bool OriginPinned = false;
 };
 
 CompileResult Compile(std::string_view resource, std::string_view source, Capabilities available) {
+    std::optional<CompositionSource> composition;
+    if (IsComposition(source)) {
+        auto lowered = LowerComposition(resource, source);
+        if (const auto *error = std::get_if<Diagnostic>(&lowered)) return *error;
+        composition = std::get<CompositionSource>(std::move(lowered));
+    }
     try {
-        return Compiler(resource, source, available).Run();
+        return composition ? Compiler(resource, composition->Process, available, &*composition, source).Run()
+                           : Compiler(resource, source, available).Run();
     } catch (const CompileFailure &failure) {
-        return Diagnostic{std::string(resource.substr(0, 256)), failure.Source, failure.Message};
+        return Diagnostic{std::string(resource.substr(0, 256)), composition ? composition->Original(failure.Source) : failure.Source, failure.Message};
     }
 }
 } // namespace pixel::formula::process

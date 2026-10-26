@@ -8,8 +8,8 @@
 | 世界方块更新性能调查 | `workspace:Docs/MaterialUpdatePerformance.md` | 旧移动链性能基线与方案来源；现行同步规则和收益见WorldRepresentation文档 | 调查完成；生产优化未实施 |
 | 世界与力场内存统计 | `workspace:Docs/MemoryProfiling.md` | 帧末所有权计量、size/capacity、七风策略、窗口峰值与默认/暂停实测；排除RSS、临时分配及渲染资源 | 已实现并实测 |
 | 风场可视化双模式 | `workspace:Docs/WindVisualizationSystemDesign.docx` | 纯风速GPU纹理、短轨迹/柔和折光、人物前合成、参数与验证 | 首版实现并独立审查通过 |
-| 构式系统（Formula System） | `workspace:Docs/GameDesign/FormulaSystem.md` | 核心玩法、封闭组合、作用域、已实现的游戏基础版及后续边界 | 当前系统入口；基础版游戏已实现 |
-| 构式语言架构（历史cast原型） | `context:GlobalDoc/FormulaLanguageArchitecture.md` | 旧cast原型的历史架构；代码已删除，当前入口为process/1 | 独立模块架构；游戏接入见基础版实现 |
+| 构式系统（Formula System） | `workspace:Docs/GameDesign/FormulaSystem.md` | 函数组合与世界绑定设计；formula/2已实现范围和后续能力边界 | 当前设计入口；formula/2已实现，process/1兼容 |
+| 构式语言架构（历史cast原型） | `context:GlobalDoc/FormulaLanguageArchitecture.md` | 旧cast原型历史架构；代码已删除，现行入口见FormulaComposition | 独立模块架构；游戏接入见基础版实现 |
 | 构式语言原型使用说明 | `workspace:Pixel/Source/Runtime/System/Formula/README.md` | System下独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
 | 早期法术编程系统设计（历史提案） | `workspace:Docs/GameDesign/SpellProgrammingSystemDesign.docx` | 2026-10-12 原始设计；当前名称为构式，现行规则与实现边界见构式系统及语言架构 | 保留 v0.1 历史依据，不作为实现完成声明 |
 | Astra 独立全代码审查（2026-10-05） | `CodeReview-Astra-2026-10-05.md` | 干净上下文 xhigh 审查 Pixel 与本地 Axiom，P2 Cross、P3 Quaternion；覆盖清单与独立验证证据 | 两项已修复，原 Astra 复核通过 |
@@ -35,8 +35,8 @@
 | 世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | Natural/Flat策略选择、种子版本及旧档、有限水体、Content纹理JSON和验证入口 | |
 | 构式基础版游戏接入设计（历史） | `context:GlobalDoc/FormulaGameplayV1Design.md` | 旧树构式接入设计与验收基线，仅供历史查阅 | |
 | 构式基础版游戏接入实现（历史） | `context:GlobalDoc/FormulaGameplayV1Implementation.md` | 旧树宿主、校验与编辑器的历史实现记录，已由process取代 | |
-| Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 核心愿景、隐性流程、构式作为世界运行原理的设想、家园与世界意志及设计取舍 | |
-| 游戏设计与策划文档目录 | `workspace:Docs/GameDesign/README.md` | 游戏总纲、构式设计与参考资料的阅读入口，以及相关工程文档和维护约定 | |
+| Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 核心愿景、流程、构式调用逻辑、统一函数组合与世界绑定、家园及世界意志的设计取舍 | |
+| 游戏设计与策划文档目录 | `workspace:Docs/GameDesign/README.md` | 游戏总纲、formula/2现行合同、构式设计与旧cast历史资料入口 | |
 | Gemini 游戏设计讨论原文 | `workspace:Docs/GameDesign/Pixel项目像素沙盒游戏设计探讨 - Google Gemini.pdf` | 流程与玩法参考：祈祷、自主成长、世界意志、环境改造与家园；术语和技术假设需辨别 | |
 | 架构规划AWT原始副本 | `context:GlobalDoc/GameplayArchitecturePlan.md` | 复制前的保留副本；任务执行与后续维护以Docs/Architecture中的架构文档为准 | |
 | Pixel面向游戏愿景的架构规划 | `workspace:Docs/Architecture/GameplayArchitecturePlan.md` | 执行前必读；独立构式语言、领域模块、LLMView、引擎职责和分阶段迁移方案 | |
@@ -51,9 +51,9 @@
 | LLMView Release基准原始数据 | `context:GlobalDoc/LLMViewBenchmark-2026-10-22.csv` | M2.5三轮128帧、三个观察者完整分页和JSON序列化耗时与保留字节 | |
 | 构式语言语义选择（历史实验） | `context:GlobalDoc/FormulaSemanticsExperiment.md` | 五场景对照与采用显式过程的依据；实验代码已移除 | |
 | 构式语义对照Release原始数据 | `context:GlobalDoc/FormulaSemanticsBenchmark-2026-10-22.csv` | M3.1五场景三轮1000样本P50/P95、待办和工作计数；不同执行器范围见实验文档 | |
-| 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | 唯一process/1入口、编译产物、等待终态、额度与宿主清理 | |
-| FormulaBridge与程序承载者 | `context:GlobalDoc/FormulaBridge.md` | process宿主、默认程序、作用范围、批次碰撞、冻结与保存恢复 | |
-| 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 独立运行DTO、源码编辑及M4.6程序产物/continuation磁盘恢复 | |
+| 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | process/1兼容与执行核心历史合同；formula/2差异见FormulaComposition | |
+| FormulaBridge与程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 宿主基础合同；formula/2的Actor绑定、回执与检查点差异见FormulaComposition | |
+| 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 运行DTO与源码编辑基础合同；formula/2状态和保存演进见FormulaComposition | |
 | Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 角色身份、运动和地形边界；M4.6完整状态与next-ID持久化 | |
 | 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 物品、容器与资源操作；检查点保存及M4.7库存投影和UI | |
 | 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
@@ -78,5 +78,8 @@
 | Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
 | 工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 五大模块归属、数据流、构建运行和验证命令；System/IO/Input与Gameplay分层 | |
 | 性能采样模块 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | Dev/Debug性能插桩、运行时采样开关、CSV和内存统计口径 | |
+| 构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | formula/2函数、时序、Actor绑定、错误和旧源码存档兼容合同 | |
+| 构式升级验证 | `workspace:Docs/Architecture/FormulaCompositionVerification.md` | 独立CPU与sanitizer复核，主agent GPU、关闭、Release成本及覆盖边界 | |
+| 构式函数组合Release成本 | `workspace:Docs/Architecture/FormulaCompositionCost.txt` | 三轮编译与包装/展开首片段成本；不含实例创建、世界提交和GPU | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

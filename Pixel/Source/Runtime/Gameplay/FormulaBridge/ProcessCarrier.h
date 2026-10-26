@@ -1,10 +1,12 @@
 #pragma once
 #include "Formula/Process/Runtime.h"
+#include "Runtime/Gameplay/Actors/Actors.h"
 #include "Runtime/Simulation/World/WorldCoordinates.h"
 #include <vector>
 
 namespace pixel {
 enum class ProcessCarrierKind { Player, NaturalSource, FixedFixture, Device, Intervention };
+enum class ProcessBindingKind { World, Actor };
 
 // Trusted host assembly, never supplied by a language program. Resources are
 // finite per-activation credits; the device owner pays its Items fuel before launch.
@@ -21,6 +23,11 @@ struct ProcessCarrier {
     int64_t Credits = 64;
     formula::process::Capabilities Grants = formula::process::AllCapabilities;
     formula::process::ExecutionLimits Limits{};
+    ProcessBindingKind Binding = ProcessBindingKind::World;
+    ActorId AttachedActor;
+    // Actors currently translate without rotation. Local axes are world axes;
+    // AngleDegrees remains the explicit direction, independent of provenance.
+    std::array<double, 2> LocalOffset{};
 };
 enum class ProcessRefusal {
     None, Capability, Scope, Geometry, Resources, NotReady, Blocked,
@@ -34,6 +41,9 @@ struct ProcessReceipt {
     formula::process::Outcome Outcome;
     ProcessRefusal Refusal = ProcessRefusal::None;
     uint32_t ChangedCells = 0;
+    formula::process::ProgramIdentity Program;
+    formula::process::SourceSpan Source;
+    WorldPosition Origin;
 };
 struct ProcessHostStats {
     size_t Instances = 0, Projectiles = 0, PendingEvents = 0;

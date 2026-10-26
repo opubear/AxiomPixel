@@ -816,7 +816,7 @@ void RunPixelFormulaUISmoke() {
             app.Engine->GetPlatform()->OnCharacterCallback(unsigned(*character));
         Draw(app, 2);
     };
-    enterProcess("process 1; emit bolt(3, speed(0), ticks(100)); wait ticks(100);");
+    enterProcess("formula 2; fn shot(damage: number) -> action = bolt(damage, speed(0), ticks(100)); run shot(3);");
     const auto previousVersion = runtime.Version();
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
     Require(runtime.Version() == previousVersion, "Compile published a draft before Apply");
@@ -834,11 +834,11 @@ void RunPixelFormulaUISmoke() {
     activateProcess();
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 3, "right-click did not use edited process");
     const auto oldProcessVersion = runtime.Projectiles()[0].Version;
-    enterProcess("process 1; wait ticks(false);");
+    enterProcess("formula 2; run delay(cells(1), nothing());");
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
-    Require(runtime.Version() == oldProcessVersion && runtime.ActiveProcess().Source().find("bolt(3") != std::string_view::npos,
+    Require(runtime.Version() == oldProcessVersion && runtime.ActiveProcess().Source().find("shot(3)") != std::string_view::npos,
         "invalid draft changed the published process");
-    enterProcess("process 1; emit bolt(9, speed(0), ticks(100)); wait ticks(100);");
+    enterProcess("formula 2; fn shot(damage: number) -> action = bolt(damage, speed(0), ticks(100)); run shot(9);");
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
     Click(app, ControlPoint(app, "Apply process", "Formula Editor"));
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Version == oldProcessVersion,
@@ -848,9 +848,27 @@ void RunPixelFormulaUISmoke() {
         "process Apply did not isolate old and new activations");
     Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
     editor = ImGui::FindWindowByName("Formula Editor");
+    editor->StateStorage.SetInt(editor->GetID("Process: three carriers"), 1);
+    Draw(app, 2);
+    Click(app, ControlPoint(app, "Start actor attachment", "Formula Editor"));
+    const auto attached = runtime.InspectProcesses();
+    Require(attached.size() == 1 && attached[0].Configuration.Binding == pixel::ProcessBindingKind::Actor
+        && attached[0].Configuration.AttachedActor == pixel->GetSession().GetActors().PlayerSnapshot()->Id
+        && attached[0].Subject == 9001, "actor button did not preserve separate binding and source");
+    const auto projectilePosition = runtime.Projectiles().front().Position;
+    auto moved = pixel->GetSession().GetPlayer()->GetWorldPosition();
+    moved.Local[0] += 2;
+    pixel::testing::SessionAccess::Actors(pixel->GetSession()).SetPlayerPosition(moved);
+    pixel::testing::SessionAccess::PublishFixtureChanges(pixel->GetSession());
+    Draw(app, 2);
+    Require(runtime.InspectProcesses().front().Configuration.Origin.Cell().X == moved.Cell().X + 3
+        && runtime.Projectiles().front().Position.Cell() == projectilePosition.Cell(),
+        "attachment did not follow actor or moved an already launched projectile");
+    Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
+    Require(runtime.Stats().Roots == 0 && runtime.Projectiles().empty(), "actor clear retained owned work");
     editor->Collapsed = true;
     Draw(app, 2);
     Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI source editing changed world cells");
     app.Shutdown();
-    std::cout << "Formula ImGui passed: process source/compile/Apply, invalid draft, version isolation, right capture, independent F2/F4 and clear\n";
+    std::cout << "Formula ImGui passed: formula/2 functions, compile/Apply, invalid draft, version isolation, Actor attachment/follow/clear, right capture and F2/F4\n";
 }

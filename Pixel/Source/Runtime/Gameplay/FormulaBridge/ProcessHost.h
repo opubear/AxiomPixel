@@ -15,6 +15,7 @@ class ProcessHost {
     static constexpr size_t MaximumWindPulsesPerFrame = 16;
     ProcessHost();
     ~ProcessHost();
+    void BindActors(const Actors &actors);
     void BeginFrame();
     // Call after residency/domain changes and before the environment step.
     bool SynchronizeActivity(World &world);

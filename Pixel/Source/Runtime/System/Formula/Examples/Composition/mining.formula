@@ -1,0 +1,7 @@
+formula 2;
+// A bound description is a value; each use has independent execution progress.
+fn impact_shot(velocity: speed, impact: action) -> action =
+    on_hit(bolt(10, velocity, ticks(90)), impact);
+fn burst(count: number, shot: action) -> action = repeat(count, ticks(30), shot);
+let mining = dig(cells(2));
+run burst(3, impact_shot(speed(60), mining));

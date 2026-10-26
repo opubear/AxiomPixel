@@ -8,6 +8,7 @@
 namespace pixel {
 void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
     if (!ImGui::CollapsingHeader("Process source", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    ImGui::TextWrapped("formula 2: immutable functions and action composition. Legacy process 1 sources remain readable.");
     const auto load = [&](std::string_view source) {
         ProcessText.fill(0);
         std::copy(source.begin(), source.end(), ProcessText.begin());
@@ -31,8 +32,8 @@ void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
         ImGui::TextWrapped("%s:%zu:%zu: %s", error->Resource.c_str(), error->Source.Line, error->Source.Column, error->Message.c_str());
     if (const auto &program = ProcessDraft.Program())
         ImGui::Text("Compiled %.12s | %zu instructions", program->Identity().ContentSha256.c_str(), program->InstructionCount());
-    ImGui::Text("Applied v%llu | %.12s", static_cast<unsigned long long>(session.AppliedProgram().Version),
-        active.Identity().ContentSha256.c_str());
+    ImGui::Text("Applied v%llu | language %u | %.12s", static_cast<unsigned long long>(session.AppliedProgram().Version),
+        active.Identity().SemanticsVersion, active.Identity().ContentSha256.c_str());
     ImGui::TextDisabled("Compile then Apply. Applied programs and running instances are saved; editor drafts are temporary.");
 }
 
@@ -56,6 +57,17 @@ void FormulaDebugUI::DrawProcessExample(GameSession &session) {
         }
         if (natural) ImGui::SameLine();
     }
+    if (ImGui::Button("Start actor attachment")) {
+        ProcessCarrier carrier;
+        carrier.Kind = ProcessCarrierKind::FixedFixture;
+        carrier.Subject = 9001;
+        carrier.Binding = ProcessBindingKind::Actor;
+        carrier.AttachedActor = session.GetActors().PlayerSnapshot()->Id;
+        carrier.LocalOffset = {3, 1};
+        carrier.Scope = session.GetWorld().GetSimulationBounds();
+        const auto result = session.StartProcessFixture(NativeCaller::Debug, carrier);
+        Status = result.Succeeded() ? "Attached to player; future requests follow movement within the authorized scope." : result.Message;
+    }
     ImGui::EndDisabled();
     ImGui::TextDisabled("Fixture credits: natural 6, fixed 4, player 64; one credit per accepted effect.");
     const auto &bridge = session.GetFormulaRuntime();
@@ -72,6 +84,13 @@ void FormulaDebugUI::DrawProcessExample(GameSession &session) {
             instance.Program.ContentSha256.c_str(), phase, state.Instruction,
             static_cast<unsigned long long>(state.ActiveSteps), static_cast<unsigned long long>(state.Remaining),
             static_cast<long long>(instance.Credits));
+        const auto &binding = instance.Configuration;
+        const auto cell = binding.Origin.Cell();
+        ImGui::Text("  %s actor %llu | source %u/%llu | cell (%lld,%lld) | angle %.1f",
+            binding.Binding == ProcessBindingKind::Actor ? "attached" : "world",
+            static_cast<unsigned long long>(binding.AttachedActor.Value), unsigned(binding.Kind),
+            static_cast<unsigned long long>(binding.Subject), static_cast<long long>(cell.X),
+            static_cast<long long>(cell.Y), binding.AngleDegrees);
     }
 }
 
@@ -89,6 +108,15 @@ void FormulaDebugUI::DrawDiagnostics(GameSession &session) {
     for (const auto &entry : runtime.Diagnostics())
         ImGui::Text("E%llu C%llu t%llu: %s", static_cast<unsigned long long>(entry.WorldEpoch),
             static_cast<unsigned long long>(entry.CastId), static_cast<unsigned long long>(entry.Tick), entry.Message.c_str());
+    const auto &receipts = runtime.ProcessReceipts();
+    const auto first = receipts.size() > 8 ? receipts.size() - 8 : 0;
+    for (size_t i = first; i < receipts.size(); ++i) {
+        const auto &receipt = receipts[i];
+        ImGui::Text("#%llu request %llu | %s:%zu:%zu | result %u refusal %u",
+            static_cast<unsigned long long>(receipt.Request.Instance), static_cast<unsigned long long>(receipt.Request.Sequence),
+            receipt.Program.Resource.c_str(), receipt.Source.Line, receipt.Source.Column,
+            unsigned(receipt.Outcome), unsigned(receipt.Refusal));
+    }
     ImGui::EndChild();
 }
 

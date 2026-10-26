@@ -1,5 +1,7 @@
 # 构式程序状态与编辑合同
 
+> 2026-10-26 更新：默认程序与编辑器已支持 formula/2 函数组合和 World/Actor 绑定；process/1 仍保持原语义。新函数、事件作用域、状态格式3及宿主格式2兼容策略以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。下文保留过程执行核心和历史验证记录，不代表最新功能范围。
+
 2026-10-22，M3.4。独立语言仍只有标准库依赖，游戏接入见 [FormulaBridge](FormulaBridge.md)。本阶段完成程序与运行状态 DTO、fake host 挂起/恢复验证及游戏源码编辑入口。M4.5已接[游戏区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)，保存已应用程序、实例和设备。未应用草稿与配方库不在当前保存范围。
 
 ## 程序资源与版本

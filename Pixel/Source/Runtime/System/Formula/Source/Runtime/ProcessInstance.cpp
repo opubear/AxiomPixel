@@ -72,7 +72,9 @@ std::int64_t AddInteger(std::int64_t left, std::int64_t right, SourceSpan source
 } // namespace
 
 struct Instance::Execution {
-    Execution(ProgramArtifact program, ExecutionLimits limits) : Program(std::move(program)), Limits(limits) {}
+    Execution(ProgramArtifact program, ExecutionLimits limits) : Program(std::move(program)), Limits(limits) {
+        if (Program.Identity().SemanticsVersion == 2) OriginScopes.reserve(24);
+    }
 
     ProgramArtifact Program;
     InstanceState State;
@@ -83,9 +85,12 @@ struct Instance::Execution {
     AwaitKind WaitingFor = AwaitKind::Result;
     std::optional<HostEvent> Receipt, Impact, Wake;
     bool ReceiptSeen = false, ImpactSeen = false;
+    bool OriginPinned = false;
+    std::vector<InstanceSnapshot::OriginScope> OriginScopes;
 
     std::string ValidateSnapshot(const InstanceSnapshot &snapshot) const {
-        if (snapshot.SchemaVersion != 2) return "unsupported instance state version";
+        const bool composition = Program.Identity().SemanticsVersion == 2;
+        if (snapshot.SchemaVersion != (composition ? 3u : 2u)) return "unsupported instance state version";
         if (snapshot.Program != Program.Identity()) return "instance state requires its exact program identity";
         const auto &state = snapshot.State;
         if (state.Id == 0 || !ValidLimits(snapshot.Limits) || !ValidPosition(state.Origin)
@@ -97,6 +102,13 @@ struct Instance::Execution {
             || state.Instruction == 0 || state.Instruction >= Program.InstructionCount())
             return "instance state is not at a suspension point";
         const auto &yield = Program.Data->Instructions[state.Instruction - 1];
+        if (snapshot.OriginScopes.size() != yield.LiveOriginScopes || snapshot.OriginScopes.size() > 24
+            || snapshot.OriginPinned != yield.OriginPinned) return "invalid origin scope stack";
+        for (std::size_t i = 0; i < snapshot.OriginScopes.size(); ++i) {
+            const auto &scope = snapshot.OriginScopes[i];
+            if (!ValidPosition(scope.Origin) || scope.Pinned != ((yield.PinnedOriginScopes & (1u << i)) != 0))
+                return "invalid saved origin scope";
+        }
         if ((state.Status == Phase::Sleeping && yield.Kind != InstructionKind::Wait)
             || (state.Status == Phase::Awaiting && (yield.Kind != InstructionKind::Await || snapshot.WaitingFor != yield.Await)))
             return "instance continuation does not match its suspension point";
@@ -314,7 +326,7 @@ struct Instance::Execution {
             State.LastRequest = {State.Id, State.LastRequest.Sequence + 1};
             Receipt.reset(); Impact.reset();
             ReceiptSeen = false; ImpactSeen = false;
-            result.Requests[result.Count++] = {State.LastRequest, State.Origin, std::move(effect)};
+            result.Requests[result.Count++] = {State.LastRequest, State.Origin, std::move(effect), instruction.Source};
             ++State.Instruction;
             break;
         }
@@ -340,6 +352,22 @@ struct Instance::Execution {
             return false;
         case InstructionKind::Stop: End(result, EndReason::Stopped); return false;
         case InstructionKind::Complete: End(result, EndReason::Completed); return false;
+        case InstructionKind::ScopeBegin:
+            OriginScopes.push_back({State.Origin, OriginPinned});
+            ++State.Instruction;
+            break;
+        case InstructionKind::ScopeHit:
+            OriginPinned = true;
+            ++State.Instruction;
+            break;
+        case InstructionKind::ScopeEnd: {
+            const auto parent = OriginScopes.back();
+            OriginScopes.pop_back();
+            OriginPinned = parent.Pinned;
+            State.Origin = !OriginPinned && view.Origin ? *view.Origin : parent.Origin;
+            ++State.Instruction;
+            break;
+        }
         }
         return true;
     }
@@ -349,12 +377,14 @@ Instance::Instance(std::unique_ptr<Execution> execution) : Run(std::move(executi
 Instance::~Instance() = default;
 const ProgramArtifact &Instance::Program() const { return Run->Program; }
 const InstanceState &Instance::State() const { return Run->State; }
+bool Instance::HasPinnedOrigin() const { return Run->OriginPinned; }
 
 InstanceSnapshot Instance::ExportState() const {
     const auto &state = Run->State;
     if (state.Status != Phase::Sleeping && state.Status != Phase::Awaiting)
         throw std::logic_error("export requires a yielded process and a committed host slice");
     InstanceSnapshot snapshot;
+    snapshot.SchemaVersion = Run->Program.Identity().SemanticsVersion == 2 ? 3 : 2;
     snapshot.Program = Run->Program.Identity();
     snapshot.State = state;
     snapshot.Limits = Run->Limits;
@@ -370,6 +400,8 @@ InstanceSnapshot Instance::ExportState() const {
     snapshot.Wake = Run->Wake;
     snapshot.ReceiptSeen = Run->ReceiptSeen;
     snapshot.ImpactSeen = Run->ImpactSeen;
+    snapshot.OriginPinned = Run->OriginPinned;
+    snapshot.OriginScopes = Run->OriginScopes;
     return snapshot;
 }
 
@@ -393,6 +425,8 @@ std::variant<std::unique_ptr<Instance>, Diagnostic> Instance::Restore(
     execution->Wake = snapshot.Wake;
     execution->ReceiptSeen = snapshot.ReceiptSeen;
     execution->ImpactSeen = snapshot.ImpactSeen;
+    execution->OriginPinned = snapshot.OriginPinned;
+    execution->OriginScopes = snapshot.OriginScopes;
     return std::unique_ptr<Instance>(new Instance(std::move(execution)));
 }
 
@@ -412,6 +446,8 @@ StepResult Instance::Step(const HostView &view, std::span<const HostEvent> event
     if (Run->State.Status == Phase::Ended) return result;
     if (Run->LastBoundary && view.At <= *Run->LastBoundary)
         throw std::invalid_argument("active boundaries must strictly increase");
+    if (view.Origin && !ValidPosition(*view.Origin)) throw std::invalid_argument("invalid binding origin");
+    if (view.Origin && !Run->OriginPinned) Run->State.Origin = *view.Origin;
     Run->LastBoundary = view.At;
     try {
         if (Run->State.ActiveSteps == std::numeric_limits<std::uint64_t>::max()) Fault(Run->CurrentSource(), "active clock exhausted");

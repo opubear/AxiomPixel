@@ -67,6 +67,11 @@ struct Running {
     std::array<FormulaContact, 64> BirthContacts;
     bool Prepared = false, Suspended = false;
 };
+FormulaVector Direction(const Running &root, double x, double y) {
+    if (root.Instance->Program().Identity().SemanticsVersion == 1) return {x, y};
+    const auto forward = Velocity(root.Carrier, 1);
+    return {x * forward.X - y * forward.Y, x * forward.Y + y * forward.X};
+}
 struct Projectile {
     process::RequestId Request;
     WorldPosition Position;
@@ -86,6 +91,7 @@ bool Observable(const Running &root, const process::HostEvent &event) {
 } // namespace
 
 struct ProcessHost::State {
+    const Actors *Characters = nullptr;
     process::Boundary At = 0;
     std::vector<std::unique_ptr<Running>> Roots;
     std::vector<Projectile> Bolts;
@@ -140,14 +146,30 @@ struct ProcessHost::State {
     void Retire() {
         std::erase_if(Roots, [](const auto &root) { return root->Instance->State().Status == process::Phase::Ended; });
     }
+    bool ResolveBinding(ProcessCarrier &carrier) const {
+        if (carrier.Binding == ProcessBindingKind::World) return true;
+        if (!Characters) throw std::logic_error("actor binding requires an actor registry");
+        const auto *actor = Characters->Find(carrier.AttachedActor);
+        if (!actor) return false;
+        carrier.Origin = FormulaWorldAdapter::Offset(actor->Body.GetWorldPosition(),
+            {carrier.LocalOffset[0], carrier.LocalOffset[1]});
+        return true;
+    }
+    void LoseBinding(Running &root, World &world, const char *reason) {
+        if (Diagnostics.size() == MaximumReceipts) Diagnostics.pop_front();
+        Diagnostics.push_back({0, root.Instance->State().Id, root.Instance->State().ActiveSteps, reason});
+        Cancel(root);
+        RemoveOwned(root, world);
+    }
     bool CanActivate(const Running &root, const World &world) const {
         const auto bounds = world.GetSimulationBounds();
         const auto resident = [&](WorldPosition position, double radius) {
             const auto cell = position.Cell();
             return ContainsDisk(bounds, position, radius) && world.TryGetCell(cell.X, cell.Y).has_value();
         };
-        if (!resident(root.Carrier.Origin, root.Carrier.ActivityRadius)
-            || !resident(WorldPoint(root.Instance->State().Origin), 0)) return false;
+        const auto origin = root.Instance->Program().Identity().SemanticsVersion == 2 && !root.Instance->HasPinnedOrigin()
+            ? root.Carrier.Origin : WorldPoint(root.Instance->State().Origin);
+        if (!resident(root.Carrier.Origin, root.Carrier.ActivityRadius) || !resident(origin, 0)) return false;
         const auto id = root.Instance->State().Id;
         for (const auto &source : world.GetEnvironment().GetFieldSources().Sources()) {
             if (source.Owner != id) continue;
@@ -192,7 +214,9 @@ struct ProcessHost::State {
     void Evaluate(Running &root, const World &world) {
         if (root.Suspended) return;
         const process::HostView view{At, (root.Carrier.Grants & process::Mask(process::Capability::Inventory))
-            ? std::optional(root.Carrier.Credits) : std::nullopt};
+            ? std::optional(root.Carrier.Credits) : std::nullopt,
+            root.Instance->Program().Identity().SemanticsVersion == 2
+                ? std::optional(LanguagePosition(root.Carrier.Origin)) : std::nullopt};
         root.Slice = root.Instance->Step(view, root.Events);
         root.Events.clear();
         root.Prepared = true;
@@ -277,11 +301,12 @@ struct ProcessHost::State {
                 auto result = FormulaWindResult::Unavailable;
                 if (refusal == ProcessRefusal::None) {
                     ++WindCallsThisFrame;
-                    result = FormulaWorldAdapter::Wind(world, origin, wind->Radius, {wind->VelocityX, wind->VelocityY});
+                    result = FormulaWorldAdapter::Wind(world, origin, wind->Radius, Direction(root, wind->VelocityX, wind->VelocityY));
                 }
                 if (result == FormulaWindResult::Applied)
                     RecordEffect(root, request, api::WindPulseSubmitted{PublicPosition(request.Origin), wind->Radius,
-                        {wind->VelocityX, wind->VelocityY}, {0, request.Id.Instance}});
+                        {Direction(root, wind->VelocityX, wind->VelocityY).X,
+                         Direction(root, wind->VelocityX, wind->VelocityY).Y}, {0, request.Id.Instance}});
                 else if (refusal == ProcessRefusal::None) refusal = ProcessRefusal::WindUnavailable;
             } else if (const auto *bolt = std::get_if<process::Bolt>(&request.Description)) {
                 if (Bolts.size() == MaximumProjectiles) refusal = ProcessRefusal::Capacity;
@@ -293,8 +318,9 @@ struct ProcessHost::State {
             } else {
                 const auto owner = root.Instance->State().Id;
                 const auto spec = [&](const process::FieldSource &value) {
+                    const auto acceleration = Direction(root, value.AccelerationX, value.AccelerationY);
                     return FieldSourceSpec{origin, value.Radius,
-                        {float(value.AccelerationX), float(value.AccelerationY)}, value.Lifetime};
+                        {float(acceleration.X), float(acceleration.Y)}, value.Lifetime};
                 };
                 if (const auto *source = std::get_if<process::FieldSource>(&request.Description)) {
                     const auto installed = world.InstallFieldSource(owner, spec(*source));
@@ -324,7 +350,8 @@ struct ProcessHost::State {
         }
         else ++Counters.Rejected;
         if (Receipts.size() == MaximumReceipts) Receipts.pop_front();
-        Receipts.push_back({At, request.Id, root.Carrier.Kind, root.Carrier.Subject, outcome, refusal, changed});
+        Receipts.push_back({At, request.Id, root.Carrier.Kind, root.Carrier.Subject, outcome, refusal, changed,
+            root.Instance->Program().Identity(), request.Source, origin});
         Queue(root, outcome, request.Id, {}, {}, handle);
         if (refusal == ProcessRefusal::None && std::holds_alternative<process::Bolt>(request.Description)) {
             const auto &contact = root.BirthContacts[index];
@@ -337,6 +364,10 @@ struct ProcessHost::State {
 
 ProcessHost::ProcessHost() : Data(std::make_unique<State>()) {}
 ProcessHost::~ProcessHost() = default;
+void ProcessHost::BindActors(const Actors &actors) {
+    if (!Data->Roots.empty()) throw std::logic_error("cannot rebind a running formula host");
+    Data->Characters = &actors;
+}
 void ProcessHost::BeginFrame() { Data->WindCallsThisFrame = 0; }
 
 bool ProcessHost::SynchronizeActivity(World &world) {
@@ -345,18 +376,43 @@ bool ProcessHost::SynchronizeActivity(World &world) {
     bool changed = false;
     for (auto &root : Data->Roots) {
         if (root->Prepared) throw std::logic_error("process activity change before effects commit");
+        const auto previous = root->Carrier.Origin;
+        if (!Data->ResolveBinding(root->Carrier)) {
+            Data->LoseBinding(*root, world, "ActorBindingLost: attached actor no longer exists");
+            changed = true;
+            continue;
+        }
+        if (root->Carrier.Binding == ProcessBindingKind::Actor
+            && !root->Carrier.Scope.Contains(root->Carrier.Origin.Cell())) {
+            Data->LoseBinding(*root, world, "ActorBindingScope: attached actor left the authorized scope");
+            changed = true;
+            continue;
+        }
+        changed |= previous.Chunk != root->Carrier.Origin.Chunk || previous.Local != root->Carrier.Origin.Local;
         const bool suspended = !Data->CanActivate(*root, world);
         if (root->Suspended == suspended) continue;
         root->Suspended = suspended;
         world.SuspendFieldSources(root->Instance->State().Id, suspended);
         changed = true;
     }
+    Data->Retire();
     return changed;
 }
 
 bool ProcessHost::Start(const process::ProgramArtifact &program, uint64_t id, uint64_t version,
-                        const ProcessCarrier &carrier, const World &world,
+                        const ProcessCarrier &configuration, const World &world,
                         std::optional<api::RequestKey> request, std::string &error, uint64_t resource) {
+    auto carrier = configuration;
+    if (carrier.Binding < ProcessBindingKind::World || carrier.Binding > ProcessBindingKind::Actor
+        || (carrier.Binding == ProcessBindingKind::Actor) != (carrier.AttachedActor.Value != 0)
+        || !std::isfinite(carrier.LocalOffset[0]) || !std::isfinite(carrier.LocalOffset[1])
+        || std::abs(carrier.LocalOffset[0]) > 2048 || std::abs(carrier.LocalOffset[1]) > 2048
+        || (carrier.Binding == ProcessBindingKind::World && carrier.LocalOffset != std::array<double, 2>{}))
+        throw std::invalid_argument("invalid trusted formula binding");
+    if (carrier.Binding == ProcessBindingKind::Actor && program.Identity().SemanticsVersion != 2) {
+        error = "ActorBindingRequiresFormula2"; return false;
+    }
+    if (!Data->ResolveBinding(carrier)) { error = "ActorBindingLost"; return false; }
     // These are trusted host values, but Cell/RelativeTo assume normalized,
     // supported coordinates. Fail before those integer conversions/subtractions.
     auto position = carrier.Origin;
@@ -466,6 +522,8 @@ ProcessHostStats ProcessHost::Stats() const {
     }
     for (const auto &diagnostic : Data->Diagnostics)
         result.RetainedBytes += sizeof(FormulaRuntimeDiagnostic) + diagnostic.Message.capacity() + 1;
+    for (const auto &receipt : Data->Receipts)
+        result.RetainedBytes += receipt.Program.Resource.capacity() + receipt.Program.ContentSha256.capacity() + 2;
     return result;
 }
 
@@ -500,7 +558,7 @@ std::vector<ProcessInspection> ProcessHost::Inspect() const {
 
 std::string ProcessHost::CaptureState() const {
     checkpoint::Writer out;
-    out.String("Pixel.ProcessHost"); out.Numbers(1, Data->At, Data->Roots.size());
+    out.String("Pixel.ProcessHost"); out.Numbers(2, Data->At, Data->Roots.size());
     for (const auto &root : Data->Roots) {
         if (root->Prepared) throw std::logic_error("cannot checkpoint uncommitted process effects");
         checkpoint::Write(out, root->Instance->Program());
@@ -520,6 +578,9 @@ std::string ProcessHost::CaptureState() const {
     for (const auto &receipt : Data->Receipts) {
         out.Numbers(receipt.At, receipt.Request.Instance, receipt.Request.Sequence); out.Enum(receipt.Carrier);
         out.Numbers(receipt.Subject); out.Enum(receipt.Outcome); out.Enum(receipt.Refusal); out.Numbers(receipt.ChangedCells);
+        checkpoint::Write(out, receipt.Program);
+        out.Numbers(receipt.Source.Offset, receipt.Source.Length, receipt.Source.Line, receipt.Source.Column);
+        checkpoint::Write(out, receipt.Origin);
     }
     out.Numbers(Data->Diagnostics.size());
     for (const auto &diagnostic : Data->Diagnostics) {
@@ -532,8 +593,11 @@ void ProcessHost::RestoreState(std::string_view encoded) {
     if (!Data->Roots.empty()) throw std::logic_error("process restore requires an empty host");
     checkpoint::Reader in(encoded);
     using checkpoint::Require;
-    Require(in.String(32) == "Pixel.ProcessHost" && in.Number<uint32_t>() == 1, "unsupported process host checkpoint");
+    Require(in.String(32) == "Pixel.ProcessHost", "unsupported process host checkpoint");
+    const auto hostVersion = in.Number<uint32_t>();
+    Require(hostVersion == 1 || hostVersion == 2, "unsupported process host checkpoint version");
     auto restored = std::make_unique<State>();
+    restored->Characters = Data->Characters;
     restored->At = in.Number<uint64_t>();
     Require(restored->At != UINT64_MAX, "exhausted checkpoint process boundary");
     const auto count = in.Count(MaximumInstances);
@@ -542,7 +606,15 @@ void ProcessHost::RestoreState(std::string_view encoded) {
         auto program = checkpoint::ReadProgram(in);
         const auto snapshot = checkpoint::ReadInstance(in);
         auto root = std::make_unique<Running>();
-        root->Carrier = checkpoint::ReadCarrier(in);
+        root->Carrier = checkpoint::ReadCarrier(in, hostVersion);
+        Require(root->Carrier.Binding != ProcessBindingKind::Actor || program.Identity().SemanticsVersion == 2,
+            "actor binding requires formula/2");
+        // Saved references are resolved by identity, never silently restarted.
+        // Missing actors are rejected at the restore boundary.
+        if (root->Carrier.Binding == ProcessBindingKind::Actor) {
+            Require(restored->Characters && restored->Characters->Find(root->Carrier.AttachedActor),
+                "checkpoint attached actor is missing");
+        }
         in.Numbers(root->Version, root->Resource, root->NextEvent); root->Suspended = in.Boolean();
         Require(root->Version != 0 && root->Resource != 0 && root->NextEvent > snapshot.EventSequence
             && root->NextEvent != UINT64_MAX && snapshot.State.Id > previousId && snapshot.State.Id != UINT64_MAX
@@ -606,6 +678,13 @@ void ProcessHost::RestoreState(std::string_view encoded) {
         in.Numbers(receipt.At, receipt.Request.Instance, receipt.Request.Sequence); receipt.Carrier = in.Enum(ProcessCarrierKind::Intervention);
         receipt.Subject = in.Number<uint64_t>(); receipt.Outcome = in.Enum(process::Outcome::Timeout);
         receipt.Refusal = in.Enum(ProcessRefusal::InvalidHandle); receipt.ChangedCells = in.Number<uint32_t>();
+        if (hostVersion >= 2) {
+            receipt.Program = checkpoint::ReadIdentity(in);
+            in.Numbers(receipt.Source.Offset, receipt.Source.Length, receipt.Source.Line, receipt.Source.Column);
+            receipt.Origin = checkpoint::ReadWorldPosition(in);
+            Require(receipt.Source.Offset <= 16384 && receipt.Source.Length <= 16384 - receipt.Source.Offset
+                && receipt.Source.Line > 0 && receipt.Source.Column > 0, "invalid checkpoint call source");
+        }
         Require(receipt.At <= restored->At && receipt.Request.Instance && receipt.Request.Sequence && receipt.Subject
             && (receipt.Outcome == process::Outcome::Applied || receipt.Outcome == process::Outcome::Rejected)
             && ((receipt.Outcome == process::Outcome::Applied) == (receipt.Refusal == ProcessRefusal::None)),

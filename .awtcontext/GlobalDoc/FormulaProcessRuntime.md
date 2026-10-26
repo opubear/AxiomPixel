@@ -1,5 +1,7 @@
 # 构式过程语言 v1 与有界运行时
 
+> 2026-10-26 更新：默认程序与编辑器已支持 formula/2 函数组合和 World/Actor 绑定；process/1 仍保持原语义。新函数、事件作用域、状态格式3及宿主格式2兼容策略以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。下文保留过程执行核心和历史验证记录，不代表最新功能范围。
+
 日期：2026-10-22。对应 M3.2「建立独立程序产物与有界执行运行时」。这是 [M3.1 语义对照](FormulaSemanticsExperiment.md) 选定的纯值与显式过程方案的独立实现；M3.3 已通过 [FormulaBridge](FormulaBridge.md) 接入游戏，旧 `cast` 编辑器短期并存。本文描述独立语言合同，游戏范围与额度以桥接文档为准。
 
 ## 产物、状态和模块

@@ -7,6 +7,11 @@ namespace pixel::formula::process {
 using InstanceId = std::uint64_t;
 using Boundary = std::uint64_t;
 
+struct SourceSpan {
+    std::size_t Offset = 0, Length = 0, Line = 1, Column = 1;
+    bool operator==(const SourceSpan &) const = default;
+};
+
 // Preserve distant cell coordinates without converting them to floating point.
 struct Position {
     std::int64_t CellX = 0, CellY = 0;
@@ -63,6 +68,7 @@ struct EffectRequest {
     RequestId Id;
     Position Origin;
     Effect Description;
+    SourceSpan Source;
 };
 
 // One frozen value per active boundary. Evaluate every instance before applying
@@ -70,6 +76,8 @@ struct EffectRequest {
 struct HostView {
     Boundary At = 0;
     std::optional<std::int64_t> Inventory;
+    // Optional live default context. Pinned hit scopes ignore binding movement.
+    std::optional<Position> Origin;
 };
 enum class Outcome { None, Applied, Rejected, Hit, Expired, Cancelled, Wake, Timeout };
 enum class AwaitKind { Result, Hit, Wake };

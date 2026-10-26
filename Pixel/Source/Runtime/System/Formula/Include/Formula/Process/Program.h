@@ -6,10 +6,6 @@
 #include <variant>
 
 namespace pixel::formula::process {
-struct SourceSpan {
-    std::size_t Offset = 0, Length = 0, Line = 1, Column = 1;
-    bool operator==(const SourceSpan &) const = default;
-};
 struct Diagnostic {
     std::string Resource;
     SourceSpan Source;

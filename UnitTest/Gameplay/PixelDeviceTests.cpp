@@ -126,7 +126,7 @@ void WorkAndLifecycle() {
           "device instance has no owning carrier");
     const auto facts = session.ReadFacts(session.WorldEpoch(), before, session.FactHighWatermark());
     Check(facts.Facts.size() == 2 && std::holds_alternative<api::FieldSourceChanged>(facts.Facts[0].Payload) &&
-          std::get<api::ProgramEffectCause>(facts.Facts[0].Cause).Program == api::ProgramRef{3, 2} &&
+          std::get<api::ProgramEffectCause>(facts.Facts[0].Cause).Program == api::ProgramRef{3, 3} &&
           std::get<api::DeviceCause>(facts.Facts[1].Cause).DeviceId == id, "device facts lost ownership or source");
     const auto snapshot = device;
     session.Control(NativeCaller::Driver, api::SetPaused{true});

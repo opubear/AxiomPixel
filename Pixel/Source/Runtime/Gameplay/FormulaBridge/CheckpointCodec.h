@@ -154,6 +154,10 @@ inline void Write(Writer &out, const process::InstanceSnapshot &value) {
     out.Numbers(value.LastBoundary, value.EventSequence, value.SubscriptionSequence); out.Enum(value.WaitingFor);
     Write(out, value.Receipt); Write(out, value.Impact); Write(out, value.Wake);
     out.Numbers(value.ReceiptSeen, value.ImpactSeen);
+    if (value.SchemaVersion == 3) {
+        out.Numbers(value.OriginPinned, value.OriginScopes.size());
+        for (const auto &scope : value.OriginScopes) { Write(out, scope.Origin); out.Numbers(scope.Pinned); }
+    }
 }
 inline process::InstanceSnapshot ReadInstance(Reader &in) {
     process::InstanceSnapshot value;
@@ -168,6 +172,11 @@ inline process::InstanceSnapshot ReadInstance(Reader &in) {
     in.Numbers(value.LastBoundary, value.EventSequence, value.SubscriptionSequence); value.WaitingFor = in.Enum(process::AwaitKind::Wake);
     value.Receipt = ReadOptionalEvent(in); value.Impact = ReadOptionalEvent(in); value.Wake = ReadOptionalEvent(in);
     value.ReceiptSeen = in.Boolean(); value.ImpactSeen = in.Boolean();
+    if (value.SchemaVersion == 3) {
+        value.OriginPinned = in.Boolean();
+        const auto count = in.Count(24);
+        for (size_t i = 0; i < count; ++i) value.OriginScopes.push_back({ReadPosition(in), in.Boolean()});
+    }
     return value;
 }
 inline void Write(Writer &out, const ProcessCarrier &value) {
@@ -175,13 +184,22 @@ inline void Write(Writer &out, const ProcessCarrier &value) {
     out.Numbers(value.Scope.X, value.Scope.Y, value.Scope.Width, value.Scope.Height,
         value.AngleDegrees, value.MaximumRadius, value.ActivityRadius, value.Credits, value.Grants,
         value.Limits.Work, value.Limits.Queries, value.Limits.Outputs);
+    out.Enum(value.Binding); out.Numbers(value.AttachedActor.Value, value.LocalOffset[0], value.LocalOffset[1]);
 }
-inline ProcessCarrier ReadCarrier(Reader &in) {
+inline ProcessCarrier ReadCarrier(Reader &in, uint32_t hostVersion) {
     ProcessCarrier value;
     value.Kind = in.Enum(ProcessCarrierKind::Intervention); value.Subject = in.Number<uint64_t>(); value.Origin = ReadWorldPosition(in);
     in.Numbers(value.Scope.X, value.Scope.Y, value.Scope.Width, value.Scope.Height,
         value.AngleDegrees, value.MaximumRadius, value.ActivityRadius, value.Credits, value.Grants,
         value.Limits.Work, value.Limits.Queries, value.Limits.Outputs);
+    if (hostVersion >= 2) {
+        value.Binding = in.Enum(ProcessBindingKind::Actor);
+        in.Numbers(value.AttachedActor.Value, value.LocalOffset[0], value.LocalOffset[1]);
+        Require((value.Binding == ProcessBindingKind::Actor) == (value.AttachedActor.Value != 0)
+            && std::abs(value.LocalOffset[0]) <= 2048 && std::abs(value.LocalOffset[1]) <= 2048
+            && (value.Binding == ProcessBindingKind::Actor || value.LocalOffset == std::array<double, 2>{}),
+            "invalid checkpoint actor binding");
+    }
     const int64_t maximum = (int64_t{1} << 49) * storage::ChunkEdge;
     const auto lastCell = maximum + storage::ChunkEdge - 1;
     Require(value.Subject != 0 && value.Credits >= 0 && value.MaximumRadius >= 0 && value.MaximumRadius <= 16

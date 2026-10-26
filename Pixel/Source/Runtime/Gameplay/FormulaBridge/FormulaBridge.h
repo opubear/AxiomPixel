@@ -20,6 +20,7 @@ class FormulaBridge {
     ~FormulaBridge();
     // Host assembly at world replacement, before any instance can run.
     void BindPlayerInventory(items::Inventory &inventory, items::ContainerId container);
+    void BindActors(const Actors &actors);
     FormulaBridge(const FormulaBridge &) = delete;
     FormulaBridge &operator=(const FormulaBridge &) = delete;
     void ApplyProcess(const formula::process::ProgramArtifact &program);

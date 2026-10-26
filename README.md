@@ -263,13 +263,13 @@ Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置�
 
 ## 构式（Formula）与编辑器
 
-项目只支持 `process 1;` 构式。旧 cast 语言、树形描述、Simulator、树形编辑器及其校验/实验目标均已删除；本地旧存档已清空，不转换旧构式存档。
+当前默认采用 `formula 2;`：带类型参数的函数与不可变 action 描述，可顺序、延迟、重复或按命中/唤醒事件组合。`process 1;` 源码及已有运行存档保持原语义；未知格式明确拒绝，不删除存档或重新执行。旧 cast 和树形编辑器已删除。完整合同见[构式函数组合与世界绑定](Docs/Architecture/FormulaComposition.md)。
 
 右键从人物前方向鼠标激活当前程序，Shift＋右键开采。默认程序为黄色球：伤害元数据10、速度60格/秒、寿命120活动步、半径0.35格。它显式等待命中或到期，程序结束清理归属效果。球使用圆形扫掠碰撞；作用区域不活跃或必要块缺失时冻结，返回后按剩余活动时间继续。
 
 F2控制Pixel Debug，F4独立控制 `Formula Editor`。编辑器初始化为已应用程序，可直接修改 `Process text` 或载入三脉冲草稿，依次点击 `Compile process`、`Apply process`。编辑源码会撤销编译结果，错误显示行列；Apply仅影响后续实例，运行中的实例保留原版本。`Load applied process`恢复已应用源码，`Clear running`清理运行实例及归属效果。
 
-`Process: three carriers`可从玩家附近启动NaturalSource和FixedFixture调试承载者，使用同一程序和宿主规则；额度分别为6、4，玩家为64。真实Device另有物品和燃料规则。这些承载者共享 `ProcessHost`，World不依赖构式或渲染。
+`Process: three carriers`可从玩家附近启动NaturalSource和FixedFixture调试承载者，使用同一程序和宿主规则；额度分别为6、4，玩家为64。真实Device另有物品和燃料规则。`Start actor attachment` 将同一构式附着玩家，后续请求跟随移动，来源与附着身份独立。Actor销毁或离开授权范围取消，离开活动区冻结。实例观察显示绑定、位置与方向，最近回执显示源码位置和拒绝码。这些承载者共享 `ProcessHost`，World不依赖构式或渲染。
 
 游戏默认运行。GameSession全局暂停冻结角色、构式、环境、设备和育圃，DebugCamera仍可移动；单步推进完整的1/60秒。预算等待不推进实例，并拒绝新激活和编辑。检查点保存已应用程序、运行实例、事件、弹体及持续场源；默认球存活时也能保存并正常关闭。未应用编辑草稿不保存，动态风扰动仍按配置和相位重建。
 
@@ -279,7 +279,7 @@ F2控制Pixel Debug，F4独立控制 `Formula Editor`。编辑器初始化为已
 cmake -S Pixel/Source/Runtime/System/Formula -B build-formula-system -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-formula-system -j4
 ctest --test-dir build-formula-system --output-on-failure
-./build-formula-system/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Process/hit.formula --steps 12 --hit-at 3
+./build-formula-system/PixelFormulaProcessDemo Pixel/Source/Runtime/System/Formula/Examples/Composition/mining.formula --steps 12 --hit-at 3
 
 cmake --build build --target PixelRuntimeSmoke PixelCloseSmoke -j4
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --formula-only)
@@ -288,6 +288,8 @@ cmake --build build --target PixelRuntimeSmoke PixelCloseSmoke -j4
 
 2026-10-25移除旧构式后的验证：CPU全量92/92、独立语言5/5通过；Pixel、PixelRuntimeSmoke和PixelCloseSmoke编译通过。RTX 3070/X11的构式GPU/源码编辑器、育圃UI及带活动默认弹丸的保存关闭恢复专项通过；本轮未重跑完整GPU生命周期或AET。
 
-持续场使用 `field(cells(r), acceleration(ax), acceleration(ay), ticks(life))`，加速度单位为格/秒²。`await result` 后以 `effect_handle()`取得不透明句柄，可保存后用于 `update_field`或`stop_field`；程序终止、故障、撤销或设备拆除都会清理所属场源。示例见[field.formula](Pixel/Source/Runtime/System/Formula/Examples/Process/field.formula)。
+formula/2 的 `field(cells(r), acceleration(ax), acceleration(ay), ticks(life))` 返回有限寿命 action，加速度按实例角度旋转。描述等待该寿命，结束、故障、撤销或设备拆除清理归属场源。示例见[push.formula](Pixel/Source/Runtime/System/Formula/Examples/Composition/push.formula)。旧 process/1 仍保留显式句柄更新/停止接口。
+
+2026-10-26 升级验证：CPU全量基线94/94通过，后续存档校验与内存统计小改动由最新11/11专项及独立ASan+UBSan 6/6复验；Pixel、AET及smoke目标编译成功。真实窗口构式GPU、formula/2编辑与Actor附着、活动默认弹体关闭保存恢复均通过。Release函数封装与展开轨迹相同、首片段均17 work/22指令。本轮未重跑完整GPU生命周期或AET运行，Vulkan validation layer不可用；实际验证范围见[验证报告](Docs/Architecture/FormulaCompositionVerification.md)。
 
 AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`，工程文档见[索引](.awtcontext/GlobalDoc/DocIndex.md)。

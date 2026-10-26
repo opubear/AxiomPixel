@@ -5,9 +5,8 @@ namespace {
 constexpr int64_t FieldRadius = 16;
 const formula::process::ProgramArtifact &ForceEmitterProgram() {
     static const auto program = [] {
-        auto compiled = formula::process::Compile("device/force-emitter/2",
-            "process 1; emit field(cells(" + std::to_string(FieldRadius) + "), acceleration(3600), acceleration(0), ticks(31)); "
-            "await result within ticks(1); let source = effect_handle(); wait ticks(29); emit stop_field(source);");
+        auto compiled = formula::process::Compile("device/force-emitter/3",
+            "formula 2; run field(cells(" + std::to_string(FieldRadius) + "), acceleration(3600), acceleration(0), ticks(30));");
         if (const auto *error = std::get_if<formula::process::Diagnostic>(&compiled))
             throw std::logic_error(error->Message);
         return std::get<formula::process::ProgramArtifact>(std::move(compiled));
@@ -105,7 +104,7 @@ void GameSession::StepDevices(std::vector<FormulaEffectRecord> &effects, std::ve
                     carrier.ActivityRadius = FieldRadius;
                     carrier.Credits = 1;
                     carrier.Grants = formula::process::Mask(formula::process::Capability::Field);
-                    if (Formulas.CastProcess(GameWorld, ForceEmitterProgram(), {3, 2}, carrier)) {
+                    if (Formulas.CastProcess(GameWorld, ForceEmitterProgram(), {3, 3}, carrier)) {
                         if (Formulas.LastEffects().size() != 1 || Inventory.Consume(payment.Id) != items::Result::Applied)
                             throw std::logic_error("preflighted force emitter installation failed");
                         effects.insert(effects.end(), Formulas.LastEffects().begin(), Formulas.LastEffects().end());

@@ -3,6 +3,7 @@
 #include "Formula/Process/Value.h"
 #include <array>
 #include <span>
+#include <vector>
 
 namespace pixel::formula::process {
 struct ExecutionLimits {
@@ -37,6 +38,13 @@ struct InstanceSnapshot {
     AwaitKind WaitingFor = AwaitKind::Result;
     std::optional<HostEvent> Receipt, Impact, Wake;
     bool ReceiptSeen = false, ImpactSeen = false;
+    struct OriginScope {
+        Position Origin;
+        bool Pinned = false;
+    };
+    // formula/2 uses schema 3. process/1 continues to export schema 2.
+    bool OriginPinned = false;
+    std::vector<OriginScope> OriginScopes;
 };
 struct StepResult {
     std::array<EffectRequest, 64> Requests;
@@ -60,6 +68,7 @@ class Instance {
 
     const ProgramArtifact &Program() const;
     const InstanceState &State() const;
+    bool HasPinnedOrigin() const;
     // The owner must stop/destroy the source instance before restoring it.
     // Resume uses the same host boundary space; the next Step must be later.
     InstanceSnapshot ExportState() const;

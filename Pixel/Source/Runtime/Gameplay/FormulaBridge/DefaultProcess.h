@@ -5,9 +5,8 @@
 namespace pixel {
 inline const formula::process::ProgramArtifact &DefaultPlayerProcess() {
     static const auto program = std::get<formula::process::ProgramArtifact>(
-        formula::process::Compile("player/default-bolt", R"(process 1;
-emit bolt(10, speed(60), ticks(120));
-await hit within ticks(121);
+        formula::process::Compile("player/default-bolt", R"(formula 2;
+run bolt(10, speed(60), ticks(120));
 )"));
     return program;
 }
