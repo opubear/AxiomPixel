@@ -1,0 +1,61 @@
+{
+  "Version": 1,
+  "Character": {
+    "FrameSize": [
+      80,
+      64
+    ],
+    "FootAnchor": [
+      40,
+      64
+    ],
+    "PixelsPerCell": 10.5,
+    "Layers": [
+      {
+        "Path": "Art/Characters/Gandalf/body.png"
+      },
+      {
+        "Path": "Art/Characters/Gandalf/pants.png"
+      },
+      {
+        "Path": "Art/Characters/Gandalf/shirt.png"
+      },
+      {
+        "Path": "Art/Characters/Gandalf/shoes.png"
+      },
+      {
+        "Path": "Art/Characters/Gandalf/hair.png"
+      }
+    ],
+    "Animations": {
+      "Idle": {
+        "Row": 0,
+        "FirstFrame": 0,
+        "FrameCount": 5,
+        "FramesPerSecond": 6,
+        "Loop": true
+      },
+      "Run": {
+        "Row": 2,
+        "FirstFrame": 0,
+        "FrameCount": 8,
+        "FramesPerSecond": 12,
+        "Loop": true
+      },
+      "Jump": {
+        "Row": 3,
+        "FirstFrame": 0,
+        "FrameCount": 4,
+        "FramesPerSecond": 10,
+        "Loop": false
+      },
+      "Fall": {
+        "Row": 4,
+        "FirstFrame": 0,
+        "FrameCount": 4,
+        "FramesPerSecond": 10,
+        "Loop": true
+      }
+    }
+  }
+}

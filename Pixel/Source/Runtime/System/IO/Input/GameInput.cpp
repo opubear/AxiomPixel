@@ -7,8 +7,8 @@
 #include <utility>
 
 namespace pixel {
-GameInput::GameInput(GameSession &session, GameCamera &camera, PresentationControl &presentation, GameInputHost host)
-    : Session(session), Camera(camera), Presentation(presentation), Host(std::move(host)) {
+GameInput::GameInput(GameSession &session, GameCamera &camera, PresentationControl &presentation, ui::InventoryUI &ui, GameInputHost host)
+    : Session(session), Camera(camera), Presentation(presentation), UI(ui), Host(std::move(host)) {
     if (!Host.RequestQuit || !Host.ToggleDebugUI || !Host.ToggleFormulaEditor || !Host.GetFramebufferSize)
         throw std::invalid_argument("game input requires quit, debug UI, formula editor and framebuffer callbacks");
 }
@@ -57,6 +57,18 @@ void GameInput::ResetGame() {
 void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer) {
     if (action != ButtonAction::ACTION_PRESS || (button != MouseButton::MOUSE_BUTTON_LEFT && button != MouseButton::MOUSE_BUTTON_RIGHT))
         return;
+    if (pointer.WindowSize[0] <= 0 || pointer.WindowSize[1] <= 0 || pointer.FramebufferSize[0] <= 0 || pointer.FramebufferSize[1] <= 0
+        || !std::isfinite(pointer.Position[0]) || !std::isfinite(pointer.Position[1])
+        || pointer.Position[0] < 0 || pointer.Position[1] < 0
+        || pointer.Position[0] >= pointer.WindowSize[0] || pointer.Position[1] >= pointer.WindowSize[1])
+        return;
+    const float x = float(pointer.Position[0] * pointer.FramebufferSize[0] / pointer.WindowSize[0]);
+    const float y = float(pointer.Position[1] * pointer.FramebufferSize[1] / pointer.WindowSize[1]);
+    if (UI.PointerPress(x, y, pointer.FramebufferSize, button == MouseButton::MOUSE_BUTTON_LEFT)) {
+        if (button == MouseButton::MOUSE_BUTTON_LEFT)
+            SetElementBrush(ElementBrush::Disabled);
+        return;
+    }
     const auto cell = Camera.PickCell(pointer);
     if (!cell)
         return;
@@ -88,7 +100,7 @@ void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int 
     else
         Session.Execute(NativeCaller::Input, api::MineRegion{{(*cell)[0], (*cell)[1]}, {}});
 }
-void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
+void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod mods) {
     const std::array keys{Key::KEY_W, Key::KEY_A, Key::KEY_S, Key::KEY_D};
     // Repeats must not reactivate a held key after mode/UI input was cleared.
     for (size_t i = 0; i < keys.size(); ++i)
@@ -96,8 +108,19 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
             Move[i] = action == ButtonAction::ACTION_PRESS;
     if (action != ButtonAction::ACTION_PRESS)
         return;
+    if (key >= Key::KEY_1 && key <= Key::KEY_7) {
+        const auto index = size_t(int(key) - int(Key::KEY_1));
+        if ((int(mods) & int(Mod::MOD_SHIFT)) && index < 4)
+            SetElementBrush(static_cast<ElementBrush>(index));
+        else {
+            UI.SelectQuickSlot(index);
+            SetElementBrush(ElementBrush::Disabled);
+        }
+        return;
+    }
     switch (key) {
-    case Key::KEY_ESCAPE: Host.RequestQuit(); break;
+    case Key::KEY_ESCAPE: if (!UI.CloseInventory()) Host.RequestQuit(); break;
+    case Key::KEY_TAB: UI.ToggleInventory(); break;
     case Key::KEY_SPACE:
         if (Mode == ControlMode::Standard)
             JumpRequested = true;
@@ -106,10 +129,6 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
         break;
     case Key::KEY_T: Presentation.ToggleTint(); break;
     case Key::KEY_B: SetDevicePlacementEnabled(!DevicePlacementMode); break;
-    case Key::KEY_1: SetElementBrush(ElementBrush::Disabled); break;
-    case Key::KEY_2: SetElementBrush(ElementBrush::Water); break;
-    case Key::KEY_3: SetElementBrush(ElementBrush::Steam); break;
-    case Key::KEY_4: SetElementBrush(ElementBrush::Fire); break;
     case Key::KEY_F1: Presentation.ToggleFieldView(); break;
     case Key::KEY_F2: Host.ToggleDebugUI(); break;
     case Key::KEY_F3:
@@ -127,6 +146,6 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod) {
     }
 }
 const char *GameInput::ControlsDescription() {
-    return "Pixel: 1 normal tool, 2 water, 3 steam, 4 fire; element brush left click spawns a disk; normal left click place dirt; B toggle device placement (4 stone + 2 copper ore); right click device enable/disable, otherwise activate formula; Shift+right click device recycle, otherwise mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
+    return "Pixel: Tab inventory; 1-7 select quick slot; click inventory item to bind selected quick slot; Shift+1 normal tool, Shift+2 water, Shift+3 steam, Shift+4 fire; element brush left click spawns a disk; normal left click place dirt; B toggle device placement (4 stone + 2 copper ore); right click device enable/disable, otherwise activate formula; Shift+right click device recycle, otherwise mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
 }
 } // namespace pixel

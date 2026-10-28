@@ -69,7 +69,7 @@ void Actors::Changed() {
 }
 
 std::optional<ActorHandle> Actors::Insert(ActorRecord record) {
-    if (record.Kind != ActorKind::Player && record.Kind != ActorKind::Resident)
+    if (record.Kind != ActorKind::Player && record.Kind != ActorKind::Resident && record.Kind != ActorKind::TrainingDummy)
         throw std::invalid_argument("unknown actor kind");
     if (record.Kind == ActorKind::Player && PlayerHandle)
         throw std::logic_error("only one controlled player is supported");
@@ -155,6 +155,17 @@ std::optional<ActorSnapshot> Actors::PlayerSnapshot() const {
     return ActorSnapshot{actor.Id, actor.Kind, actor.Body.GetWorldPosition(), actor.Body.Grounded};
 }
 
+std::vector<ActorSnapshot> Actors::Snapshot() const {
+    std::vector<ActorSnapshot> result;
+    result.reserve(LiveCount);
+    for (const auto &slot : Slots)
+        if (slot.Actor) {
+            const auto &actor = *slot.Actor;
+            result.push_back({actor.Id, actor.Kind, actor.Body.GetWorldPosition(), actor.Body.Grounded});
+        }
+    return result;
+}
+
 void Actors::SetPlayerPosition(WorldPosition position) {
     auto body = BodyAt(position);
     if (PlayerHandle) {
@@ -169,7 +180,9 @@ void Actors::Step(WorldMapView terrain, PlayerInput input) {
     PIXEL_PROFILE_SCOPE(Character);
     bool advanced = false;
     for (auto &slot : Slots) {
-        if (!slot.Actor || !HasBodyTerrain(slot.Actor->Body, terrain)) continue;
+        // A training target is anchored even if its support is mined away or
+        // water/terrain enters its body. It has no movement or attack behavior.
+        if (!slot.Actor || slot.Actor->Kind == ActorKind::TrainingDummy || !HasBodyTerrain(slot.Actor->Body, terrain)) continue;
         auto &actor = *slot.Actor;
         const auto intent = actor.Kind == ActorKind::Player ? input : PlayerInput{};
         actor.Body.Tick(1.f / 60, terrain, intent.Horizontal, intent.Jump);

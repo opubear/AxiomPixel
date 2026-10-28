@@ -1,0 +1,33 @@
+{
+  "author": "GandalfHardcore",
+  "url": "https://gandalfhardcore.itch.io/2d-pixel-art-male-and-female-character",
+  "imported": "2026-10-27",
+  "license": "Custom license; see LICENSE.txt. Used as game assets; not a standalone asset redistribution.",
+  "files": [
+    {
+      "path": "Art/Characters/Gandalf/body.png",
+      "source": "ArtRaw/Characters/GandalfHardcoreModular/Extracted/GandalfHardcore Character Asset Pack/GandalfHardcore Character Asset Pack/Character skin colors/Male Skin1.png",
+      "sha256": "5a3c9a2cf0fd18a679f8ab3118122b928a797f7ba06865bc836b4dbf6a0365d4"
+    },
+    {
+      "path": "Art/Characters/Gandalf/pants.png",
+      "source": "ArtRaw/Characters/GandalfHardcoreModular/Extracted/GandalfHardcore Character Asset Pack/GandalfHardcore Character Asset Pack/Male Clothing/Pants.png",
+      "sha256": "de047029130b36db4232f6c96da464b2856adf23f6481556de2da6b2daf9c2fc"
+    },
+    {
+      "path": "Art/Characters/Gandalf/shirt.png",
+      "source": "ArtRaw/Characters/GandalfHardcoreModular/Extracted/GandalfHardcore Character Asset Pack/GandalfHardcore Character Asset Pack/Male Clothing/Shirt.png",
+      "sha256": "25b6d66dd638f0abb13d328687b5132de0640e1f440520029f128537f1c821f6"
+    },
+    {
+      "path": "Art/Characters/Gandalf/shoes.png",
+      "source": "ArtRaw/Characters/GandalfHardcoreModular/Extracted/GandalfHardcore Character Asset Pack/GandalfHardcore Character Asset Pack/Male Clothing/Shoes.png",
+      "sha256": "d35fce8394a1fa2e7a39b7fab16c68f53940affdfa7f77de0c32b3b6c406e65d"
+    },
+    {
+      "path": "Art/Characters/Gandalf/hair.png",
+      "source": "ArtRaw/Characters/GandalfHardcoreModular/Extracted/GandalfHardcore Character Asset Pack/GandalfHardcore Character Asset Pack/Male Hair/Male Hair1.png",
+      "sha256": "a760b4ae826a3a8483f61c1f63a35aad7f8c57748de80c1791d6bff1f4bd09d3"
+    }
+  ]
+}

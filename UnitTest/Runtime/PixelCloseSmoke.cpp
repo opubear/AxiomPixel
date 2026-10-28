@@ -65,7 +65,7 @@ void Draw(Axiom &app) {
 
 void CloseAtSaveBoundary() {
     SaveRoot root;
-    PixelSmokeApplication app(std::make_unique<PixelGame>(), {true});
+    PixelSmokeApplication app(std::make_unique<PixelGame>(true), {true});
     app.Initialize();
     app.Begin();
     auto &game = static_cast<PixelGame &>(*app.GetGame());
@@ -123,10 +123,33 @@ void CloseAtSaveBoundary() {
     Require(restored.GetFormulaRuntime().CaptureState() == running,
             "accepted close did not restore the active default process exactly");
 }
+
+void TemporaryGameClosesWithoutSaving() {
+    SaveRoot root;
+    std::filesystem::create_directories(root.Path);
+    std::ofstream(root.Path / "current.txt") << "unsupported old save\n";
+    std::filesystem::path scratch;
+    {
+        PixelSmokeApplication app(std::make_unique<PixelGame>(), {true});
+        app.Initialize();
+        app.Begin();
+        auto &session = static_cast<PixelGame &>(*app.GetGame()).GetSession();
+        Require(!session.IsPersistent() && session.GetWorld().GetStreamer(),
+                "default game is not a temporary streamed world");
+        scratch = session.GetWorld().GetStreamer()->Settings().Directory;
+        pixel::testing::SessionAccess::RestoreClock(session, 0, 1.0 / 60, true);
+        app.RequestClose();
+        Require(app.ProcessCloseRequest(), "temporary game tried to save a pending step on close");
+        app.Shutdown();
+    }
+    Require(!std::filesystem::exists(scratch) && Read(root.Path / "current.txt") == "unsupported old save\n",
+            "temporary close leaked its cache or changed the old save");
+}
 } // namespace
 
 int main() {
     try {
+        TemporaryGameClosesWithoutSaving();
         CloseAtSaveBoundary();
         std::cout << "Pixel close passed: pending/failed save refusal, visible notice, explicit retry with active default process, restore and teardown-only GameEnd\n";
     } catch (const std::exception &error) {

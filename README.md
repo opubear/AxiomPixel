@@ -14,7 +14,7 @@ Core 的[Allocator与容器后端接入](.awtcontext/GlobalDoc/CoreAllocatorAndC
 
 世界现按需加载1024×1024物理块，由稀疏四叉树组织64×64区域，采用同步材料更新、文件存档和跟随玩家的开放风域。现行接口、存储布局和失败处理见 [世界表示约定](Docs/WorldRepresentation.md)，本轮实测及验证限制见 [验证与性能报告](Docs/WorldRepresentationValidation.md)。早期文档中的整图连续数组、移动链和四张固定世界纹理已被替代。
 
-新建游戏默认采用Natural世界生成策略：起伏地形、固定土岩、洞穴、五种矿石、有限湖泊/地下积水及干燥地表草皮。保留Superflat调试策略；F2的World generation选择下一世界的生成器和种子，按R保存并创建。入口、版本兼容和资源配置见 [世界生成与自然材质](.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
+新建游戏默认采用Natural世界生成策略：起伏地形、固定土岩、洞穴、五种矿石、有限湖泊/地下积水及干燥地表草皮。保留Superflat调试策略；F2的World generation选择下一世界的生成器和种子，按R创建新世界（当前不保存进度）。入口、版本兼容和资源配置见 [世界生成与自然材质](.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
 
 `Pixel/Source` 按运行时与开发支持分成两个根目录；以下五个领域是源码归属入口。
 
@@ -34,6 +34,7 @@ Pixel/Source/
 | `Runtime/Gameplay/` | 固定步协调与完整提交状态视图 |
 | `Runtime/Gameplay/GameSession, Actions, Construction/` | 会话生命周期、动作、建造与跨领域提交；主动查询和影响Simulation |
 | `Runtime/Gameplay/Actors, Camera/` | Actors管理角色身份与生命周期，Body负责身体运动与碰撞，PlayerInput表达运动意图；相机跟随/缩放/选格 |
+| `Runtime/Gameplay/UI/` | 原生背包UI的状态、库存投影、布局、命中测试与像素画布；不依赖Render/Input/ImGui |
 | `Runtime/Gameplay/Items, Devices, Authority, Knowledge/` | 游戏物品、设备、权限、知识与重要历史 |
 | `Runtime/Gameplay/GameAPI, Observation, LLMView/` | 类型化动作/回执、领域观测投影、授权冻结查询与模型派生记忆 |
 | `Runtime/Gameplay/LLM, WorldWill/` | 游戏目标/提案、DecisionAPI、PseudoLLM、游戏JSON协议、服务适配与世界意志行为 |
@@ -45,6 +46,7 @@ Pixel/Source/
 | `Runtime/System/Formula/` | 独立C++20过程构式语言、编译产物、运行时与CLI，可单独构建 |
 | `Runtime/System/IO/Input/` | GameInput处理键鼠、控制模式和设备布置；PresentationControl表达显示意图，宿主回调提供应用操作 |
 | `Dev/Debug/Garden, Performance/` | 显式育圃贯穿场景；无UI采样核心与运行时性能报告 |
+| `Dev/Debug/Formula/` | formula/2演示预设、启动配置与原生Session动作接入；不进入游戏规则或语言模块 |
 | `Dev/Debug/UI, LLM, Tools/` | ImGui面板与过程源码编辑器、测试专用FakeModel和观察demo |
 
 `Pixel/Content` 和 `Pixel/Config` 保留运行时资源/配置，自动化测试继续集中在 `UnitTest`，引擎及AET留在 `Axiom` 子模块。
@@ -53,7 +55,7 @@ Gameplay拥有游戏意图和领域状态：角色、物品、设备、构式宿
 
 Render从Simulation及Gameplay的已提交状态构造呈现快照，Draw只消费快照。相机投影和鼠标选格属于Gameplay；`System/IO/Input`通过`PresentationControl`表达显示意图，Render实现该接口，Application作为组合根负责接线。Gameplay核心不依赖Render或Input。
 
-`Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass在呈现目标内最后调用UI叠加。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
+`Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass完成后在呈现目标内调用原生背包UI，再调用开发调试UI叠加；UI不受场景调色影响。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
 
 `System/IO/Input`拥有键鼠事件解释、按键状态和控制模式，通过GameSession动作端口及GameCamera驱动游戏；`Gameplay/Actors/PlayerInput.h`保留角色需要的横向移动与跳跃意图。输入适配可以依赖Gameplay，Gameplay核心、Simulation及其余System服务不反向依赖Input；Input不包含Render实现或ImGui，退出、调试面板及画面尺寸由Application注入回调。
 
@@ -69,9 +71,11 @@ Dev/Debug保留当前可运行的开发功能。各领域允许调用无UI的Per
 
 M4.2 已加入[物品与库存](.awtcontext/GlobalDoc/Items.md)：玩家背包容量4096，初始为空；开采土、石或矿石得到对应物品，玩家构式也遵循容量规则。满包保留材料，左键放土消耗一份土料，缺料不改变地形。原生库存支持版本化整批转移和预留/释放/消费；首个设备成本为4石头和2铜矿，M4.3已接入设备放置。M4.6已保存库存及身份高水位，R创建的新世界仍从空背包开始；M4.7已接入F2库存界面和按授权公开的只读查询。
 
+原生游戏UI由 `Gameplay/UI` 独立维护：左上常驻7个快捷格，Tab在下方展开5行7列背包。数字键1–7或点击快捷格选择，点击背包物品将其绑定到当前快捷格；Escape先关闭背包。图标、总量及可用数量读取与场景相同的已提交库存，预留资源用金色小标记表示。当前仍采用已有4096总量容器，35格是展示布局，快捷格是引用；本轮未加入格子堆叠上限、拖拽、装备或物品使用动作，左键放土等世界规则保持现有合同。详细边界与验证见[原生背包UI](.awtcontext/GlobalDoc/NativeInventoryUI.md)。
+
 M4.3 的设备在 M4.4 接入了[持续推力源](.awtcontext/GlobalDoc/FieldSources.md)：B切换布置工具，左键花费4石头+2铜矿放置2×2推力发生器；设备内右键启停，Shift+右键回收。F2 Devices提供补煤、停机原因、程序等待和场源归属；Inventory查看背包与煤槽，Programs and fields查看运行状态，均读取同一已发布帧。每煤维持30个成功tick的局部向右推力，半径16格，无需开启风后端；F1查看场方向，Dirt受合成力推动。取消暂停或单步才工作，关闭/拆除立即清理来源。回收退建造物料与未用煤；背包满则拒绝整个回收。设备是非实体设施，动态材料进入设备占用时取消工作。详见[设备合同](.awtcontext/GlobalDoc/Devices.md)。设备、燃料和来源通过[M4.6一致检查点](.awtcontext/GlobalDoc/Checkpoints.md)保存；[M4.5区域冻结恢复](.awtcontext/GlobalDoc/RegionActivity.md)已实现：离开后保留剩余周期，返回接续且不重扣煤，重启后继续已支付周期。M4.7的设备、库存、程序与场源查询遵守独立库存授权和冻结分页，见[观测与表现](.awtcontext/GlobalDoc/GameplayObservation.md)。
 
-M4.8 提供可保存的「力场育圃」小场景：F2展开 `Force garden`，点击 `Save and create force garden` 保存旧世界并创建独立场景。观察左侧晶体和野生植株，应用同一个构式并走近右侧育圃试验；开采面板标出的真实石头、铜和煤，建造、供煤并启用推力设备，取消暂停后观察开花。成长按实际水平加速度与地形条件累计，离开活动区冻结，保存重启接续。创建需要至少128格模拟窗口；R仍创建普通世界。操作、规则与验证见[力场育圃贯穿场景](.awtcontext/GlobalDoc/ForceGarden.md)。
+M4.8 提供可保存的「力场育圃」小场景：F2展开 `Force garden`，点击 `Create force garden` 创建独立场景。当前游戏不保存进度，重新启动会创建新世界；原有持久化能力仅保留在显式持久化会话与测试中。观察左侧晶体和野生植株，应用同一个构式并走近右侧育圃试验；开采面板标出的真实石头、铜和煤，建造、供煤并启用推力设备，取消暂停后观察开花。成长按实际水平加速度与地形条件累计，离开活动区冻结；当前默认游戏结束后清空。创建需要至少128格模拟窗口；R仍创建普通世界。操作、规则与验证见[力场育圃贯穿场景](.awtcontext/GlobalDoc/ForceGarden.md)。
 
 M4 的[阶段验收](.awtcontext/GlobalDoc/M4Acceptance.md)已完成：核对八项子任务的整合边界，复验默认CPU、64格区块专项及真实GPU育圃/UI/关闭保存，并完成独立review。记录包含一个跨区块坐标测试修复、保存中断的验证方式与当前限制。
 
@@ -112,25 +116,24 @@ git submodule update --init --recursive
 
 手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
 
-M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。Pixel 在该钩子中保存；保存失败或 Deferred 时拒绝本次退出并保留会话，显式重试才会再次保存。
+M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。当前默认临时游戏直接接受关闭，不执行保存；显式持久化测试会话仍在该钩子中保存，保存失败或 Deferred 时拒绝退出。
 
-游戏默认从运行目录的 `Saves/current.txt` 恢复当前世界；首次生成新世界。流式块写入独立 `working/session-*/chunks/`，正常退出和面板 `Save world` 发布完整不可变 `checkpoints/checkpoint-*/`，由 `checkpoint.current` 选择；R先保存再创建新世界，旧目录保留。存档已加入忽略规则。可在启动前覆盖：
+当前暂时停用游戏存档：每次启动均创建新的自然世界，不读取或修改 `Pixel/Saves`，`PIXEL_SAVE_ROOT` 不影响默认游戏。R和育圃入口直接创建新世界，退出不保存，调试面板隐藏 `Save world`。区块流式加载继续使用本次会话独占的系统临时目录；重建世界或正常结束会话后删除，后续启动不会恢复它。已有存档保留。仍可覆盖模拟窗口和预算：
 
 ```sh
-(cd Pixel && PIXEL_SAVE_ROOT=/private/tmp/pixel-saves \
-  PIXEL_SIMULATION_WINDOW=1024 PIXEL_WORLD_BUDGET_MIB=512 \
+(cd Pixel && PIXEL_SIMULATION_WINDOW=1024 PIXEL_WORLD_BUDGET_MIB=512 \
   ../build/bin/Debug/Pixel)
 ```
 
-窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。保存失败保留内存数据并报告原因。模拟步等待容量时，Save/正常退出/R 返回 Deferred，不写会话元数据、不自行推进或自动重试；完成该步后需再次发起操作。提示独立于 F2 面板显示。中断写入保留上一完整检查点；尚未加入fsync，不保证系统断电持久性。
+窗口边长须为64的倍数且不超过2048；预算包含地图、索引、缓存、材料scratch、CPU快照和流式工作余量，风后端与GPU另计。大视口会在预算内缩小发布范围，其余位置显示加载占位。缺失地图阻挡人物与材料，编辑返回NotReady；I/O失败在Environment面板显示并可重试。模拟步等待容量时，R返回Deferred，完成该步后需再次发起重建；默认临时游戏仍可直接退出。显式持久化会话的Save/退出同样受完整提交边界限制，失败保留内存数据并报告原因，中断写入保留上一完整检查点；尚未加入fsync。
 
-`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World。GameSession在完整提交点捕获所有领域，文件全部写入并生成校验清单后才原子发布检查点；已卸载的脏块也包含在新代，旧代不被流式覆盖。v2–v5导入时保留原文件与完整余量，下一次保存升级为checkpoint/1。当前全量复制块、同步保存，成本随存档规模增长。格式、验证与边界见[一致检查点](.awtcontext/GlobalDoc/Checkpoints.md)和[保存退出边界](Docs/Architecture/SessionSaveBoundary.md)。
+存档实现暂时保留，以下仅适用于显式持久化会话及其回归测试：`SessionStore` 只处理文件和值数据，不持有 GameSession 或修改 World。GameSession在完整提交点捕获所有领域，文件全部写入并生成校验清单后才原子发布检查点；已卸载的脏块也包含在新代，旧代不被流式覆盖。v2–v5导入时保留原文件与完整余量，下一次保存升级为checkpoint/1。当前全量复制块、同步保存，成本随存档规模增长。格式、验证与边界见[一致检查点](.awtcontext/GlobalDoc/Checkpoints.md)和[保存退出边界](Docs/Architecture/SessionSaveBoundary.md)。
 
 ## 世界与操作
 
-世界正Y向下，任意正负坐标按需延伸。Natural通过版本化种子按Chunk生成，出生点有干燥安全平台；Superflat严格保留y<512空气、y>=512泥土，旧v2存档也继续使用该平坦策略。玩家模拟窗口默认1024×1024，按64格对齐并在玩家离开中央512×512后重新居中；远处冻结并卸载保存。自由相机只改变显示加载范围。
+世界正Y向下，任意正负坐标按需延伸。Natural通过版本化种子按Chunk生成，出生点有干燥安全平台；Superflat严格保留y<512空气、y>=512泥土，旧v2存档也继续使用该平坦策略。玩家模拟窗口默认1024×1024，按64格对齐并在玩家离开中央512×512后重新居中；远处冻结，卸载的修改暂存于本次会话区块缓存。自由相机只改变显示加载范围。
 
-`PIXEL_WORLD_GENERATOR=natural|flat`和`PIXEL_WORLD_SEED=<uint64>`可设置新世界，已有世界以存档为准；环境变量与面板选择不会改写旧世界。 世界元数据v6保存全局暂停；v2–v5中的旧环境暂停标记在导入时忽略，旧世界不会因此全局冻结。R使用面板当前选定的生成器和种子。
+`PIXEL_WORLD_GENERATOR=natural|flat`和`PIXEL_WORLD_SEED=<uint64>`可设置新世界，未指定种子时每次启动随机生成。显式持久化会话才以已有存档为准，其世界元数据v6保存全局暂停；v2–v5中的旧环境暂停标记在导入时忽略，旧世界不会因此全局冻结。R使用面板当前选定的生成器和种子。
 
 | 操作 | 行为 |
 |---|---|
@@ -138,7 +141,9 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | F3 | 切换自由调试相机，清理持续按键状态 |
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
 | 左键 | 消耗一份土料放置Dirt；先开采取得土料，不覆盖水或人物 |
-| 2 / 3 / 4，1 | 选择水 / 蒸汽 / 火调试笔刷，左键投放一团；1恢复普通工具；F2也可选择 |
+| Tab / Escape | 展开或收起5行7列背包；Escape优先收起背包，关闭后再次按下退出 |
+| 1–7 / 快捷格左键 | 选择左上角常驻的7个快捷格，退出元素笔刷/设备布置；背包中点击物品绑定到当前快捷格 |
+| Shift+2 / Shift+3 / Shift+4，Shift+1 | 选择水 / 蒸汽 / 火调试笔刷，左键投放一团；Shift+1恢复普通工具；F2也可选择 |
 | 右键 / Shift＋右键 | 设备内启停 / 回收；其他位置激活当前构式 / 开采固体 |
 | B | 切换设备布置工具；开启时左键放置推力发生器 |
 | F1 | 材料 / 合成力场方向视图 |
@@ -188,7 +193,9 @@ world.FillRegion({-64, 0, 64, 64}, {pixel::CellTypes::Empty, {0, 1}});
 
 方向压缩为两个int8分量（-1/0/1），兼容方向写入映射为 `3600 * direction` 基础力。实际移动速度按 `baseForce / 60 + wind` 换算，各分量超过±30才移动，最多一邻格。直接编辑基础力不重写兼容方向，查询实际场使用GetForce。`World(width,height)`仍可用于有限小地图测试；全图Fill仅对有限地图开放。
 
-角色为独立2×4格矩形，速度16格/秒、跳跃32格/秒、重力90格/秒²，按≤0.25格分段碰撞。角色不受风，不向泥土施力；地图缺失作为实体阻挡。相机与人物使用块坐标加块内double，GPU接收相机附近相对值，远距离仍保留亚格精度。相机跟随系数默认8/s，可在面板调整；角色使用连续屏幕矩形覆盖合成，不写入地图材料。
+角色碰撞为独立2×4格矩形，速度16格/秒、跳跃32格/秒、重力90格/秒²，按≤0.25格分段碰撞。角色不受风，不向泥土施力；地图缺失作为实体阻挡。相机与人物使用块坐标加块内double，GPU接收相机附近相对值，远距离仍保留亚格精度。相机跟随系数默认8/s，可在面板调整；玩家采用脚底对齐的分层像素人物，不写入地图材料。
+
+人物配置为 `Pixel/Content/CharacterAssets.json`，默认使用 GandalfHardcore 的身体、裤子、上衣、鞋子与头发五层原图复制件。A/D 播放跑步并切换朝向，静止播放待机，Space 上升/下落分别选择跳跃/下落动画；全局暂停冻结帧号。帧网格、脚底锚点、显示比例、图层顺序、动作帧数/速度均可配置，重启加载。来源、许可、配置合同与验证见[美术资源接入](Docs/ArtAssetIntegration.md#人物分层动画2026-10-27)。
 
 全局暂停的原生窗口专项：`(cd Pixel && ../build/tests/PixelRuntimeSmoke --pause-only)`，覆盖默认移动、真实暂停复选框、暂停中的DebugCamera和恢复跳跃。
 
@@ -239,6 +246,10 @@ ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-fail
 (cd Pixel && ../build/tests/PixelCloseSmoke)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
+# 所有配置人物帧的PNG/GPU读回与正式游戏移动、跳跃、暂停
+(cd Pixel && ../build/tests/PixelRuntimeSmoke --character-only)
+# 原生背包UI、Tab/Escape、GPU逐像素及后处理隔离；可选导出开合画面
+(cd Pixel && PIXEL_UI_CAPTURE_DIR=/private/tmp/pixel-ui ../build/tests/PixelRuntimeSmoke --inventory-ui-only)
 # 连续144步的水、蒸汽、火及动态区域上传；可选导出每24步截图
 (cd Pixel && PIXEL_ELEMENT_CAPTURE_DIR=/private/tmp/pixel-elements ../build/tests/PixelRuntimeSmoke --elements-only)
 # 持续场安装/清理的F1实际GPU读回，可导出对比截图
@@ -276,7 +287,13 @@ Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置�
 
 右键从人物前方向鼠标激活当前程序，Shift＋右键开采。默认程序为黄色球：伤害元数据10、速度60格/秒、寿命120活动步、半径0.35格。它显式等待命中或到期，程序结束清理归属效果。球使用圆形扫掠碰撞；作用区域不活跃或必要块缺失时冻结，返回后按剩余活动时间继续。
 
+新世界默认在玩家出生点右侧12格放置一个木色木头人（Natural、Flat和育圃均有）。对准它右键即可测试构式弹体；弹体会在2×4格身体范围内命中，`on_hit` 后续动作在实际命中位置执行，地形遮挡仍有效。木头人固定位置、不攻击、不可被击杀；挖掉脚下地形、进入水或火、连续高伤害命中都不会让它移动或消失。它是独立Actor，不写入材料地图；当前没有怪物AI、生命值或伤害飘字。F1隐藏外观，R创建新世界时重建一个；显式持久会话保存其身份和位置，旧存档不额外补生。
+
+木头人验证：`ctest --test-dir build-cpu -R '^Pixel.TrainingDummy$' --output-on-failure`；原生画面专项为 `(cd Pixel && ../build/tests/PixelRuntimeSmoke --dummy-only)`，可通过 `PIXEL_DUMMY_CAPTURE=/private/tmp/pixel-dummy.ppm` 导出画面。
+
 F2控制Pixel Debug，F4独立控制 `Formula Editor`。编辑器初始化为已应用程序，可直接修改 `Process text` 或载入三脉冲草稿，依次点击 `Compile process`、`Apply process`。编辑源码会撤销编译结果，错误显示行列；Apply仅影响后续实例，运行中的实例保留原版本。`Load applied process`恢复已应用源码，`Clear running`清理运行实例及归属效果。
+
+F2菜单点击 **Formula presets**，或直接按F4，在顶部选择五套函数演示：`Mining volley`（三连开采弹）、`Delayed excavation`（命中后两阶段延时扩挖）、`Alternating force`（交替推力场）、`Walking beacon`（角色附着信标）、`Wake launcher`（事件唤醒发射器）。`Load preset source`将源码放入编辑区，`Apply & run preset`直接应用并在玩家附近运行；后续右键也使用该程序。重新运行只替换同一预设，`Stop preset`只停止所选演示，`Clear running`清理全部构式。唤醒预设运行后按`Wake preset`触发；力场用F1观察，信标配合A/D移动观察。开采实际改变地形；暂停或世界未就绪时运行按钮禁用。演示配置、观察方法与实现入口见[构式合同的预设说明](Docs/Architecture/FormulaComposition.md#debug函数预设)。
 
 `Process: three carriers`可从玩家附近启动NaturalSource和FixedFixture调试承载者，使用同一程序和宿主规则；额度分别为6、4，玩家为64。真实Device另有物品和燃料规则。`Start actor attachment` 将同一构式附着玩家，后续请求跟随移动，来源与附着身份独立。Actor销毁或离开授权范围取消，离开活动区冻结。实例观察显示绑定、位置与方向，最近回执显示源码位置和拒绝码。这些承载者共享 `ProcessHost`，World不依赖构式或渲染。
 
@@ -302,3 +319,11 @@ formula/2 的 `field(cells(r), acceleration(ax), acceleration(ay), ticks(life))`
 2026-10-26 升级验证：CPU全量基线94/94通过，后续存档校验与内存统计小改动由最新11/11专项及独立ASan+UBSan 6/6复验；Pixel、AET及smoke目标编译成功。真实窗口构式GPU、formula/2编辑与Actor附着、活动默认弹体关闭保存恢复均通过。Release函数封装与展开轨迹相同、首片段均17 work/22指令。本轮未重跑完整GPU生命周期或AET运行，Vulkan validation layer不可用；实际验证范围见[验证报告](Docs/Architecture/FormulaCompositionVerification.md)。
 
 AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`，工程文档见[索引](.awtcontext/GlobalDoc/DocIndex.md)。
+
+### 性能采样的引擎归属
+
+通用采样核心、会话、CSV 与可选 Performance 面板已迁入 [Axiom Diagnostics](Axiom/Source/Core/Diagnostics/README.md)，Pixel 只保留领域指标、世界内存提供者和 PIXEL_PROFILE_* 场景配置。Axiom 统一管理 Ready 帧边界并细分限帧、交换链等待、输入、提交和 Present。新增 `PIXEL_PROFILE_MEMORY_INTERVAL` 可降低内存查询频率，查询成本单独报告；指标名称兼容，CSV 按表头读取。当前口径及历史差异见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md)。
+
+本轮迁移范围和静态/动态库、CPU、原生窗口验证结果见 [迁移验收记录](Docs/DiagnosticsMigration.md)。
+
+Performance 现仅在启动参数包含 `--PerfTest`（亦接受 `PerfTest`、`-PerfTest`）时启用。已有阶段宏会额外写入独立 Chrome Trace JSON，默认 `Pixel/pixel-performance.trace.json`，可用 `PIXEL_PROFILE_TRACE` 改路径；事件含纳秒开始时间与耗时，不经过 Log。自定义事件与提前结束宏见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md#新增插桩)。未带参数时环境变量和面板都不会启动采样。

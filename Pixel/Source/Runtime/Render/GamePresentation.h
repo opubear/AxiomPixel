@@ -9,6 +9,7 @@
 
 namespace pixel {
 class ArtAssetStore;
+struct CharacterAssets;
 class GamePresentation : public PresentationControl {
   public:
     GamePresentation();
@@ -21,7 +22,8 @@ class GamePresentation : public PresentationControl {
     void ToggleFieldView() override;
     // The consumer owns its snapshot. Session, camera and this object must be
     // alive when invoked; releasing the callback never accesses them. Never called from Draw.
-    std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera);
+    std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera,
+        std::shared_ptr<const CharacterAssets> characterArt = {});
     // Updated with terrain/device publication, never by UI actions or Draw.
     // Each presentation consumer owns its values until its next published frame.
     const std::optional<api::GameplayObservation> &PublishedGameplay() const { return GameplayFrame; }

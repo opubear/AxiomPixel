@@ -223,4 +223,65 @@ std::shared_ptr<const TerrainAssets> ArtAssetStore::LoadTerrain(std::string_view
         throw std::runtime_error("art manifest " + key + ": " + error.what());
     }
 }
+void ValidateCharacterAssets(const CharacterAssets &assets) {
+    if (assets.Layers.empty() || assets.Layers.size() > 8 || !assets.FrameSize[0] || !assets.FrameSize[1] ||
+        !std::isfinite(assets.PixelsPerCell) || assets.PixelsPerCell < 1 || assets.PixelsPerCell > 256)
+        throw std::invalid_argument("Character requires 1..8 layers, positive frame size and PixelsPerCell in [1,256]");
+    for (size_t axis = 0; axis < 2; ++axis)
+        if (!std::isfinite(assets.FootAnchor[axis]) || assets.FootAnchor[axis] < 0 || assets.FootAnchor[axis] > assets.FrameSize[axis])
+            throw std::invalid_argument("Character.FootAnchor must lie within the frame");
+
+    const auto &first = assets.Layers.front();
+    for (const auto &image : assets.Layers) {
+        if (!first || !image || !image->Width || !image->Height ||
+            image->Width > MaximumImageEdge || image->Height > MaximumImageEdge ||
+            image->Width != first->Width || image->Height != first->Height ||
+            image->Width % assets.FrameSize[0] || image->Height % assets.FrameSize[1] ||
+            image->Pixels.size() != size_t(image->Width) * image->Height * 4)
+            throw std::invalid_argument("Character layers require equal RGBA8 dimensions divisible by FrameSize");
+    }
+    const uint32_t columns = first->Width / assets.FrameSize[0], rows = first->Height / assets.FrameSize[1];
+    for (const auto &clip : assets.Animations)
+        if (clip.Row >= rows || clip.FirstFrame >= columns || !clip.FrameCount || clip.FrameCount > columns - clip.FirstFrame ||
+            !std::isfinite(clip.FramesPerSecond) || clip.FramesPerSecond <= 0 || clip.FramesPerSecond > 60)
+            throw std::invalid_argument("Character animation exceeds its sheet or has invalid frame rate");
+}
+
+std::shared_ptr<const CharacterAssets> ArtAssetStore::LoadCharacter(std::string_view manifest) {
+    const auto key = ContentPath(manifest);
+    if (const auto found = Characters.find(key); found != Characters.end())
+        return found->second;
+    try {
+        auto character = std::make_shared<CharacterAssets>();
+        const auto document = LoadManifest(key);
+        const auto &settings = document->Document.at("Character");
+        const auto &size = settings.at("FrameSize");
+        if (!size.is_array() || size.size() != 2)
+            throw std::invalid_argument("Character.FrameSize must contain width and height");
+        for (size_t axis = 0; axis < 2; ++axis)
+            character->FrameSize[axis] = PositiveInteger(size[axis], MaximumImageEdge, "Character.FrameSize");
+        character->FootAnchor = settings.at("FootAnchor").get<std::array<float, 2>>();
+        character->PixelsPerCell = settings.at("PixelsPerCell").get<float>();
+        const auto &layers = settings.at("Layers");
+        if (!layers.is_array() || layers.empty() || layers.size() > 8)
+            throw std::invalid_argument("Character.Layers requires one to eight layers");
+        for (const auto &layer : layers)
+            character->Layers.push_back(LoadImage(PngPath(layer.at("Path"))));
+
+        constexpr std::array names{"Idle", "Run", "Jump", "Fall"};
+        for (size_t index = 0; index < names.size(); ++index) {
+            const auto &clip = settings.at("Animations").at(names[index]);
+            character->Animations[index] = {UnsignedInteger(clip.at("Row"), "Character animation Row"),
+                UnsignedInteger(clip.at("FirstFrame"), "Character animation FirstFrame"),
+                PositiveInteger(clip.at("FrameCount"), MaximumImageEdge, "Character animation FrameCount"),
+                clip.at("FramesPerSecond").get<float>(), clip.at("Loop").get<bool>()};
+        }
+        ValidateCharacterAssets(*character);
+        Characters.emplace(key, character);
+        return character;
+    } catch (const std::exception &error) {
+        Manifests.erase(key); // A corrected character configuration can be retried.
+        throw std::runtime_error("art manifest " + key + ": " + error.what());
+    }
+}
 } // namespace pixel

@@ -1,11 +1,29 @@
 #include "FileIO.h"
 #include "StorageError.h"
 #include <array>
+#include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <utility>
 
 namespace pixel::io {
+TemporaryDirectory::TemporaryDirectory(const char *prefix) {
+    auto candidate = std::filesystem::temp_directory_path()
+        / (prefix + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    while (!std::filesystem::create_directory(candidate)) candidate += "-new";
+    Directory = std::move(candidate);
+}
+
+TemporaryDirectory::TemporaryDirectory(TemporaryDirectory &&other) noexcept
+    : Directory(std::exchange(other.Directory, {})) {}
+
+TemporaryDirectory::~TemporaryDirectory() {
+    if (Directory.empty()) return;
+    std::error_code ignored;
+    std::filesystem::remove_all(Directory, ignored);
+}
+
 void RequireDirectory(const std::filesystem::path &path) {
     if (!std::filesystem::is_directory(std::filesystem::symlink_status(path)))
         throw StorageError("missing or invalid save directory: " + path.string());

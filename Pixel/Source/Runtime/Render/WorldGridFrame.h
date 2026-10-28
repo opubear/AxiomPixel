@@ -43,8 +43,10 @@ struct CharacterDraw {
     std::array<float, 4> HeadColor{}; // linear RGBA
     std::array<float, 4> BodyColor{};
     std::array<float, 4> Parameters{0.25f, 0, 0, 0}; // head height fraction
+    std::array<float, 4> FrameTexels{}; // atlas x/y, frame width/height
+    std::array<float, 4> Sprite{}; // layer count (zero = diagnostic rectangle), mirror X
 };
-static_assert(sizeof(CharacterDraw) == 64);
+static_assert(sizeof(CharacterDraw) == 96);
 // Opaque render-owned projectile geometry. IDs remain CPU diagnostics only.
 struct FormulaDraw {
     std::array<float, 4> CenterRadius{}; // centre X/Y, horizontal/vertical radius
@@ -67,6 +69,12 @@ struct GardenDraw {
     GardenObject Object = GardenObject::Crystal;
     bool Ellipse = false;
 };
+// Opaque parts of a non-player actor, converted from committed gameplay values.
+struct ActorDraw {
+    std::array<float, 4> CenterRadius{};
+    std::array<float, 4> Color{};
+    uint64_t ActorId = 0;
+};
 struct WorldGridFrameView {
     // Material layer IDs plus surface/strip bits, or packed linear RGB8 in ForceField mode.
     std::span<const uint32_t> Cells;
@@ -86,6 +94,7 @@ struct WorldGridFrameView {
     std::span<const FormulaDraw> FormulaDraws;
     std::span<const DeviceDraw> DeviceDraws;
     std::span<const GardenDraw> GardenDraws;
+    std::span<const ActorDraw> ActorDraws;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
@@ -103,7 +112,7 @@ class WorldGridFrame {
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
     std::span<uint32_t> WindCells() { return WindStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws, ActorDraws}; }
     void SetRegion(std::array<int64_t, 2> origin, uint32_t width, uint32_t height);
     uint32_t GetWidth() const { return Width; }
     uint32_t GetHeight() const { return Height; }
@@ -148,6 +157,7 @@ class WorldGridFrame {
     std::vector<FormulaDraw> FormulaDraws;
     std::vector<DeviceDraw> DeviceDraws;
     std::vector<GardenDraw> GardenDraws;
+    std::vector<ActorDraw> ActorDraws;
 
   private:
     std::vector<uint32_t> CellStorage, WindStorage;

@@ -92,6 +92,7 @@ bool Observable(const Running &root, const process::HostEvent &event) {
 
 struct ProcessHost::State {
     const Actors *Characters = nullptr;
+    std::vector<ActorSnapshot> ActorTargets;
     process::Boundary At = 0;
     std::vector<std::unique_ptr<Running>> Roots;
     std::vector<Projectile> Bolts;
@@ -113,6 +114,7 @@ struct ProcessHost::State {
         ++At;
         Effects.clear();
         Counters = {};
+        ActorTargets = Characters ? Characters->Snapshot() : std::vector<ActorSnapshot>{};
     }
     Running &Owner(uint64_t id) {
         for (auto &root : Roots) if (root->Instance->State().Id == id) return *root;
@@ -234,7 +236,7 @@ struct ProcessHost::State {
             if (std::holds_alternative<process::Bolt>(request.Description)
                 && Validate(root, request, world) == ProcessRefusal::None) {
                 const auto position = WorldPoint(request.Origin);
-                root.BirthContacts[i] = FormulaWorldAdapter::Sweep(world, position, position);
+                root.BirthContacts[i] = FormulaWorldAdapter::Sweep(world, position, position, FormulaWorldAdapter::BoltRadius, ActorTargets);
             }
         }
     }
@@ -249,7 +251,7 @@ struct ProcessHost::State {
                 continue;
             }
             const auto to = FormulaWorldAdapter::Offset(it->Position, {it->Velocity.X / 60, it->Velocity.Y / 60});
-            auto contact = FormulaWorldAdapter::Sweep(world, it->Position, to);
+            auto contact = FormulaWorldAdapter::Sweep(world, it->Position, to, FormulaWorldAdapter::BoltRadius, ActorTargets);
             // Scope exit competes with terrain by time of contact. A wall hit
             // inside the scope still wins over a later unauthorized segment.
             if (!ContainsDisk(root.Carrier.Scope, to, FormulaWorldAdapter::BoltRadius)) {
@@ -273,7 +275,7 @@ struct ProcessHost::State {
                 < std::tuple(b.Contact.Fraction, b.Request.Instance, b.Request.Sequence, b.Contact.Cell.Y, b.Contact.Cell.X);
         });
         for (const auto &collision : Collisions)
-            Queue(Owner(collision.Request.Instance), collision.Contact.Kind == FormulaContactKind::Solid
+            Queue(Owner(collision.Request.Instance), collision.Contact.IsHit()
                 ? process::Outcome::Hit : process::Outcome::Cancelled,
                 collision.Request, LanguagePosition(collision.Contact.Position));
     }
@@ -356,7 +358,7 @@ struct ProcessHost::State {
         if (refusal == ProcessRefusal::None && std::holds_alternative<process::Bolt>(request.Description)) {
             const auto &contact = root.BirthContacts[index];
             if (contact.Kind != FormulaContactKind::None)
-                Queue(root, contact.Kind == FormulaContactKind::Solid ? process::Outcome::Hit : process::Outcome::Cancelled,
+                Queue(root, contact.IsHit() ? process::Outcome::Hit : process::Outcome::Cancelled,
                     request.Id, LanguagePosition(contact.Position));
         }
     }
@@ -513,6 +515,7 @@ ProcessHostStats ProcessHost::Stats() const {
     result.Instances = Data->Roots.size();
     result.Projectiles = Data->Bolts.size();
     result.RetainedBytes = sizeof(State) + Data->Roots.capacity() * sizeof(std::unique_ptr<Running>)
+        + Data->ActorTargets.capacity() * sizeof(ActorSnapshot)
         + Data->Bolts.capacity() * sizeof(Projectile) + Data->Collisions.capacity() * sizeof(Collision)
         + Data->Effects.capacity() * sizeof(FormulaEffectRecord) + Data->Receipts.size() * sizeof(ProcessReceipt);
     for (const auto &root : Data->Roots) {

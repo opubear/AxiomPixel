@@ -12,6 +12,7 @@
 #include "Runtime/Gameplay/GameAPI/WorldWillHost.h"
 #include "Runtime/Gameplay/Persistence/SessionStore.h"
 #include "Runtime/Simulation/World/World.h"
+#include "Runtime/System/IO/FileIO.h"
 #include <optional>
 #include <string>
 
@@ -23,6 +24,7 @@ struct CheckpointMetrics {
 };
 // Native callers are host assembly credentials, never fields in an external payload.
 enum class NativeCaller { Input, Debug, Driver };
+enum class SessionMode { Finite, Temporary, Persistent };
 
 namespace testing { struct SessionAccess; }
 class GamePresentation;
@@ -33,8 +35,9 @@ class GameSession : public api::WorldWillHost {
     static constexpr uint32_t WorldHeight = 1024;
     static constexpr uint32_t TerrainHeight = 512;
     static constexpr uint32_t DefaultWindStartHeight = 600;
-    // CPU fixtures remain finite; the application explicitly enables persistence.
+    // Existing fixtures select finite or persistent storage explicitly.
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
+    explicit GameSession(SessionMode mode, WorldGenerationSettings generation = {});
     static WorldGenerationSettings DefaultGeneration();
     uint64_t WorldEpoch() const { return Epoch; }
     api::ProgramRef AppliedProgram() const { return Formulas.AppliedProgram(); }
@@ -68,6 +71,7 @@ class GameSession : public api::WorldWillHost {
     items::ContainerId PlayerInventory() const { return PlayerBag; }
     const Body *GetPlayer() const { return Characters.Player(); }
     bool IsReady() const { return Ready; }
+    bool IsPersistent() const { return Store.has_value(); }
     bool CanEditWorld() const { return Ready && !Paused && !GameWorld.GetEnvironment().IsWaitingForBudget(); }
     const FormulaBridge &GetFormulaRuntime() const { return Formulas; }
     const std::string &GetFormulaError() const { return FormulaError; }
@@ -104,6 +108,7 @@ class GameSession : public api::WorldWillHost {
     friend class GamePresentation; // Snapshot ownership, residency and publication budgets only.
     friend struct testing::SessionAccess; // Fixture construction lives outside production targets.
     void Reset();
+    void ResetTemporary();
     bool TryReset();
     bool TryRecover();
     void Save();
@@ -146,6 +151,9 @@ class GameSession : public api::WorldWillHost {
     ForceGardenState Garden;
     bool CreateGardenOnReset = false;
     std::vector<api::DeviceChanged> StopDevices();
+    SessionMode Mode;
+    // Declared before World so its I/O worker stops before scratch files go away.
+    std::optional<io::TemporaryDirectory> TemporaryWorld;
     World GameWorld{WorldWidth, WorldHeight};
     Actors Characters;
     Devices Machines;

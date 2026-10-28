@@ -1,6 +1,8 @@
 #include "GamePresentation.h"
 #include "FormulaFrame.h"
 #include "DeviceFrame.h"
+#include "ActorFrame.h"
+#include "CharacterAnimation.h"
 #include "ForceGardenFrame.h"
 #include "Runtime/Render/Assets/ArtAssets.h"
 #include <algorithm>
@@ -30,7 +32,8 @@ uint64_t PublicationCapacity(WorldRect region) {
     const uint64_t cells = uint64_t(region.Width) * region.Height;
     const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
     return CommittedWorldView::CapacityFor(region) + cells * 2 * sizeof(uint32_t) + regions * 512 + 2048
-        + 2 * api::GameplayObservation::MaximumRetainedBytes;
+        + 2 * api::GameplayObservation::MaximumRetainedBytes
+        + Actors::MaximumCount * TrainingDummyDrawParts * sizeof(ActorDraw);
 }
 
 WorldRect LimitPublication(WorldRect region, uint64_t budget) {
@@ -54,9 +57,11 @@ void GamePresentation::ToggleTint() { Post.Values[1] = Post.Values[1] == 1 ? .35
 void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
 }
-std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera) {
+std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera,
+    std::shared_ptr<const CharacterAssets> characterArt) {
     auto snapshot = session.CreateReadView();
-    return [this, &session, &camera, snapshot = std::move(snapshot)](WorldGridFrame &frame) {
+    return [this, &session, &camera, snapshot = std::move(snapshot), characterArt = std::move(characterArt),
+            animation = CharacterAnimation{}](WorldGridFrame &frame) mutable {
         auto &world = session.GameWorld;
         const auto lifetime = world.PublicationLifetime();
         frame.TrackPublication(world.GetMap().GetIdentity(), [&world, lifetime, key = &frame] {
@@ -79,6 +84,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             frame.FormulaDraws.clear();
             frame.DeviceDraws.clear();
             frame.GardenDraws.clear();
+            frame.ActorDraws.clear();
             frame.HasWind = false;
             frame.MissingOutsideRegion = true;
             GameplayFrame.reset();
@@ -88,6 +94,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         const uint64_t cells = uint64_t(region.Width) * region.Height;
         const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
         const uint64_t capacity = cells * 8 + regions * 512 + 2048
+            + Actors::MaximumCount * TrainingDummyDrawParts * sizeof(ActorDraw)
             + snapshot->Gameplay().RetainedBytes() + (GameplayFrame ? GameplayFrame->RetainedBytes() : 0);
         const bool resizing = frame.GetWidth() != region.Width || frame.GetHeight() != region.Height;
         const auto previous = world.PublicationBytesFor(&frame);
@@ -97,6 +104,8 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         frame.FormulaDraws.clear();
         frame.DeviceDraws.clear();
         frame.GardenDraws.clear();
+        frame.ActorDraws.clear();
+        frame.Character.reset();
         frame.SetRegion({region.X, region.Y}, region.Width, region.Height);
         frame.Post = Post;
         frame.MissingOutsideRegion = !snapshot->IsFinite();
@@ -107,10 +116,15 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             BuildFormulaFrame(snapshot->Projectiles(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
             BuildDeviceFrame(snapshot->GetDevices(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
             BuildForceGardenFrame(snapshot->Gameplay().Garden, camera.GetCamera(), camera.GetFramebufferSize(), frame);
+            BuildActorFrame(snapshot->GetActors(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
         }
         BuildWindVisualFrame(*snapshot, WindVisual, float(std::fmod(snapshot->SimulationTime(), 2.0)), frame);
-        if (snapshot->GetPlayer())
+        if (snapshot->GetPlayer()) {
             BuildCharacterFrame(*snapshot->GetPlayer(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
+            animation.Update(*snapshot->GetPlayer(), world.GetMap().GetIdentity(), snapshot->SimulationTime());
+            if (characterArt)
+                animation.Apply(*characterArt, frame);
+        }
         // Move an exact copy into the cache so retained vector capacities stay
         // bounded; UI reads these same commit values even if an action follows.
         auto gameplay = snapshot->Gameplay();
@@ -120,7 +134,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
 }
 
 GridTextureCatalog GamePresentation::MakeTextures() {
-    // Terrain textures only; the character uses a separate continuous-colour draw.
+    // Terrain textures only; the character uses a separate composition pass.
     GridTextureCatalog textures{1, 1, 13, {}};
     for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255},
                             std::array{102, 143, 58, 255}, std::array{111, 113, 114, 255},

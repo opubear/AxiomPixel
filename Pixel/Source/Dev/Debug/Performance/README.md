@@ -1,12 +1,14 @@
 # Pixel 性能统计
 
-`FrameProfiler` 是仅依赖 C++20 标准库的 CPU wall-clock 和组件内存采样器。`MemoryUsage.h` 定义独立的存储统计口径；`GameProfiler` 单独负责游戏开关、ImGui、预热、有限帧捕获和文件输出。世界和渲染只链接 `PixelPerformance`，不依赖 UI 或引擎中的诊断设施。
+本目录保留 Pixel 的阶段/计数定义、世界与力场的内存分组及启动场景适配。采样、窗口统计、CSV、会话策略和可选 ImGui 表格已上移到 Axiom；通用合同见 [Axiom Diagnostics](../../../../../Axiom/Source/Core/Diagnostics/README.md)。`PixelPerformance` 链接无图形依赖的 `Axiom::Diagnostics`，`PixelGameProfiling` 只适配引擎会话与面板。Axiom 应用层唯一负责帧采样的开始和结束。
 
 ## 使用
 
-正常运行 Pixel 会收集最近 240 个 Ready 帧。在 **Pixel Debug → Performance** 查看平均值、P95、独占耗时、模拟步数、上传量，以及世界和力场的内存；可以关闭采样、清空或导出 `Pixel/pixel-performance.csv` 及 `.summary.txt`。F2 隐藏面板不关闭采样。面板展开时每 0.5 秒刷新统计，折叠时不计算汇总。所有帧内计时都是 CPU 时间，不是 GPU timestamp。
+Pixel 默认不启用 Performance。启动时加入 `--PerfTest`（也接受 `PerfTest`、`-PerfTest`）才会采集最近 240 个 Ready 帧，并将每个已结束 scope 的事件名、开始时间和耗时写入独立 trace。没有该参数时，性能环境变量被忽略，计时/内存查询/trace 写入均关闭，面板不能自行启用采样。
 
-自动采样通过环境变量配置，不改变引擎的命令行参数：
+启用后，在 **Pixel Debug → Performance** 查看平均值、P95、独占耗时、模拟步数、上传量，以及世界和力场的内存；可以关闭采样、清空或导出 `Pixel/pixel-performance.csv` 及 `.summary.txt`。事件文件默认为 `Pixel/pixel-performance.trace.json`，逐帧刷新，正常退出完成收尾。F2 隐藏面板不关闭采样。面板展开时每 0.5 秒刷新统计，折叠时不计算汇总。所有帧内计时都是 CPU 时间，不是 GPU timestamp。
+
+带 `--PerfTest` 启动后，用环境变量配置捕获：
 
 ```sh
 # 从工程根运行；已有构建也可直接使用，无需再次配置。
@@ -14,38 +16,40 @@ cmake -S . -B build-runtime -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build-runtime --target Pixel -j4
 (cd Pixel && PIXEL_PROFILE_FRAMES=120 PIXEL_PROFILE_WARMUP=30 \
   PIXEL_PROFILE_CSV=/private/tmp/pixel-default.csv \
-  ../build-runtime/bin/RelWithDebInfo/Pixel)
+  ../build-runtime/bin/RelWithDebInfo/Pixel --PerfTest)
 ```
 
 | 变量 | 默认 | 含义 |
 |---|---|---|
-| `PIXEL_PROFILE` | `1` | `0` 关闭计时及内存采样；禁用路径不读取时钟、不查询组件内存 |
+| `PIXEL_PROFILE` | `1`（须有 PerfTest） | `0` 关闭计时、内存和 trace；禁用路径不读取时钟、不查询组件内存 |
 | `PIXEL_PROFILE_FRAMES` | 未设置 | 设置为 1～10000 时，保存指定数量的完整帧后自动退出；未设置时为交互式循环缓冲 |
+| `PIXEL_PROFILE_MEMORY_INTERVAL` | `1` | 每 N 个 Ready 帧查询一次内存，首帧查询；未采样帧内存列为空 |
 | `PIXEL_PROFILE_WARMUP` | `30` | 自动捕获前丢弃 0～10000 帧；第一帧没有启动间隔，正式比较建议至少预热 1 帧 |
 | `PIXEL_PROFILE_CSV` | `pixel-performance.csv` | 输出路径，父目录必须存在；汇总保存到同路径加 `.summary.txt`，已有同名文件会覆盖 |
+| `PIXEL_PROFILE_TRACE` | CSV 路径扩展名替换为 `.trace.json` | 独立事件文件；不经过日志系统，不可与 CSV 或汇总路径相同 |
 | `PIXEL_PROFILE_SCENARIO` | `default` | `default`、`no-wind-visual`、`paused`、`paused-no-wind-visual`、`field` |
 
-游戏现默认暂停，`default`、`no-wind-visual` 和 `field` 均保留默认暂停状态；测量运行中的模拟需在面板手动取消暂停。历史运行态数据不能与新的默认采样直接比较。
+当前新建场景默认运行；`paused`、`paused-no-wind-visual` 主动暂停，其余场景保留运行态。场景标签只说明启动设置；采集中途手动修改状态会影响结果。旧默认暂停或旧世界实现的数据不能直接作为当前基线。
 
 对照场景只设置启动时的模拟暂停、风效开关或 F1 视图，使用同一个生产游戏主循环。`no-wind-visual` 保留风物理，`paused` 保留快照/风效。捕获时不手动改配置或操作窗口；最小化、遮挡、其他程序负载均可能影响 wall time。自动模式禁用面板中的采样开关，正常环境设置仍可操作。CSV 每行一帧，保存每阶段的 inclusive/self ms、调用次数和原始计数；汇总保存构建类型与启动场景。
 
 ## 计时口径
 
 - `frame`：相邻 FrameEnd 之间的间隔，等于 `frame.active + frame.gap`。平均 FPS 用 `1000 / 平均 frame ms`，不是逐帧 FPS 的算术平均。
-- `frame.active`：游戏 FrameBegin（成功取得交换链图像之后）到 FrameEnd（Present/EndFrame 之后）。涵盖快照、UI、模拟、提交及 present 调用。
-- `frame.gap`：上一个 FrameEnd 到本次 FrameBegin，包括引擎 60Hz 限速、事件处理、acquire/fence 等待及跳帧停顿，不能等同 GPU 时间。
+- `frame.active`：成功取得交换链图像之后、调用游戏 FrameBegin 之前，到游戏 FrameEnd 与内存查询结束之后。涵盖快照、UI、模拟、提交及 present 调用。
+- `frame.gap`：上一个采样结束到本次成功 acquire，包括引擎 60Hz 限速、事件处理、acquire/fence 等待及跳帧停顿，不能等同 GPU 时间。
 - `frame.untracked`：active 减去最外层已测量区间的并集，包括未单独插桩的 input/UI buffer 更新/present 等。**不能把所有 inclusive 行相加**；`publish`、`game.tick`、`world.environment`、`render.cpu` 包含子阶段。
-- `self`：扣除直接子 scope 的 inclusive 时间。`frame` 与 `active` 是派生总量，self 固定为零；gap 和 untracked 单独列出。所有普通 scope 的 self 加 untracked 等于 active。
+- `self`：扣除直接子 scope 的 inclusive 时间。`frame` 与 `active` 是派生总量，self 固定为零；gap 和 untracked 单独列出。新报告为 schema_version=2：gap 的 self 扣除已计时的帧前工作；所有 self（含 gap 与 untracked）之和等于 frame。帧前服务现在计入 engine.game_begin，而不再混入 gap。
 - `*_commands`：录制命令的 CPU 时间；`render.cpu` 还包含上传写入和队列提交，**都不是 GPU 执行耗时**。没有加入 GPU 同步等会干扰流水线的测量操作。
 - 阶段平均值和 P95 按“每个捕获帧累计时间”计算，未调用的帧计零；P95 是 nearest-rank。`ms_per_call` 用累计时间除以累计调用次数，可以区分材料单步成本和补算次数。上传计数是排入命令的字节量，不代表测得的总线带宽。
-- `simulation_input_us` 是游戏收到并限制在 0.25s 内的步长（暂停时也记录输入）。引擎本身先限制到 0.05s；低 FPS 时游戏时间因此可能比真实时间慢，不能用此计数计算 wall FPS。
+- `simulation_input_us` 是游戏收到并限制在 0.25s 内的步长（暂停且未请求单步时不记录）。引擎本身先限制到 0.05s；低 FPS 时游戏时间因此可能比真实时间慢，不能用此计数计算 wall FPS。
 
 ## 新增插桩
 
-在 `Stage` / `Counter` 与对应名称数组中添加稳定 ID，在语义完整的阶段使用 scope；不要对百万格循环中的每格读时钟。
+在 Pixel 的 `Stage` / `Counter` 与 `ProfileSchema()` 对应名称数组中添加稳定 ID，在语义完整的阶段使用 scope；不要对百万格循环中的每格读时钟。
 
 ```cpp
-#include "Performance/FrameProfiler.h"
+#include "Dev/Debug/Performance/FrameProfiler.h"
 
 void HeavyOperation() {
     PIXEL_PROFILE_SCOPE(MaterialStep); // 实际新增阶段时使用自己的 Stage
@@ -55,13 +59,17 @@ void HeavyOperation() {
 }
 ```
 
-独立 CPU benchmark 可自行创建 `FrameProfiler` 并在每次完整迭代外调用 `BeginFrame()/EndFrame()`，无须初始化 `GameProfiler` 或 GPU。测量与存储分离；只有汇总/导出复制有界历史，热路径没有字符串查找、锁、日志或分配。当前仅支持同线程严格嵌套 scope，一个线程同一时间只有一个 capture；将来引入 worker 时，应为每线程独立采样和显式聚合，不跨线程共享对象。
+已有 `PIXEL_PROFILE_SCOPE(StageName)` 自动记录阶段事件；提前结束使用 `PIXEL_PROFILE_BEGIN(timer, StageName)` / `PIXEL_PROFILE_END(timer)`。自定义名称无需登记阶段，可使用 `AXIOM_PERFORMANCE_SCOPE("事件名")`，或 `AXIOM_PERFORMANCE_BEGIN(timer, "事件名")` / `AXIOM_PERFORMANCE_END(timer)`。显式结束调用幂等 `End()`，离开作用域不会重复记录；不直接手动调用 C++ 析构函数。
+
+trace 采用 Chrome Trace Event JSON，事件含整数纳秒 `args.start_ns`、`args.duration_ns`；标准 `ts`/`dur` 按格式要求用微秒并保留三位小数。开始时间相对本次 trace 的单调时钟起点。trace 保留完整的已结束事件流，包括初始化、预热和跳帧，并不受 240 帧窗口或 `Clear samples` 影响；自定义名称仅进入 trace，不新增 CSV 列。当前仍只采集所属线程。详细格式、异常/暂停及文件刷新语义见 [Axiom Diagnostics](../../../../../Axiom/Source/Core/Diagnostics/README.md#nanosecond-event-trace)。
+
+独立 CPU benchmark 可自行创建 `FrameProfiler` 并在每次完整迭代外调用 `BeginFrame()/EndFrame()`，无须初始化 `GameProfiler` 或 GPU。测量与存储分离；计时核心仅在构造时分配有界历史；汇总/导出可分配。业务内存提供者的去重分配单独计时。当前仅支持同线程严格嵌套 scope，一个线程同一时间只有一个 capture；将来引入 worker 时，应为每线程独立采样和显式聚合，不跨线程共享对象。
 
 `CancelFrame()` 丢弃未完成帧并断开活跃 scope；析构自动取消。开关在下一帧生效，禁用时清除上次时刻，重新启用不会把禁用间隔计成卡顿。清空统计在帧边界执行，保留正常 cadence。计时器用 `steady_clock`，测试注入时钟验证精确数值而非 sleep。
 
 ## 内存口径与扩展
 
-每个被采样帧结束时，通过 `World::GetMemoryUsage()` 读取组件仍持有的 CPU 存储。查询只读取对象大小和容器元数据，不扫描世界格子、不分配临时缓冲。面板单位为 MiB（1,048,576 字节），CSV 保留精确字节。
+每个被采样帧结束时，通过 `World::GetMemoryUsage()` 读取组件仍持有的 CPU 存储。查询遍历块与保留缓冲，并为共享存储去重创建临时集合；不会逐格扫描。查询成本单独计入 diagnostics.memory_sample，可通过 PIXEL_PROFILE_MEMORY_INTERVAL 降低频率。面板单位为 MiB（1,048,576 字节），CSV 保留精确字节。
 
 | 行 | 计入范围 |
 |---|---|
@@ -96,3 +104,11 @@ performance::MemoryUsage Component::GetMemoryUsage() const {
 测试入口：`ctest --test-dir build-cpu -R 'Pixel\.(Performance|Memory)' --output-on-failure`。除原计时测试外，覆盖容器 size/capacity、所有权分区、七策略、维度变化、重置/关闭、缺失样本、同帧替换、窗口峰值过期及 CSV；`PixelRuntimeSmoke` 检查生产 ImGui 开关和内存表格。
 
 世界分块版本新增 `active_regions` 计数；材料访问格数、活动区域、区域上传字节与驻留预算的约定见 [世界表示](../../../Docs/WorldRepresentation.md)。
+
+## 引擎阶段与兼容性
+
+CSV 保留 Pixel 原有指标名称和内存列，新增 engine.* 阶段及 skipped_* 计数，列位置不再固定，消费者应按表头读取。frame 仍为相邻 Ready 帧结束间隔；第一帧包含首个采样区间内的等待，正式比较保留预热。active 现在包含 ObservationViews、Session.BeginFrame 和 WorldWill.Service，gap 不再承担这些服务耗时。旧报告的 self 合计公式需按上文升级。
+
+Axiom 的 events/pacing/acquire/fence_wait/image_acquire/input/submit/present 分开报告；Pixel 的 publish/game.tick/render.cpu 仍保留，并嵌在引擎对应阶段内。勿将两个层级的 inclusive 相加。场景物体、构式和设备等没有独立 Pixel scope 的部分仍包含在父阶段中。本次没有引入 GPU timestamp 或后台线程聚合。
+
+生产入口使用 PIXEL_PROFILE_*；独立 AET 使用 AXIOM_PROFILE_*，两者均须 PerfTest 启动参数。直接构造 PixelGame 的测试夹具默认关闭采样，须显式提供启动权限后才可使用 Performance 开关。内存提供者和 Pixel 世界测试仍留在父仓库，通用计时/会话测试位于 Axiom/UnitTest/Tests/DiagnosticsTests.cpp。

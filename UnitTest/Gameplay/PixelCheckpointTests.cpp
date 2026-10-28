@@ -134,7 +134,7 @@ void ActiveDomainsResumeOnce() {
     for (const auto &actor : savedActors.Records) {
         const auto *restored = loaded.GetActors().Find(actor.Id);
         const auto original = actor.Body.CaptureState();
-        Check(restored && restored->Body.CaptureState().VerticalSpeed == original.VerticalSpeed
+        Check(restored && restored->Kind == actor.Kind && restored->Body.CaptureState().VerticalSpeed == original.VerticalSpeed
             && restored->Body.GetWorldPosition().Local == original.Position.Local, "actor momentum or identity lost");
     }
     const auto sources = loaded.GetWorld().GetEnvironment().GetFieldSources().Sources();

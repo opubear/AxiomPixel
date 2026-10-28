@@ -391,6 +391,10 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             }
         } else if constexpr (std::is_same_v<T, api::SaveWorld> || std::is_same_v<T, api::ResetWorld>
                              || std::is_same_v<T, api::CreateForceGarden> || std::is_same_v<T, api::RecoverWorld>) {
+            if constexpr (std::is_same_v<T, api::SaveWorld>) {
+                if (Mode == SessionMode::Temporary)
+                    return {api::ControlStatus::Rejected, api::Reason::Unsupported, "Saving is disabled for this game."};
+            }
             if constexpr (!std::is_same_v<T, api::RecoverWorld>) {
                 if (!Ready)
                     return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
@@ -399,7 +403,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
                             "Save/reset deferred: simulation is waiting for storage budget. The session stays open; resolve the budget shortage, finish the step, then retry."};
             }
             if constexpr (std::is_same_v<T, api::CreateForceGarden>) {
-                if (Store && StreamConfiguration.WindowEdge < 128)
+                if (Mode != SessionMode::Finite && StreamConfiguration.WindowEdge < 128)
                     return {api::ControlStatus::Rejected, api::Reason::LimitExceeded,
                             "Force garden requires a simulation window of at least 128 cells."};
             }

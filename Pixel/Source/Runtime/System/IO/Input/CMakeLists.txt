@@ -7,4 +7,4 @@ target_include_directories(PixelInput PUBLIC
 # SystemEnum exposes GLFW key constants, but input has no OpenGL dependency.
 target_compile_definitions(PixelInput PUBLIC GLFW_INCLUDE_NONE)
 target_compile_features(PixelInput PUBLIC cxx_std_20)
-target_link_libraries(PixelInput PUBLIC PixelGameplay PixelCamera)
+target_link_libraries(PixelInput PUBLIC PixelGameplay PixelCamera PixelUI)

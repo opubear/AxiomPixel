@@ -90,6 +90,28 @@ F4 的 Formula Editor 保留既有 `Process source`、`Process text`、`Compile 
 
 保存恢复从原挂起点继续，不重新激活，不重发请求，不重新扣 credit/燃料。持续场状态与 Actor 状态由同一 Gameplay 检查点保存。Actor 引用按稳定 ID 解析，缺失引用明确拒绝恢复；未知版本、错误身份、异常上下文栈或非法额度同样拒绝，不清空存档。编辑后的产物不能恢复旧实例。编译器未来若改变 continuation 布局，必须升级状态/语义版本或提供明确迁移。
 
+## Debug函数预设
+
+2026-10-27新增五套内置示例，源码与启动配置集中于 `Pixel/Source/Dev/Debug/Formula/FormulaPresets.cpp`。它们使用现有formula/2函数，按需编译并共享不可变产物；没有引入新的语言特例或引擎能力。
+
+F2的Pixel Debug菜单点击 `Formula presets` 会打开并定位预设面板；也可直接按F4。在 `Preset` 选择示例后，面板显示能力说明、观察方法、默认位置与可调方向：0度向右，正角度朝屏幕下方。时间均为活动步，运行60步约一秒，暂停或冻结时不累计。
+
+| 预设 | 展示内容 | 直接运行时的配置与观察 |
+|---|---|---|
+| Mining volley | `mining_shot`封装命中开采，再作为action参数交给`volley`重复三次 | 固定在玩家右侧(4,3)，35度向下，速度40；命中开采半径2，射击完成后间隔20步；附近需有可开采地形 |
+| Delayed excavation | `plant`接收`staged_cut`；命中后延时与顺序组合 | 同样从右侧朝下发射；命中后等30步，开采半径1，结果返回后再等45步扩至半径4；移动玩家不改变命中点 |
+| Alternating force | 参数化`push`组成`cycle`，再重复两次 | 固定在玩家(0,2)附近，半径8；向右3600格/秒²持续90步，再向左90步，两轮间隔30步；F1观察方向与场域 |
+| Walking beacon | `beacon`作为action参数交给`blink`重复六次 | 附着玩家，偏移(1,-2)，黄色静止弹体位于头顶；每个存活45步，结束后隔15步再发；A/D移动后下一次发光跟随玩家，已发出的球不跟随 |
+| Wake launcher | `armed`用`on_wake`包裹命中开采弹 | 固定在玩家右侧，先等待600步；`Wake preset`触发后下一活动边界发射，超时无效果 |
+
+`Load preset source`仅替换临时编辑草稿，不启动、不应用；可修改后Compile/Apply。`Apply & run preset`应用所选内置源码并重新启动该预设，保留正在编辑的草稿；后续右键使用已应用程序，右键仍采用普通玩家施放方式，不继承预设的Actor附着配置。
+
+每套演示使用独立FixedFixture来源（9100—9104），与玩家、设备及旧示例隔离。重复运行会先取消同一预设的旧实例，其他预设继续；`Stop preset`清理所选演示及其弹体、场源和订阅，`Clear running`清理全部构式。开采已经造成的地形改变保留。Actor信标离域冻结，Actor失效或越出授权范围取消。暂停、世界未就绪或预算等待时禁止启动；唤醒按钮仅在该预设拥有活动订阅时启用。宿主拒绝显示在状态与回执中。
+
+演示控制仅调用既有 `ApplyProcess`、`StartProcessFixture`、`CancelProcessCarrier`、`WakeProcessCarrier`，由GameSession维护提交与观测；Gameplay与System不依赖预设目录。
+
+本轮验证：`PixelFormulaPresetTests`覆盖全部源码的实际调用轨迹、延时、命中点、力场方向、唤醒/超时、暂停拒绝、重启隔离与Actor跟随，并验证默认三连弹确实三次开采游戏地形。构式、动作、会话及模块边界专项7/7通过。Pixel和PixelRuntimeSmoke编译成功，`PixelRuntimeSmoke --formula-only`的GPU与真实ImGui测试通过，包含从F2入口打开、载入源码、逐套选择/运行/停止及唤醒按钮；Vulkan validation layer不可用，本轮未重跑全量CPU、完整GPU生命周期或AET。
+
 ## 边界与成本
 
 原始源码≤16KiB，标识符≤64字节，函数和 let 合计≤64项，每函数/调用≤8参数，表达式≤1024节点/24层。描述构造≤4096次求值、调用深度≤48，展开动作≤1024次访问/20层，生成文本≤64KiB。最终仍受512指令、1024过程表达式、16个计数器局部槽及原有块深度限制约束。超限在编译时拒绝。

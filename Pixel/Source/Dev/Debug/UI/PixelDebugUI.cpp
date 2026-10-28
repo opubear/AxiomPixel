@@ -228,7 +228,8 @@ void DrawGeneration(GameSession &session) {
     auto seed = session.GetNextGenerationSettings().Seed;
     if (ImGui::InputScalar("World seed", ImGuiDataType_U64, &seed))
         session.Control(NativeCaller::Debug, api::SetNextSeed{seed});
-    ImGui::TextDisabled("Press R to save and create the selected world.");
+    ImGui::TextDisabled(session.IsPersistent() ? "Press R to save and create the selected world."
+                                             : "Press R to start a new world. Progress is not saved.");
     if (!session.IsReady()) {
         ImGui::TextWrapped("World recovery failed. Simulation and saving are disabled.");
         ImGui::TextWrapped("%s", session.GetSaveError().c_str());
@@ -273,7 +274,7 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
                 if (ImGui::Button("Retry world I/O"))
                     session.Control(NativeCaller::Debug, api::RetryStreaming{});
             }
-            if (ImGui::Button("Save world"))
+            if (session.IsPersistent() && ImGui::Button("Save world"))
                 session.Control(NativeCaller::Debug, api::SaveWorld{});
         }
         if (World.UsesPixelWind()) {
@@ -342,9 +343,10 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
             }
             ImGui::EndDisabled();
             DrawGeneration(session);
+            if (ImGui::Button("Formula presets")) FormulaEditor.ShowPresets();
             DrawForceGardenUI(session, presentation, worldWill, GardenUI);
             int brush = int(input.GetElementBrush());
-            if (ImGui::Combo("Element brush (1-4)", &brush, "Normal tool\0Water\0Steam\0Fire\0"))
+            if (ImGui::Combo("Element brush (Shift+1-4)", &brush, "Normal tool\0Water\0Steam\0Fire\0"))
                 input.SetElementBrush(ElementBrush(brush));
             if (brush != 0)
                 ImGui::TextWrapped("Left click the world to spawn a radius-4 disk in empty cells. 1 restores the normal tool.");

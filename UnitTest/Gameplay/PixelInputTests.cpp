@@ -16,16 +16,17 @@ struct Fixture {
     pixel::GameSession Session;
     pixel::GameCamera Camera;
     pixel::GamePresentation Presentation;
+    pixel::ui::InventoryUI UI;
     std::array<int, 2> Framebuffer{800, 600};
     int QuitRequests = 0, PanelToggles = 0, EditorToggles = 0;
-    pixel::GameInput Input{Session, Camera, Presentation, {
+    pixel::GameInput Input{Session, Camera, Presentation, UI, {
         [this] { ++QuitRequests; }, [this] { ++PanelToggles; }, [this] { ++EditorToggles; }, [this] { return Framebuffer; }}};
     Fixture() {
         pixel::testing::SessionAccess::World(Session).DisableWind();
         Input.ResetView();
     }
-    void KeyEvent(Key key, ButtonAction action = ButtonAction::ACTION_PRESS) {
-        Input.OnKeyEvent(key, 0, action, Mod{});
+    void KeyEvent(Key key, ButtonAction action = ButtonAction::ACTION_PRESS, Mod mods = Mod{}) {
+        Input.OnKeyEvent(key, 0, action, mods);
     }
 };
 void HeldInputAndModes() {
@@ -254,6 +255,34 @@ void DeviceInput() {
     Require(!f.Input.IsDevicePlacementEnabled() && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Dirt,
             "leaving build mode did not restore material placement");
 }
+void InventoryInput() {
+    Fixture f;
+    f.KeyEvent(Key::KEY_TAB);
+    f.KeyEvent(Key::KEY_TAB, ButtonAction::ACTION_REPEAT);
+    f.KeyEvent(Key::KEY_TAB, ButtonAction::ACTION_RELEASE);
+    Require(f.UI.IsExpanded(), "Tab must open inventory exactly once per press");
+    f.KeyEvent(Key::KEY_7);
+    Require(f.UI.Read().Selected == 6 && f.Input.GetElementBrush() == pixel::ElementBrush::Disabled,
+            "number key did not select a quick slot exclusively");
+    // Deliberately use an old 2x DPI event while the camera has a different size.
+    f.Camera.SetFramebufferSize({800, 600});
+    const auto placement = pixel::ui::InventoryLayout::Placement({2560, 1440});
+    const auto slot = pixel::ui::InventoryLayout::QuickSlot(2);
+    const MousePointerState pointer{{(placement.X + (slot.X + 24) * 2) / 2,
+                                     (placement.Y + (slot.Y + 24) * 2) / 2}, {1280, 720}, {2560, 1440}};
+    const auto stamp = f.Session.CurrentCommit();
+    const auto projectiles = f.Session.GetFormulaRuntime().Projectiles().size();
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, pointer);
+    Require(f.UI.Read().Selected == 2 && f.Session.CurrentCommit() == stamp
+                && f.Session.GetFormulaRuntime().Projectiles().size() == projectiles,
+            "scaled panel click reached world actions or lost selection");
+    f.KeyEvent(Key::KEY_ESCAPE);
+    Require(!f.UI.IsExpanded() && f.QuitRequests == 0, "Escape should close inventory before quitting");
+    f.KeyEvent(Key::KEY_ESCAPE);
+    Require(f.QuitRequests == 1, "closed inventory should retain Escape quit behavior");
+}
+
 void ElementBrushInput() {
     Fixture f;
     f.Camera.GetCamera().SetPosition({100, 100});
@@ -262,7 +291,7 @@ void ElementBrushInput() {
                                   std::pair{Key::KEY_3, pixel::CellTypeId::Steam},
                                   std::pair{Key::KEY_4, pixel::CellTypeId::Fire}}) {
         pixel::testing::SessionAccess::World(f.Session).FillRegion({90, 90, 20, 20}, {});
-        f.KeyEvent(key);
+        f.KeyEvent(key, ButtonAction::ACTION_PRESS, Mod::MOD_SHIFT);
         f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
         Require(f.Session.GetWorld().GetCell(100, 100).Type == type
                     && f.Session.LastAction(pixel::NativeCaller::Debug)->Applied(),
@@ -271,9 +300,9 @@ void ElementBrushInput() {
     f.KeyEvent(Key::KEY_B);
     Require(f.Input.GetElementBrush() == pixel::ElementBrush::Disabled && f.Input.IsDevicePlacementEnabled(),
             "device and element tools overlap");
-    f.KeyEvent(Key::KEY_3);
+    f.KeyEvent(Key::KEY_3, ButtonAction::ACTION_PRESS, Mod::MOD_SHIFT);
     Require(!f.Input.IsDevicePlacementEnabled(), "element tool retained device placement");
-    f.KeyEvent(Key::KEY_1);
+    f.KeyEvent(Key::KEY_1, ButtonAction::ACTION_PRESS, Mod::MOD_SHIFT);
     Require(f.Input.GetElementBrush() == pixel::ElementBrush::Disabled, "normal tool shortcut did not leave the brush");
 }
 
@@ -287,6 +316,7 @@ int main() {
         MouseEditing();
         FormulaInputAndContinuousAim();
         DeviceInput();
+        InventoryInput();
         ElementBrushInput();
         std::cout << "Pixel input behavior passed\n";
     } catch (const std::exception &error) {

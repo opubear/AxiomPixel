@@ -2,7 +2,9 @@
 
 namespace pixel {
 api::CommitStamp GameSession::CurrentCommit() const {
-    return {SaveDirectory.empty() ? "finite-world-" + std::to_string(Epoch) : SaveDirectory.filename().string(),
+    const auto worldId = TemporaryWorld ? TemporaryWorld->Path().filename().string()
+        : SaveDirectory.empty() ? "finite-world-" + std::to_string(Epoch) : SaveDirectory.filename().string();
+    return {worldId,
             Epoch, Simulation.Tick(), Simulation.Revision()};
 }
 

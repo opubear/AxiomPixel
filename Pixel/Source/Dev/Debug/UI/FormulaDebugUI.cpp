@@ -1,4 +1,5 @@
 #include "FormulaDebugUI.h"
+#include "Dev/Debug/Formula/FormulaPresets.h"
 #include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "Runtime/Gameplay/FormulaBridge/FormulaBridge.h"
 #include "Runtime/Gameplay/FormulaBridge/ProcessExample.h"
@@ -6,18 +7,81 @@
 #include <algorithm>
 
 namespace pixel {
+void FormulaDebugUI::LoadSource(std::string_view source) {
+    ProcessText.fill(0);
+    std::copy(source.begin(), source.end(), ProcessText.begin());
+    ProcessDraft.SetSource(std::string(source));
+}
+
+void FormulaDebugUI::DrawPresets(GameSession &session) {
+    if (RevealPresets) ImGui::SetNextItemOpen(true);
+    if (!ImGui::CollapsingHeader("Formula presets", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    const auto presets = FormulaPresets();
+    if (ImGui::BeginCombo("Preset", presets[SelectedPreset].Name)) {
+        for (size_t i = 0; i < presets.size(); ++i) {
+            if (ImGui::Selectable(presets[i].Name, SelectedPreset == i)) {
+                SelectedPreset = i;
+                PresetAngle = presets[i].AngleDegrees;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    const auto &preset = presets[SelectedPreset];
+    ImGui::TextWrapped("%s", preset.Description);
+    ImGui::TextWrapped("%s", preset.Hint);
+    ImGui::TextDisabled("%s | offset (%.0f, %.0f) from player | 60 active ticks = 1 second",
+        preset.Binding == ProcessBindingKind::Actor ? "Actor attachment" : "Fixed world origin",
+        preset.Offset[0], preset.Offset[1]);
+    ImGui::SliderFloat("Preset angle", &PresetAngle, -180, 180, "%.0f degrees", ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::Button("Load preset source")) {
+        LoadSource(preset.Source);
+        ImGui::GetStateStorage()->SetInt(ImGui::GetID("Process source"), 1);
+        Status = "Preset loaded into the editor. Compile and Apply after editing.";
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!session.CanEditWorld() || !session.GetPlayer());
+    if (ImGui::Button("Apply & run preset")) {
+        const auto result = RunFormulaPreset(session, SelectedPreset, PresetAngle);
+        Status = result.Succeeded() ? "Preset running. Right-click now uses this program too." : result.Message;
+    }
+    const auto instances = session.GetFormulaRuntime().InspectProcesses();
+    const auto subject = FormulaPresetSubject(SelectedPreset);
+    const auto matches = [subject](const auto &instance) {
+        return instance.Carrier == ProcessCarrierKind::FixedFixture && instance.Subject == subject;
+    };
+    const auto count = std::count_if(instances.begin(), instances.end(), matches);
+    const bool waiting = std::any_of(instances.begin(), instances.end(), [&](const auto &instance) {
+        return matches(instance) && !instance.Suspended && instance.State.WakeSubscription.has_value();
+    });
+    if (preset.WaitsForWake) {
+        ImGui::BeginDisabled(!waiting);
+        if (ImGui::Button("Wake preset")) {
+            const auto result = WakeFormulaPreset(session, SelectedPreset);
+            Status = result.Succeeded() ? "Wake sent; the launcher fires on the next active tick." : result.Message;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+    }
+    ImGui::BeginDisabled(count == 0);
+    if (ImGui::Button("Stop preset")) {
+        const auto result = StopFormulaPreset(session, SelectedPreset);
+        Status = result.Succeeded() ? "Stopped this preset and its owned effects." : result.Message;
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::Text("Running: %d%s", int(count), waiting ? " | waiting for Wake" : "");
+    if (!session.CanEditWorld()) ImGui::TextDisabled("Resume the game and finish world loading to run a preset.");
+    ImGui::TextWrapped("Run restarts this preset at the player. Other presets keep running; Clear running stops all. Mining changes terrain.");
+}
+
 void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
     if (!ImGui::CollapsingHeader("Process source", ImGuiTreeNodeFlags_DefaultOpen)) return;
     ImGui::TextWrapped("formula 2: immutable functions and action composition. Legacy process 1 sources remain readable.");
-    const auto load = [&](std::string_view source) {
-        ProcessText.fill(0);
-        std::copy(source.begin(), source.end(), ProcessText.begin());
-        ProcessDraft.SetSource(std::string(source));
-    };
-    if (ImGui::Button("Load three-pulse draft")) load(CarrierExample().Source());
+    if (ImGui::Button("Load three-pulse draft")) LoadSource(CarrierExample().Source());
     ImGui::SameLine();
     const auto &active = session.GetFormulaRuntime().ActiveProcess();
-    if (ImGui::Button("Load applied process")) load(active.Source());
+    if (ImGui::Button("Load applied process")) LoadSource(active.Source());
     if (ImGui::InputTextMultiline("Process text", ProcessText.data(), ProcessText.size(), {-1, 160}))
         ProcessDraft.SetSource(ProcessText.data());
     if (ImGui::Button("Compile process")) ProcessDraft.Build();
@@ -123,9 +187,7 @@ void FormulaDebugUI::DrawDiagnostics(GameSession &session) {
 void FormulaDebugUI::Draw(GameSession &session) {
     if (!Visible) return;
     if (!Initialized) {
-        const auto source = session.GetFormulaRuntime().ActiveProcess().Source();
-        std::copy(source.begin(), source.end(), ProcessText.begin());
-        ProcessDraft.SetSource(std::string(source));
+        LoadSource(session.GetFormulaRuntime().ActiveProcess().Source());
         Initialized = true;
     }
     const auto display = ImGui::GetIO().DisplaySize;
@@ -133,17 +195,24 @@ void FormulaDebugUI::Draw(GameSession &session) {
                             std::min(720.f, std::max(240.f, display.y - 32))};
     ImGui::SetNextWindowPos({std::max(16.f, std::min(400.f, display.x - initialSize.x - 16)), 16}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(initialSize, ImGuiCond_FirstUseEver);
+    if (RevealPresets) {
+        ImGui::SetNextWindowCollapsed(false);
+        ImGui::SetNextWindowFocus();
+    }
     if (ImGui::Begin("Formula Editor", &Visible, ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::Text("Applied process v%llu", static_cast<unsigned long long>(session.AppliedProgram().Version));
         if (ImGui::Button("Clear running")) {
             const auto result = session.Control(NativeCaller::Debug, api::ClearRunning{});
             Status = result.Succeeded() ? "Cleared running instances." : result.Message;
         }
-        DrawProcessEditor(session);
+        if (RevealPresets) ImGui::SetScrollY(0);
+        DrawPresets(session);
         if (!Status.empty()) ImGui::TextWrapped("%s", Status.c_str());
+        DrawProcessEditor(session);
         DrawProcessExample(session);
         DrawDiagnostics(session);
     }
     ImGui::End();
+    RevealPresets = false;
 }
 } // namespace pixel

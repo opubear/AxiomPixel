@@ -6,6 +6,8 @@ M4.1 将玩家和第二类最小角色 Resident 放在 Session 拥有的 `Actors
 
 `ActorRecord` 保存 `ActorId`、`ActorKind` 和 `Body` 运动状态。`Body` 负责位置、速度、碰撞、移动和水体响应，`BodyState` 是可捕获与恢复的身体状态值；身份与生命周期由 `Actors` 管理。Player 接收宿主输入；Resident 使用同样的重力、地形碰撞和水体响应，不接收玩家输入。Resident 是用于后续居民/对象发展的最小物理对象，目前没有 AI、生成玩法或单独的渲染入口。
 
+`TrainingDummy` 是固定的构式测试目标。新世界初始化在玩家出生点右侧12格生成一个，包含Natural、Flat和育圃；位置位于生成器的干燥平坦出生区域。它跳过Body推进，不受重力、水体、输入或固体解嵌影响，也不执行攻击。当前没有生命值和伤害结算，弹体命中只产生构式Hit事件，不删除或改写目标。持久会话沿用Actors检查点保存类型、身份和位置；载入旧档不补生，重置新世界才重新创建。
+
 `ActorId` 是世界内的值身份，从 1 单调分配。删除、复用 slot 或清空当前集合不会倒退 ID 分配器；0 表示无效。跨域引用使用 ID，并携带所属世界/会话上下文。`ActorHandle` 是本进程的 `{Slot, Generation, Owner}`：删除提升代次，其他集合/重建集合的 Owner 不同，旧句柄不会命中新对象。ID 与 slot 没有数值对应关系。
 
 `Spawn` 创建新身份；`Remove` 删除对象；`Resolve(id)` 重新获得当前内存句柄。`Find` 对失效引用返回空；`Require` 用于内部保证有效的句柄，失效直接抛出逻辑错误。`Restore(record)` 恢复同一身份及完整运动状态，分配新的内存句柄，并提升后续新 ID 的起点。恢复重复的活 ID、重复玩家、未知类型或非法位置属于程序错误。容量固定最多 256 个对象，容量不足返回空且不修改集合。
@@ -26,11 +28,19 @@ Session 以玩家位置调用 `World::SetSimulationFocus`，World 只按明确�
 
 Session 的 `GetPlayer` 是同步只读借用；渲染使用 `CommittedWorldView` 中复制的 `ActorSnapshot`。Actors 修订与材料/风修订一起参与离散提交刷新，pending 期间只保留最后完整快照。相机接收明确的 bounds 和角色读引用，不再从 World 查找玩家；呈现只消费角色 DTO。
 
+`Actors::Snapshot`复制有界角色集合；`CommittedWorldView::GetActors`在同一提交中发布它并计入内存预算。Render的`ActorFrame`将木头人转换成五个木色矩形，复用场景物件Pass，在弹体与玩家之前绘制，F1不显示。玩家保留原CharacterPass，Resident暂不绘制。
+
+FormulaBridge在每个准备边界捕获角色值快照，弹体出生与移动均比较圆形扫掠对地形和木头人身体的最早接触；支持高速穿越、圆角和起点重叠，地形或未就绪边界在同一时刻优先。只对TrainingDummy启用角色命中，Player/Resident不引入友伤；World不依赖Actors。`on_hit`使用弹体的实际接触位置，后续开采等动作仍通过原有游戏能力执行。
+
 PlayerObservation 新增世界内 `ActorId`，LLMView JSON 的 `actorId` 使用十进制字符串，避免超过 2^53 时丢精度。观测仍按玩家矩形是否与 scope 相交决定返回；当前没有将整个 Actors 集合暴露为新查询 topic。
 
 M4.6通过 `ActorsState` 保存所有角色的持久ID、next-ID、分段位置、垂直速度和着地状态。恢复重建Owner与slot，不恢复内存句柄；会话epoch和调用者身份更新。磁盘损坏在载入边界报告，具体见[一致检查点](Checkpoints.md)。
 
 ## 验证入口
+
+`Pixel.TrainingDummy`覆盖默认生成与重置、Natural/Flat/育圃出生、提交快照隔离和外观、输入/水/火/固体下静止、扫掠/圆角/遮挡，以及连续百万伤害弹体和出生重叠触发真实`on_hit`开采。`Pixel.Checkpoint`覆盖包含木头人的完整磁盘保存恢复；`PixelRuntimeSmoke --dummy-only`读回木头人五个部件并验证帧切换与F1显隐。
+
+2026-10-27木头人接入验证：默认CPU全量99/99、64格Release专项（TrainingDummy、GenerationSession、Actors、Checkpoint）4/4通过；Pixel、AET和PixelRuntimeSmoke编译成功。Apple M5真实窗口木头人专项和完整PixelRuntimeSmoke均通过，包含构式/预设/育圃UI及两轮resize/minimize生命周期。已检查导出画面；Vulkan validation layer不可用，本轮未运行AET窗口测试。引擎无改动。
 
 新增 `Pixel.Actors` 覆盖删除复用、跨集合句柄、Clear、运行态恢复/运动延续、大 ID 和容量拒绝；同时验证 Resident 落地/水体/输入隔离、窗口外/部分身体缺失冻结与恢复、材料不被角色改写、±2^55 格以上的亚格运动/占用/相机/呈现，以及 Session 占用与观测身份。
 

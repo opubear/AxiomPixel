@@ -24,6 +24,7 @@ class CommittedWorldView {
     uint64_t FieldSourceRevision() const { return FieldSourceVersion; }
     uint32_t GetWindEndRow() const { return WindBounds.Height; }
     const std::optional<ActorSnapshot> &GetPlayer() const { return Player; }
+    const std::vector<ActorSnapshot> &GetActors() const { return ActorValues; }
     const std::vector<FormulaProjectile> &Projectiles() const { return Bolts; }
     const std::vector<DeviceSnapshot> &GetDevices() const { return DeviceValues; }
     const api::GameplayObservation &Gameplay() const { return GameplayValues; }
@@ -37,6 +38,7 @@ class CommittedWorldView {
     WorldRect RequestedBounds, WindBounds;
     WorldBuffers::ReadLease Buffer;
     std::optional<ActorSnapshot> Player;
+    std::vector<ActorSnapshot> ActorValues;
     std::vector<FormulaProjectile> Bolts;
     std::vector<DeviceSnapshot> DeviceValues;
     api::GameplayObservation GameplayValues;

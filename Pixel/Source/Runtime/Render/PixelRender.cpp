@@ -4,14 +4,18 @@
 
 PixelRender::PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,
                          std::function<void(WorldGridFrame &)> input, std::string postShader,
-                         std::shared_ptr<const pixel::BackgroundAssets> background)
+                         std::shared_ptr<const pixel::BackgroundAssets> background,
+                         std::shared_ptr<const pixel::CharacterAssets> character,
+                         pixel::render::InventoryOverlay::Publisher ui)
     : RHI(rhi), Catalog(std::move(catalog)), Input(std::move(input)), PostShader(std::move(postShader)),
-      Background(std::move(background)) {
+      Background(std::move(background)), CharacterArt(std::move(character)), UIPublisher(std::move(ui)) {
     ValidateGridTextureCatalog(Catalog);
     if (!Input)
         throw std::invalid_argument("2D rendering requires an input provider");
     if (Background)
         pixel::ValidateBackgroundAssets(*Background);
+    if (CharacterArt)
+        pixel::ValidateCharacterAssets(*CharacterArt);
 }
 PixelRender::~PixelRender() { Clear(); }
 void PixelRender::Initialize() {
@@ -22,7 +26,7 @@ void PixelRender::Initialize() {
     if (!RHI.IsPresentationSRGB())
         throw std::runtime_error("2D rendering requires an sRGB presentation target");
     const uint32_t slots = RHI.GetFrameSlotCount();
-    if (!slots || slots > UINT32_MAX / 15)
+    if (!slots || slots > UINT32_MAX / 18)
         throw std::runtime_error("invalid RHI frame slot count");
     constexpr std::array<float, 8> vertices{-1, -1, 1, -1, 1, 1, -1, 1};
     constexpr std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
@@ -40,7 +44,14 @@ void PixelRender::Initialize() {
         for (size_t index = 0; index < Background->Layers.size(); ++index)
             Resources.BackgroundUpload->WriteRegion(Background->Layers[index].Image->Pixels, index * layerBytes);
     }
-    Resources.Pool = RHI.CreateImageDescriptorPool(11 * slots, 15 * slots, 5 * slots);
+    if (CharacterArt) {
+        const auto &image = *CharacterArt->Layers.front();
+        Resources.CharacterTexture = RHI.CreateTexture({image.Width, image.Height, uint32_t(CharacterArt->Layers.size()), RHITextureFormat::RGBA8SRGB, true, false});
+        Resources.CharacterUpload = RHI.CreateUploadBuffer(image.Pixels.size() * CharacterArt->Layers.size());
+        for (size_t index = 0; index < CharacterArt->Layers.size(); ++index)
+            Resources.CharacterUpload->WriteRegion(CharacterArt->Layers[index]->Pixels, index * image.Pixels.size());
+    }
+    Resources.Pool = RHI.CreateImageDescriptorPool(11 * slots, 18 * slots, 5 * slots);
     Resources.Frames.resize(slots);
     for (auto &frame : Resources.Frames) {
         constexpr uint64_t initialBytes = uint64_t(Grid2D::RegionSize) * Grid2D::RegionSize * sizeof(uint32_t);
@@ -56,6 +67,7 @@ void PixelRender::Initialize() {
                                   RHIImageBinding{3, Resources.BackgroundTexture ? Resources.BackgroundTexture.get() : Resources.Materials.get()}};
         frame.WorldSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.WorldPipeline, bindings);
     }
+    InventoryUI.Initialize(RHI, std::move(UIPublisher));
     Published = std::make_unique<WorldGridFrame>();
 }
 void PixelRender::FrameBegin() {
@@ -65,6 +77,14 @@ void PixelRender::FrameBegin() {
         throw std::logic_error("2D policy must be initialized before publication");
     Input(*Published);
     ValidateWorldGridFrame(Published->Read(), Catalog.Layers, Resources.Extent.Width, Resources.Extent.Height);
+    if (Published->Character && Published->Character->Sprite[0] > 0) {
+        const auto &draw = *Published->Character;
+        if (!CharacterArt || draw.Sprite[0] > CharacterArt->Layers.size() ||
+            draw.FrameTexels[0] + draw.FrameTexels[2] > CharacterArt->Layers.front()->Width ||
+            draw.FrameTexels[1] + draw.FrameTexels[3] > CharacterArt->Layers.front()->Height)
+            throw std::invalid_argument("character frame exceeds loaded art");
+    }
+    InventoryUI.Prepare(RHI.GetActiveFrameToken().Slot);
     FrameReady = true;
 }
 void PixelRender::CreateColorTargets() {
@@ -111,7 +131,9 @@ void PixelRender::CreateColorTargets() {
         const std::array bindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, nullptr, Resources.Sampler.get()}};
         frame.PostSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.PostPipeline, bindings);
         const std::array characterBindings{RHIImageBinding{0, frame.Color.get()}};
-        frame.CharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, characterBindings);
+        auto *characterTexture = Resources.CharacterTexture ? Resources.CharacterTexture.get() : Resources.Materials.get();
+        const std::array characterArtBindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, characterTexture}};
+        frame.CharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, characterArtBindings);
         const std::array compositeBindings{RHIImageBinding{0, frame.CharacterColor.get()}, RHIImageBinding{1, nullptr, Resources.Sampler.get()}};
         frame.CharacterPostSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.PostPipeline, compositeBindings);
         const std::array windBindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, frame.WindData.get()}};
@@ -119,10 +141,11 @@ void PixelRender::CreateColorTargets() {
         const std::array windPostBindings{RHIImageBinding{0, frame.WindColor.get()}, RHIImageBinding{1, nullptr, Resources.Sampler.get()}};
         frame.WindPostSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.PostPipeline, windPostBindings);
         const std::array windCharacterBindings{RHIImageBinding{0, frame.WindColor.get()}};
-        frame.WindCharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, windCharacterBindings);
+        const std::array windCharacterArtBindings{RHIImageBinding{0, frame.WindColor.get()}, RHIImageBinding{1, characterTexture}};
+        frame.WindCharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, windCharacterArtBindings);
         frame.FormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, characterBindings);
         frame.WindFormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, windCharacterBindings);
-        const std::array formulaBindings{RHIImageBinding{0, frame.FormulaColor.get()}};
+        const std::array formulaBindings{RHIImageBinding{0, frame.FormulaColor.get()}, RHIImageBinding{1, characterTexture}};
         frame.FormulaCharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, formulaBindings);
         const std::array formulaPostBindings{RHIImageBinding{0, frame.FormulaColor.get()}, RHIImageBinding{1, nullptr, Resources.Sampler.get()}};
         frame.FormulaPostSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.PostPipeline, formulaPostBindings);
@@ -133,13 +156,15 @@ void PixelRender::OnPresentationChanged(const RHIPresentationChanged &) {
         return;
     RHI.WaitIdle();
     CreateColorTargets();
+    InventoryUI.RecreatePipeline(RHI);
 }
 void PixelRender::Draw() {
     PIXEL_PROFILE_SCOPE(Render);
     if (!FrameReady)
         throw std::logic_error("2D draw requires a successfully published frame");
     FrameReady = false;
-    auto &frame = Resources.Frames.at(RHI.GetActiveFrameToken().Slot);
+    const auto slot = RHI.GetActiveFrameToken().Slot;
+    auto &frame = Resources.Frames.at(slot);
     const auto input = Published->Read();
     frame.HasWind = Wind.Enabled(input);
     frame.HasFormula = SceneObjects.Enabled(input);
@@ -147,6 +172,7 @@ void PixelRender::Draw() {
     Upload.Prepare(RHI, Resources, frame, input);
     const pixel::render::RenderPassContext context{Resources, frame, input, Catalog, Background.get()};
     RHI.RecordFrame([&](RHICommandList &commands) {
+        InventoryUI.Upload(commands, slot);
         Upload.Record(commands, context);
         World.Record(commands, context);
         if (frame.HasWind)
@@ -155,8 +181,12 @@ void PixelRender::Draw() {
             SceneObjects.Record(commands, context);
         if (frame.HasCharacter)
             Character.Record(commands, context);
-        PostProcess.Record(commands, context, [this](RHICommandList &overlay) { RecordOverlay(overlay); });
+        PostProcess.Record(commands, context, [this, slot](RHICommandList &overlay) {
+            InventoryUI.Draw(overlay, slot, Resources.Extent);
+            RecordOverlay(overlay);
+        });
     });
+    InventoryUI.Commit(slot);
     WorldUploadBytes += Upload.Commit(frame, input);
     ++FrameCount;
 }
@@ -174,6 +204,8 @@ void PixelRender::Clear() {
     FrameReady = false;
     // Application destroys the game first. Releasing a publisher must never call it.
     Input = {};
+    UIPublisher = {};
+    InventoryUI.Clear();
     SetOverlayDrawCallback({});
     Published.reset();
     Resources.Frames.clear();
@@ -187,6 +219,9 @@ void PixelRender::Clear() {
     Resources.Materials.reset();
     Resources.BackgroundUpload.reset();
     Resources.BackgroundTexture.reset();
+    Resources.CharacterUpload.reset();
+    Resources.CharacterTexture.reset();
+    CharacterArt.reset();
     Background.reset();
     Resources.Sampler.reset();
     Resources.Indices.reset();

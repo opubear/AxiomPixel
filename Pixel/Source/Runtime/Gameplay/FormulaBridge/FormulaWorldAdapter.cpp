@@ -9,11 +9,12 @@ namespace pixel {
 namespace {
 constexpr double ContactEpsilon = 1e-10;
 
-// A cell dilated by a disk is four face strips and four corner disks. Testing
+// A rectangle dilated by a disk is four face strips and four corner disks. Testing
 // both preserves the rounded corners which an expanded AABB would overestimate.
-std::optional<double> CircleCell(double sx, double sy, double dx, double dy, double x, double y, double radius) {
-    const double nearestX = std::clamp(sx, x, x + 1);
-    const double nearestY = std::clamp(sy, y, y + 1);
+std::optional<double> CircleRectangle(double sx, double sy, double dx, double dy, double x, double y,
+                                      double width, double height, double radius) {
+    const double nearestX = std::clamp(sx, x, x + width);
+    const double nearestY = std::clamp(sy, y, y + height);
     if (std::hypot(sx - nearestX, sy - nearestY) <= radius + ContactEpsilon)
         return 0;
 
@@ -23,26 +24,26 @@ std::optional<double> CircleCell(double sx, double sy, double dx, double dy, dou
             first = std::min(first, std::clamp(t, 0.0, 1.0));
     };
     if (dx != 0) {
-        for (const double face : {x - radius, x + 1 + radius}) {
+        for (const double face : {x - radius, x + width + radius}) {
             const double t = (face - sx) / dx;
             const double along = sy + t * dy;
-            if (along >= y - ContactEpsilon && along <= y + 1 + ContactEpsilon)
+            if (along >= y - ContactEpsilon && along <= y + height + ContactEpsilon)
                 accept(t);
         }
     }
     if (dy != 0) {
-        for (const double face : {y - radius, y + 1 + radius}) {
+        for (const double face : {y - radius, y + height + radius}) {
             const double t = (face - sy) / dy;
             const double along = sx + t * dx;
-            if (along >= x - ContactEpsilon && along <= x + 1 + ContactEpsilon)
+            if (along >= x - ContactEpsilon && along <= x + width + ContactEpsilon)
                 accept(t);
         }
     }
 
     const double a = dx * dx + dy * dy;
     if (a != 0) {
-        for (const double cx : {x, x + 1}) {
-            for (const double cy : {y, y + 1}) {
+        for (const double cx : {x, x + width}) {
+            for (const double cy : {y, y + height}) {
                 const double ox = sx - cx, oy = sy - cy;
                 const double b = ox * dx + oy * dy;
                 const double c = ox * ox + oy * oy - radius * radius;
@@ -77,7 +78,8 @@ WorldPosition FormulaWorldAdapter::Offset(WorldPosition anchor, FormulaVector di
     return anchor;
 }
 
-FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from, WorldPosition to, double radius) {
+FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from, WorldPosition to, double radius,
+                                          std::span<const ActorSnapshot> actors) {
     from.Normalize();
     to.Normalize();
     if (!std::isfinite(radius) || radius < 0 || radius > 16)
@@ -111,13 +113,30 @@ FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from
                 else
                     continue;
             }
-            const auto contact = CircleCell(start[0], start[1], dx, dy, double(x), double(y), radius);
+            const auto contact = CircleRectangle(start[0], start[1], dx, dy, double(x), double(y), 1, 1, radius);
             if (!contact)
                 continue;
             FormulaContact candidate{kind, *contact, {}, cell};
             if (Earlier(candidate, first))
                 first = candidate;
         }
+    }
+    for (const auto &actor : actors) {
+        if (actor.Kind != ActorKind::TrainingDummy) continue;
+        const auto position = actor.Position.RelativeTo(origin);
+        const auto last = Offset(actor.Position, {Body::Width - ContactEpsilon, Body::Height - ContactEpsilon}).Cell();
+        if (!bounds.Contains(actor.Position.Cell()) || !bounds.Contains(last)) continue;
+        // Broad phase also keeps distant actors out of the quadratic calculation.
+        if (position[0] > std::max(start[0], end[0]) + radius + ContactEpsilon
+            || position[0] + Body::Width < std::min(start[0], end[0]) - radius - ContactEpsilon
+            || position[1] > std::max(start[1], end[1]) + radius + ContactEpsilon
+            || position[1] + Body::Height < std::min(start[1], end[1]) - radius - ContactEpsilon) continue;
+        const auto contact = CircleRectangle(start[0], start[1], dx, dy, position[0], position[1],
+                                              Body::Width, Body::Height, radius);
+        // Terrain and unavailable regions win ties. Targets never bypass a wall
+        // or mutate health/lifetime; repeated hits keep the same actor identity.
+        if (contact && (first.Kind == FormulaContactKind::None || *contact < first.Fraction - ContactEpsilon))
+            first = {FormulaContactKind::Actor, *contact, {}, actor.Position.Cell(), actor.Id};
     }
     first.Position = Offset(from, {dx * first.Fraction, dy * first.Fraction});
     return first;

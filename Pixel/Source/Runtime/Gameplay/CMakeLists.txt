@@ -22,6 +22,7 @@ add_library(PixelGameplay STATIC
     Persistence/KnowledgeCodec.cpp Persistence/WorldWillCodec.cpp)
 target_link_libraries(PixelGameplay PUBLIC PixelActors PixelFormulaBridge PixelGarden PixelIO)
 
+add_subdirectory(UI)
 add_subdirectory(Camera)
 add_subdirectory(LLMView)
 add_subdirectory(LLM)

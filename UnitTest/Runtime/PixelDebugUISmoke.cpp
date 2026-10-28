@@ -5,6 +5,7 @@
 #include "InputManager.h"
 #include "Runtime/Gameplay/Application/PixelGame.h"
 #include "Dev/Debug/Garden/ForceGardenProgram.h"
+#include "Dev/Debug/Formula/FormulaPresets.h"
 #include "Dev/Debug/LLM/FakeModel.h"
 #include "Render/RenderGlobalContext.h"
 #include "SystemEnum.h"
@@ -325,6 +326,19 @@ void CheckMemoryPanel(Axiom &app) {
     window->StateStorage.SetInt(window->GetID("Performance"), 1);
     Draw(app, 2);
 
+    Require(!app.GetDiagnostics().Available(), "profiling started without the PerfTest startup option");
+    const auto disabled = CaptureUiText(app);
+    RequireUiText(disabled.find("Start with --PerfTest") != std::string::npos,
+                  "performance UI did not explain the startup gate", disabled);
+    // Supply startup permission explicitly for the UI fixture. Trace output is
+    // covered separately; this fixture exercises the aggregate memory panel.
+    app.GetDiagnostics().SetAvailable(true);
+    auto options = app.GetDiagnostics().Settings();
+    options.Enabled = false;
+    options.TracePath.clear();
+    app.GetDiagnostics().Configure(pixel::performance::ProfileSchema(), options);
+    Draw(app, 2);
+
     // Use the production checkbox after whatever camera and diagnostics rows
     // are present. A real click must enable the frame-end collector.
     Click(app, ControlPoint(app, "Collect CPU timings and memory"));
@@ -565,7 +579,7 @@ void RunPixelGardenUISmoke() {
     Draw(app, 2);
     auto &session = pixel->GetSession();
     const auto oldEpoch = session.CurrentCommit().WorldEpoch;
-    Click(app, ControlPoint(app, "Save and create force garden"));
+    Click(app, ControlPoint(app, "Create force garden"));
     const auto initial = *pixel->GetPresentation().PublishedGameplay();
     Require(initial.Garden && initial.Stamp.WorldEpoch != oldEpoch && initial.Garden->State.Enabled,
             "garden create UI did not replace the world and publish the scene");
@@ -616,7 +630,7 @@ void RunPixelGardenUISmoke() {
     SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
     // The powered reproduction starts in a fresh garden, so its progress cannot
     // be supplied by the earlier temporary player field.
-    Click(app, ControlPoint(app, "Save and create force garden"));
+    Click(app, ControlPoint(app, "Create force garden"));
     Click(app, ControlPoint(app, "Mine build materials"));
     Click(app, ControlPoint(app, "Mine 16 coal"));
     const auto &world = session.GetWorld();
@@ -673,7 +687,7 @@ void RunPixelGardenAidUISmoke() {
     const auto observation = [&]() -> const pixel::api::GameplayObservation & {
         return *pixel->GetPresentation().PublishedGameplay();
     };
-    Click(app, ControlPoint(app, "Save and create force garden"));
+    Click(app, ControlPoint(app, "Create force garden"));
     Click(app, ControlPoint(app, "Mine build materials"));
     Click(app, ControlPoint(app, "Build home emitter"));
     Click(app, ControlPoint(app, "Install home protection"));
@@ -757,6 +771,64 @@ void RunPixelGardenAidUISmoke() {
     app.Shutdown();
     std::cout << "Garden aid ImGui passed: real player text/prayer/cancel/protection controls, injected offline worker, committed instance/field/growth, revocation and frozen publication\n";
 }
+
+namespace {
+void ExerciseFormulaPresets(PixelSmokeApplication &app, PixelGame &game) {
+    auto &session = game.GetSession();
+    const auto &runtime = session.GetFormulaRuntime();
+    auto *editor = ImGui::FindWindowByName("Formula Editor");
+    SendKey(app, GLFW_KEY_F2, true);
+    SendKey(app, GLFW_KEY_F2, false);
+    Click(app, ControlPoint(app, "Formula presets"));
+    Require(editor->Active && !editor->Collapsed, "debug menu did not reveal the preset panel");
+    editor->StateStorage.SetInt(editor->GetID("Process: three carriers"), 0);
+    Draw(app, 2);
+    const auto beforeLoad = session.AppliedProgram();
+    Click(app, ControlPoint(app, "Load preset source", "Formula Editor"));
+    Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
+    Require(session.AppliedProgram() == beforeLoad && runtime.Stats().Roots == 0,
+        "loading/compiling a preset started a world effect");
+    Click(app, ControlPoint(app, "Apply process", "Formula Editor"));
+    Require(runtime.ActiveProcess().Source() == pixel::FormulaPresets()[0].Source,
+        "preset source was not loaded into the real editor");
+    editor->StateStorage.SetInt(editor->GetID("Process source"), 0);
+    Draw(app, 2);
+
+    for (size_t index = 0; index < pixel::FormulaPresets().size(); ++index) {
+        Click(app, ControlPoint(app, "Preset", "Formula Editor"));
+        const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
+        Require(!popups.empty() && popups.back().Window, "preset selector did not open");
+        const auto *popup = popups.back().Window;
+        const auto &style = ImGui::GetStyle();
+        const float text = ImGui::GetFontSize();
+        Click(app, {popup->Pos.x + style.WindowPadding.x + 30,
+            popup->Pos.y + style.WindowPadding.y + index * (text + style.ItemSpacing.y) + text * .5f});
+        Click(app, ControlPoint(app, "Apply & run preset", "Formula Editor"));
+        const auto &preset = pixel::FormulaPresets()[index];
+        const auto instances = runtime.InspectProcesses();
+        Require(instances.size() == 1 && instances[0].Subject == pixel::FormulaPresetSubject(index)
+            && instances[0].Configuration.Binding == preset.Binding
+            && runtime.ActiveProcess().Source() == preset.Source, "preset selection ran the wrong program or binding");
+        if (index == 2)
+            Require(session.GetWorld().GetEnvironment().GetFieldSources().Sources().size() == 1,
+                "force preset did not install a real field");
+        if (preset.Binding == pixel::ProcessBindingKind::Actor)
+            Require(runtime.Projectiles().size() == 1
+                && runtime.Projectiles()[0].Position.Cell().Y == session.GetPlayer()->GetWorldPosition().Cell().Y - 2,
+                "beacon was not emitted above the actor");
+        if (preset.WaitsForWake) {
+            Require(runtime.Projectiles().empty(), "wake preset fired before pressing Wake");
+            Click(app, ControlPoint(app, "Wake preset", "Formula Editor"));
+            game.Tick(1.f / 60);
+            Draw(app, 2);
+            Require(runtime.Projectiles().size() == 1, "Wake preset button did not fire the launcher");
+        }
+        Click(app, ControlPoint(app, "Stop preset", "Formula Editor"));
+        Require(runtime.Stats().Roots == 0 && runtime.Projectiles().empty()
+            && session.GetWorld().GetEnvironment().GetFieldSources().Sources().empty(), "preset stop leaked effects");
+    }
+}
+} // namespace
 
 void RunPixelFormulaUISmoke() {
     auto game = std::make_unique<PixelGame>(false);
@@ -869,6 +941,7 @@ void RunPixelFormulaUISmoke() {
     editor->Collapsed = true;
     Draw(app, 2);
     Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI source editing changed world cells");
+    ExerciseFormulaPresets(app, *pixel);
     app.Shutdown();
-    std::cout << "Formula ImGui passed: formula/2 functions, compile/Apply, invalid draft, version isolation, Actor attachment/follow/clear, right capture and F2/F4\n";
+    std::cout << "Formula ImGui passed: formula/2 functions, compile/Apply, invalid draft, version isolation, Actor attachment/follow/clear, five presets/load/run/stop/wake, right capture and F2/F4\n";
 }

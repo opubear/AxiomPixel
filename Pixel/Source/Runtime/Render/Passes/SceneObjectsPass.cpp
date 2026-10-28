@@ -17,7 +17,8 @@ constexpr std::array FormulaBindings{DescriptorRequirement{0, 0, ShaderDescripto
 
 } // namespace
 bool SceneObjectsPass::Enabled(const WorldGridFrameView &input) const {
-    return (!input.FormulaDraws.empty() || !input.DeviceDraws.empty() || !input.GardenDraws.empty()) && input.DisplayMode == GridDisplayMode::Materials;
+    return (!input.FormulaDraws.empty() || !input.DeviceDraws.empty() || !input.GardenDraws.empty() || !input.ActorDraws.empty())
+        && input.DisplayMode == GridDisplayMode::Materials;
 }
 std::unique_ptr<RHIPipeline> SceneObjectsPass::CreatePipeline(DynamicRHI &rhi, RHITexture &target) const {
     return rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo("Pixel2DFormula.fs"), FormulaBindings, &target, sizeof(FormulaConstants)});
@@ -55,6 +56,8 @@ void SceneObjectsPass::Record(RHICommandList &commands, const RenderPassContext 
     }
     for (const auto &draw : input.GardenDraws)
         drawShape(draw.CenterRadius, draw.Color, draw.Ellipse ? 1 : 2);
+    for (const auto &draw : input.ActorDraws)
+        drawShape(draw.CenterRadius, draw.Color, 2);
     for (const auto &draw : input.FormulaDraws)
         drawShape(draw.CenterRadius, draw.Color, 1);
     commands.EndPass();

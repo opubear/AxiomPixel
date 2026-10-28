@@ -171,7 +171,7 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
     if (!ImGui::CollapsingHeader("Force garden"))
         return;
     ImGui::TextWrapped("Observe the wild crystal, reproduce its force at the home bed, then sustain growth with a coal-powered emitter.");
-    if (ImGui::Button("Save and create force garden")) {
+    if (ImGui::Button(session.IsPersistent() ? "Save and create force garden" : "Create force garden")) {
         const auto result = session.Control(NativeCaller::Debug, api::CreateForceGarden{});
         receipt = std::string("Create garden: ") + (result.Succeeded() ? "Applied. " : "Rejected. ") + result.Message;
     }

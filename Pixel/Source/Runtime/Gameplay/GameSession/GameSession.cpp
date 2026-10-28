@@ -53,11 +53,14 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
 }
 
 GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
-    : NextGeneration(generation) {
+    : GameSession(persistent ? SessionMode::Persistent : SessionMode::Finite, generation) {}
+
+GameSession::GameSession(SessionMode mode, WorldGenerationSettings generation)
+    : Mode(mode), NextGeneration(generation) {
     Formulas.BindActors(Characters);
     ValidateGenerationSettings(generation);
     items::ValidateCost(ForceEmitterCost());
-    if (persistent) {
+    if (mode != SessionMode::Finite) {
         const auto edge = RuntimeNumber("PIXEL_SIMULATION_WINDOW", storage::DefaultWindowEdge);
         if (edge > 2048)
             throw std::invalid_argument("simulation window must not exceed 2048 cells");
@@ -66,16 +69,17 @@ GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
         if (budget > UINT64_MAX / (1024 * 1024))
             throw std::invalid_argument("world budget exceeds supported range");
         StreamConfiguration.BudgetBytes = budget * 1024 * 1024;
-        Store.emplace();
-        if (Load())
-            return;
+        if (mode == SessionMode::Persistent) {
+            Store.emplace();
+            if (Load()) return;
+        }
     }
     Reset();
 }
 
 void GameSession::InitializeScene() {
     const auto &generation = StreamConfiguration.Generation;
-    const auto surface = Store ? CreateWorldGenerator(generation)->SurfaceHeight(512) : int64_t(512);
+    const auto surface = GameWorld.GetStreamer() ? CreateWorldGenerator(generation)->SurfaceHeight(512) : int64_t(512);
     Characters.SetPlayerPosition(WorldPosition::FromAbsolute(511, double(surface - int64_t(Body::Height))));
     GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.UpdateStreaming();
@@ -99,11 +103,18 @@ void GameSession::InitializeScene() {
     wind.Kind = WindKind;
     GameWorld.ConfigureWindDomain(generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88), wind);
     if (CreateGardenOnReset) debug::InitializeForceGarden(GameWorld, Formulas, Garden, *GetPlayer());
+    const auto target = FormulaWorldAdapter::Offset(GetPlayer()->GetWorldPosition(), {12, 0});
+    if (!Characters.Spawn(ActorKind::TrainingDummy, target))
+        throw std::logic_error("no capacity for the default training dummy");
 }
 
 void GameSession::Reset() {
     ValidateGenerationSettings(NextGeneration);
-    if (!Store) {
+    if (Mode == SessionMode::Temporary) {
+        ResetTemporary();
+        return;
+    }
+    if (Mode == SessionMode::Finite) {
         // Finite fixtures retain their original flat layout and dimensions.
         StreamConfiguration.Generation = {};
         ReplacingWorld();
@@ -152,6 +163,34 @@ void GameSession::Reset() {
     }
 }
 
+void GameSession::ResetTemporary() {
+    io::TemporaryDirectory candidate("pixel-world-");
+    auto stream = StreamConfiguration;
+    stream.Generation = NextGeneration;
+    stream.SurfaceY = NextGeneration.SurfaceY;
+    stream.Directory = candidate.Path();
+    const auto surface = CreateWorldGenerator(NextGeneration)->SurfaceHeight(512);
+    const auto position = WorldPosition::FromAbsolute(511, double(surface - int64_t(Body::Height)));
+    Ready = false;
+    ReplacingWorld();
+    // Do not flush the discarded world when replacing its streamer.
+    GameWorld.DiscardStreaming();
+    TemporaryWorld.emplace(std::move(candidate));
+    StreamConfiguration = stream;
+    try {
+        GameWorld.EnableStreaming(stream, InitialWindow(position, stream.WindowEdge));
+        InitializeScene();
+        Ready = true;
+        SaveError.clear();
+        PublishCommit();
+    } catch (...) {
+        GameWorld.DiscardStreaming();
+        Ready = false;
+        Paused = true;
+        throw;
+    }
+}
+
 bool GameSession::TryReset() {
     if (const auto failure = storage::CaptureFailure([&] { Reset(); })) {
         const auto recovery = !Ready ? SaveError : std::string{};
@@ -164,6 +203,7 @@ bool GameSession::TryReset() {
 
 bool GameSession::TryRecover() {
     if (Ready) return true;
+    if (Mode == SessionMode::Temporary) return TryReset();
     if (!Store || SaveDirectory.empty()) return false;
     const auto failure = storage::CaptureFailure([&] {
         ReplacingWorld();

@@ -5,6 +5,20 @@
 #include <ostream>
 
 namespace pixel::io {
+// Owns scratch files for one operation/session; never reused on the next run.
+class TemporaryDirectory {
+  public:
+    explicit TemporaryDirectory(const char *prefix);
+    ~TemporaryDirectory();
+    TemporaryDirectory(TemporaryDirectory &&other) noexcept;
+    TemporaryDirectory(const TemporaryDirectory &) = delete;
+    TemporaryDirectory &operator=(const TemporaryDirectory &) = delete;
+    const std::filesystem::path &Path() const { return Directory; }
+
+  private:
+    std::filesystem::path Directory;
+};
+
 struct FileDigest {
     uint64_t Bytes = 0;
     uint64_t Hash = 14695981039346656037ull;

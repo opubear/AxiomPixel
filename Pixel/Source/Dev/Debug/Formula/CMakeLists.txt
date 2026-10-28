@@ -1,0 +1,2 @@
+add_library(PixelFormulaPresets STATIC FormulaPresets.cpp)
+target_link_libraries(PixelFormulaPresets PUBLIC PixelGameplay)

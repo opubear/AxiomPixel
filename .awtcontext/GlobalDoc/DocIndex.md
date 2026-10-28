@@ -28,7 +28,7 @@
 | 构式攻击特效素材与用途 | `workspace:ArtRaw/Effects/README.md` | 新增11组免费攻击特效、实际文件、构式阶段映射和图集适配边界 | |
 | 素材来源价格与商用许可总索引 | `workspace:ArtRaw/RESOURCE_INDEX.md` | 19组下载与3组生成素材的逐包来源、价格、署名、商用条件及AI来源记录 | |
 | 舒适山林四层视差背景试作 | `workspace:ArtRaw/Environment/NaturalParallax2K/README.md` | 四张2560x1440透明分层贴图、原件与生成提示词、视差预览及镜像重复用法 | |
-| 游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | Content复制件、自定义JSON、PNG共享缓存、GPU一次上传、视差及验证范围 | |
+| 游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | Content美术清单、背景/地形/人物分层动画、共享缓存、GPU上传与验证 | |
 | 自然方块材质纹理试作 | `workspace:ArtRaw/Materials/NaturalBlocks/README.md` | 12项自然方块与矿石纹理、64和256像素版本、五种矿石辨识预览及铺贴用法 | |
 | 分块程序化世界生成方案 | `context:GlobalDoc/WorldGenerationDesign.md` | 已评审设计基线；实现与当前接口、材质JSON和验证入口见WorldGenerationImplementation | |
 | 火焰水体与水汽静态纹理 | `workspace:ArtRaw/Materials/Elements/README.md` | 六项64和256像素静态材质与透明效果、密度图、重复方向及已有动画入口 | |
@@ -54,7 +54,7 @@
 | 构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | process/1兼容与执行核心历史合同；formula/2差异见FormulaComposition | |
 | FormulaBridge与程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 宿主基础合同；formula/2的Actor绑定、回执与检查点差异见FormulaComposition | |
 | 构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 运行DTO与源码编辑基础合同；formula/2状态和保存演进见FormulaComposition | |
-| Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 角色身份、运动和地形边界；M4.6完整状态与next-ID持久化 | |
+| Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 角色身份、运动、固定测试木头人及构式命中；提交呈现和检查点合同 | |
 | 物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 物品、容器与资源操作；检查点保存及M4.7库存投影和UI | |
 | 设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
 | 有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 持续来源、区域冻结、驻留失效及M4.6归属持久化 | |
@@ -78,11 +78,18 @@
 | Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
 | 工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 五大模块归属、数据流、构建运行和验证命令；System/IO/Input与Gameplay分层 | |
 | 性能采样模块 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | Dev/Debug性能插桩、运行时采样开关、CSV和内存统计口径 | |
-| 构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | formula/2函数、时序、Actor绑定、错误和旧源码存档兼容合同 | |
+| 构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | formula/2函数、Actor绑定、时序、兼容保存及五套Debug函数预设 | |
 | 构式升级验证 | `workspace:Docs/Architecture/FormulaCompositionVerification.md` | 独立CPU与sanitizer复核，主agent GPU、关闭、Release成本及覆盖边界 | |
 | 构式函数组合Release成本 | `workspace:Docs/Architecture/FormulaCompositionCost.txt` | 三轮编译与包装/展开首片段成本；不含实例创建、世界提交和GPU | |
 | 水蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 单格材料形态规则、调试笔刷、同步提交、存档与验证入口 | |
 | 世界双缓冲验证与性能 | `workspace:Docs/WorldBuffersValidation.md` | 只读版本、预算事务、独立审查、CPU/GPU验证及三轮Release取舍 | |
 | 世界双缓冲Release原始数据 | `workspace:Docs/WorldBuffersBenchmark-2026-10-26.csv` | 三轮同源基准的提交与F1打包耗时、World预留容量和校验值 | |
+| 背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：格子背包、装备、掉落拾取、事务边界与现有合同迁移，尚未实现 | |
+| 人物动作与换装素材 | `workspace:ArtRaw/Characters/README.md` | 五组免费像素人物、一个骨骼换装样例、预览、动作网格与来源许可 | |
+| 人物装备换装与2D骨骼评估 | `workspace:ArtRaw/Characters/EquipmentAndSkeleton.md` | 分层序列帧、武器挂点与骨骼的取舍；Spine样例许可及其他候选范围 | |
+| 原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | Gameplay/UI独立状态、七快捷格和五行七列库存、原生后处理叠加及验证 | |
+| Axiom通用CPU诊断 | `workspace:Axiom/Source/Core/Diagnostics/README.md` | PerfTest门控、RAII纳秒事件trace、聚合采样和静态动态链接合同 | |
+| Performance引擎迁移验收 | `workspace:Docs/DiagnosticsMigration.md` | 通用诊断边界、PerfTest与纳秒trace、静态动态库及原生窗口验收结果 | |
+| Axiom统一日志 | `workspace:Axiom/Source/Log/README.md` | 默认毫秒时间戳、日志级别和格式化接口、共享实例及静态动态链接验证 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

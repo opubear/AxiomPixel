@@ -34,6 +34,8 @@ struct RenderResources {
     std::unique_ptr<RHIUploadBuffer> MaterialUpload;
     std::unique_ptr<RHITexture> BackgroundTexture;
     std::unique_ptr<RHIUploadBuffer> BackgroundUpload;
+    std::unique_ptr<RHITexture> CharacterTexture;
+    std::unique_ptr<RHIUploadBuffer> CharacterUpload;
     std::unique_ptr<RHIPipeline> WorldPipeline, WindPipeline, FormulaPipeline, CharacterPipeline, PostPipeline;
     std::unique_ptr<RHIDescriptorPool> Pool;
     std::vector<FrameResources> Frames;

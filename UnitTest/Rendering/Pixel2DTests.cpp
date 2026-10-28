@@ -138,7 +138,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check(sets == 33 && images == 45 && samplers == 15, "descriptor pool is not sized from actual slots");
+        Check((sets == 33 && images == 54 && samplers == 15) || (sets == 3 && images == 3 && samplers == 0), "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -232,6 +232,51 @@ void UnpublishedFrameCapacity() {
     Check(frame.GetMemoryUsage().ReservedHeapBytes == cells * 2 * sizeof(uint32_t),
           "unpublished frame retained a full-world texture allocation");
 }
+void NativeInventoryOverlay() {
+    MockRHI rhi;
+    pixel::ui::InventoryUI ui;
+    size_t published = 0;
+    PixelRender policy(rhi, Catalog(), [](WorldGridFrame &output) {
+        output.SetRegion({0, 0}, 64, 64);
+        std::fill(output.Cells().begin(), output.Cells().end(), 0);
+        output.PrepareRegionVersions(1);
+    }, "Pixel2DPostProcess.fs", {}, {}, [&]() -> const pixel::ui::Canvas & {
+        ++published;
+        return ui.Paint();
+    });
+    policy.SetOverlayDrawCallback([&](RHICommandList &) { rhi.Commands.Events.push_back("debug"); });
+    policy.Initialize();
+    for (uint32_t i = 0; i < 6; ++i) {
+        rhi.Commands.Token = {i + 1, 1, i % 3, 0};
+        policy.FrameBegin();
+        policy.Draw();
+        Check(published == i + 1, "UI publisher read again during Draw");
+        const std::vector<std::string> suffix{"post", "draw", "draw", "debug", "end"};
+        const auto &events = rhi.Commands.Events;
+        Check(std::equal(suffix.begin(), suffix.end(), events.end() - suffix.size()),
+              "native UI must follow postprocessing and precede developer overlay");
+        const auto copies = std::count_if(rhi.Commands.Copies.begin(), rhi.Commands.Copies.end(), [](const auto &copy) {
+            return copy.first->Desc.Width == pixel::ui::InventoryLayout::Width;
+        });
+        Check(copies == (i < 3 ? 1 : 0), "unchanged UI was not cached independently for each in-flight slot");
+    }
+    ui.ToggleInventory();
+    rhi.FailRecord = true;
+    policy.FrameBegin();
+    Reject([&] { policy.Draw(); });
+    rhi.FailRecord = false;
+    policy.FrameBegin();
+    policy.Draw();
+    Check(std::any_of(rhi.Commands.Copies.begin(), rhi.Commands.Copies.end(), [](const auto &copy) {
+        return copy.first->Desc.Width == pixel::ui::InventoryLayout::Width;
+    }), "failed UI recording committed the upload cache");
+    ResizePresentation(rhi, policy, {800, 600});
+    policy.FrameBegin();
+    policy.Draw();
+    policy.Clear();
+    policy.Clear();
+}
+
 void FrameRecording() {
     MockRHI rhi;
     std::vector<uint32_t> cells(Grid2D::CellCount, 1);
@@ -320,6 +365,41 @@ void CharacterComposition() {
     Reject([&] { policy.FrameBegin(); });
     policy.Clear();
 }
+void CharacterArtUpload() {
+    MockRHI rhi;
+    auto image = std::make_shared<pixel::ArtImage>();
+    image->Width = image->Height = 2;
+    image->Pixels.resize(16, std::byte{255});
+    auto art = std::make_shared<pixel::CharacterAssets>();
+    art->FrameSize = {2, 2};
+    art->Layers = {image, image};
+    CharacterDraw draw{{0, 0, 20, 20}, {1, 1, 1, 1}, {1, 1, 1, 1}};
+    draw.FrameTexels = {0, 0, 2, 2};
+    draw.Sprite = {2, 1, 0, 0};
+    PixelRender policy(rhi, Catalog(), [&](WorldGridFrame &frame) { frame.Character = draw; },
+                       "Pixel2DPostProcess.fs", nullptr, art);
+    policy.Initialize();
+    rhi.FailRecord = true;
+    policy.FrameBegin();
+    Reject([&] { policy.Draw(); });
+    rhi.FailRecord = false;
+    policy.FrameBegin(); policy.Draw();
+    Check(rhi.Commands.Copies.size() == 3, "failed recording lost character upload retry");
+    const auto &uploaded = rhi.Commands.Copies[1];
+    Check(uploaded.first->Desc.Layers == 2 && uploaded.first->Desc.Format == RHITextureFormat::RGBA8SRGB
+          && uploaded.second.size() == 32, "character layers were not uploaded as sRGB array");
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        rhi.Commands.Token.Slot = slot;
+        policy.FrameBegin(); policy.Draw();
+        Check(rhi.Commands.Copies.size() == 1, "frame slot reuploaded character art");
+    }
+    ResizePresentation(rhi, policy, {82, 52});
+    policy.FrameBegin(); policy.Draw();
+    Check(rhi.Commands.Copies.size() == 1, "resize reuploaded character art");
+    draw.FrameTexels[0] = 1;
+    Reject([&] { policy.FrameBegin(); });
+    policy.Clear();
+}
 void WindComposition() {
     MockRHI rhi;
     WindVisualMode mode = WindVisualMode::ShortTrails;
@@ -350,7 +430,7 @@ void WindComposition() {
         Check(packed == PackWindVelocity(-25, 40), "Draw read live wind data");
         windImages[slot] = copies.back().first;
         const auto &constants = rhi.Commands.Constants;
-        Check(constants.size() == 4 && constants[1].size() == 64 && constants[2].size() == 64, "wind must precede character and post passes");
+        Check(constants.size() == 4 && constants[1].size() == 64 && constants[2].size() == sizeof(CharacterDraw), "wind must precede character and post passes");
         uint32_t shaderMode;
         std::memcpy(&shaderMode, constants[1].data() + 24, sizeof(shaderMode));
         Check(shaderMode == 1, "wind mode constant layout mismatch");
@@ -671,7 +751,9 @@ int main(int argc, char **argv) {
         RunPixelWindVisualTests();
         WindComposition();
         FrameRecording();
+        NativeInventoryOverlay();
         CharacterComposition();
+        CharacterArtUpload();
         FailedFrames();
         GameplayPublication();
         DebugFrameIsolation();

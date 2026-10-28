@@ -16,22 +16,24 @@
 class PixelGame final : public IGameInterface {
   public:
     using ControlMode = pixel::ControlMode;
-    explicit PixelGame(bool persistent = true, std::unique_ptr<pixel::llm::LLM> model = {});
+    explicit PixelGame(pixel::SessionMode mode = pixel::SessionMode::Temporary, std::unique_ptr<pixel::llm::LLM> model = {});
+    explicit PixelGame(bool persistent, std::unique_ptr<pixel::llm::LLM> model = {});
     // Input callbacks capture this composition root; its address remains stable.
     PixelGame(const PixelGame &) = delete;
     PixelGame &operator=(const PixelGame &) = delete;
-    void ConfigurePerformanceCapture();
+    void ConfigureDiagnostics(axiom::diagnostics::CaptureSession &session) override;
     void ConfigureEngine(GameEngine &engine) override;
     pixel::GameSession &GetSession() { return Session; }
     const pixel::GameSession &GetSession() const { return Session; }
     pixel::llm::ViewService &GetObservationViews() { return ObservationViews; }
     pixel::will::WorldWill &GetWorldWill() { return WorldWill; }
+    pixel::ui::InventoryUI &GetUI() { return UI; }
     pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
     bool IsDevicePlacementEnabled() const { return Input.IsDevicePlacementEnabled(); }
-    std::function<void(WorldGridFrame &)> CreateFramePublisher() {
-        return Presentation.CreateFramePublisher(Session, Camera);
+    std::function<void(WorldGridFrame &)> CreateFramePublisher(std::shared_ptr<const pixel::CharacterAssets> characterArt = {}) {
+        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt));
     }
     const pixel::World &GetWorld() const { return Session.GetWorld(); }
     pixel::GamePresentation &GetPresentation() { return Presentation; }
@@ -45,7 +47,7 @@ class PixelGame final : public IGameInterface {
     void Tick(float duration) override;
     void ClearInputState() override { Input.ClearInputState(); }
     void FrameEnd() override;
-    // Saving is negotiated before shutdown by PixelApplication.
+    // Persistent fixtures negotiate saving before shutdown; normal games are temporary.
     void GameEnd() override { WorldWill.Close(); Input.ClearInputState(); }
     void Destroy() override {}
     void OnKeyEvent(Key key, int scancode, ButtonAction action, Mod mods) override {
@@ -68,5 +70,6 @@ class PixelGame final : public IGameInterface {
     pixel::ArtAssetStore ArtAssets;
     pixel::PixelDebugUI DebugUI;
     pixel::performance::GameProfiler Performance;
+    pixel::ui::InventoryUI UI;
     pixel::GameInput Input;
 };

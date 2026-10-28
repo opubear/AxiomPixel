@@ -7,14 +7,17 @@
 #include "HAL/Platform/PlatformInterface.h"
 #include "InputManager.h"
 #include "Runtime/Gameplay/LLM/PseudoLLM.h"
-#include "spdlog/spdlog.h"
+#include "Log/Log.h"
 #include <algorithm>
 #include <cmath>
 
 PixelGame::PixelGame(bool persistent, std::unique_ptr<pixel::llm::LLM> model)
-    : Session(persistent, persistent ? pixel::GameSession::DefaultGeneration() : pixel::WorldGenerationSettings{}),
+    : PixelGame(persistent ? pixel::SessionMode::Persistent : pixel::SessionMode::Finite, std::move(model)) {}
+
+PixelGame::PixelGame(pixel::SessionMode mode, std::unique_ptr<pixel::llm::LLM> model)
+    : Session(mode, mode == pixel::SessionMode::Finite ? pixel::WorldGenerationSettings{} : pixel::GameSession::DefaultGeneration()),
       Model(model ? std::move(model) : std::make_unique<pixel::llm::PseudoLLM>()),
-      ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, {[] { GAxiom->RequestClose(); }, [this] { DebugUI.Toggle(); }, [this] { DebugUI.ToggleFormulaEditor(); }, [] {
+      ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, UI, {[] { GAxiom->RequestClose(); }, [this] { DebugUI.Toggle(); }, [this] { DebugUI.ToggleFormulaEditor(); }, [] {
               std::array<int, 2> size{};
               GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);
               return size; }}) {}
@@ -55,8 +58,9 @@ void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int 
     OnMouseButtonEvent(button, action, mods, pointer);
 }
 
-void PixelGame::ConfigurePerformanceCapture() {
-    const auto scenario = Performance.ConfigureFromEnvironment();
+void PixelGame::ConfigureDiagnostics(axiom::diagnostics::CaptureSession &session) {
+    const auto scenario = Performance.ConfigureFromEnvironment(session.Available());
+    Performance.Attach(session);
     if (scenario == "paused" || scenario == "paused-no-wind-visual")
         Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     if (scenario == "no-wind-visual" || scenario == "paused-no-wind-visual")
@@ -73,14 +77,13 @@ void PixelGame::Initialize() {
             if (const auto mode = DebugUI.Draw(Session, Camera, Presentation, Input, Performance, WorldWill))
                 SetControlMode(*mode);
         });
-    spdlog::info("{}", pixel::GameInput::ControlsDescription());
+    axiom::Log::Info("{}", pixel::GameInput::ControlsDescription());
 }
 
 void PixelGame::FrameBegin() {
     ObservationViews.AdvanceServiceFrame();
     Session.BeginFrame();
     WorldWill.Service();
-    Performance.BeginFrame();
     std::array<int, 2> size{};
     GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);
     Camera.SetFramebufferSize(size);
@@ -89,11 +92,10 @@ void PixelGame::FrameBegin() {
 }
 
 void PixelGame::FrameEnd() {
-    if (Performance.IsCollecting())
+    if (Performance.IsCollecting()) {
+        axiom::diagnostics::Scope scope(axiom::diagnostics::Stage(axiom::diagnostics::EngineStage::MemorySample));
         Performance.SetMemoryUsage(Session.GetWorld().GetMemoryUsage());
-
-    if (Performance.EndFrame())
-        GAxiom->RequestClose();
+    }
 }
 
 void PixelGame::Tick(float duration) {

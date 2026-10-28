@@ -7,6 +7,7 @@
 #include "HAL/Vulkan/VulkanRasterResources.h"
 #include "InputManager.h"
 #include "Runtime/Gameplay/Application/PixelGame.h"
+#include "Runtime/Gameplay/Application/PixelRuntime.h"
 #include "Runtime/Gameplay/FormulaBridge/ProcessExample.h"
 #include "Dev/Debug/Garden/GardenAidProgram.h"
 #include "Dev/Debug/LLM/FakeModel.h"
@@ -118,6 +119,12 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
                         expected[c] = Linear(std::to_integer<uint8_t>(catalog.Pixels[texel + c])) * alpha + expected[c] * (1 - alpha);
                 }
             }
+            if (frame.DisplayMode == GridDisplayMode::Materials) {
+                for (const auto &draw : frame.ActorDraws) {
+                    const auto &g = draw.CenterRadius;
+                    if (std::abs(x + .5 - g[0]) <= g[2] && std::abs(y + .5 - g[1]) <= g[3]) expected = draw.Color;
+                }
+            }
             if (frame.Character) {
                 const auto &sprite = *frame.Character;
                 const auto &bounds = sprite.Bounds;
@@ -167,12 +174,15 @@ void CheckPublishedRegion(WorldGridFrameView published, std::span<const uint32_t
     }
 }
 void VerifyPublishedColor(WorldGridFrameView oracle, WorldGridFrameView published, const RHITexture &texture,
-                          const GridTextureCatalog &catalog = Textures()) {
+                          const GridTextureCatalog &catalog = Textures(), bool includeActors = false) {
     const auto cells = ExpectedRegion(oracle.Cells, published);
     oracle.Cells = cells;
     oracle.Width = published.Width;
     oracle.Height = published.Height;
     oracle.CellOrigin = published.CellOrigin;
+    // Actor appearance has its own GPU/CPU checks; account for its opaque parts
+    // when comparing the independently simulated terrain and controlled player.
+    if (includeActors) oracle.ActorDraws = published.ActorDraws;
     VerifyColor(oracle, texture, catalog);
 }
 uint32_t PublishedCell(WorldGridFrameView frame, int64_t x, int64_t y) {
@@ -661,6 +671,60 @@ std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
     expected.BodyColor = {Linear(40), Linear(210), Linear(180), 1};
     return expected;
 }
+void TrainingDummyGpu() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *input = game.get();
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
+        policy = result.get();
+        return result;
+    };
+    PixelSmokeApplication app(std::move(game));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    for (int frameIndex = 0; frameIndex < 4; ++frameIndex) {
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        const auto frame = policy->PublishedFrame();
+        Require(frame.ActorDraws.size() == 5, "default training dummy missing from GPU frame");
+        const auto &scene = policy->SceneColor(token.Slot);
+        const auto pixels = ReadColor(scene);
+        for (size_t part = 0; part < frame.ActorDraws.size(); ++part) {
+            const auto &draw = frame.ActorDraws[part];
+            // The torso covers the middle of the crossbar; sample its left end.
+            const auto x = uint32_t(draw.CenterRadius[0] - (part == 1 ? draw.CenterRadius[2] * .75f : 0));
+            const auto y = uint32_t(draw.CenterRadius[1]);
+            Require(x < scene.Desc.Width && y < scene.Desc.Height, "training dummy is outside the initial viewport");
+            const auto offset = (size_t(y) * scene.Desc.Width + x) * 4;
+            for (size_t channel = 0; channel < 3; ++channel)
+                Require(std::abs(int(pixels[offset + channel]) - int(std::lround(draw.Color[channel] * 255))) <= 1,
+                        "training dummy wooden parts were not composited on GPU");
+        }
+        if (frameIndex == 0) {
+            if (const auto *path = std::getenv("PIXEL_DUMMY_CAPTURE")) {
+                std::ofstream file(path, std::ios::binary);
+                file << "P6\n" << scene.Desc.Width << ' ' << scene.Desc.Height << "\n255\n";
+                for (size_t i = 0; i < pixels.size(); i += 4)
+                    for (size_t channel = 0; channel < 3; ++channel) {
+                        const float value = pixels[i + channel] / 255.f;
+                        file.put(char(std::lround(255 * (value <= .0031308f ? value * 12.92f
+                            : 1.055f * std::pow(value, 1.f / 2.4f) - .055f))));
+                    }
+            }
+        }
+        input->GetPresentation().ToggleFieldView();
+        Draw(app);
+        Require(policy->PublishedFrame().ActorDraws.empty(), "training dummy leaked into F1");
+        input->GetPresentation().ToggleFieldView();
+    }
+    app.Shutdown();
+    std::cout << "Training dummy GPU passed: five wooden parts, initial viewport, frame slots and F1\n";
+}
+
 void FormulaGameplayGpu() {
     auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
@@ -991,7 +1055,7 @@ void BasicWorldGameplay() {
         CheckPublishedRegion(policy->PublishedFrame(), expectedCells);
         VerifyPublishedColor({expectedCells, input->GetView(), input->GetPresentation().Post}, policy->PublishedFrame(), policy->WorldColor(token.Slot), pixel::GamePresentation::MakeTextures());
         VerifyPublishedColor({expectedCells, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->PublishedFrame(),
-                             policy->SceneColor(token.Slot), pixel::GamePresentation::MakeTextures());
+                             policy->SceneColor(token.Slot), pixel::GamePresentation::MakeTextures(), true);
     };
     verify(); // GPU readback includes the two solid-colour character rectangles.
     // Reproduce a queued click sampled before a resize: FrameBegin has already
@@ -1344,7 +1408,7 @@ void ForceFieldDebugGameplay() {
             "leaving debug view did not restore material mode and tint");
     for (size_t i = 0; i < expected.size(); ++i)
         expected[i] = initial[i].Type == pixel::CellTypes::Dirt ? 1 : 0;
-    VerifyPublishedColor({expected, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->PublishedFrame(), policy->SceneColor(materialToken.Slot), pixel::GamePresentation::MakeTextures());
+    VerifyPublishedColor({expected, input->GetView(), input->GetPresentation().Post, GridDisplayMode::Materials, ExpectedCharacter(*input)}, policy->PublishedFrame(), policy->SceneColor(materialToken.Slot), pixel::GamePresentation::MakeTextures(), true);
 
     press(Key::KEY_F1);
     press(Key::KEY_R);
@@ -1578,6 +1642,279 @@ void ElementMotionGpu() {
     std::cout << "Element GPU motion passed: falling water, rising steam/fire, alpha and changing region uploads\n";
 }
 
+void CharacterAnimationGpu() {
+    pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
+    const auto art = store.LoadCharacter();
+    CharacterDraw draw{{40.25f, 30.5f, 320, 256}, {1, 1, 1, 1}, {1, 1, 1, 1}};
+    draw.Sprite = {float(art->Layers.size()), 0, 0, 0};
+    GridView2D view;
+    view.Background = {.25f, .55f, .85f, 1};
+    bool field = false;
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), [&](WorldGridFrame &frame) {
+            frame.SetRegion({0, 0}, 128, 128);
+            frame.View = view;
+            frame.Character = draw;
+            frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
+            std::fill(frame.Cells().begin(), frame.Cells().end(), field ? 0x8080FF : 0);
+        }, "Pixel2DPostProcess.fs", nullptr, art);
+        policy = result.get();
+        return result;
+    };
+    PixelSmokeApplication app(std::make_unique<PixelGame>(false));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    auto &rhi = *app.Engine->GetRHI();
+    const auto capture = [&] {
+        const auto token = Draw(app);
+        rhi.WaitIdle();
+        return ReadColor(policy->SceneColor(token.Slot));
+    };
+    size_t samples = 0;
+    for (const auto &clip : art->Animations) {
+        for (uint32_t index = 0; index < clip.FrameCount; ++index) {
+            draw.FrameTexels = {float((clip.FirstFrame + index) * 80), float(clip.Row * 64), 80, 64};
+            for (const auto mirror : {0.f, 1.f}) {
+                draw.Sprite[1] = mirror;
+                const auto pixels = capture();
+                const auto extent = rhi.GetPresentationExtent();
+                for (uint32_t y = 0; y < 64; ++y) {
+                    for (uint32_t x = 0; x < 80; ++x) {
+                        std::array<float, 3> expected{.25f, .55f, .85f};
+                        const uint32_t tx = uint32_t(draw.FrameTexels[0]) + (mirror ? 79 - x : x);
+                        const uint32_t ty = uint32_t(draw.FrameTexels[1]) + y;
+                        for (const auto &layer : art->Layers) {
+                            const auto *rgba = reinterpret_cast<const uint8_t *>(layer->Pixels.data()) + (ty * layer->Width + tx) * 4;
+                            for (size_t c = 0; c < 3; ++c)
+                                expected[c] = expected[c] * (1 - rgba[3] / 255.f) + Linear(rgba[c]) * rgba[3] / 255.f;
+                        }
+                        const size_t at = (size_t(32 + 4 * y) * extent.Width + 42 + 4 * x) * 4;
+                        for (size_t c = 0; c < 3; ++c)
+                            Require(std::abs(int(pixels[at + c]) - int(std::lround(expected[c] * 255))) <= 1,
+                                    "character GPU differs from source PNG layers, frame or facing");
+                        ++samples;
+                    }
+                }
+                Require(capture() == pixels, "character changed across frame slots without a new animation frame");
+            }
+        }
+    }
+    field = true;
+    const auto diagnostic = capture();
+    for (size_t i = 0; i < diagnostic.size(); i += 4)
+        Require(diagnostic[i] == 255 && diagnostic[i + 1] == 128 && diagnostic[i + 2] == 128,
+                "character leaked into force-field diagnostic view");
+    app.Shutdown();
+    std::cout << "Character GPU passed: " << samples << " source PNG samples, all configured frames, layers, alpha, sRGB, mirroring, frame slots and F1\n";
+}
+
+void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const pixel::ui::Canvas &canvas,
+                              const char *captureName) {
+    auto &rhi = *engine.GetRHI();
+    const auto extent = rhi.GetPresentationExtent();
+    const auto placement = pixel::ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)});
+    const std::array<float, 4> bounds{placement.X, placement.Y, placement.Width, placement.Height};
+    auto target = rhi.CreateTexture({extent.Width, extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
+    auto texture = rhi.CreateTexture({pixel::ui::InventoryLayout::Width, pixel::ui::InventoryLayout::Height, 1, RHITextureFormat::RGBA8SRGB});
+    auto upload = rhi.CreateUploadBuffer(canvas.Pixels.size());
+    upload->Write(canvas.Pixels);
+    auto sampler = rhi.CreateNearestSampler();
+    const std::array postBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
+                                 DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLER, 1}};
+    const std::array uiBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
+    auto post = rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo("Pixel2DPostProcess.fs"), postBindings, target.get(), 64});
+    auto ui = rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo("PixelInventoryUI.fs"), uiBindings, target.get(), 16});
+    auto present = rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo("Pixel2DPostProcess.fs"), postBindings, nullptr, 64});
+    auto pool = rhi.CreateImageDescriptorPool(3, 3, 2);
+    const std::array sceneImages{RHIImageBinding{0, &scene}, RHIImageBinding{1, nullptr, sampler.get()}};
+    const std::array uiImages{RHIImageBinding{0, texture.get()}};
+    const std::array presentImages{RHIImageBinding{0, target.get()}, RHIImageBinding{1, nullptr, sampler.get()}};
+    auto postSet = rhi.CreateImageDescriptorSet(*pool, *post, sceneImages);
+    auto uiSet = rhi.CreateImageDescriptorSet(*pool, *ui, uiImages);
+    auto presentSet = rhi.CreateImageDescriptorSet(*pool, *present, presentImages);
+    const std::array<float, 8> vertices{-1, -1, 1, -1, 1, 1, -1, 1};
+    const std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
+    std::unique_ptr<RHIBuffer> vb(rhi.CreateVertexBuffer(8, sizeof(vertices), vertices.data()));
+    std::unique_ptr<RHIBuffer> ib(rhi.CreateIndexBuffer(4, sizeof(indices), indices.data()));
+    const auto source = ReadColor(scene);
+    PostProcessParameters tint;
+    tint.Values = {.35f, .35f, .35f, 1};
+    const auto begin = rhi.NewFrame();
+    Require(begin.Ready, "inventory shader test frame unavailable");
+    try {
+        rhi.RecordFrame([&](RHICommandList &cmd) {
+            cmd.TransitionTexture(*texture, RHITextureState::TransferDestination);
+            cmd.CopyBufferToTexture(*upload, *texture);
+            cmd.TransitionTexture(*texture, RHITextureState::FragmentSampledRead);
+            cmd.TransitionTexture(*target, RHITextureState::ColorAttachment);
+            cmd.BeginColorPass(*target);
+            cmd.SetViewport({0, 0, float(extent.Width), float(extent.Height), 0, 1});
+            cmd.SetScissor({0, 0, extent.Width, extent.Height});
+            cmd.BindVertexBuffer(*vb); cmd.BindIndexBuffer(*ib);
+            cmd.BindPipeline(*post); cmd.BindDescriptorSet(*post, *postSet, 0);
+            cmd.PushConstants(*post, RHIShaderStage::Fragment, 0, sizeof(tint), &tint);
+            cmd.DrawIndexed(6);
+            cmd.SetViewport({placement.X, placement.Y, placement.Width, placement.Height, 0, 1});
+            cmd.BindPipeline(*ui); cmd.BindDescriptorSet(*ui, *uiSet, 0);
+            cmd.PushConstants(*ui, RHIShaderStage::Fragment, 0, sizeof(bounds), bounds.data());
+            cmd.DrawIndexed(6);
+            cmd.EndPass();
+            cmd.TransitionTexture(*target, RHITextureState::FragmentSampledRead);
+            cmd.BeginPresentPass();
+            cmd.SetViewport({0, 0, float(extent.Width), float(extent.Height), 0, 1});
+            cmd.BindPipeline(*present); cmd.BindDescriptorSet(*present, *presentSet, 0);
+            const PostProcessParameters normal;
+            cmd.PushConstants(*present, RHIShaderStage::Fragment, 0, sizeof(normal), &normal);
+            cmd.DrawIndexed(6); cmd.EndPass();
+        });
+        rhi.Present(begin.Token); rhi.EndFrame(begin.Token); rhi.WaitIdle();
+    } catch (...) { rhi.AbortFrame(); throw; }
+    const auto result = ReadColor(*target);
+    for (uint32_t y = 0; y < extent.Height; ++y) {
+        for (uint32_t x = 0; x < extent.Width; ++x) {
+            const auto offset = (size_t(y) * extent.Width + x) * 4;
+            const float u = (x + .5f - placement.X) / placement.Width;
+            const float v = (y + .5f - placement.Y) / placement.Height;
+            const bool inside = u >= 0 && v >= 0 && u < 1 && v < 1;
+            const size_t tx = std::min<size_t>(pixel::ui::InventoryLayout::Width - 1, size_t(std::max(0.f, u * pixel::ui::InventoryLayout::Width + .0001f)));
+            const size_t ty = std::min<size_t>(pixel::ui::InventoryLayout::Height - 1, size_t(std::max(0.f, v * pixel::ui::InventoryLayout::Height + .0001f)));
+            const size_t texel = inside ? (ty * pixel::ui::InventoryLayout::Width + tx) * 4 : 0;
+            const bool opaque = inside && std::to_integer<uint8_t>(canvas.Pixels[texel + 3]) != 0;
+            for (size_t c = 0; c < 3; ++c) {
+                const int expected = opaque ? int(std::lround(255 * Linear(std::to_integer<uint8_t>(canvas.Pixels[texel + c]))))
+                                            : int(std::lround(source[offset + c] * .35f));
+                if (std::abs(int(result[offset + c]) - expected) > 2)
+                    throw std::runtime_error("inventory UI pixel mismatch x=" + std::to_string(x) + " y=" + std::to_string(y)
+                        + " channel=" + std::to_string(c) + " expected=" + std::to_string(expected)
+                        + " actual=" + std::to_string(result[offset + c]) + " texel=" + std::to_string(texel));
+            }
+        }
+    }
+    if (const char *directory = std::getenv("PIXEL_UI_CAPTURE_DIR")) {
+        std::filesystem::create_directories(directory);
+        std::ofstream output(std::filesystem::path(directory) / captureName, std::ios::binary);
+        output << "P6\n" << extent.Width << ' ' << extent.Height << "\n255\n";
+        for (size_t i = 0; i < result.size(); i += 4)
+            for (size_t c = 0; c < 3; ++c) {
+                const float linear = result[i + c] / 255.f;
+                const float srgb = linear <= .0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f;
+                output.put(char(std::lround(srgb * 255)));
+            }
+    }
+}
+
+void InventoryUIGpu() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *input = game.get();
+    auto &session = input->GetSession();
+    pixel::testing::SessionAccess::World(session).DisableWind();
+    auto &inventory = pixel::testing::SessionAccess::Inventory(session);
+    const std::array resources{pixel::items::ItemAmount{pixel::items::ItemId::Soil, 137},
+        pixel::items::ItemAmount{pixel::items::ItemId::Stone, 64}, pixel::items::ItemAmount{pixel::items::ItemId::Coal, 28},
+        pixel::items::ItemAmount{pixel::items::ItemId::CopperOre, 12}, pixel::items::ItemAmount{pixel::items::ItemId::IronOre, 9},
+        pixel::items::ItemAmount{pixel::items::ItemId::TungstenOre, 3}, pixel::items::ItemAmount{pixel::items::ItemId::GoldOre, 2}};
+    Require(inventory.Add(inventory.Reference(session.PlayerInventory()), resources) == pixel::items::Result::Applied, "UI fixture stock failed");
+    session.Tick(1.f / 60, {});
+    PixelRender *policy = nullptr;
+    PixelSmokeApplication app(std::move(game));
+    auto setup = CreatePixelRenderSetup(*input);
+    auto create = setup.CreatePolicy;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *scene) {
+        auto result = create(rhi, scene);
+        policy = dynamic_cast<PixelRender *>(result.get());
+        return result;
+    };
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    auto token = Draw(app);
+    app.Engine->GetRHI()->WaitIdle();
+    Require(input->GetUI().Read().QuickSlots[0].Quantity == 137, "production UI lost committed stock");
+    VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-closed.ppm");
+    input->OnKeyEvent(Key::KEY_TAB, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->OnKeyEvent(Key::KEY_TAB, 0, ButtonAction::ACTION_REPEAT, Mod{});
+    for (int i = 0; i < 4; ++i) token = Draw(app);
+    app.Engine->GetRHI()->WaitIdle();
+    Require(input->GetUI().IsExpanded(), "Tab did not expand inventory in production app");
+    VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-open.ppm");
+    input->OnKeyEvent(Key::KEY_ESCAPE, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Require(!input->GetUI().IsExpanded(), "Escape did not close production inventory");
+    Draw(app);
+    app.Shutdown();
+    std::cout << "Native inventory GPU passed: production publication, Tab/Escape, frame slots, pixel-exact canvas, transparency and post-tint isolation\n";
+}
+
+void CharacterGameplayGpu() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *input = game.get();
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    PixelRender *policy = nullptr;
+    PixelSmokeApplication app(std::move(game));
+    auto setup = CreatePixelRenderSetup(*input);
+    auto create = setup.CreatePolicy;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *scene) {
+        auto result = create(rhi, scene);
+        policy = dynamic_cast<PixelRender *>(result.get());
+        return result;
+    };
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    const auto capture = [&] {
+        const auto token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        return ReadColor(policy->SceneColor(token.Slot));
+    };
+    capture();
+    for (int i = 0; i < 60; ++i) input->Tick(1.f / 60);
+    capture();
+    Require(policy->PublishedFrame().Character && policy->PublishedFrame().Character->Sprite[0] == 5,
+            "production setup did not attach the configured character");
+    const auto frozen = *policy->PublishedFrame().Character;
+    capture();
+    Require(policy->PublishedFrame().Character->FrameTexels == frozen.FrameTexels, "draw-only frame advanced animation");
+    input->OnKeyEvent(Key::KEY_A, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(.1f); capture();
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 128 && policy->PublishedFrame().Character->Sprite[1] == 1,
+            "game movement did not select left run");
+    input->OnKeyEvent(Key::KEY_A, 0, ButtonAction::ACTION_RELEASE, Mod{});
+    input->Tick(1.f / 60); capture();
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 0 && policy->PublishedFrame().Character->Sprite[1] == 1,
+            "game stop did not retain left idle");
+    input->OnKeyEvent(Key::KEY_SPACE, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(.05f); capture();
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 192, "game jump did not select rising animation");
+    input->OnKeyEvent(Key::KEY_SPACE, 0, ButtonAction::ACTION_RELEASE, Mod{});
+    bool fell = false, landed = false;
+    for (int i = 0; i < 60; ++i) {
+        input->Tick(1.f / 60); capture();
+        fell |= policy->PublishedFrame().Character->FrameTexels[1] == 256;
+        landed |= fell && policy->PublishedFrame().Character->FrameTexels[1] == 0;
+    }
+    Require(fell && landed, "game airborne cycle did not reach fall and idle");
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
+    const auto paused = capture();
+    input->Tick(.2f);
+    Require(capture() == paused, "paused game changed character pixels");
+    if (const char *path = std::getenv("PIXEL_CHARACTER_CAPTURE")) {
+        const auto extent = app.Engine->GetRHI()->GetPresentationExtent();
+        std::ofstream file(path, std::ios::binary);
+        file << "P6\n" << extent.Width << ' ' << extent.Height << "\n255\n";
+        for (size_t i = 0; i < paused.size(); i += 4)
+            for (size_t c = 0; c < 3; ++c) {
+                const float linear = paused[i + c] / 255.f;
+                file.put(char(uint8_t(std::lround(255 * (linear <= .0031308f ? 12.92f * linear
+                    : 1.055f * std::pow(linear, 1.f / 2.4f) - .055f)))));
+            }
+    }
+    input->GetPresentation().ToggleFieldView();
+    capture();
+    Require(!policy->PublishedFrame().Character, "production F1 retained character");
+    app.Shutdown();
+    std::cout << "Character gameplay passed: production setup, movement, facing, jump/fall/landing, pause and F1\n";
+}
+
 void ArtBackgroundGpu(bool exactMirrorEdge = false) {
     pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
     auto assets = std::make_shared<pixel::BackgroundAssets>(*store.LoadBackground("ArtAssets.json"));
@@ -1711,6 +2048,19 @@ void RunPixelGardenUISmoke();
 void RunPixelGardenAidUISmoke();
 int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--inventory-ui-only") {
+            InventoryUIGpu();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--character-only") {
+            CharacterAnimationGpu();
+            CharacterGameplayGpu();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--dummy-only") {
+            TrainingDummyGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--pause-only") {
             RunPixelGamePauseUISmoke();
             return 0;
@@ -1752,11 +2102,15 @@ int main(int argc, char **argv) {
             Lifecycle(2);
             return 0;
         }
+        InventoryUIGpu();
+        CharacterAnimationGpu();
+        CharacterGameplayGpu();
         TerrainMaterialsGpu();
         ElementMotionGpu();
         ArtBackgroundGpu();
         ArtBackgroundGpu(true);
         WindVisualizationGpu();
+        TrainingDummyGpu();
         BasicWorldGameplay();
         ForceFieldDebugGameplay();
         RunPixelDebugUISmoke();

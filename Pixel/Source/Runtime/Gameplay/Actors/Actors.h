@@ -16,7 +16,7 @@ struct ActorHandle {
     uint64_t Generation = 0, Owner = 0;
     bool operator==(const ActorHandle &) const = default;
 };
-enum class ActorKind { Player, Resident };
+enum class ActorKind { Player, Resident, TrainingDummy };
 struct ActorRecord {
     ActorId Id;
     ActorKind Kind;
@@ -56,6 +56,7 @@ class Actors {
     const ActorRecord &Require(ActorHandle handle) const;
     const Body *Player() const;
     std::optional<ActorSnapshot> PlayerSnapshot() const;
+    std::vector<ActorSnapshot> Snapshot() const;
     bool Occupies(CellCoord cell) const;
     size_t Count() const { return LiveCount; }
     uint64_t Revision() const { return ChangeRevision; }

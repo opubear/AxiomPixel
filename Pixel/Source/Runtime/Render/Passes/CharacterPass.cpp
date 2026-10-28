@@ -4,7 +4,8 @@
 
 namespace pixel::render {
 namespace {
-constexpr std::array CharacterBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
+constexpr std::array CharacterBindings{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1},
+                                      DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLED_IMAGE, 1}};
 
 } // namespace
 bool CharacterPass::Enabled(const WorldGridFrameView &input) const {

@@ -71,7 +71,7 @@ bool WorldGridFrame::PrepareWindRegionVersions(uint64_t revision) {
 }
 
 pixel::performance::MemoryUsage WorldGridFrame::GetMemoryUsage() const {
-    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive, GardenDraws);
+    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive, GardenDraws, ActorDraws);
 }
 
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
@@ -126,6 +126,17 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
             !validColor(character.HeadColor) || !validColor(character.BodyColor) || !finite(character.Parameters) ||
             character.Parameters[0] < 0 || character.Parameters[0] > 1)
             throw std::invalid_argument("character geometry and opaque colours must be finite and valid");
+        if (!finite(character.Sprite) || character.Sprite[0] < 0 || character.Sprite[0] > 8 ||
+            std::floor(character.Sprite[0]) != character.Sprite[0] ||
+            (character.Sprite[1] != 0 && character.Sprite[1] != 1) || !finite(character.FrameTexels))
+            throw std::invalid_argument("invalid character sprite parameters");
+        if (character.Sprite[0] > 0) {
+            for (const auto value : character.FrameTexels)
+                if (value < 0 || value > 4096 || std::floor(value) != value)
+                    throw std::invalid_argument("character frame requires bounded integer texels");
+            if (character.FrameTexels[2] == 0 || character.FrameTexels[3] == 0)
+                throw std::invalid_argument("character sprite frame cannot be empty");
+        }
     }
     const auto validateShape = [](const auto &geometry, const auto &color) {
         if (std::any_of(geometry.begin(), geometry.end(), [](float value) { return !std::isfinite(value); }) ||
@@ -142,6 +153,8 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
         validateShape(draw.OutputCenterRadius, draw.OutputColor);
     }
     for (const auto &draw : frame.GardenDraws)
+        validateShape(draw.CenterRadius, draw.Color);
+    for (const auto &draw : frame.ActorDraws)
         validateShape(draw.CenterRadius, draw.Color);
     switch (frame.DisplayMode) {
     case GridDisplayMode::Materials:

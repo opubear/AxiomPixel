@@ -95,6 +95,58 @@ void NaturalPersistenceAndStrategySelection() {
     }
 }
 
+void TemporaryGamesIgnoreSavesAndDiscardProgress() {
+    SaveRoot files;
+    std::filesystem::create_directories(files.Path);
+    const auto pointer = files.Path / "current.txt";
+    std::ofstream(pointer) << "unsupported old save\n";
+    const auto oldSave = io::DigestFile(pointer);
+    WorldGenerationSettings natural;
+    natural.Kind = WorldGeneratorKind::Natural;
+    natural.Seed = 42;
+    std::filesystem::path scratch;
+    CellTypeId original;
+    {
+        GameSession session(SessionMode::Temporary, natural);
+        auto &world = testing::SessionAccess::World(session);
+        Require(session.IsReady() && !session.IsPersistent() && session.GetSaveDirectory().empty()
+                    && world.GetStreamer() && session.GetGenerationSettings() == natural,
+                "temporary game did not start a fresh streamed natural world");
+        scratch = world.GetStreamer()->Settings().Directory;
+        const auto cell = session.GetPlayer()->GetWorldPosition().Cell();
+        original = world.GetCell(cell.X, cell.Y).Type;
+        world.SetCell(cell.X, cell.Y, {CellTypeId::Water});
+        world.Save(); // Chunk cache may spill during this session, but is not a checkpoint.
+        Require(session.Control(NativeCaller::Driver, api::SaveWorld{}).Rejection == api::Reason::Unsupported,
+                "temporary game accepted a save request");
+        for (const auto &entry : std::filesystem::directory_iterator(scratch))
+            Require(entry.path().filename() == "chunks", "temporary game published persistent state");
+    }
+    Require(!std::filesystem::exists(scratch), "temporary chunk cache survived session teardown");
+    {
+        GameSession session(SessionMode::Temporary, natural);
+        auto &world = testing::SessionAccess::World(session);
+        const auto cell = session.GetPlayer()->GetWorldPosition().Cell();
+        Require(world.GetCell(cell.X, cell.Y).Type == original && session.CurrentCommit().Tick == 0,
+                "next game restored progress from the previous game");
+        const auto previous = world.GetStreamer()->Settings().Directory;
+        session.Control(NativeCaller::Debug, api::SetNextGenerator{api::GeneratorKind::Flat});
+        Require(session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded()
+                    && session.GetGenerationSettings().Kind == WorldGeneratorKind::Flat
+                    && !std::filesystem::exists(previous),
+                "reset did not replace and discard the temporary world");
+        const auto flat = world.GetStreamer()->Settings().Directory;
+        Require(session.Control(NativeCaller::Driver, api::CreateForceGarden{}).Succeeded()
+                    && !std::filesystem::exists(flat),
+                "temporary force garden did not replace the previous world");
+        scratch = world.GetStreamer()->Settings().Directory;
+    }
+    Require(!std::filesystem::exists(scratch) && io::DigestFile(pointer) == oldSave,
+            "temporary game leaked scratch files or modified the old save");
+    Require(std::distance(std::filesystem::directory_iterator(files.Path), std::filesystem::directory_iterator{}) == 1,
+            "temporary game wrote to the save root");
+}
+
 void LegacyFlatAndResetFailure() {
     SaveRoot files;
     std::filesystem::path original;
@@ -194,6 +246,7 @@ void Version3GenerationRemainsReadable() {
 
 int main() {
     try {
+        TemporaryGamesIgnoreSavesAndDiscardProgress();
         NaturalPersistenceAndStrategySelection();
         LegacyFlatAndResetFailure();
         FailedRecoveryIsIsolatedAndRetryable();
