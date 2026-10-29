@@ -34,3 +34,23 @@ ctest --test-dir build-parallel-tsan -R '^(Axiom.UnitTest.FramePipeline|Pixel.Pa
 ```
 
 GPU 测试需要 macOS 原生窗口服务，沙箱内不能完成窗口初始化。Vulkan validation layer 在本机不可用；GPU 验证依靠现有协议检查与画面读回。本轮不宣称跨平台 GPU 或性能提升比例。
+
+## 60 FPS 混合等待复测（2026-10-29）
+
+引擎限帧现采用提前休眠唤醒加尾部自旋；提前量自适应最近的休眠超时，范围 0.5–4 ms。截止时间已过时立即继续，不追赶补帧，原有模拟步长上限和跳帧重置不变。算法和 CPU 代价见 [引擎节拍合同](../../Axiom/Docs/ParallelFrames.md#60-fps-节拍)。
+
+Apple M5 / macOS 27.0.1 / MoltenVK，Release、1600×1200 framebuffer、默认运行场景及 UI、角色静止、Natural v2 固定种子 `20261029`。按旧版/新版交替运行三轮，每轮预热 180 帧、统计 600 帧；两组各 1800 帧，均开启 `--PerfTest` 逐事件 trace 和每帧内存采样。
+
+| 指标 | 纯休眠 | 混合等待 |
+|---|---:|---:|
+| 平均 FPS（总帧数/总帧间隔） | 55.358 | 60.000 |
+| 平均完整帧间隔 | 18.064 ms | 16.667 ms |
+| 完整帧间隔 P95 | 19.833 ms | 17.789 ms |
+| 主循环起点间隔 P95 | 18.695 ms | 16.668 ms |
+| 进程 CPU / wall（单核100%） | 30.13% | 31.79% |
+
+新版三轮分别 60.0065、59.9938、60.0001 FPS。主循环起点由相邻 `engine.pacing` 结束时间近似，完整帧间隔另受快照/绘制等工作量波动影响；尾部计时和统计区间边缘可使有限样本的 FPS 略高于 60。CPU 为 `/usr/bin/time -p` 的整个进程 user+sys/wall，包含启动、预热、游戏和采样开销，不是隔离的自旋成本。独立等待探针预热 60 帧、统计 180 帧，混合等待的平均尾部自旋为 0.839 ms；该值不能直接当作正式游戏的自旋时长。
+
+确定性 `FramePacer`、现有 `Cpu` / `FramePipeline` 和 `ApplicationClose` 四项通过；Pixel Debug/Release 与 AET Release 构建通过。正式 Pixel 六轮均运行 780 帧并正常退出，没有最小化/重建/延迟跳帧；AET Release 和 Pixel Debug 各 60 帧预热加 120 帧采样后正常退出。本轮未重测跨平台、resize/最小化或 GPU 全量 smoke；不保证系统重载或长帧下始终 60 FPS。
+
+本机原始 CSV、trace、进程计时、分析脚本和复测命令保存在 `build-profile-results/frame-pacing-20261029/`（构建产物，不进入版本控制）。
