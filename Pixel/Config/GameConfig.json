@@ -1,5 +1,6 @@
 {
     "Root": "Root.json",
+    "MaxFPS": 60,
     "Window": {
         "Width": 800,
         "Height": 600,

@@ -118,6 +118,15 @@ git submodule update --init --recursive
 
 构建与启动入口已拆分，替代原 `build-and-run.sh`。Debug使用 `build/`，Release使用独立的 `build-release/`；构建脚本只配置并编译Pixel。启动脚本自动切到 `Pixel/`，透传启动参数和环境变量，缺少程序时提示对应构建命令。脚本支持从任意工作目录调用；`run.sh` 保留为 `run-debug.sh` 的兼容入口。
 
+引擎最大帧率由 `Pixel/Config/GameConfig.json` 的顶层 `MaxFPS` 设置，缺省为 `60`，`0` 表示不限帧。命令行优先于配置文件，两种启动构建都适用：
+
+```sh
+./run-release.sh --max-fps 120
+./run.sh --max-fps 0
+```
+
+也接受 `--max-fps=120`；值须为非负32位整数，重复参数取最后一个。`0` 跳过限帧休眠和自旋，GPU/交换链同步仍保留，实际 FPS 可能受显示和工作负载限制。启动日志包含最终 `max_fps` 和 `max_fps_source`。
+
 手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
 
 M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。当前默认临时游戏直接接受关闭，不执行保存；显式持久化测试会话仍在该钩子中保存，保存失败或 Deferred 时拒绝退出。

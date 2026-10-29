@@ -41,8 +41,8 @@ cmake --build build-runtime --target Pixel -j4
 
 - `frame`：相邻 FrameEnd 之间的间隔，等于 `frame.active + frame.gap`。平均 FPS 用 `1000 / 平均 frame ms`，不是逐帧 FPS 的算术平均。
 - `frame.active`：成功取得交换链图像之后、调用游戏 FrameBegin 之前，到游戏 FrameEnd 与内存查询结束之后。涵盖快照、UI、模拟、提交及 present 调用。
-- `frame.gap`：上一个采样结束到本次成功 acquire，包括引擎 60Hz 限速、事件处理、acquire/fence 等待及跳帧停顿，不能等同 GPU 时间。
-- `engine.pacing`：60Hz 限帧的总墙钟时间，包含提前休眠和尾部自旋；提前量根据调度超时在 0.5–4 ms 内调整。该列不能全部当作 CPU 空闲时间，算法与验证见[并行帧及节拍](../../../../../Axiom/Docs/ParallelFrames.md#60-fps-节拍)。
+- `frame.gap`：上一个采样结束到本次成功 acquire，包括引擎限速（默认60Hz）、事件处理、acquire/fence 等待及跳帧停顿，不能等同 GPU 时间。
+- `engine.pacing`：限帧的总墙钟时间，包含提前休眠和尾部自旋；提前量根据调度超时在 0.5–4 ms 内调整。上限来自 `MaxFPS` 或优先级更高的 `--max-fps`；0跳过休眠/自旋，此时计时仅剩步长计算与采样开销。该列不能全部当作 CPU 空闲时间，算法与验证见[并行帧及节拍](../../../../../Axiom/Docs/ParallelFrames.md#帧率上限与节拍)。
 - `frame.untracked`：active 减去最外层已测量区间的并集，包括未单独插桩的 input/UI buffer 更新/present 等。**不能把所有 inclusive 行相加**；`publish`、`game.tick`、`world.environment`、`render.cpu` 包含子阶段。
 - `self`：扣除本线程直接子 scope 的 inclusive 时间。`frame` 与 `active` 是派生总量，self 固定为零；gap 和 untracked 单独列出。报告为 schema_version=3：游戏 worker 的计时在 join 后合并，与主线程绘制相互重叠，不能将所有 self 累加为 frame。`engine.parallel` 包含派发、绘制和等待；帧首服务计入 engine.game_begin。
 - `*_commands`：录制命令的 CPU 时间；`render.cpu` 还包含上传写入和队列提交，**都不是 GPU 执行耗时**。没有加入 GPU 同步等会干扰流水线的测量操作。

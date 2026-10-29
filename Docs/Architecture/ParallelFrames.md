@@ -37,7 +37,7 @@ GPU 测试需要 macOS 原生窗口服务，沙箱内不能完成窗口初始化
 
 ## 60 FPS 混合等待复测（2026-10-29）
 
-引擎限帧现采用提前休眠唤醒加尾部自旋；提前量自适应最近的休眠超时，范围 0.5–4 ms。截止时间已过时立即继续，不追赶补帧，原有模拟步长上限和跳帧重置不变。算法和 CPU 代价见 [引擎节拍合同](../../Axiom/Docs/ParallelFrames.md#60-fps-节拍)。
+引擎限帧现采用提前休眠唤醒加尾部自旋；提前量自适应最近的休眠超时，范围 0.5–4 ms。截止时间已过时立即继续，不追赶补帧，原有模拟步长上限和跳帧重置不变。算法和 CPU 代价见 [引擎节拍合同](../../Axiom/Docs/ParallelFrames.md#帧率上限与节拍)。最大帧率现由 `Config/GameConfig.json` 的 `MaxFPS` 设置（缺省60），`--max-fps` 优先覆盖，0关闭主动限帧；以下数据为60 FPS配置的历史对照。
 
 Apple M5 / macOS 27.0.1 / MoltenVK，Release、1600×1200 framebuffer、默认运行场景及 UI、角色静止、Natural v2 固定种子 `20261029`。按旧版/新版交替运行三轮，每轮预热 180 帧、统计 600 帧；两组各 1800 帧，均开启 `--PerfTest` 逐事件 trace 和每帧内存采样。
 
@@ -54,3 +54,19 @@ Apple M5 / macOS 27.0.1 / MoltenVK，Release、1600×1200 framebuffer、默认�
 确定性 `FramePacer`、现有 `Cpu` / `FramePipeline` 和 `ApplicationClose` 四项通过；Pixel Debug/Release 与 AET Release 构建通过。正式 Pixel 六轮均运行 780 帧并正常退出，没有最小化/重建/延迟跳帧；AET Release 和 Pixel Debug 各 60 帧预热加 120 帧采样后正常退出。本轮未重测跨平台、resize/最小化或 GPU 全量 smoke；不保证系统重载或长帧下始终 60 FPS。
 
 本机原始 CSV、trace、进程计时、分析脚本和复测命令保存在 `build-profile-results/frame-pacing-20261029/`（构建产物，不进入版本控制）。
+
+## 启动最大FPS配置验证（2026-10-29）
+
+在同一 Apple M5/MoltenVK 环境，以正式 Pixel Release 主循环验证配置与命令行优先级，每例预热60帧、采样180帧：
+
+| 配置 MaxFPS | 命令行 | 生效上限 | 实测平均FPS | engine.pacing 平均 |
+|---|---|---:|---:|---:|
+| 30 | 无 | 30 | 30.006 | 29.646 ms |
+| 30 | `--max-fps 120` | 120 | 60.000 | 0.017 ms |
+| 30 | `--max-fps=0` | 0 | 59.986 | 0.015 ms |
+| 0 | 无 | 0 | 59.985 | 0.017 ms |
+| 0 | `--max-fps 60` | 60 | 59.987 | 13.391 ms |
+
+120和不限帧在本机均约60FPS；此时主动限帧已近乎消失，不限帧的 `engine.submit` 平均约14.232 ms，而限60时约0.288 ms，耗时主要位于图形队列提交。此任务不修改呈现同步策略，也未测GPU时间戳，不能把0不限帧解释为关闭显示同步或保证达到更高FPS。
+
+AET Release 的 `--max-fps 30` 实测30.004 FPS；Pixel Debug 的 `--max-fps 0` 正常运行。七例均运行240帧后正常退出，测试后恢复配置为60。`FramePacer`、`Command`、`Cpu`、`GameConfig`、`ApplicationClose` 五项通过；缺参、负数、小数和溢出的正式可执行入口均以64退出且未初始化引擎，`--help` 无需加载配置即可成功。Debug/Release构建通过；构建中曾遇到Slang生成头被截断，重生成相应构建缓存后恢复，未修改第三方源码。原始CSV、trace、日志和复测脚本位于 `build-profile-results/max-fps-20261029/`。本轮未验证跨平台或resize/最小化专项。
