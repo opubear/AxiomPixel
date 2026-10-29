@@ -2,6 +2,8 @@
 
 2026-10-28 完成；引擎基线为 `b08f000d62467eb38b4379d7d6248e2edded371d`，最终引擎提交以根目录 `AxiomVersion.json` 和子模块 gitlink 为准。修改位于本仓库 `Axiom/` 的 `PixelMain`，相邻参考工程没有修改。
 
+本文保留当时 schema 2 的串行采样验收。2026-10-29 的[游戏与渲染隔帧并行](Architecture/ParallelFrames.md)已升级为 schema 3 和两条 trace 时间线；跨线程 self 时间不能相加为 frame。
+
 ## 实现边界
 
 - `Axiom::Diagnostics` 提供 C++20 采样核心、预注册指标、环形历史、inclusive/self、计数器、数值指标、内存记录、统计和 CSV。无需 Vulkan、ImGui 或游戏代码，关闭 runtime 仍可构建。

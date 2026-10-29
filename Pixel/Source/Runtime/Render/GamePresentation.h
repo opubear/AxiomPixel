@@ -21,7 +21,8 @@ class GamePresentation : public PresentationControl {
     void ToggleTint() override;
     void ToggleFieldView() override;
     // The consumer owns its snapshot. Session, camera and this object must be
-    // alive when invoked; releasing the callback never accesses them. Never called from Draw.
+    // alive when invoked at the joined frame boundary; releasing the callback
+    // never accesses them. Never call from Draw or concurrently with game Tick.
     std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera,
         std::shared_ptr<const CharacterAssets> characterArt = {});
     // Updated with terrain/device publication, never by UI actions or Draw.

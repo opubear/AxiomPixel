@@ -43,7 +43,7 @@ cmake --build build-runtime --target Pixel -j4
 - `frame.active`：成功取得交换链图像之后、调用游戏 FrameBegin 之前，到游戏 FrameEnd 与内存查询结束之后。涵盖快照、UI、模拟、提交及 present 调用。
 - `frame.gap`：上一个采样结束到本次成功 acquire，包括引擎 60Hz 限速、事件处理、acquire/fence 等待及跳帧停顿，不能等同 GPU 时间。
 - `frame.untracked`：active 减去最外层已测量区间的并集，包括未单独插桩的 input/UI buffer 更新/present 等。**不能把所有 inclusive 行相加**；`publish`、`game.tick`、`world.environment`、`render.cpu` 包含子阶段。
-- `self`：扣除直接子 scope 的 inclusive 时间。`frame` 与 `active` 是派生总量，self 固定为零；gap 和 untracked 单独列出。新报告为 schema_version=2：gap 的 self 扣除已计时的帧前工作；所有 self（含 gap 与 untracked）之和等于 frame。帧前服务现在计入 engine.game_begin，而不再混入 gap。
+- `self`：扣除本线程直接子 scope 的 inclusive 时间。`frame` 与 `active` 是派生总量，self 固定为零；gap 和 untracked 单独列出。报告为 schema_version=3：游戏 worker 的计时在 join 后合并，与主线程绘制相互重叠，不能将所有 self 累加为 frame。`engine.parallel` 包含派发、绘制和等待；帧首服务计入 engine.game_begin。
 - `*_commands`：录制命令的 CPU 时间；`render.cpu` 还包含上传写入和队列提交，**都不是 GPU 执行耗时**。没有加入 GPU 同步等会干扰流水线的测量操作。
 - 阶段平均值和 P95 按“每个捕获帧累计时间”计算，未调用的帧计零；P95 是 nearest-rank。`ms_per_call` 用累计时间除以累计调用次数，可以区分材料单步成本和补算次数。上传计数是排入命令的字节量，不代表测得的总线带宽。
 - `simulation_input_us` 是游戏收到并限制在 0.25s 内的步长（暂停且未请求单步时不记录）。引擎本身先限制到 0.05s；低 FPS 时游戏时间因此可能比真实时间慢，不能用此计数计算 wall FPS。

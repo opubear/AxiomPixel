@@ -10,7 +10,8 @@
 #include <memory>
 #include <string>
 
-// The publisher fills owned CPU data once at the start of a drawable frame.
+// The publisher fills owned N-1 CPU data at the synchronized frame boundary.
+// Draw runs concurrently with game Tick N and never calls either publisher.
 class PixelRender final : public RenderPolicyInterface {
   public:
     PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,

@@ -57,6 +57,8 @@ Gameplay拥有游戏意图和领域状态：角色、物品、设备、构式宿
 
 Render从Simulation及Gameplay的已提交状态构造呈现快照，Draw只消费快照。相机投影和鼠标选格属于Gameplay；`System/IO/Input`通过`PresentationControl`表达显示意图，Render实现该接口，Application作为组合根负责接线。Gameplay核心不依赖Render或Input。
 
+引擎现采用[游戏与渲染隔帧并行](Docs/Architecture/ParallelFrames.md)：主线程在帧首冻结呈现数据，常驻游戏线程推进第 N 帧，同时主线程绘制第 N−1 帧。两侧完成后才开始下一帧；窗口、输入、DebugUI、资源发布和关闭保留同步边界。Pixel 的 Draw 使用独立地形、风、角色、相机与 UI 数据，AET 在帧首发布 CPU 场景。诊断 trace 分为主线程与游戏线程两条时间线。
+
 `Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass完成后在呈现目标内调用原生背包UI，再调用开发调试UI叠加；UI不受场景调色影响。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
 
 `System/IO/Input`拥有键鼠事件解释、按键状态和控制模式，通过GameSession动作端口及GameCamera驱动游戏；`Gameplay/Actors/PlayerInput.h`保留角色需要的横向移动与跳跃意图。输入适配可以依赖Gameplay，Gameplay核心、Simulation及其余System服务不反向依赖Input；Input不包含Render实现或ImGui，退出、调试面板及画面尺寸由Application注入回调。
@@ -265,6 +267,8 @@ cmake -S . -B build -DPIXEL_BUILD_SMOKE=ON -DAXIOM_BUILD_LIFECYCLE_SMOKE=ON
 cmake --build build --target Pixel Axiom PixelRuntimeSmoke PixelCloseSmoke AxiomLifecycleSmoke AxiomCloseRequestSmoke AxiomApplicationCloseTest -j4
 ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-failure
 (cd Pixel && ../build/tests/PixelRuntimeSmoke)
+# 实际并行游戏推进、上一帧GPU像素、暂停、resize、重置与关闭
+(cd Pixel && ../build/tests/PixelRuntimeSmoke --parallel-only)
 (cd Pixel && ../build/tests/PixelCloseSmoke)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)

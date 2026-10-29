@@ -213,6 +213,58 @@ RHIFrameToken Draw(Axiom &app) {
     }
     throw std::runtime_error("no drawable 2D frame");
 }
+
+void ParallelGameplayGpu() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *input = game.get();
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    PixelRender *policy = nullptr;
+    PixelSmokeApplication app(std::move(game), {.EnableDebugUI = true});
+    app.Engine->SetRender({.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+                              auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), input->CreateFramePublisher());
+                              policy = result.get();
+                              return result;
+                          },
+                          .Enable3DScene = false});
+    app.Initialize();
+    app.Begin();
+    auto &session = input->GetSession();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
+    input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
+    for (unsigned index = 0; index < 24; ++index) {
+        if (index == 8)
+            glfwSetWindowSize(app.Engine->GetPlatform()->GetWindows(), 640, 480);
+        if (index == 12 || index == 16)
+            session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{index == 12});
+        if (index == 20)
+            input->OnKeyEvent(Key::KEY_R, 0, ButtonAction::ACTION_PRESS, Mod{});
+        bool ready = false;
+        for (unsigned attempt = 0; attempt < 100 && !ready; ++attempt) {
+            PlatformInterface::PollEvents();
+            ready = app.FrameBegin();
+        }
+        Require(ready, "parallel smoke could not acquire a frame after resize");
+        const auto token = app.Engine->GetFrameState().Token;
+        const auto stamp = input->GetPresentation().PublishedGameplay()->Stamp;
+        const auto frozen = policy->PublishedFrame();
+        const std::vector<uint32_t> cells(frozen.Cells.begin(), frozen.Cells.end());
+        app.Engine->GetInput()->Dispatch();
+        const bool paused = session.IsPaused();
+        app.Tick(1.0f / 60);
+        Require(input->GetPresentation().PublishedGameplay()->Stamp == stamp
+                    && std::equal(cells.begin(), cells.end(), policy->PublishedFrame().Cells.begin()),
+                "parallel game update changed the frame being rendered");
+        Require(paused ? session.CurrentCommit().Tick == stamp.Tick : session.CurrentCommit().Tick > stamp.Tick,
+                "parallel update did not preserve running/paused game semantics");
+        app.FrameEnd();
+        app.Engine->WaitIdle();
+        VerifyColor(frozen, policy->SceneColor(token.Slot), pixel::GamePresentation::MakeTextures());
+    }
+    app.RequestClose();
+    Require(app.ProcessCloseRequest(), "parallel game did not accept close at the joined boundary");
+    app.Shutdown();
+    std::cout << "Parallel Pixel GPU passed: previous-frame pixels, game advance, pause/resume, resize, reset and shutdown\n";
+}
 void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
     auto &rhi = *engine.GetRHI();
     const auto extent = rhi.GetPresentationExtent();
@@ -2059,6 +2111,10 @@ void RunPixelGardenUISmoke();
 void RunPixelGardenAidUISmoke();
 int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--parallel-only") {
+            ParallelGameplayGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--inventory-ui-only") {
             InventoryUIGpu();
             return 0;
@@ -2118,6 +2174,7 @@ int main(int argc, char **argv) {
             Lifecycle(2);
             return 0;
         }
+        ParallelGameplayGpu();
         InventoryUIGpu();
         CharacterAnimationGpu();
         CharacterGameplayGpu();

@@ -99,6 +99,8 @@ void PixelGame::FrameEnd() {
 }
 
 void PixelGame::Tick(float duration) {
+    // Engine worker: input/UI and publication are already finished on the main
+    // thread. The renderer consumes its own terrain, actor, camera and UI data.
     PIXEL_PROFILE_SCOPE(GameTick);
     if (!std::isfinite(duration) || duration <= 0)
         return;
