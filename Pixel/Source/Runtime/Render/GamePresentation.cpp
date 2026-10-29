@@ -65,9 +65,9 @@ void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
 }
 std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera,
-    std::shared_ptr<const CharacterAssets> characterArt) {
+    std::shared_ptr<const CharacterAssets> characterArt, const PlayerPresentation *player) {
     auto snapshot = session.CreateReadView();
-    return [this, &session, &camera, snapshot = std::move(snapshot), characterArt = std::move(characterArt),
+    return [this, &session, &camera, player, snapshot = std::move(snapshot), characterArt = std::move(characterArt),
             animation = CharacterAnimation{}](WorldGridFrame &frame) mutable {
         auto &world = session.GameWorld;
         const auto lifetime = world.PublicationLifetime();
@@ -126,9 +126,13 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             BuildActorFrame(snapshot->GetActors(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
         }
         BuildWindVisualFrame(*snapshot, WindVisual, float(std::fmod(snapshot->SimulationTime(), 2.0)), frame);
-        if (snapshot->GetPlayer()) {
-            BuildCharacterFrame(*snapshot->GetPlayer(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
-            animation.Update(*snapshot->GetPlayer(), world.GetMap().GetIdentity(), snapshot->SimulationTime());
+        const bool usePlayer = player && player->Base.WorldEpoch == snapshot->Stamp().WorldEpoch
+            && player->Player && snapshot->GetPlayer() && player->Player->Id == snapshot->GetPlayer()->Id
+            && player->Advancing && !session.IsPaused();
+        const auto &character = usePlayer ? player->Player : snapshot->GetPlayer();
+        if (character) {
+            BuildCharacterFrame(*character, camera.GetCamera(), camera.GetFramebufferSize(), frame);
+            animation.Update(*character, world.GetMap().GetIdentity(), usePlayer ? player->Time : snapshot->SimulationTime());
             if (characterArt)
                 animation.Apply(*characterArt, frame);
         }

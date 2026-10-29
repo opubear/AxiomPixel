@@ -2,13 +2,15 @@
 
 引擎调度与线程合同见 [Axiom 并行帧](../../Axiom/Docs/ParallelFrames.md)。游戏第 N 帧在常驻 worker 执行，主线程绘制 N−1 的自持有数据；帧首、UI、输入、Present 和关闭仍在主线程同步边界。
 
+2026-10-30起，Pixel在这个协议内增加[模拟worker](SimulationThread.md)：游戏侧角色呈现与世界模拟分别执行，世界命令等到完整模拟步后发布；帧末join仍保留。下方2026-10-29验证是原双线程基线。
+
 ## Pixel 数据交接
 
 `PixelRender::FrameBegin` 在游戏工作派发前调用 publisher。`GamePresentation` 从已提交视图生成独立的 `WorldGridFrame`：地形、风、区域上传版本、相机、角色、设备、育圃和构式几何均复制到呈现端。`PublishedGameplay` 保存同一次提交的值；原生背包画布在该边界生成并写入 GPU upload buffer。`Draw` 不调用 publisher，不读取 Session 或活跃的游戏 read view。
 
 `CommittedWorldView` 会被 `Session::PublishCommit` 更新，不能直接作为并行绘制的数据源。当前并行安全边界是转换后的 `WorldGridFrame`，不是 WorldBuffers 的共享所有权本身。帧末 join 后才允许重新打包、释放发布预算、重置世界或销毁应用。
 
-`PixelGame::Tick` 仅消费已派发的游戏输入、推进 Session 并更新游戏相机。DebugUI 的状态查询和动作执行在 worker 启动前完成；窗口尺寸采集、WorldWill 服务和帧末内存采样也处于同步边界。完整提交、预算等待、暂停和固定步语义保持原样：一应用帧可以对应零个或多个模拟 tick。
+`PixelGame::Tick` 消费已派发输入，将模拟任务交给独立worker，同时使用捕获的只读地形和角色状态更新玩家呈现及相机。DebugUI的查询和命令接纳、窗口尺寸采集、WorldWill服务和帧末内存采样均处于同步边界。完整提交、预算等待、暂停和固定步语义保留：一应用帧可以对应零个或多个模拟tick。
 
 ## 2026-10-29 验证
 

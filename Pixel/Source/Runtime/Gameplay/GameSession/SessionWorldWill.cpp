@@ -3,6 +3,8 @@
 
 namespace pixel {
 uint64_t GameSession::BeginPrayer(const api::CommitStamp &observed, api::Rect scope, std::string prayer) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return BeginPrayer(observed, scope, std::move(prayer)); });
     if (WriteRejection() != api::Reason::None || observed.WorldEpoch != Epoch
         || observed.WorldId != CurrentCommit().WorldId || !authority::Control::ValidRegion(scope))
         throw std::logic_error("prayer admitted outside its complete game session");
@@ -26,6 +28,8 @@ uint64_t GameSession::BeginPrayer(const api::CommitStamp &observed, api::Rect sc
 
 void GameSession::ResolvePrayer(uint64_t id, api::DecisionState state, std::string explanation,
                                const std::optional<api::ActionReceipt> &receipt) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { ResolvePrayer(id, state, std::move(explanation), receipt); });
     if (WriteRejection() != api::Reason::None) throw std::logic_error("prayer resolution during prepared step");
     auto found = std::find_if(WillMemory.Records.begin(), WillMemory.Records.end(),
         [&](const auto &record) { return record.Id == id; });

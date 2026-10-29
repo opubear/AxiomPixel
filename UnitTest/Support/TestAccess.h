@@ -25,5 +25,25 @@ struct SessionAccess {
     static void CommitFixtureChanges(GameSession &session) { session.CommitChange(); }
     static FormulaBridge &Runtime(GameSession &session) { return session.Formulas; }
     static WorldGenerationSettings &NextGeneration(GameSession &session) { return session.NextGeneration; }
+    // Stop between applying commands and the environment step to inject budget
+    // pressure without relying on scheduler timing or production test hooks.
+    static void PrepareActions(GameSession &session) {
+        session.Worker->Invoke([&] { session.ApplyPendingActions(); });
+    }
+    static const api::ActionReceipt &PreparedAction(GameSession &session) { return *session.PendingActions.front().Result; }
+    static bool HasQueuedChanges(const GameSession &session) {
+        return !session.PendingActions.empty() || session.DeferredPublication;
+    }
+    static void FinishQueuedChanges(GameSession &session) {
+        if (!HasQueuedChanges(session)) return;
+        session.Control(NativeCaller::Driver, api::StepSimulation{});
+        session.Tick(1.f / 60, {});
+    }
+    static api::ActionReceipt ExecuteAndStep(GameSession &session, NativeCaller caller, api::Action action) {
+        auto receipt = session.Execute(caller, std::move(action));
+        if (!receipt.Queued()) return receipt;
+        FinishQueuedChanges(session);
+        return *session.FindAction(receipt.Key);
+    }
 };
 } // namespace pixel::testing

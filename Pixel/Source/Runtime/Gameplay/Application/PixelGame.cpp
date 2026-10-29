@@ -59,6 +59,7 @@ void PixelGame::OnMouseButtonEvent(MouseButton button, ButtonAction action, int 
 }
 
 void PixelGame::ConfigureDiagnostics(axiom::diagnostics::CaptureSession &session) {
+    Diagnostics = &session;
     const auto scenario = Performance.ConfigureFromEnvironment(session.Available());
     Performance.Attach(session);
     if (scenario == "paused" || scenario == "paused-no-wind-visual")
@@ -70,6 +71,7 @@ void PixelGame::ConfigureDiagnostics(axiom::diagnostics::CaptureSession &session
 }
 
 void PixelGame::Initialize() {
+    Session.EnableSimulationThread();
     GAxiom->Engine->GetPlatform()->SetCursorInputMode(true);
     Input.ResetView();
     if (auto *ui = GAxiom->GetDebugUI())
@@ -81,6 +83,7 @@ void PixelGame::Initialize() {
 }
 
 void PixelGame::FrameBegin() {
+    ProfileSimulation = Diagnostics && Diagnostics->IsCollecting();
     ObservationViews.AdvanceServiceFrame();
     Session.BeginFrame();
     WorldWill.Service();
@@ -92,6 +95,8 @@ void PixelGame::FrameBegin() {
 }
 
 void PixelGame::FrameEnd() {
+    if (ProfileSimulation) Session.MergeSimulationMetrics(Diagnostics->Profiler());
+    WorldWill.ResolveCompletedActions();
     if (Performance.IsCollecting()) {
         axiom::diagnostics::Scope scope(axiom::diagnostics::Stage(axiom::diagnostics::EngineStage::MemorySample));
         Performance.SetMemoryUsage(Session.GetWorld().GetMemoryUsage());
@@ -104,6 +109,15 @@ void PixelGame::Tick(float duration) {
     PIXEL_PROFILE_SCOPE(GameTick);
     if (!std::isfinite(duration) || duration <= 0)
         return;
-    Session.Tick(duration, Input.ConsumePlayerInput());
-    Input.UpdateCamera(duration);
+    const auto input = Input.ConsumePlayerInput();
+    const bool paused = Session.IsPaused();
+    PlayerFrame = Session.CapturePlayerPresentation();
+    Session.RunFrame(duration, input, [&] {
+        PIXEL_PROFILE_SCOPE(PlayerPresentation);
+        PlayerFrame.Advance(duration, input);
+        Input.UpdateCamera(duration, PlayerFrame.Motion ? &*PlayerFrame.Motion : nullptr, paused);
+        // Release the terrain only after both sides join, so its lifetime and
+        // the world's retained-buffer accounting never race.
+    }, ProfileSimulation);
+    PlayerFrame.Terrain.reset();
 }

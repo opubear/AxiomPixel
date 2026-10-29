@@ -24,7 +24,7 @@ class GamePresentation : public PresentationControl {
     // alive when invoked at the joined frame boundary; releasing the callback
     // never accesses them. Never call from Draw or concurrently with game Tick.
     std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera,
-        std::shared_ptr<const CharacterAssets> characterArt = {});
+        std::shared_ptr<const CharacterAssets> characterArt = {}, const PlayerPresentation *player = nullptr);
     // Updated with terrain/device publication, never by UI actions or Draw.
     // Each presentation consumer owns its values until its next published frame.
     const std::optional<api::GameplayObservation> &PublishedGameplay() const { return GameplayFrame; }

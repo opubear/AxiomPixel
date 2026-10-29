@@ -75,6 +75,8 @@ class Host final : public api::WorldWillHost {
         ++Submissions;
         return Session.Submit(caller, request);
     }
+    std::optional<api::ActionReceipt> FindAction(api::RequestKey key) const override { return Session.FindAction(key); }
+    bool CancelQueuedAction(api::RequestKey key) override { return Session.CancelQueuedAction(key); }
     api::ObservationResult CaptureObservation(api::Rect scope) override { return Session.CaptureObservation(scope); }
     api::ObservationServiceStatus ObservationService() const override { return Session.ObservationService(); }
     api::ObservationAuthorization AuthorizeObservation(uint64_t subject, api::Rect scope) const override {
@@ -531,6 +533,88 @@ void TerminalHistoryIsBounded() {
     f.Service();
     Check(f.Source.Submissions == 0 && f.Will.Statistics().IgnoredReplies == 1, "eviction made a retired ID executable again");
 }
+
+void ThreadedSubmissionWaitsAndCanCancel() {
+    Fixture f;
+    f.Source.Session.EnableSimulationThread();
+    const auto id = f.Request();
+    f.Model.Reply(id);
+    f.Service();
+    Check(f.Source.Submissions == 1 && f.Will.Results().empty() && f.Will.Statistics().Ready == 1,
+          "queued model command was treated as terminal");
+    f.Service();
+    Check(f.Source.Submissions == 1, "queued model command was submitted twice");
+    f.Source.Session.Tick(1.f / 60, {});
+    f.Will.ResolveCompletedActions();
+    CheckApplied(f, id);
+
+    const auto cancelled = f.Request();
+    const auto prayer = Prayers(f.Source.Session).Records.back();
+    f.Model.Reply(cancelled);
+    f.Service();
+    f.Source.Pending = true;
+    Check(f.Will.CancelPrayer(prayer.Id, prayer.ObservedAt), "queued prayer could not be cancelled");
+    f.Will.ResolveCompletedActions();
+    Check(f.Will.Statistics().Ready == 1, "queued cancellation escaped the pending host boundary");
+    f.Source.Session.Tick(1.f / 60, {});
+    f.Source.Pending = false;
+    f.Service();
+    Check(f.Result(cancelled).State == api::DecisionState::Cancelled, "queued cancellation became an applied action");
+
+    Fixture closing;
+    closing.Source.Session.EnableSimulationThread();
+    const auto completed = closing.Request();
+    closing.Model.Reply(completed);
+    closing.Service();
+    closing.Source.Session.Tick(1.f / 60, {});
+    closing.Will.Close();
+    CheckApplied(closing, completed);
+}
+
+void QueuedRevocationAndTimeoutWaitForPublication() {
+    for (const bool revoke : {true, false}) {
+        Fixture f;
+        auto &session = f.Source.Session;
+        session.EnableSimulationThread();
+        const auto id = f.Request();
+        const auto prayer = Prayers(session).Records.back();
+        const auto resources = session.GetAuthority().Resources();
+        f.Model.Reply(id);
+        f.Service();
+        Check(f.Source.Submissions == 1 && f.Will.Results().empty(), "proposal was not queued");
+
+        if (revoke) {
+            Check(session.SetWorldWillCapabilities(NativeCaller::Driver, {false, true}).Succeeded(), "revoke queued observation");
+            Check(session.WorldWillStatus().Pending, "revocation did not defer publication");
+        } else f.Source.Pending = true;
+        f.Service(revoke ? 1ms : 5s);
+        f.Will.ResolveCompletedActions();
+        Check(f.Will.Results().empty() && f.Will.Statistics().Ready == 1
+            && f.Model.Cancelled == std::vector<llm::DecisionId>{id},
+            "queued cancellation retired the prayer before its durable result could publish");
+        f.Model.Reply(id);
+        f.Service(5s);
+        Check(f.Will.Results().empty() && f.Source.Submissions == 1 && f.Will.Statistics().IgnoredReplies == 1
+            && f.Model.Cancelled.size() == 1, "deferred cancellation accepted late work or changed its lifecycle");
+        if (revoke)
+            Check(session.SetWorldWillCapabilities(NativeCaller::Driver, {true, true}).Succeeded(), "restore observation capability");
+
+        session.Tick(1.f / 60, {});
+        f.Source.Pending = false;
+        f.Will.ResolveCompletedActions();
+        const auto expected = revoke ? api::DecisionState::ViewRevoked : api::DecisionState::TimedOut;
+        const auto resolved = Prayers(session).Records.back();
+        Check(f.Result(id).State == expected && resolved.State == expected && resolved.Id == prayer.Id
+            && resolved.ObservedAt == prayer.ObservedAt && resolved.ResolvedAt == session.CurrentCommit()
+            && !resolved.Action && !resolved.Facts.Count && session.GetAuthority().Resources() == resources,
+            "completed frame lost the deferred prayer result or applied its cancelled intervention");
+        const auto stamp = session.CurrentCommit();
+        f.Service();
+        Check(f.Will.Results().size() == 1 && f.Will.Statistics().Ready == 0
+            && session.CurrentCommit() == stamp && f.Model.Cancelled.size() == 1,
+            "deferred prayer completed more than once");
+    }
+}
 } // namespace
 
 int main() {
@@ -539,6 +623,8 @@ int main() {
         PreconditionsAreSpecific(); AuthorityCannotReturnWithLateWork(); HoldUntilSafeBoundary();
         MalformedAndUnavailableResults(); RequestBoundsAndClose(); TerminalHistoryIsBounded();
         PlayerTextIsOwnedAndBounded(); ExplicitCancellationWaitsForCommitAndRejectsLateReplies();
+        ThreadedSubmissionWaitsAndCanCancel();
+        QueuedRevocationAndTimeoutWaitForPublication();
         std::cout << "world will delay, ordering, current-state admission, revocation, deadlines and lifecycle passed\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }

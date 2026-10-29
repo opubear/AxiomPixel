@@ -679,7 +679,7 @@ Json ToJson(const DerivedMemory &memory) {
 
 Json ToJson(const api::ActionReceipt &receipt) {
     Json result{{"key", RequestKeyJson(receipt.Key)},
-                {"status", receipt.Status == api::ActionStatus::Applied ? "Applied" : "Rejected"},
+                {"status", receipt.Queued() ? "Queued" : receipt.Applied() ? "Applied" : "Rejected"},
                 {"reason", api::ReasonName(receipt.Rejection)}, {"resolvedAt", StampJson(receipt.ResolvedAt)},
                 {"facts", {{"worldEpoch", std::to_string(receipt.Facts.WorldEpoch)},
                            {"firstSequence", std::to_string(receipt.Facts.FirstSequence)}, {"count", receipt.Facts.Count}}},

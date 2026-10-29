@@ -33,6 +33,9 @@ class WorldWill {
     bool CancelPrayer(uint64_t durablePrayerId, const api::CommitStamp &observed);
     std::string_view ModelName() const { return Model.DisplayName(); }
     void Service(llm::Clock::time_point now = llm::Clock::now());
+    // Joined frame boundary: settle existing commands before a possible save,
+    // without polling the model or submitting new world work.
+    void ResolveCompletedActions();
     void Close();
     const std::deque<DecisionResult> &Results() const { return Completed; }
     Metrics Statistics() const;
@@ -49,7 +52,9 @@ class WorldWill {
         llm::Clock::time_point Deadline;
         std::optional<llm::ModelReply> Reply;
         uint64_t PrayerId = 0;
-        bool ModelCancelled = false, CancelRequested = false;
+        bool ModelCancelled = false;
+        std::optional<DecisionState> Cancellation;
+        std::optional<api::RequestKey> Submitted;
     };
     api::WorldWillHost &Host;
     llm::LLM &Model;

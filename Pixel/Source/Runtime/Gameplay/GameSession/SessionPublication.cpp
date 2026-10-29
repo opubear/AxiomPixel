@@ -2,6 +2,7 @@
 
 namespace pixel {
 api::CommitStamp GameSession::CurrentCommit() const {
+    if (DeferredPublication && Worker && !Worker->IsCurrent()) return PublishedCommit;
     const auto worldId = TemporaryWorld ? TemporaryWorld->Path().filename().string()
         : SaveDirectory.empty() ? "finite-world-" + std::to_string(Epoch) : SaveDirectory.filename().string();
     return {worldId,
@@ -21,12 +22,14 @@ std::shared_ptr<CommittedWorldView> GameSession::CreateReadView() {
 }
 
 void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { RefreshReadView(view, bounds); });
     if (bounds.X > INT64_MAX - bounds.Width || bounds.Y > INT64_MAX - bounds.Height
         || bounds.X < INT64_MIN + storage::RegionEdge || bounds.Y < INT64_MIN + storage::RegionEdge)
         throw std::invalid_argument("committed read bounds exceed coordinate range");
     if (bounds.Empty() || bounds.Width > 2048 || bounds.Height > 2048)
         throw std::invalid_argument("committed read bounds must be in [1,2048] cells");
-    if (!Ready || Simulation.HasPendingStep()) return;
+    if (!Ready || Simulation.HasPendingStep() || DeferredPublication) return;
     const auto reserve = CommittedWorldView::CapacityFor(bounds);
     const auto previous = GameWorld.PublicationBytesFor(&view);
     // Resizing may temporarily retain both buffers. Reserve before allocating;
@@ -46,10 +49,11 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
 }
 
 void GameSession::PublishCommit() {
+    if (DeferredPublication) return;
     if (Simulation.HasPendingStep()) throw std::logic_error("publication during pending step");
     GameWorld.PublishBuffers();
     PublishGameplayObservation();
-    Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, CurrentCommit(), Paused, Facts.HighWatermark());
+    Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, Knowledge, CurrentCommit(), Paused, Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
             if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
@@ -63,6 +67,8 @@ void GameSession::PublishCommit() {
     PublishedMapVersion = GameWorld.GetMap().GetVersion();
     PublishedWindVersion = GameWorld.GetEnvironment().GetWindSimulation().GetRevision();
     PublishedFieldSourceVersion = GameWorld.GetEnvironment().GetFieldSources().Revision();
+    PublishedCommit = CurrentCommit();
+    PublishedFactSequence = Facts.HighWatermark();
 }
 
 void GameSession::CommitChange() {
@@ -71,6 +77,9 @@ void GameSession::CommitChange() {
 }
 
 void GameSession::SynchronizeReadViews() {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([this] { SynchronizeReadViews(); });
+    if (DeferredPublication) return;
     if (Simulation.HasPendingStep()) return;
     if (!GameWorld.TryPrepareBuffers()) return;
     // Residency may be serviced for rendering or saving while the game is

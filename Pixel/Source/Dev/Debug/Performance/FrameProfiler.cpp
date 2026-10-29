@@ -7,7 +7,8 @@ const axiom::diagnostics::Schema &ProfileSchema() {
         auto result = axiom::diagnostics::EngineSchema();
         constexpr auto stages = std::to_array({"publish", "publish.state_copy", "publish.materials", "publish.force_colors", "publish.wind_visual", "publish.validate",
                                                "game.tick", "world.environment", "wind.advance", "world.material_step", "wind.feedback", "world.character",
-                                               "render.cpu", "render.upload_write", "render.world_commands", "render.wind_commands", "render.character_commands", "render.post_ui_commands", "ui.build"});
+                                               "render.cpu", "render.upload_write", "render.world_commands", "render.wind_commands", "render.character_commands", "render.post_ui_commands", "ui.build",
+                                               "simulation.tick", "game.player_presentation"});
         constexpr auto counters = std::to_array({"simulation_steps", "material_cells_scanned", "active_regions", "wind_visual_cells_scanned",
                                                  "world_upload_bytes", "wind_upload_bytes", "simulation_input_us", "framebuffer_pixels"});
         static_assert(stages.size() + axiom::diagnostics::EngineStageCount == StageCount);

@@ -1,6 +1,6 @@
 # 游戏动作与会话控制入口
 
-M1.4 的实现入口是 `GameAPI/Actions.h`、`Gameplay/Actions/GameActions.cpp` 和 `GameSession`。公共动作值只依赖标准库，不依赖 World、Formula、ImGui 或 RHI。动作入口同步执行，回执携带`ActionReceipt.ResolvedAt`和因果事实范围；[固定步与提交](SimulationCommits.md)说明提交与呈现副本。M2已接入有界事实环及独立的[LLMView冻结查询](../../.awtcontext/GlobalDoc/LLMView.md)；M5的WorldWill在固定步外等待模型，再于安全边界同步提交，未引入通用动作队列。
+实现入口是 `GameAPI/Actions.h`、`Gameplay/Actions/GameActions.cpp` 和 `GameSession`。公共动作值只依赖标准库，不依赖 World、Formula、ImGui 或 RHI。运行时启用[独立模拟线程](SimulationThread.md)后，动作先返回 `Queued`，下一固定步执行并完成模拟后才交付终态、`ActionReceipt.ResolvedAt`和因果事实范围；`FindAction(RequestKey)`查询结果。未启用worker的领域夹具保留同步执行。M2已接入有界事实环及独立的[LLMView冻结查询](../../.awtcontext/GlobalDoc/LLMView.md)；WorldWill等待排队动作完成，不会把接纳当作成功。
 
 ## 调用与身份
 

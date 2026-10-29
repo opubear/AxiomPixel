@@ -45,7 +45,7 @@ struct ActionRequest {
     Action Payload;
     uint32_t SchemaVersion = 1;
 };
-enum class ActionStatus { Applied, Rejected };
+enum class ActionStatus { Applied, Rejected, Queued };
 enum class Reason {
     None, InvalidArgument, Unsupported, StaleEpoch, CallerExpired, DuplicateExpired,
     SessionUnavailable, WaitingForBudget, PermissionDenied, NotReady, Blocked,
@@ -66,7 +66,8 @@ struct ActivationResult {
 };
 struct WindResult { WindKind Kind; int64_t BoundaryY; };
 using ActionResult = std::variant<std::monostate, MaterialResult, ElementsSpawned, ActivationResult, WindResult, DeviceChanged, ForceObserved, AuthorityChanged>;
-// Synchronous terminal result at a complete committed state.
+// Queued acknowledges admission only; result, facts and ResolvedAt are filled
+// after the simulation step commits. Resubmission/query preserves the key.
 struct ActionReceipt {
     RequestKey Key;
     ActionStatus Status = ActionStatus::Rejected;
@@ -76,6 +77,7 @@ struct ActionReceipt {
     FactRange Facts;
     std::string Message;
     bool Applied() const { return Status == ActionStatus::Applied; }
+    bool Queued() const { return Status == ActionStatus::Queued; }
 };
 
 // Global GameSession freeze, including actors, environment and gameplay services.

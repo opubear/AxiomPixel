@@ -7,7 +7,7 @@ api::WorldWillHostStatus GameSession::WorldWillStatus() const {
     const auto &caller = Callers[3];
     if (caller.HighWatermark == UINT64_MAX) throw std::overflow_error("world-will action sequence exhausted");
     return {CurrentCommit(), caller.Id, caller.HighWatermark + 1, AppliedProgram(), Authority.Resources(),
-        Ready, Simulation.HasPendingStep(), Paused};
+        Ready, Simulation.HasPendingStep() || DeferredPublication, Paused};
 }
 
 api::ObservationAuthorization GameSession::AuthorizeObservation(uint64_t subject, api::Rect scope) const {
@@ -23,12 +23,15 @@ api::Reason GameSession::AuthorizeAction(api::CallerSessionId caller, const api:
 }
 
 api::ControlReceipt GameSession::SetWorldWillCapabilities(NativeCaller caller, authority::Capabilities capabilities) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return SetWorldWillCapabilities(caller, capabilities); });
     if (caller != NativeCaller::Debug && caller != NativeCaller::Driver)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None) return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     if (!Authority.SetCapabilities(capabilities)) return {api::ControlStatus::Applied};
     const auto changes = ReconcileAuthority();
+    DeferWorldPublication();
     Simulation.CommitChange();
     RecordFact(CurrentCommit(), api::AuthorityCause{Authority.Version()},
         api::AuthorityChanged{Authority.Version(), 0, {}, false, capabilities.Observe, capabilities.Intervene});

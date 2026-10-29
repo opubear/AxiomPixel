@@ -17,6 +17,7 @@ class Body {
     WorldPosition GetWorldPosition() const { return {OriginChunk, {X, Y}}; }
     CellCoord CellOrigin() const { return {OriginChunk.X * storage::ChunkEdge, OriginChunk.Y * storage::ChunkEdge}; }
     void Tick(float duration, WorldMapView world, int horizontal, bool jump);
+    bool HasTerrain(WorldMapView world) const;
     bool Occupies(int64_t x, int64_t y) const;
     BodyState CaptureState() const { return {GetWorldPosition(), VerticalSpeed, Grounded}; }
     void RestoreState(BodyState state);

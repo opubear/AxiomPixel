@@ -330,7 +330,7 @@ bool GameSession::TrySave() {
     return true;
 }
 
-void GameSession::Tick(float duration, PlayerInput input) {
+void GameSession::TickSimulation(float duration, PlayerInput input) {
     if (!Ready) return;
     if (Paused && !Simulation.HasStepRequest()) {
         Simulation.ClearInput();
@@ -341,6 +341,7 @@ void GameSession::Tick(float duration, PlayerInput input) {
     performance::FrameProfiler::Count(performance::Counter::SimulationInputMicroseconds,
                                      uint64_t(std::min(duration, .25f) * 1e6));
     while (Simulation.HasStep()) {
+        ApplyPendingActions();
         const auto stepInput = Simulation.BeginStep();
         if (!GameWorld.StepEnvironment(Simulation.Time())) break;
         // Intent belongs to this successful step; pending retries never touch actors.
@@ -352,6 +353,7 @@ void GameSession::Tick(float duration, PlayerInput input) {
         StepDevices(effects, changes);
         debug::StepForceGarden(GameWorld, Formulas, Garden, effects);
         const bool singleStep = Simulation.CommitStep();
+        CompletePendingActions();
         RecordFormulaFacts(effects);
         const auto authorityChanges = ReconcileAuthority();
         RecordAuthorityFacts(authorityChanges);
@@ -376,11 +378,13 @@ bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
     settings.Kind = kind;
     GameWorld.ConfigureWindDomain(GameWorld.GetWindBoundary(), settings, GameWorld.IsWindEnabled());
     WindKind = kind;
-    Simulation.CancelStepRequest();
+    if (!ProcessingActions) Simulation.CancelStepRequest();
     return true;
 }
 
 void GameSession::ReplacingWorld() {
+    PendingActions.clear();
+    ActionsPrepared = ProcessingActions = DeferredPublication = false;
     RenewActionSessions();
     Observations.Reset();
     Facts.Reset(Epoch);

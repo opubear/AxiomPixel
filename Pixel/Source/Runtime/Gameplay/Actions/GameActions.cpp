@@ -130,6 +130,10 @@ api::CallerSessionId GameSession::CallerSession(NativeCaller caller) const {
 }
 const api::ActionReceipt *GameSession::LastAction(NativeCaller caller) const {
     const auto &receipts = Callers.at(size_t(caller)).Receipts;
+    for (auto it = PendingActions.rbegin(); it != PendingActions.rend(); ++it)
+        if (it->Caller == CallerSession(caller)
+            && (receipts.empty() || it->Request.Sequence > receipts.back().Key.Sequence))
+            return &it->Receipt;
     return receipts.empty() ? nullptr : &receipts.back();
 }
 GameSession::CallerState *GameSession::FindCaller(api::CallerSessionId caller) {
@@ -175,16 +179,31 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
         return reject(api::Reason::StaleEpoch);
     if (request.Sequence == 0)
         return reject(api::Reason::InvalidArgument);
-    if (request.Sequence <= state->HighWatermark) {
-        for (const auto &previous : state->Receipts)
-            if (previous.Key.Sequence == request.Sequence)
-                return previous;
+    if (!ProcessingActions && request.Sequence <= state->HighWatermark) {
+        if (const auto previous = FindAction(receipt.Key)) return *previous;
         return reject(api::Reason::DuplicateExpired);
     }
 
     api::Reason reason = request.SchemaVersion != 1
                            ? api::Reason::InvalidArgument
                            : Validate(request.Payload);
+    if (Worker && !ProcessingActions) {
+        // Admission reads the joined session, but never prepares or writes a
+        // world buffer. Preconditions are checked again on the simulation worker.
+        if (reason == api::Reason::None) reason = WriteRejection();
+        if (reason == api::Reason::None && PendingActions.size() >= 64) reason = api::Reason::LimitExceeded;
+        state->HighWatermark = std::max(state->HighWatermark, request.Sequence);
+        if (reason != api::Reason::None) {
+            receipt = reject(reason);
+            RememberReceipt(receipt);
+            return receipt;
+        }
+        receipt.Status = api::ActionStatus::Queued;
+        receipt.ResolvedAt = {};
+        receipt.Message = "Waiting for the next completed simulation step";
+        PendingActions.push_back({caller, request, receipt});
+        return receipt;
+    }
     if (reason == api::Reason::None)
         reason = PrepareWorldMutation();
     if (reason == api::Reason::None)
@@ -211,9 +230,7 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
     }
     // Terminal refusals also consume sequence numbers. Storage stays bounded.
     state->HighWatermark = std::max(state->HighWatermark, request.Sequence);
-    if (state->Receipts.size() == 64)
-        state->Receipts.pop_front();
-    state->Receipts.push_back(receipt);
+    if (!ProcessingActions) RememberReceipt(receipt);
     return receipt;
 }
 
@@ -364,6 +381,8 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
 }
 
 api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api::SessionControl &control) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return Control(caller, control); });
     const auto *state = FindCaller(caller);
     if (!state)
         return {api::ControlStatus::Rejected, api::Reason::CallerExpired, "CallerExpired"};
@@ -383,6 +402,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             const auto stopped = StopDevices();
             const auto authorityChanges = ReconcileAuthority();
             if (changed || crystalStopped || !stopped.empty()) {
+                DeferWorldPublication();
                 Simulation.CommitChange();
                 RecordAuthorityFacts(authorityChanges);
                 for (const auto &change : stopped)
@@ -401,6 +421,11 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
                 if (Simulation.HasPendingStep())
                     return {api::ControlStatus::Deferred, api::Reason::WaitingForBudget,
                             "Save/reset deferred: simulation is waiting for storage budget. The session stays open; resolve the budget shortage, finish the step, then retry."};
+                if constexpr (std::is_same_v<T, api::SaveWorld>) {
+                    if (!PendingActions.empty() || DeferredPublication)
+                        return {api::ControlStatus::Deferred, api::Reason::NotReady,
+                                "Save deferred until queued world changes finish a simulation step."};
+                }
             }
             if constexpr (std::is_same_v<T, api::CreateForceGarden>) {
                 if (Mode != SessionMode::Finite && StreamConfiguration.WindowEdge < 128)
@@ -440,6 +465,9 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
                 if (value.Paused != Paused) {
                     if (Simulation.HasPendingStep())
                         return {api::ControlStatus::Rejected, api::Reason::WaitingForBudget, "WaitingForBudget"};
+                    if (value.Paused && (!PendingActions.empty() || DeferredPublication))
+                        return {api::ControlStatus::Deferred, api::Reason::NotReady,
+                                "Pause deferred until queued world changes finish a simulation step."};
                     Paused = value.Paused;
                     Simulation.ClearInput();
                     CommitChange();
@@ -459,6 +487,8 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
 }
 
 ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return ApplyProcess(caller, program); });
     if (caller == NativeCaller::Input)
         return {api::Reason::PermissionDenied, {}, "PermissionDenied"};
     const auto reason = PrepareWorldMutation();
@@ -470,6 +500,8 @@ ApplyProgramResult GameSession::ApplyProcess(NativeCaller caller, const formula:
 }
 
 api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return StartProcessFixture(caller, carrier); });
     if (caller == NativeCaller::Input || carrier.Kind == ProcessCarrierKind::Player || carrier.Kind == ProcessCarrierKind::Device || carrier.Kind == ProcessCarrierKind::Intervention)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "Fixture requires native host assembly"};
     const auto reason = PrepareWorldMutation();
@@ -477,6 +509,7 @@ api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const 
         return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     if (!Formulas.CastCarrier(GameWorld, carrier))
         return {api::ControlStatus::Rejected, api::Reason::InvalidProgram, Formulas.LastError()};
+    DeferWorldPublication();
     Simulation.CommitChange();
     const api::ProgramEffectCause cause{{Epoch, Formulas.LastActivationId()}, AppliedProgram(), 0, {}, {}};
     RecordFact(CurrentCommit(), cause, api::ProgramActivated{AppliedProgram(), Formulas.LastActivationId()});
@@ -486,6 +519,8 @@ api::ControlReceipt GameSession::StartProcessFixture(NativeCaller caller, const 
 }
 
 api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return CancelProcessCarrier(caller, kind, subject); });
     if (caller == NativeCaller::Input || kind == ProcessCarrierKind::Device)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     const auto reason = PrepareWorldMutation();
@@ -493,6 +528,7 @@ api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, Proce
         return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.CancelCarrier(GameWorld, kind, subject);
     const auto authorityChanges = ReconcileAuthority();
+    DeferWorldPublication();
     Simulation.CommitChange();
     RecordAuthorityFacts(authorityChanges);
     PublishCommit();
@@ -500,12 +536,15 @@ api::ControlReceipt GameSession::CancelProcessCarrier(NativeCaller caller, Proce
 }
 
 api::ControlReceipt GameSession::WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject) {
+    if (Worker && !Worker->IsCurrent())
+        return Worker->Invoke([&] { return WakeProcessCarrier(caller, kind, subject); });
     if (caller == NativeCaller::Input || kind == ProcessCarrierKind::Device)
         return {api::ControlStatus::Rejected, api::Reason::PermissionDenied, "PermissionDenied"};
     const auto reason = PrepareWorldMutation();
     if (reason != api::Reason::None)
         return {api::ControlStatus::Rejected, reason, api::ReasonName(reason)};
     Formulas.WakeCarrier(kind, subject);
+    DeferWorldPublication();
     CommitChange();
     return {api::ControlStatus::Applied};
 }

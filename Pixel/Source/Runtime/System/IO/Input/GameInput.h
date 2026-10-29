@@ -7,6 +7,7 @@
 #include <functional>
 
 namespace pixel {
+class Body;
 class GameSession;
 class GameCamera;
 class PresentationControl;
@@ -40,6 +41,8 @@ class GameInput {
     PlayerInput ConsumePlayerInput();
     // Called after simulation; standard following uses the player's new position.
     void UpdateCamera(float duration);
+    // Uses game-owned values while the simulation worker owns the live session.
+    void UpdateCamera(float duration, const Body *player, bool paused);
     void ResetView();
     static const char *ControlsDescription();
 

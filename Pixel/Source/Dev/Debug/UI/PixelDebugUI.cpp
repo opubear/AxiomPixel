@@ -95,7 +95,7 @@ void DrawProgramsAndFields(const GamePresentation &presentation) {
 }
 
 void DrawDevices(GameSession &session, GamePresentation &presentation, GameInput &input,
-                 std::array<int64_t, 2> &cell, uint64_t &selected) {
+                 std::array<int64_t, 2> &cell, uint64_t &selected, std::optional<api::RequestKey> &pendingPlacement) {
     if (!ImGui::CollapsingHeader("Devices"))
         return;
     bool placement = input.IsDevicePlacementEnabled();
@@ -110,6 +110,15 @@ void DrawDevices(GameSession &session, GamePresentation &presentation, GameInput
         return;
     }
     const auto &gameplay = *published;
+    if (pendingPlacement) {
+        const auto receipt = session.FindAction(*pendingPlacement);
+        if (!receipt || !receipt->Queued()) {
+            if (receipt && receipt->Applied())
+                if (const auto *placed = std::get_if<api::DeviceChanged>(&receipt->Result))
+                    selected = placed->Device.Ref.Id;
+            pendingPlacement.reset();
+        }
+    }
     DrawCommit(gameplay);
     const auto findSelected = [&] {
         return std::find_if(gameplay.Devices.begin(), gameplay.Devices.end(),
@@ -123,6 +132,7 @@ void DrawDevices(GameSession &session, GamePresentation &presentation, GameInput
     ImGui::InputScalar("Cell Y", ImGuiDataType_S64, &cell[1]);
     if (ImGui::Button("Place force emitter")) {
         const auto receipt = session.Execute(NativeCaller::Debug, api::PlaceDevice{{cell[0], cell[1]}});
+        if (receipt.Queued()) pendingPlacement = receipt.Key;
         if (receipt.Applied())
             if (const auto *placed = std::get_if<api::DeviceChanged>(&receipt.Result))
                 selected = placed->Device.Ref.Id;
@@ -175,7 +185,7 @@ void DrawDevices(GameSession &session, GamePresentation &presentation, GameInput
     for (const auto caller : {NativeCaller::Input, NativeCaller::Debug})
         if (const auto *receipt = session.LastAction(caller))
             ImGui::TextWrapped("%s #%llu: %s %s", caller == NativeCaller::Input ? "Input" : "Debug",
-                static_cast<unsigned long long>(receipt->Key.Sequence), receipt->Applied() ? "Applied" : "Rejected",
+                static_cast<unsigned long long>(receipt->Key.Sequence), receipt->Queued() ? "Queued" : receipt->Applied() ? "Applied" : "Rejected",
                 receipt->Message.c_str());
     ImGui::PopID();
 }
@@ -191,7 +201,7 @@ void DrawDevicePlacement(const GameSession &session, const GameInput &input) {
         ImGui::TextWrapped("Left click: force emitter | Cost: 4 stone + 2 copper ore");
         ImGui::TextWrapped("Right click device: enable/disable | Shift+right: recycle");
         if (const auto *receipt = session.LastAction(NativeCaller::Input))
-            ImGui::TextWrapped("%s: %s", receipt->Applied() ? "Applied" : "Rejected", receipt->Message.c_str());
+            ImGui::TextWrapped("%s: %s", receipt->Queued() ? "Queued" : receipt->Applied() ? "Applied" : "Rejected", receipt->Message.c_str());
     }
     ImGui::End();
 }
@@ -212,7 +222,7 @@ void DrawActions(GameSession &session, std::array<int64_t, 2> &cell) {
     for (const auto caller : {NativeCaller::Input, NativeCaller::Debug}) {
         if (const auto *receipt = session.LastAction(caller))
             ImGui::TextWrapped("%s #%llu: %s %s", caller == NativeCaller::Input ? "Input" : "Debug",
-                static_cast<unsigned long long>(receipt->Key.Sequence), receipt->Applied() ? "Applied" : "Rejected",
+                static_cast<unsigned long long>(receipt->Key.Sequence), receipt->Queued() ? "Queued" : receipt->Applied() ? "Applied" : "Rejected",
                 receipt->Message.c_str());
     }
 }
@@ -352,7 +362,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
                 ImGui::TextWrapped("Left click the world to spawn a radius-4 disk in empty cells. 1 restores the normal tool.");
             DrawActions(session, ActionCell);
             DrawInventory(presentation);
-            DrawDevices(session, presentation, input, DeviceCell, SelectedDevice);
+            DrawDevices(session, presentation, input, DeviceCell, SelectedDevice, PendingDevicePlacement);
             DrawProgramsAndFields(presentation);
             DrawEnvironment(session, presentation);
             DrawWindAppearance(presentation);

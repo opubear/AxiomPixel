@@ -99,5 +99,6 @@
 | 空间存储风策略Release数据 | `workspace:Docs/SpatialStorage-wind-2026-10-29.csv` | 三轮六风策略空场墙体狭缝的耗时及速度散度质量诊断 | |
 | 空间存储提交与打包Release数据 | `workspace:Docs/SpatialStorage-buffers-2026-10-29.csv` | 三轮有无读者的动态风与运动材料提交、F1打包、容量及校验值 | |
 | 游戏与渲染隔帧并行 | `workspace:Docs/Architecture/ParallelFrames.md` | 引擎常驻游戏worker、上一帧呈现所有权、双线程诊断与CPU及GPU验证 | |
+| 独立模拟线程与世界帧提交 | `workspace:Docs/Architecture/SimulationThread.md` | 三线程所有权、角色预测、世界命令队列、完整提交与保存关闭和验证入口 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

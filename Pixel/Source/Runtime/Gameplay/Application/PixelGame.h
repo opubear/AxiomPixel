@@ -33,7 +33,7 @@ class PixelGame final : public IGameInterface {
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
     bool IsDevicePlacementEnabled() const { return Input.IsDevicePlacementEnabled(); }
     std::function<void(WorldGridFrame &)> CreateFramePublisher(std::shared_ptr<const pixel::CharacterAssets> characterArt = {}) {
-        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt));
+        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt), &PlayerFrame);
     }
     const pixel::World &GetWorld() const { return Session.GetWorld(); }
     pixel::GamePresentation &GetPresentation() { return Presentation; }
@@ -66,6 +66,9 @@ class PixelGame final : public IGameInterface {
     std::unique_ptr<pixel::llm::LLM> Model;
     pixel::will::WorldWill WorldWill{Session, *Model};
     pixel::GameCamera Camera;
+    pixel::PlayerPresentation PlayerFrame;
+    axiom::diagnostics::CaptureSession *Diagnostics = nullptr;
+    bool ProfileSimulation = false;
     pixel::GamePresentation Presentation;
     pixel::ArtAssetStore ArtAssets;
     pixel::PixelDebugUI DebugUI;

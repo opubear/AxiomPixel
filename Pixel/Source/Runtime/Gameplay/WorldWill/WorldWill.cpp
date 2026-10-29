@@ -137,7 +137,8 @@ bool WorldWill::CancelPrayer(uint64_t durablePrayerId, const api::CommitStamp &o
             && pending.ObservedAt.WorldId == status.Stamp.WorldId && pending.Caller == status.Caller;
     });
     if (found == Active.end() || found->ModelCancelled) return false;
-    found->CancelRequested = true;
+    if (found->Submitted && !Host.CancelQueuedAction(*found->Submitted)) return false;
+    found->Cancellation = DecisionState::Cancelled;
     found->ModelCancelled = true;
     Model.Cancel(found->Id);
     if (status.Ready && !status.Pending && !status.Paused) Finish(size_t(found - Active.begin()), DecisionState::Cancelled);
@@ -162,6 +163,23 @@ std::optional<api::Action> WorldWill::ActionFor(const Pending &pending) const {
     return {};
 }
 
+void WorldWill::ResolveCompletedActions() {
+    if (Stopped) return;
+    const auto status = Host.WorldWillStatus();
+    if (!status.Ready || status.Pending || status.Paused) return;
+    for (size_t i = 0; i < Active.size();) {
+        const auto &pending = Active[i];
+        if (pending.ObservedAt.WorldEpoch != status.Stamp.WorldEpoch || pending.Caller != status.Caller) { ++i; continue; }
+        if (pending.Cancellation) {
+            Finish(i, *pending.Cancellation);
+            continue;
+        }
+        const auto receipt = pending.Submitted ? Host.FindAction(*pending.Submitted) : std::nullopt;
+        if (!receipt || receipt->Queued()) { ++i; continue; }
+        Finish(i, receipt->Applied() ? DecisionState::Applied : DecisionState::Rejected, *receipt);
+    }
+}
+
 void WorldWill::Service(llm::Clock::time_point now) {
     const auto previousService = LastService;
     CheckTime(now);
@@ -177,6 +195,7 @@ void WorldWill::Service(llm::Clock::time_point now) {
         PausedAt.reset();
     }
     Views.AdvanceServiceFrame();
+    ResolveCompletedActions();
 
     // Drain at most a fixed number, even if an adapter misbehaves. Duplicates
     // never get new action sequences; retired IDs have no authority to submit.
@@ -194,6 +213,22 @@ void WorldWill::Service(llm::Clock::time_point now) {
         const auto authorization = Host.AuthorizeObservation(pending.Caller, pending.Intent.Scope);
         if (status.Stamp.WorldEpoch != pending.ObservedAt.WorldEpoch || status.Caller != pending.Caller) {
             Finish(i, DecisionState::StaleEpoch);
+        } else if (pending.Cancellation) {
+            if (status.Ready && !status.Pending) Finish(i, *pending.Cancellation);
+            else ++i;
+        } else if (pending.Submitted) {
+            // Admission is not application. Keep the prayer alive until its
+            // command belongs to a completed simulation frame.
+            const bool revoked = !authorization.Allowed || authorization.Version != pending.AuthorizationVersion;
+            if ((revoked || now >= pending.Deadline) && Host.CancelQueuedAction(*pending.Submitted)) {
+                // Withdraw before simulation, but retain the reason until the
+                // durable prayer and controller result can publish together.
+                pending.Cancellation = revoked ? DecisionState::ViewRevoked : DecisionState::TimedOut;
+                if (!pending.ModelCancelled) Model.Cancel(pending.Id);
+                pending.ModelCancelled = true;
+                if (status.Ready && !status.Pending) Finish(i, *pending.Cancellation);
+                else ++i;
+            } else ++i;
         } else if (!status.Ready || status.Pending) {
             // Keep the terminal result pending until it can share a complete
             // game commit, but never extend the worker's wall-clock deadline.
@@ -202,8 +237,6 @@ void WorldWill::Service(llm::Clock::time_point now) {
                 pending.ModelCancelled = true;
             }
             ++i;
-        } else if (pending.CancelRequested) {
-            Finish(i, DecisionState::Cancelled);
         } else if (!authorization.Allowed || authorization.Version != pending.AuthorizationVersion) {
             Finish(i, DecisionState::ViewRevoked);
         } else if (now >= pending.Deadline) {
@@ -221,6 +254,11 @@ void WorldWill::Service(llm::Clock::time_point now) {
             // No equality check against the global revision: the action owns
             // program/device/resource preconditions and rechecks current control.
             auto receipt = Host.Submit(pending.Caller, {pending.ObservedAt.WorldEpoch, status.NextSequence, *action});
+            if (receipt.Queued()) {
+                pending.Submitted = receipt.Key;
+                ++i;
+                continue;
+            }
             const auto state = receipt.Applied() ? DecisionState::Applied : DecisionState::Rejected;
             Finish(i, state, std::move(receipt));
         } else Finish(i, DecisionState::InvalidProposal);
@@ -229,8 +267,12 @@ void WorldWill::Service(llm::Clock::time_point now) {
 
 void WorldWill::Close() {
     if (Stopped) return;
+    ResolveCompletedActions();
     Stopped = true;
-    while (!Active.empty()) Finish(0, Active.front().CancelRequested ? DecisionState::Cancelled : DecisionState::Closed);
+    while (!Active.empty()) {
+        if (Active.front().Submitted) Host.CancelQueuedAction(*Active.front().Submitted);
+        Finish(0, Active.front().Cancellation.value_or(DecisionState::Closed));
+    }
     if (Observer) { Views.RemoveObserver(Observer); Observer = 0; }
     Model.Close();
 }

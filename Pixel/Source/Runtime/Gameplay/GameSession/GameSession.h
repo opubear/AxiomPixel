@@ -13,6 +13,8 @@
 #include "Runtime/Gameplay/Persistence/SessionStore.h"
 #include "Runtime/Simulation/World/World.h"
 #include "Runtime/System/IO/FileIO.h"
+#include "Runtime/Gameplay/Actors/PlayerPresentation.h"
+#include "SimulationWorker.h"
 #include <optional>
 #include <string>
 
@@ -38,6 +40,14 @@ class GameSession : public api::WorldWillHost {
     // Existing fixtures select finite or persistent storage explicitly.
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
     explicit GameSession(SessionMode mode, WorldGenerationSettings generation = {});
+    ~GameSession();
+    // Runtime enables the persistent simulation worker; deterministic domain
+    // fixtures may continue to call Tick synchronously without a worker.
+    void EnableSimulationThread();
+    std::thread::id SimulationThreadId() const { return Worker ? Worker->ThreadId() : std::thread::id{}; }
+    void RunFrame(float duration, PlayerInput input, const std::function<void()> &game, bool profile = false);
+    void MergeSimulationMetrics(axiom::diagnostics::FrameProfiler &owner) { if (Worker) Worker->MergeMetrics(owner); }
+    PlayerPresentation CapturePlayerPresentation() const;
     static WorldGenerationSettings DefaultGeneration();
     uint64_t WorldEpoch() const { return Epoch; }
     api::ProgramRef AppliedProgram() const { return Formulas.AppliedProgram(); }
@@ -52,6 +62,8 @@ class GameSession : public api::WorldWillHost {
     void ResolvePrayer(uint64_t id, api::DecisionState state, std::string explanation,
                        const std::optional<api::ActionReceipt> &receipt) override;
     api::ActionReceipt Submit(api::CallerSessionId caller, const api::ActionRequest &request) override;
+    std::optional<api::ActionReceipt> FindAction(api::RequestKey key) const override;
+    bool CancelQueuedAction(api::RequestKey key) override;
     api::ActionReceipt Execute(NativeCaller caller, api::Action action);
     const api::ActionReceipt *LastAction(NativeCaller caller) const;
     api::ControlReceipt Control(api::CallerSessionId caller, const api::SessionControl &control);
@@ -62,8 +74,8 @@ class GameSession : public api::WorldWillHost {
     api::ControlReceipt StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier);
     api::ControlReceipt CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
     api::ControlReceipt WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
-    void BeginFrame() { Formulas.BeginFrame(); }
-    void ClearPlayerInput() { Simulation.ClearInput(); }
+    void BeginFrame();
+    void ClearPlayerInput();
     const World &GetWorld() const { return GameWorld; }
     const Actors &GetActors() const { return Characters; }
     const Devices &GetDevices() const { return Machines; }
@@ -91,11 +103,11 @@ class GameSession : public api::WorldWillHost {
     api::ObservationMetrics ObservationStats() const;
     knowledge::SaveData CaptureKnowledgeData() const { return Knowledge.Export(); }
     api::ObservationServiceStatus ObservationService() const override {
-        return {CurrentCommit(), Ready, Simulation.HasPendingStep()};
+        return {CurrentCommit(), Ready, Simulation.HasPendingStep() || DeferredPublication};
     }
-    uint64_t FactHighWatermark() const { return Facts.HighWatermark(); }
+    uint64_t FactHighWatermark() const { return DeferredPublication ? PublishedFactSequence : Facts.HighWatermark(); }
     api::FactReadResult ReadFacts(uint64_t epoch, uint64_t after, uint64_t high, uint32_t limit = 256) const override {
-        return Facts.Read(epoch, after, high, limit);
+        return Facts.Read(epoch, after, std::min(high, FactHighWatermark()), limit);
     }
     // Internal consumers track a bounded live projection, never a prepared step.
     std::shared_ptr<CommittedWorldView> CreateReadView();
@@ -193,5 +205,21 @@ class GameSession : public api::WorldWillHost {
     void RestoreSocialData(const GameplaySaveData &data, const std::string &worldId);
     CheckpointMetrics SaveMetrics;
     void ReplacingWorld();
+    void TickSimulation(float duration, PlayerInput input);
+    struct PendingAction {
+        api::CallerSessionId Caller;
+        api::ActionRequest Request;
+        api::ActionReceipt Receipt;
+        std::optional<api::ActionReceipt> Result;
+    };
+    std::vector<PendingAction> PendingActions;
+    bool ProcessingActions = false, ActionsPrepared = false, DeferredPublication = false;
+    api::CommitStamp PublishedCommit;
+    uint64_t PublishedFactSequence = 0;
+    void ApplyPendingActions();
+    void CompletePendingActions();
+    void RememberReceipt(api::ActionReceipt receipt);
+    void DeferWorldPublication() { if (Worker) DeferredPublication = true; }
+    std::unique_ptr<SimulationWorker> Worker;
 };
 } // namespace pixel

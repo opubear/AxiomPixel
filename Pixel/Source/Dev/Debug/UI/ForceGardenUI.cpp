@@ -33,21 +33,45 @@ void DrawBed(const char *label, int64_t x, const ForceGardenObservation &garden,
     ImGui::TextWrapped("%s", ConditionReason(sample.Condition));
 }
 
-void RecordAction(std::string &status, const char *operation, const api::ActionReceipt &receipt) {
-    status = std::string(operation) + (receipt.Applied() ? ": Applied. " : ": Rejected. ") + receipt.Message;
+void RecordAction(ForceGardenUIState &state, const char *operation, const api::ActionReceipt &receipt) {
+    state.QueuedActions.clear();
+    state.QueuedOperation = operation;
+    if (receipt.Queued()) state.QueuedActions.push_back(receipt.Key);
+    state.Receipt = std::string(operation) + (receipt.Queued() ? ": Queued. " : receipt.Applied() ? ": Applied. " : ": Rejected. ") + receipt.Message;
 }
 
-void MineSupply(GameSession &session, int64_t first, int64_t last, int64_t y, std::string &status) {
-    uint32_t collected = 0;
+void RefreshActionStatus(GameSession &session, ForceGardenUIState &state) {
+    if (state.QueuedActions.empty()) return;
+    for (const auto &key : state.QueuedActions) {
+        const auto receipt = session.FindAction(key);
+        if (receipt && receipt->Queued()) return;
+        if (!receipt || !receipt->Applied()) {
+            state.Receipt = state.QueuedOperation + ": " + (receipt ? receipt->Message : "World replaced or result expired.");
+            state.QueuedActions.clear();
+            return;
+        }
+    }
+    state.Receipt = state.QueuedOperation + ": Applied. " + std::to_string(state.QueuedActions.size()) + " commands completed.";
+    state.QueuedActions.clear();
+}
+
+void MineSupply(GameSession &session, int64_t first, int64_t last, int64_t y, ForceGardenUIState &state) {
+    auto &status = state.Receipt;
+    state.QueuedActions.clear();
+    state.QueuedOperation = "Mining";
+    uint32_t collected = 0, queued = 0;
     for (int64_t x = first; x <= last; ++x) {
         const auto receipt = session.Execute(NativeCaller::Debug, api::MineRegion{{x, y}, {}});
+        if (receipt.Queued()) { ++queued; state.QueuedActions.push_back(receipt.Key); continue; }
         if (!receipt.Applied()) {
             status = "Mining stopped after " + std::to_string(collected) + " cells: " + receipt.Message;
+            state.QueuedActions.clear();
             return;
         }
         collected += std::get<api::MaterialResult>(receipt.Result).Changed;
     }
-    status = "Mining: Applied. Collected " + std::to_string(collected) + " resource cells into player inventory.";
+    status = queued ? "Mining: Queued " + std::to_string(queued) + " cells for the next simulation step."
+                    : "Mining: Applied. Collected " + std::to_string(collected) + " resource cells into player inventory.";
 }
 const char *RequestStatusName(will::RequestStatus status) {
     switch (status) {
@@ -158,7 +182,7 @@ void DrawHomeAid(GameSession &session, will::WorldWill &worldWill, const api::Ga
     ImGui::Text("Home protection: %s; coverage %s", installed ? "installed" : "absent",
         installed && protection->Active ? "active" : "inactive");
     if (ImGui::Button(installed ? "Remove home protection" : "Install home protection"))
-        RecordAction(receipt, "Home protection", session.Execute(NativeCaller::Debug, api::SetDeviceProtection{device.Ref, !installed}));
+        RecordAction(state, "Home protection", session.Execute(NativeCaller::Debug, api::SetDeviceProtection{device.Ref, !installed}));
     if (installed)
         ImGui::Text("Protection: (%lld, %lld), %u x %u cells", static_cast<long long>(protection->Region.Origin.X),
             static_cast<long long>(protection->Region.Origin.Y), protection->Region.Width, protection->Region.Height);
@@ -167,6 +191,7 @@ void DrawHomeAid(GameSession &session, will::WorldWill &worldWill, const api::Ga
 
 void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, will::WorldWill &worldWill,
                       ForceGardenUIState &state) {
+    RefreshActionStatus(session, state);
     auto &receipt = state.Receipt;
     if (!ImGui::CollapsingHeader("Force garden"))
         return;
@@ -205,12 +230,12 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
 
         ImGui::Separator();
         ImGui::TextWrapped("3. Mine the marked supply row at Y=%lld: X=516..519 stone, 520..521 copper ore, 522..537 coal. These buttons mine real cells.", static_cast<long long>(y + 2));
-        if (ImGui::Button("Mine build materials")) MineSupply(session, 516, 521, y + 2, receipt);
-        if (ImGui::Button("Mine 16 coal")) MineSupply(session, 522, 537, y + 2, receipt);
+        if (ImGui::Button("Mine build materials")) MineSupply(session, 516, 521, y + 2, state);
+        if (ImGui::Button("Mine 16 coal")) MineSupply(session, 522, 537, y + 2, state);
         ImGui::TextWrapped("4. Build at (%lld, %lld), supply 8 coal, then enable. Cost: 4 stone + 2 copper ore; 1 coal / 30 active steps. The outlet reaches the home bed.",
             static_cast<long long>(GardenDeviceX), static_cast<long long>(y - 2));
         if (ImGui::Button("Build home emitter"))
-            RecordAction(receipt, "Build home emitter", session.Execute(NativeCaller::Debug, api::PlaceDevice{{GardenDeviceX, y - 2}}));
+            RecordAction(state, "Build home emitter", session.Execute(NativeCaller::Debug, api::PlaceDevice{{GardenDeviceX, y - 2}}));
         const auto device = std::find_if(published->Devices.begin(), published->Devices.end(), [&](const auto &value) {
             return value.Anchor == api::Cell{GardenDeviceX, y - 2};
         });
@@ -219,9 +244,9 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
             const auto reason = api::DeviceStateReason(device->State);
             ImGui::TextWrapped("%.*s", int(reason.size()), reason.data());
             if (ImGui::Button("Supply home 8 coal"))
-                RecordAction(receipt, "Supply home 8 coal", session.Execute(NativeCaller::Debug, api::SupplyDevice{device->Ref, 8}));
+                RecordAction(state, "Supply home 8 coal", session.Execute(NativeCaller::Debug, api::SupplyDevice{device->Ref, 8}));
             if (ImGui::Button(device->Enabled ? "Disable home emitter" : "Enable home emitter"))
-                RecordAction(receipt, "Toggle home emitter", session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device->Ref, !device->Enabled}));
+                RecordAction(state, "Toggle home emitter", session.Execute(NativeCaller::Debug, api::SetDeviceEnabled{device->Ref, !device->Enabled}));
             DrawHomeAid(session, worldWill, *published, *device, state);
         }
         DrawWorldWillState(*published, worldWill, receipt);

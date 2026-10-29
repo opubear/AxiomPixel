@@ -34,10 +34,13 @@ PlayerInput GameInput::ConsumePlayerInput() {
     return input;
 }
 void GameInput::UpdateCamera(float duration) {
+    UpdateCamera(duration, Session.GetPlayer(), Session.IsPaused());
+}
+void GameInput::UpdateCamera(float duration, const Body *player, bool paused) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
-    if (Mode == ControlMode::Standard && !Session.IsPaused())
-        Camera.FollowPlayer(Session.GetPlayer(), duration);
+    if (Mode == ControlMode::Standard && !paused)
+        Camera.FollowPlayer(player, duration);
     else if (Mode == ControlMode::DebugCamera)
         Camera.Pan(Movement(), duration);
 }

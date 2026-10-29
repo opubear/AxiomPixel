@@ -199,6 +199,8 @@ std::vector<pixel::CellState> CopyWorldCells(const pixel::World &world) {
 }
 RHIFrameToken Draw(Axiom &app) {
     auto &engine = *app.Engine;
+    auto &session = static_cast<PixelGame &>(*app.GetGame()).GetSession();
+    pixel::testing::SessionAccess::FinishQueuedChanges(session);
     for (int attempt = 0; attempt < 100; ++attempt) {
         engine.GetPlatform()->PollEvents();
         if (!app.FrameBegin()) {
@@ -207,7 +209,7 @@ RHIFrameToken Draw(Axiom &app) {
         }
         const auto token = engine.GetFrameState().Token;
         engine.GetInput()->Dispatch();
-        app.Tick(0);
+        app.Tick(pixel::testing::SessionAccess::HasQueuedChanges(session) ? 1.f / 60 : 0);
         app.FrameEnd();
         return token;
     }
@@ -232,6 +234,12 @@ void ParallelGameplayGpu() {
     session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     for (unsigned index = 0; index < 24; ++index) {
+        std::optional<pixel::api::ActionReceipt> command;
+        if (index == 4) {
+            command = session.Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{520, 512}});
+            Require(command->Queued() && session.GetWorld().GetCell(520, 512).Type != pixel::CellTypeId::Air,
+                    "GPU world command bypassed simulation admission");
+        }
         if (index == 8)
             glfwSetWindowSize(app.Engine->GetPlatform()->GetWindows(), 640, 480);
         if (index == 12 || index == 16)
@@ -251,6 +259,10 @@ void ParallelGameplayGpu() {
         app.Engine->GetInput()->Dispatch();
         const bool paused = session.IsPaused();
         app.Tick(1.0f / 60);
+        if (command)
+            Require(session.FindAction(command->Key)->Applied()
+                        && session.FindAction(command->Key)->ResolvedAt == session.CurrentCommit(),
+                    "GPU world command did not resolve at the completed simulation frame");
         Require(input->GetPresentation().PublishedGameplay()->Stamp == stamp
                     && std::equal(cells.begin(), cells.end(), policy->PublishedFrame().Cells.begin()),
                 "parallel game update changed the frame being rendered");
@@ -797,7 +809,7 @@ void FormulaGameplayGpu() {
     const auto triple = std::get<pixel::formula::process::ProgramArtifact>(pixel::formula::process::Compile("gpu-triple",
         "process 1; var n = 0; while n < 3 { emit bolt(10, speed(60), ticks(120)); n = n + 1; } wait ticks(120);"));
     Require(bool(input->GetSession().ApplyProcess(pixel::NativeCaller::Driver, triple)), "GPU process fixture rejected three bolts");
-    Require(input->GetSession().Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{input->GetSession().AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "GPU fixture failed to launch");
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(input->GetSession(), pixel::NativeCaller::Driver, pixel::api::ActivateProgram{input->GetSession().AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "GPU fixture failed to launch");
     const auto verifyYellow = [&] {
         const auto token = Draw(app);
         app.Engine->GetRHI()->WaitIdle();
@@ -838,7 +850,7 @@ void FormulaGameplayGpu() {
     Require(policy->PublishedFrame().FormulaDraws.empty(), "cleared GPU formula snapshot retained a sphere");
     auto &session = input->GetSession();
     Require(bool(session.ApplyProcess(pixel::NativeCaller::Driver, pixel::CarrierExample())), "process GPU apply failed");
-    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {0, 0}}}).Applied(),
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Input, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {0, 0}}}).Applied(),
             "process GPU player activation failed");
     for (const auto kind : {pixel::ProcessCarrierKind::NaturalSource, pixel::ProcessCarrierKind::FixedFixture}) {
         pixel::ProcessCarrier carrier;
@@ -864,7 +876,7 @@ void FormulaGameplayGpu() {
                           pixel::items::ItemAmount{pixel::items::ItemId::Coal, 1}};
     Require(inventory.Add(inventory.Reference(session.PlayerInventory()), cost) == pixel::items::Result::Applied,
             "device GPU fixture stock failed");
-    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::PlaceDevice{{520, 508}}).Applied(), "device GPU placement failed");
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Input, pixel::api::PlaceDevice{{520, 508}}).Applied(), "device GPU placement failed");
     const auto deviceId = session.GetDevices().Snapshot().front().Ref.Id;
     const auto currentDevice = [&] { return session.GetDevices().Find(deviceId)->Value; };
     const auto verifyDevice = [&] {
@@ -890,7 +902,7 @@ void FormulaGameplayGpu() {
         check(draw.OutputCenterRadius, draw.OutputColor);
     };
     for (int slot = 0; slot < 4; ++slot) verifyDevice();
-    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::SupplyDevice{currentDevice().Ref}).Applied(), "GPU fuel failed");
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Input, pixel::api::SupplyDevice{currentDevice().Ref}).Applied(), "GPU fuel failed");
     auto &fieldWorld = pixel::testing::SessionAccess::World(session);
     fieldWorld.DisableWind();
     fieldWorld.FillBaseForceRegion({502, 490, 36, 36}, {0, 0});
@@ -937,7 +949,7 @@ void FormulaGameplayGpu() {
     };
     captureField("field-before.ppm", false);
     input->GetPresentation().ToggleFieldView();
-    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::SetDeviceEnabled{currentDevice().Ref, true}).Applied(),
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Input, pixel::api::SetDeviceEnabled{currentDevice().Ref, true}).Applied(),
             "GPU device enable failed");
     session.BeginFrame();
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
@@ -947,7 +959,7 @@ void FormulaGameplayGpu() {
     input->GetPresentation().ToggleFieldView();
     for (int slot = 0; slot < 4; ++slot) captureField("field-active.ppm", true);
     Require(session.GetDevices().Count() == 1, "F1 removed device state");
-    Require(session.Execute(pixel::NativeCaller::Input, pixel::api::RemoveDevice{currentDevice().Ref}).Applied(), "GPU device removal failed");
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Input, pixel::api::RemoveDevice{currentDevice().Ref}).Applied(), "GPU device removal failed");
     for (int slot = 0; slot < 4; ++slot) captureField("field-stopped.ppm", false);
     Require(session.GetFormulaRuntime().Stats().Roots == 0 && fieldWorld.GetEnvironment().GetFieldSources().Size() == 0,
             "GPU removal retained device runtime or field");
@@ -1022,9 +1034,9 @@ void ForceGardenGameplayGpu(bool aid = false) {
     };
     for (int slot = 0; slot < 4; ++slot) verifyGarden("garden-seedlings.ppm", false);
     for (int64_t x = 516; x < 530; ++x)
-        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{x, surface + 2}, {}}).Applied(),
+        Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver, pixel::api::MineRegion{{x, surface + 2}, {}}).Applied(),
                 "GPU garden mining failed");
-    Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::PlaceDevice{{pixel::GardenDeviceX, surface - 2}}).Applied(),
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver, pixel::api::PlaceDevice{{pixel::GardenDeviceX, surface - 2}}).Applied(),
             "GPU garden emitter construction failed");
     auto device = session.GetDevices().Snapshot().front();
     if (aid) {
@@ -1041,9 +1053,9 @@ void ForceGardenGameplayGpu(bool aid = false) {
             "GPU offline prayer did not apply");
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true}).Succeeded(), "GPU aid pause failed");
     } else {
-        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SupplyDevice{device.Ref, 8}).Applied(), "GPU garden coal supply failed");
+        Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver, pixel::api::SupplyDevice{device.Ref, 8}).Applied(), "GPU garden coal supply failed");
         device = session.GetDevices().Snapshot().front();
-        Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::SetDeviceEnabled{device.Ref, true}).Applied(), "GPU garden enable failed");
+        Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver, pixel::api::SetDeviceEnabled{device.Ref, true}).Applied(), "GPU garden enable failed");
     }
     for (uint32_t step = 0; step < pixel::GardenMatureSteps; ++step) {
         session.BeginFrame();
@@ -1126,9 +1138,17 @@ void BasicWorldGameplay() {
             pointer.Position[axis] = (target[axis] * scale[axis] - oldOrigin) * pointer.WindowSize[axis] / pointer.FramebufferSize[axis];
         }
         input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
-        Require(world.GetCell(512, 507).Type == pixel::CellTypes::Dirt,
-                "queued click used current viewport instead of event viewport after resize");
+        const auto placed = *input->GetSession().LastAction(pixel::NativeCaller::Input);
+        Require(placed.Queued() && world.GetCell(512, 507).Type == pixel::CellTypes::Empty,
+                "queued click changed terrain before simulation");
         input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), pointer);
+        pixel::testing::SessionAccess::FinishQueuedChanges(input->GetSession());
+        const auto committed = input->GetSession().FindAction(placed.Key);
+        const auto *removed = input->GetSession().LastAction(pixel::NativeCaller::Input);
+        Require(committed && committed->Applied() && removed && removed->Applied()
+                    && std::get<pixel::api::MaterialResult>(committed->Result).Target == pixel::api::Cell{512, 507}
+                    && std::get<pixel::api::MaterialResult>(removed->Result).Target == pixel::api::Cell{512, 507},
+                "queued click used current viewport instead of event viewport after resize");
         Require(world.GetCell(512, 507).Type == pixel::CellTypes::Empty, "queued removal after resize missed original cell");
         pointer.FramebufferSize = {-1, 0};
         input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
@@ -1281,36 +1301,40 @@ void BasicWorldGameplay() {
     auto clickCell = [&](uint32_t x, uint32_t y, int button) {
         queueClick(x, y, button);
         engine.GetInput()->Dispatch();
+        pixel::testing::SessionAccess::FinishQueuedChanges(input->GetSession());
     };
     // Multiple clicks and later cursor motion may arrive in one PollEvents batch.
-    queueClick(512, 508, GLFW_MOUSE_BUTTON_LEFT);
-    queueClick(516, 508, GLFW_MOUSE_BUTTON_LEFT);
+    queueClick(512, 511, GLFW_MOUSE_BUTTON_LEFT);
+    queueClick(516, 511, GLFW_MOUSE_BUTTON_LEFT);
     moveCursorToCell(520, 508);
     engine.GetInput()->Dispatch();
-    Require(world.GetCell(512, 508).Type == pixel::CellTypes::Dirt && world.GetCell(516, 508).Type == pixel::CellTypes::Dirt
+    pixel::testing::SessionAccess::FinishQueuedChanges(input->GetSession());
+    Require(world.GetCell(512, 511).Type == pixel::CellTypes::Dirt && world.GetCell(516, 511).Type == pixel::CellTypes::Dirt
                 && world.GetCell(520, 508).Type == pixel::CellTypes::Empty,
             "batched clicks used the later cursor position");
-    expectedCells[508 * Grid2D::Width + 512] = expectedCells[508 * Grid2D::Width + 516] = 1;
+    expectedCells[511 * Grid2D::Width + 512] = expectedCells[511 * Grid2D::Width + 516] = 1;
     verify();
-    queueClick(512, 508, GLFW_MOUSE_BUTTON_RIGHT);
-    queueClick(516, 508, GLFW_MOUSE_BUTTON_RIGHT);
+    queueClick(512, 511, GLFW_MOUSE_BUTTON_RIGHT);
+    queueClick(516, 511, GLFW_MOUSE_BUTTON_RIGHT);
     moveCursorToCell(520, 508);
     engine.GetInput()->Dispatch();
-    Require(world.GetCell(512, 508).Type == pixel::CellTypes::Empty && world.GetCell(516, 508).Type == pixel::CellTypes::Empty,
+    pixel::testing::SessionAccess::FinishQueuedChanges(input->GetSession());
+    Require(world.GetCell(512, 511).Type == pixel::CellTypes::Empty && world.GetCell(516, 511).Type == pixel::CellTypes::Empty,
             "batched removals used the later cursor position");
-    expectedCells[508 * Grid2D::Width + 512] = expectedCells[508 * Grid2D::Width + 516] = 0;
+    expectedCells[511 * Grid2D::Width + 512] = expectedCells[511 * Grid2D::Width + 516] = 0;
     verify();
     clickCell(512, 508, GLFW_MOUSE_BUTTON_LEFT);
-    Require(world.GetCell(512, 508).Type == pixel::CellTypes::Dirt && world.GetCell(512, 507).Type == pixel::CellTypes::Empty, "left click missed its single cell");
-    expectedCells[508 * Grid2D::Width + 512] = 1;
+    Require(world.GetCell(512, 509).Type == pixel::CellTypes::Dirt && world.GetCell(512, 507).Type == pixel::CellTypes::Empty,
+            "queued placement was not simulated before presentation");
+    expectedCells[509 * Grid2D::Width + 512] = 1;
     verify();
     for (int i = 0; i < 5; ++i)
         input->Tick(1.f / 60);
-    expectedCells[508 * Grid2D::Width + 512] = 0;
+    expectedCells[509 * Grid2D::Width + 512] = 0;
     expectedCells[511 * Grid2D::Width + 512] = 1;
     verify();
     clickCell(512, 512, GLFW_MOUSE_BUTTON_RIGHT);
-    Require(world.GetCell(512, 512).Type == pixel::CellTypes::Empty, "right click did not remove dirt");
+    Require(input->GetSession().LastAction(pixel::NativeCaller::Input)->Applied(), "right click did not remove dirt");
     input->Tick(1.f / 60);
     expectedCells[511 * Grid2D::Width + 512] = 0;
     verify();
@@ -1328,11 +1352,11 @@ void BasicWorldGameplay() {
         view.OriginPixels[1] -= 16;
         input->SetView(view);
     }
-    clickCell(514, 510, GLFW_MOUSE_BUTTON_LEFT);
-    expectedCells[510 * Grid2D::Width + 514] = 1;
+    clickCell(514, 511, GLFW_MOUSE_BUTTON_LEFT);
+    expectedCells[511 * Grid2D::Width + 514] = 1;
     verify();
-    clickCell(514, 510, GLFW_MOUSE_BUTTON_RIGHT);
-    expectedCells[510 * Grid2D::Width + 514] = 0;
+    clickCell(514, 511, GLFW_MOUSE_BUTTON_RIGHT);
+    expectedCells[511 * Grid2D::Width + 514] = 0;
     verify();
     world.FillForceDirection({0, 0});
     world.AddWindImpulse(512, 200, 64, {0, -120});
@@ -1360,7 +1384,6 @@ void BasicWorldGameplay() {
     world.SetForceDirection(513, 508, {0, -1});
     world.SetForceDirection(513, 507, {0, 0});
     clickCell(512, 508, GLFW_MOUSE_BUTTON_LEFT);
-    input->Tick(1.f / 60);
     expectedCells[508 * Grid2D::Width + 513] = 1;
     verify();
     input->Tick(1.f / 60);
@@ -2113,6 +2136,10 @@ int main(int argc, char **argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--parallel-only") {
             ParallelGameplayGpu();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--world-only") {
+            BasicWorldGameplay();
             return 0;
         }
         if (argc == 2 && std::string_view(argv[1]) == "--inventory-ui-only") {

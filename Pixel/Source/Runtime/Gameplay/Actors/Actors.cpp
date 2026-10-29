@@ -14,21 +14,6 @@ Body BodyAt(WorldPosition position) {
     body.Y = position.Local[1];
     return body;
 }
-// A moving simulation window may cut through an existing body. Unknown terrain
-// must freeze that actor, not enter Body's solid-overlap escape path.
-bool HasBodyTerrain(const Body &body, WorldMapView terrain) {
-    const auto first = body.GetWorldPosition().Cell();
-    const auto origin = body.CellOrigin();
-    const CellCoord last{origin.X + int64_t(std::ceil(body.X + Body::Width)) - 1,
-                         origin.Y + int64_t(std::ceil(body.Y + Body::Height)) - 1};
-    const WorldRect active{terrain.Origin.X, terrain.Origin.Y, terrain.Width, terrain.Height};
-    if (!active.Contains(first) || !active.Contains(last)) return false;
-    for (auto y = first.Y; y <= last.Y; ++y)
-        for (auto x = first.X; x <= last.X; ++x)
-            if (!terrain.TryAtLocal(uint32_t(x - active.X), uint32_t(y - active.Y))) return false;
-    return true;
-}
-
 uint64_t NewOwner() {
     static std::atomic<uint64_t> next{1};
     const auto owner = next.fetch_add(1);
@@ -182,7 +167,7 @@ void Actors::Step(WorldMapView terrain, PlayerInput input) {
     for (auto &slot : Slots) {
         // A training target is anchored even if its support is mined away or
         // water/terrain enters its body. It has no movement or attack behavior.
-        if (!slot.Actor || slot.Actor->Kind == ActorKind::TrainingDummy || !HasBodyTerrain(slot.Actor->Body, terrain)) continue;
+        if (!slot.Actor || slot.Actor->Kind == ActorKind::TrainingDummy || !slot.Actor->Body.HasTerrain(terrain)) continue;
         auto &actor = *slot.Actor;
         const auto intent = actor.Kind == ActorKind::Player ? input : PlayerInput{};
         actor.Body.Tick(1.f / 60, terrain, intent.Horizontal, intent.Jump);

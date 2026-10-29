@@ -74,11 +74,19 @@ void CloseAtSaveBoundary() {
     auto *platform = app.Engine->GetPlatform();
     const auto metadata = session.GetSaveDirectory() / "checkpoint.current";
     const auto before = Read(metadata);
-    Require(session.Execute(pixel::NativeCaller::Driver,
-                pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(),
-            "default process close fixture could not launch");
+    const auto launch = session.Execute(pixel::NativeCaller::Driver,
+                pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}});
+    Require(launch.Queued(), "default process close fixture was not queued");
+    app.RequestClose();
+    Require(!app.ProcessCloseRequest() && session.LastPersistenceResult().Status == pixel::api::ControlStatus::Deferred,
+            "close saved before queued changes reached simulation");
+    session.Tick(1.f / 60, {});
+    const auto completedLaunch = session.FindAction(launch.Key);
+    if (!completedLaunch || !completedLaunch->Applied())
+        throw std::runtime_error("default process close fixture could not launch: "
+            + (completedLaunch ? completedLaunch->Message : "missing receipt"));
     const auto stamp = session.CurrentCommit();
-    pixel::testing::SessionAccess::RestoreClock(session, 0, 1.0 / 60, true);
+    pixel::testing::SessionAccess::RestoreClock(session, session.GetSimulationTime(), 1.0 / 60, true);
     game.OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
     for (int request = 0; request < 2; ++request) {
         if (request == 0) app.RequestClose();
@@ -93,7 +101,7 @@ void CloseAtSaveBoundary() {
     }
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     session.Tick(1.f / 60, {});
-    Require(!world.GetEnvironment().IsWaitingForBudget() && session.CurrentCommit().Tick == 1
+    Require(!world.GetEnvironment().IsWaitingForBudget() && session.CurrentCommit().Tick == stamp.Tick + 1
                 && !app.ProcessCloseRequest() && Read(metadata) == before,
             "finishing the pending step retried a discarded close or save");
 

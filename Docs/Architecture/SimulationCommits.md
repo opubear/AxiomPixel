@@ -1,5 +1,7 @@
 # 固定步协调与完整提交
 
+运行时现通过[独立模拟线程](SimulationThread.md)调度以下领域步。开启 worker 后，世界动作排队、结果在完整模拟步后交付；下文帧间动作的即时 Revision/回执说明仍适用于未开启 worker 的同步领域夹具。游戏侧角色呈现使用只读世界进行预测，权威角色、观察与存档保持本文件的完整提交合同。
+
 M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`Gameplay/GameSession/GameSession.cpp`、`Gameplay/GameSession/SessionPublication.cpp` 和 `Gameplay/CommittedWorldView.*`。它接替 Environment 的累加器和 World 的跨领域回调链。World 继续仅依赖 Core/Performance；60 Hz、单步和会话提交策略属于 Pixel Gameplay；全局暂停状态由GameSession持有，引擎没有新增游戏调度规则。
 
 ## 全局暂停
@@ -38,7 +40,7 @@ Session先在安全边界处理流式驻留，再由协调器累计最多0.25秒
 
 ObservationProjector 在提交时只替换只读世界租约和小型领域元数据；收到 Capture 时才按区域版本生成必要的 API DTO。空闲观察者不再逐帧扫描材料与风。LLMView 的冻结分页导出仍拥有序列化结果，以保持已交付查询的冻结与过期合同。可信调试的预算、I/O等实时诊断仍使用 World 服务接口。
 
-当前双缓冲在主线程交接；不可把同一个可变 CommittedWorldView 跨线程共享。未来 GPU 后端应在命令提交后保留只读租约，直到 fence 完成再释放，并通过同一个发布边界交接完整版本。当前实现没有新增 GPU 求解或跨线程发布调度。
+模拟 worker 封存双缓冲，游戏线程可持有派发前获取的不可变租约；可变 CommittedWorldView 只能在 join 后读取或刷新。渲染仍在同步帧首生成自持有上传数据，Draw 不访问 Session。未来 GPU 求解/直接租约上传仍需保留资源至 fence 完成；当前没有新增 GPU 求解。
 
 ## 存储与验证边界
 

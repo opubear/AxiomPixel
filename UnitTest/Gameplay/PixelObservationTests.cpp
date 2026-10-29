@@ -228,6 +228,49 @@ void PendingStepUsesOnlyCompleteCopies() {
             "recovered observation did not refresh to the complete committed wind state");
 }
 
+void DeferredPublicationRetainsCommittedKnowledge() {
+    GameSession session;
+    const api::Rect scope{{496, 496}, 32, 32};
+    Require(session.SetWorldWillCapabilities(NativeCaller::Driver, {true, false}).Succeeded(), "seed knowledge history");
+    const auto original = Available(session.Observe(NativeCaller::Driver, scope));
+    Require(!original.Knowledge.History.empty() && original.Knowledge.Stamp == original.Stamp,
+            "initial knowledge was not part of the observation commit");
+    session.EnableSimulationThread();
+    Require(session.SetWorldWillCapabilities(NativeCaller::Driver, {false, false}).Succeeded(), "defer authority change");
+    Require(session.ObservationService().WaitingForBudget && session.CurrentCommit() == original.Stamp,
+            "fixture did not defer its authority publication");
+    const auto held = Available(session.Observe(NativeCaller::Driver, scope));
+    Require(held.Stamp == original.Stamp && held.Knowledge.Stamp == original.Stamp
+        && held.Knowledge.HighWatermark == original.Knowledge.HighWatermark
+        && held.Knowledge.History.size() == original.Knowledge.History.size()
+        && held.FactHighWatermark == original.FactHighWatermark,
+        "pending observation mixed live knowledge with the previous world commit");
+    Require(session.CaptureObservation(scope).Status == api::ObservationStatus::NotSampled,
+            "pending external observation sampled unpublished knowledge");
+
+    session.Tick(1.f / 60, {});
+    const auto published = session.CurrentCommit();
+    const auto publishedFacts = session.FactHighWatermark();
+    Require(published.Tick == original.Stamp.Tick + 1, "authority change did not complete a simulation step");
+    // No Observe call between commits: publication must advance the cached
+    // knowledge together with the rest of the scope, before the next deferral.
+    Require(session.SetWorldWillCapabilities(NativeCaller::Driver, {true, false}).Succeeded(), "defer next authority change");
+    const auto advanced = Available(session.Observe(NativeCaller::Driver, scope));
+    Require(advanced.Stamp == published && advanced.Knowledge.Stamp == published
+        && advanced.FactHighWatermark == publishedFacts
+        && advanced.Knowledge.HighWatermark == original.Knowledge.HighWatermark + 1
+        && advanced.Knowledge.History.size() == original.Knowledge.History.size() + 1,
+        "publication left cached knowledge behind or exposed the next authority change");
+    session.Tick(1.f / 60, {});
+    const auto current = Available(session.Observe(NativeCaller::Driver, scope));
+    const auto external = Available(session.CaptureObservation(scope));
+    Require(current.Stamp == session.CurrentCommit() && current.Knowledge.Stamp == current.Stamp
+        && current.Knowledge.HighWatermark == advanced.Knowledge.HighWatermark + 1
+        && external.Knowledge.Stamp == current.Stamp && external.Knowledge.HighWatermark == current.Knowledge.HighWatermark
+        && original.Knowledge.HighWatermark + 2 == current.Knowledge.HighWatermark,
+        "completed native/external knowledge snapshots disagreed or mutated an owned older snapshot");
+}
+
 void ProgramIdentityAndEpochReset() {
     GameSession session;
     const api::Rect scope{{500, 500}, 64, 64};
@@ -415,6 +458,7 @@ int main() {
         SnapshotValuesAndIncrementalSampling();
         FarResidentProjectionAndChunkLifecycle();
         PendingStepUsesOnlyCompleteCopies();
+        DeferredPublicationRetainsCommittedKnowledge();
         ProgramIdentityAndEpochReset();
         FactRangesCursorsAndWindSemantics();
         BoundedCapacityAndCallerOwnership();

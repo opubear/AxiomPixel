@@ -13,6 +13,21 @@ void Body::RestoreState(BodyState state) {
     Grounded = state.Grounded;
 }
 
+// A moving simulation window can cut through a body. Both authority and
+// presentation freeze unknown terrain instead of treating it as solid overlap.
+bool Body::HasTerrain(WorldMapView terrain) const {
+    const auto first = GetWorldPosition().Cell();
+    const auto origin = CellOrigin();
+    const CellCoord last{origin.X + int64_t(std::ceil(X + Width)) - 1,
+                         origin.Y + int64_t(std::ceil(Y + Height)) - 1};
+    const WorldRect active{terrain.Origin.X, terrain.Origin.Y, terrain.Width, terrain.Height};
+    if (!active.Contains(first) || !active.Contains(last)) return false;
+    for (auto y = first.Y; y <= last.Y; ++y)
+        for (auto x = first.X; x <= last.X; ++x)
+            if (!terrain.TryAtLocal(uint32_t(x - active.X), uint32_t(y - active.Y))) return false;
+    return true;
+}
+
 bool Body::Occupies(int64_t x, int64_t y) const {
     const auto origin = CellOrigin();
     const double localX = double(x - origin.X), localY = double(y - origin.Y);

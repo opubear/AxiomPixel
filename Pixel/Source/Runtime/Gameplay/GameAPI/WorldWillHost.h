@@ -19,6 +19,8 @@ class WorldWillHost : public ObservationSource {
   public:
     virtual WorldWillHostStatus WorldWillStatus() const = 0;
     virtual ActionReceipt Submit(CallerSessionId caller, const ActionRequest &request) = 0;
+    virtual std::optional<ActionReceipt> FindAction(RequestKey) const { return {}; }
+    virtual bool CancelQueuedAction(RequestKey) { return false; }
     // Trusted main-thread decision lifecycle, distinct from model proposals.
     // Ready publishes a proposal without resolving it; other states are terminal.
     // Hosts without a durable game journal may leave these hooks unused.

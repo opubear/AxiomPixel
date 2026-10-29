@@ -27,6 +27,8 @@ enum class Stage : size_t {
     CharacterCommands,
     PostCommands,
     DebugUI,
+    SimulationTick,
+    PlayerPresentation,
     Count
 };
 enum class Counter : size_t {

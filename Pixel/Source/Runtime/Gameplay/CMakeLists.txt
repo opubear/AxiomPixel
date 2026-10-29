@@ -1,6 +1,7 @@
 add_subdirectory(Actors)
 add_subdirectory(Items)
 add_subdirectory(Devices)
+find_package(Threads REQUIRED)
 
 add_library(PixelObservationValues STATIC GameAPI/Actions.cpp GameAPI/Observations.cpp
     Observation/DomainFactBuffer.cpp Knowledge/Knowledge.cpp Authority/Authority.cpp)
@@ -13,14 +14,14 @@ target_link_libraries(PixelFormulaBridge PUBLIC PixelWorld PixelItems PixelActor
     PixelFormulaProcess PixelObservationValues PixelSerialization)
 
 add_library(PixelGameplay STATIC
-    GameSession/GameSession.cpp CommittedWorldView.cpp GameSession/SessionPublication.cpp Actions/GameActions.cpp
+    GameSession/GameSession.cpp GameSession/SessionSimulation.cpp CommittedWorldView.cpp GameSession/SessionPublication.cpp Actions/GameActions.cpp
     Construction/DeviceActions.cpp Construction/DeviceRuntime.cpp
     GameSession/SessionAuthority.cpp GameSession/SessionWorldWill.cpp
     GameSession/SessionObservation.cpp GameSession/SessionGameplayObservation.cpp GameSession/SessionPersistence.cpp
     Observation/ObservationProjector.cpp
     Persistence/SessionStore.cpp Persistence/GameplaySaveData.cpp
     Persistence/KnowledgeCodec.cpp Persistence/WorldWillCodec.cpp)
-target_link_libraries(PixelGameplay PUBLIC PixelActors PixelFormulaBridge PixelGarden PixelIO)
+target_link_libraries(PixelGameplay PUBLIC PixelActors PixelFormulaBridge PixelGarden PixelIO Threads::Threads)
 
 add_subdirectory(UI)
 add_subdirectory(Camera)

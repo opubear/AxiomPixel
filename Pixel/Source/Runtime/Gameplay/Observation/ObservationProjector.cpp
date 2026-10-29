@@ -1,6 +1,7 @@
 #include "ObservationProjector.h"
 #include "Runtime/Gameplay/Actions/ActionValues.h"
 #include "Runtime/Gameplay/FormulaBridge/FormulaBridge.h"
+#include "Runtime/Gameplay/Knowledge/Knowledge.h"
 #include "Runtime/Simulation/World/World.h"
 #include "Runtime/Gameplay/Actors/Actors.h"
 #include <algorithm>
@@ -117,7 +118,8 @@ ObservationProjector::ObservationProjector() = default;
 ObservationProjector::~ObservationProjector() = default;
 
 api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scope, const World &world, const Actors &actors,
-    const FormulaBridge &formulas, const api::GameplayObservation &gameplay, const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
+    const FormulaBridge &formulas, const api::GameplayObservation &gameplay, const knowledge::Journal &knowledge,
+    const api::CommitStamp &stamp, bool paused, bool ready, bool pending,
     uint64_t factHighWatermark) {
     const auto validation = ValidateScope(scope);
     if (validation != api::ObservationStatus::Available) return {validation};
@@ -135,7 +137,7 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
             entry->Snapshot.Cells.resize(size_t(scope.Width) * scope.Height);
             entry->Snapshot.Projectiles.reserve(FormulaBridge::MaximumEffects);
         }
-        Update(*entry, world, actors, formulas, gameplay, stamp, paused, factHighWatermark);
+        Update(*entry, world, actors, formulas, gameplay, knowledge, stamp, paused, factHighWatermark);
     }
     Materialize(*entry);
     auto result = api::ObservationResult{api::ObservationStatus::Available, entry->Snapshot};
@@ -144,7 +146,8 @@ api::ObservationResult ObservationProjector::Capture(size_t slot, api::Rect scop
 }
 
 void ObservationProjector::Update(Entry &entry, const World &world, const Actors &actors, const FormulaBridge &formulas,
-    const api::GameplayObservation &gameplay, const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
+    const api::GameplayObservation &gameplay, const knowledge::Journal &knowledge,
+    const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     if (world.GetEnvironment().IsWaitingForBudget()) throw std::logic_error("observation during pending step");
     auto &snapshot = entry.Snapshot;
     if (snapshot.Stamp == stamp) return;
@@ -157,6 +160,9 @@ void ObservationProjector::Update(Entry &entry, const World &world, const Actors
     snapshot.Paused = paused;
     UpdateObjects(snapshot, actors, formulas);
     UpdateGameplay(snapshot, gameplay);
+    // Knowledge shares the complete scope's lifetime; pending reads must not
+    // attach a newer journal to the world version held by this entry.
+    snapshot.Knowledge = knowledge.Capture(stamp);
     if (snapshot.RetainedBytes() > MaximumSnapshotBytes)
         throw std::logic_error("observation exceeded its fixed payload budget");
 }
@@ -204,9 +210,10 @@ void ObservationProjector::Materialize(Entry &entry) {
 }
 
 void ObservationProjector::Publish(const World &world, const Actors &actors, const FormulaBridge &formulas,
-    const api::GameplayObservation &gameplay, const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
+    const api::GameplayObservation &gameplay, const knowledge::Journal &knowledge,
+    const api::CommitStamp &stamp, bool paused, uint64_t factHighWatermark) {
     for (auto &entry : Entries)
-        if (entry) Update(*entry, world, actors, formulas, gameplay, stamp, paused, factHighWatermark);
+        if (entry) Update(*entry, world, actors, formulas, gameplay, knowledge, stamp, paused, factHighWatermark);
 }
 
 void ObservationProjector::Close(size_t slot) { Entries.at(slot).reset(); }

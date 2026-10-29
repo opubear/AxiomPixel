@@ -57,7 +57,7 @@ Gameplay拥有游戏意图和领域状态：角色、物品、设备、构式宿
 
 Render从Simulation及Gameplay的已提交状态构造呈现快照，Draw只消费快照。相机投影和鼠标选格属于Gameplay；`System/IO/Input`通过`PresentationControl`表达显示意图，Render实现该接口，Application作为组合根负责接线。Gameplay核心不依赖Render或Input。
 
-引擎现采用[游戏与渲染隔帧并行](Docs/Architecture/ParallelFrames.md)：主线程在帧首冻结呈现数据，常驻游戏线程推进第 N 帧，同时主线程绘制第 N−1 帧。两侧完成后才开始下一帧；窗口、输入、DebugUI、资源发布和关闭保留同步边界。Pixel 的 Draw 使用独立地形、风、角色、相机与 UI 数据，AET 在帧首发布 CPU 场景。诊断 trace 分为主线程与游戏线程两条时间线。
+引擎采用[游戏与渲染隔帧并行](Docs/Architecture/ParallelFrames.md)，Pixel 另启用[独立模拟线程](Docs/Architecture/SimulationThread.md)。游戏线程从已提交世界计算角色呈现和相机，世界动作排队至下一固定步；模拟线程完成环境、权威角色、构式和设备后才发布世界。主线程绘制上一帧的自持有地形、风、角色和 UI 数据。当前帧末仍等待双方完成，窗口、输入、DebugUI、资源发布和关闭保留同步边界。PerfTest trace 分为渲染、游戏、模拟三条时间线；AET 保留原有双线程接线。
 
 `Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass完成后在呈现目标内调用原生背包UI，再调用开发调试UI叠加；UI不受场景调色影响。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
 
@@ -179,7 +179,7 @@ Input、Debug和CPU driver的开采、放置与激活共用Session动作入口�
 
 启动和R后默认运行；暂停由GameSession统一管理，Simulation不再维护独立暂停开关。F2主面板顶部的 `Pause game` 冻结角色、材料、风场、构式、设备、育圃和世界意志结果交付，世界修改动作返回 `GamePaused`；`Step game 1/60 second` 可显式推进一个完整固定步。暂停不积累游戏时间或缓存跳跃，F3 DebugCamera及显示控制仍可使用；保存、重置和I/O管理仍可操作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
 
-固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式→设备一步才增加Tick，暂停编辑只增加CommitRevision，动作回执携带CommitStamp。预算等待期间呈现继续读取最后完整副本，流式加载与步首输入保持冻结；细节及后续边界见[固定步与提交](Docs/Architecture/SimulationCommits.md)。
+固定步时钟由Session的SimulationCoordinator管理；成功环境→角色→构式→设备一步才增加Tick。运行时世界动作先返回`Queued`，完成模拟后通过`FindAction`取得携带CommitStamp的最终回执；元数据和宿主管理仍使用同步边界。预算等待期间呈现继续读取最后完整副本，命令不重复执行，流式加载与步首输入保持冻结；细节见[固定步与提交](Docs/Architecture/SimulationCommits.md)及[线程合同](Docs/Architecture/SimulationThread.md)。
 
 `GameSession::Observe` 提供独立的有界领域投影：每个原生调用者保留一个最多64×64格范围，返回冻结材料、空气风速、玩家和构式摘要；观察不触发加载，预算等待只返回最后完整副本。动作回执关联因果事实，256条事实环在淘汰时明确报告缺口；风摘要分别报告驻留覆盖和空气样本分母。DTO与事实值库只依赖标准库。M2.5 已加入独立的 LLMView 权限、冻结分页、120服务帧租约与精确整数 JSON 接口；只读服务不加载世界，待交付数据在撤权后失效。合同、容量统计与性能入口见[有界领域观测与提交事实](.awtcontext/GlobalDoc/ObservationProjection.md)。
 

@@ -4,6 +4,8 @@ M2.3 将会话元数据写入限制在完整提交边界；M4.6已接入[多领�
 
 ## 请求结果
 
+独立模拟线程模式下，尚有排队动作或延后发布的世界改动时，SaveWorld也返回 `Deferred/NotReady`。完成下一模拟步后再显式保存或关闭；重置会取消旧epoch的排队动作。`PixelGame::FrameEnd`在join后结清已经完成的WorldWill动作回执，因此下一帧开始前的关闭保存可以包含对应的祈祷终态。这一步不轮询模型、不提交新动作。完整并发合同见[独立模拟线程](SimulationThread.md)。
+
 `GameSession::Control` 的 SaveWorld/ResetWorld 在协调器持有 PendingStep 时返回 `ControlStatus::Deferred`、`WaitingForBudget` 和可读提示。Deferred 不属于 Succeeded，不调用 World.Save、不写 world.meta/current.txt、不创建替代世界，也不补步或回滚。当前会话、身份、已提交数据和全部时间余量继续保留。正常模拟可以按原规则重试待完成步；保存请求本身不会排队。容量恢复并完成该步后，用户必须再次保存、退出或按 R。
 
 正常 Save 返回 Saved；存储失败返回 Failed 并保留内存数据。正常 Reset 先保存原世界，再创建并首存新世界，成功后返回 Replaced；原有失败恢复合同保持。R 遇到 Deferred/Failed 保留相机和呈现设置。非存储的内部不变量错误继续抛出。

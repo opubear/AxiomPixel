@@ -33,7 +33,9 @@ std::vector<pixel::CellState> CopyWorldCells(const pixel::World &world) {
 }
 void Draw(Axiom &app, int count = 1) {
     auto &engine = *app.Engine;
+    auto &session = static_cast<PixelGame &>(*app.GetGame()).GetSession();
     for (int i = 0; i < count; ++i) {
+        pixel::testing::SessionAccess::FinishQueuedChanges(session);
         bool drawn = false;
         for (int attempt = 0; attempt < 100; ++attempt) {
             engine.GetPlatform()->PollEvents();
@@ -42,7 +44,8 @@ void Draw(Axiom &app, int count = 1) {
                 continue;
             }
             engine.GetInput()->Dispatch();
-            app.Tick(0); // Keep materials fixed to detect click-through.
+            // Only world commands require a physical step in this UI fixture.
+            app.Tick(pixel::testing::SessionAccess::HasQueuedChanges(session) ? 1.f / 60 : 0);
             app.FrameEnd();
             drawn = true;
             break;
@@ -53,8 +56,22 @@ void Draw(Axiom &app, int count = 1) {
 void MovePointer(Axiom &app, ImVec2 p) {
     auto &engine = *app.Engine;
     auto *platform = engine.GetPlatform();
-    glfwSetCursorPos(platform->GetWindows(), p.x, p.y);
+    // GLFW ignores warps on unfocused windows. Button callbacks snapshot the
+    // native cursor, so acquire focus and verify it before the synthetic click.
+    auto *window = platform->GetWindows();
+    if (!glfwGetWindowAttrib(window, GLFW_FOCUSED)) glfwFocusWindow(window);
     platform->PollEvents();
+    double x = 0, y = 0;
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        glfwSetCursorPos(window, p.x, p.y);
+        platform->PollEvents();
+        glfwGetCursorPos(window, &x, &y);
+        if (std::abs(x - p.x) < 1 && std::abs(y - p.y) < 1) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    if (std::abs(x - p.x) >= 1 || std::abs(y - p.y) >= 1)
+        throw std::runtime_error("native cursor did not reach the UI fixture target: requested "
+            + std::to_string(p.x) + "," + std::to_string(p.y) + "; actual " + std::to_string(x) + "," + std::to_string(y));
     platform->OnCursorPosCallback(p.x, p.y);
 }
 void ClickButton(Axiom &app, ImVec2 p, int button, int mods = 0) {
@@ -188,7 +205,7 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     const auto bag = session.PlayerInventory();
     const std::array resources{pixel::items::ItemAmount{pixel::items::ItemId::Stone, 4},
                                pixel::items::ItemAmount{pixel::items::ItemId::CopperOre, 2},
-                               pixel::items::ItemAmount{pixel::items::ItemId::Coal, 1}};
+                               pixel::items::ItemAmount{pixel::items::ItemId::Coal, 2}};
     Require(inventory.Add(inventory.Reference(bag), resources) == pixel::items::Result::Applied,
             "device UI fixture could not add construction resources and coal");
     pixel::testing::SessionAccess::CommitFixtureChanges(session);
@@ -221,9 +238,9 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
     window->StateStorage.SetInt(window->GetID("Inventory"), 1);
     Draw(app, 2);
     const auto inventoryText = CaptureUiText(app);
-    RequireUiText(inventoryText.find("Player inventory: 7 / 4096") != std::string::npos &&
+    RequireUiText(inventoryText.find("Player inventory: 8 / 4096") != std::string::npos &&
             inventoryText.find("stone: 4") != std::string::npos && inventoryText.find("copper ore: 2") != std::string::npos &&
-            inventoryText.find("coal: 1") != std::string::npos,
+            inventoryText.find("coal: 2") != std::string::npos,
             "production inventory summary omitted committed contents/capacity", inventoryText);
     window->StateStorage.SetInt(window->GetID("Inventory"), 0);
     Draw(app, 2);
@@ -260,14 +277,18 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
                 session.GetDevices().Find(placed.Ref.Id)->Value.Enabled, "production Enable did not enable the selected device");
     Click(app, deviceControl("Disable"));
     const auto disabled = changed(pixel::api::DeviceEvent::Enabled);
-    Require(!disabled.Enabled && disabled.State == pixel::DeviceState::Stopped && disabled.Fuel == 1 &&
+    // Enabling is presented only after its simulation step has consumed a coal.
+    Require(!disabled.Enabled && disabled.State == pixel::DeviceState::Stopped && disabled.Fuel == 0 &&
                 !session.GetDevices().Find(placed.Ref.Id)->Value.Enabled, "production Disable did not stop the selected device");
     Click(app, deviceControl("Recycle"));
     const auto removed = changed(pixel::api::DeviceEvent::Removed);
     const auto refunded = inventory.Inspect(bag);
+    auto expectedRefund = funded.Stacks;
+    for (auto &stack : expectedRefund)
+        if (stack.Item == pixel::items::ItemId::Coal) --stack.Quantity;
     Require(removed.Ref.Id == placed.Ref.Id && session.GetDevices().Count() == 0 &&
-                refunded.Quantity == funded.Quantity && refunded.Stacks == funded.Stacks,
-            "production recycle did not remove the device and refund its materials and unused coal");
+                refunded.Quantity == funded.Quantity - 1 && refunded.Stacks == expectedRefund,
+            "production recycle did not refund materials while preserving consumed fuel");
 
     Click(app, deviceControl("Place force emitter"));
     const auto operating = changed(pixel::api::DeviceEvent::Placed);
@@ -284,7 +305,6 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
             "production device panel did not explain an enabled device waiting for fuel", emptyText);
     Click(app, deviceControl("Supply 1 coal"));
     changed(pixel::api::DeviceEvent::Supplied);
-    step();
     const auto awaitingText = CaptureUiText(app);
     RequireUiText(awaitingText.find("awaiting condition (active)") != std::string::npos &&
             awaitingText.find("Wait: result; remaining 1 ticks") != std::string::npos,
@@ -300,7 +320,7 @@ void CheckDevicesPanel(Axiom &app, PixelGame &game) {
             runningText.find("device #" + std::to_string(operating.Ref.Id)) != std::string::npos,
             "production device UI omitted running wait, field geometry, acceleration or ownership", runningText);
     const auto frozenText = CaptureUiText(app, [&] {
-        Require(session.Execute(pixel::NativeCaller::Driver,
+        Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver,
             pixel::api::SetDeviceEnabled{running.Devices.front().Ref, false}).Applied(), "late UI fixture disable failed");
     });
     RequireUiText(game.GetPresentation().PublishedGameplay()->Stamp == running.Stamp &&
@@ -367,7 +387,7 @@ void RunPixelDebugUISmoke() {
     app.Initialize();
     app.Begin();
     auto &world = pixel::testing::SessionAccess::World(pixel->GetSession());
-    Require(pixel->GetSession().Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{520, 512}, {}}).Applied(),
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(pixel->GetSession(), pixel::NativeCaller::Driver, pixel::api::MineRegion{{520, 512}, {}}).Applied(),
             "UI capture fixture could not obtain soil");
     const auto inventoryBefore = pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory());
     Draw(app, 3);
@@ -443,8 +463,10 @@ void RunPixelDebugUISmoke() {
     const auto picked = PickGridCell(pixel->GetView(), {outside.x, outside.y}, {ww, wh}, {fw, fh});
     Require(picked.has_value(), "outside UI fixture missed world");
     Click(app, outside);
-    Require(world.GetCell((*picked)[0], (*picked)[1]).Type == pixel::CellTypes::Dirt,
-            "outside UI click did not reach gameplay");
+    const auto *outsideReceipt = pixel->GetSession().LastAction(pixel::NativeCaller::Input);
+    Require(outsideReceipt && outsideReceipt->Applied()
+                && std::get<pixel::api::MaterialResult>(outsideReceipt->Result).Target == pixel::api::Cell{(*picked)[0], (*picked)[1]},
+            "outside UI click did not reach the simulation action port");
     SendKey(app, GLFW_KEY_F1, true);
     SendKey(app, GLFW_KEY_F1, false);
     Require(pixel->GetPresentation().DisplayMode == GridDisplayMode::ForceField, "UI prevented F1 after losing focus");
@@ -746,7 +768,7 @@ void RunPixelGardenAidUISmoke() {
         "aid UI mixed model prose with facts or omitted the actual lease and relationship", applied);
 
     const auto frozen = CaptureUiText(app, [&] {
-        Require(session.Execute(pixel::NativeCaller::Driver,
+        Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver,
             pixel::api::SetDeviceProtection{running.Devices.front().Ref, true}).Applied(), "late aid protection install failed");
     });
     RequireUiText(observation().Stamp == running.Stamp && frozen.find("Home protection: absent; coverage inactive") != std::string::npos &&
