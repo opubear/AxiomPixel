@@ -76,7 +76,7 @@
 | M6运行时逻辑构建与DSL阶段验收 | `context:GlobalDoc/M6Acceptance.md` | 暂缓持久DSL的场景依据、实验隔离、阶段复测与独立审查 | |
 | 游戏愿景模块化架构总验收 | `context:GlobalDoc/GameplayArchitectureAcceptance.md` | 六阶段29项任务的组合合同、CPU与GPU/AET验证、独立审查及范围限制 | |
 | Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
-| 工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 五大模块归属、数据流、构建运行和验证命令；System/IO/Input与Gameplay分层 | |
+| 工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 模块归属、输入分层、逻辑与渲染像素比例、构建运行和验证命令 | |
 | 性能采样模块 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | Dev/Debug性能插桩、运行时采样开关、CSV和内存统计口径 | |
 | 构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | formula/2函数、Actor绑定、时序、兼容保存及五套Debug函数预设 | |
 | 构式升级验证 | `workspace:Docs/Architecture/FormulaCompositionVerification.md` | 独立CPU与sanitizer复核，主agent GPU、关闭、Release成本及覆盖边界 | |

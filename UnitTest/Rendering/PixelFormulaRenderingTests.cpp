@@ -178,6 +178,7 @@ void CircleProjection() {
     live[0].Position = {chunk, {10.25, 9.5}};
     live[1].Position = {chunk, {1000, 1000}};
     WorldGridFrame first, second;
+    first.View.CellSizePixels = second.View.CellSizePixels = {16, 16};
     pixel::BuildFormulaFrame(live, camera, {160, 120}, first);
     pixel::BuildFormulaFrame(live, camera, {160, 120}, second);
     Check(first.FormulaDraws.size() == 1 && second.FormulaDraws.size() == 1, "offscreen ball was published");

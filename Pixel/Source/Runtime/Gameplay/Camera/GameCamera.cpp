@@ -13,9 +13,8 @@ GridView2D GameCamera::GetViewForFramebuffer(std::array<int, 2> size) const {
     return MakeCameraView(Camera, size, ViewSettings);
 }
 void GameCamera::SetView(const GridView2D &view) {
-    for (auto size : view.CellSizePixels)
-        if (size < 1 || size > 64)
-            throw std::invalid_argument("cell size must be in [1, 64]");
+    if (!IsValidLogicalPixelSize(view.CellSizePixels))
+        throw std::invalid_argument("logical pixel must project to a square of 1 to 64 framebuffer pixels per side");
     WorldPosition position;
     position.Chunk = ChunkOf({view.WorldOriginCells[0], view.WorldOriginCells[1]});
     position.Local = {double(view.WorldOriginCells[0] - position.Chunk.X * storage::ChunkEdge) + (double(view.OriginPixels[0]) + FramebufferSize[0] / 2.0) / view.CellSizePixels[0],
@@ -24,7 +23,7 @@ void GameCamera::SetView(const GridView2D &view) {
     ViewSettings = view;
 }
 void GameCamera::Reset(WorldRect bounds, const Body *player) {
-    ViewSettings.CellSizePixels = {16, 16};
+    ViewSettings.CellSizePixels = DefaultLogicalPixelSize;
     const auto chunk = ChunkOf({bounds.X, bounds.Y});
     WorldPosition position{chunk,
         {double(bounds.X - chunk.X * storage::ChunkEdge) + bounds.Width / 2.0,
@@ -51,7 +50,7 @@ void GameCamera::Pan(std::array<int, 2> direction, float duration) {
 }
 void GameCamera::Zoom(bool in) {
     const uint32_t old = ViewSettings.CellSizePixels[0];
-    const uint32_t next = in ? std::min(64u, old * 2) : std::max(1u, old / 2);
+    const uint32_t next = in ? std::min(MaximumRenderPixelsPerLogicalPixel, old * 2) : std::max(1u, old / 2);
     ViewSettings.CellSizePixels = {next, next};
 }
 void GameCamera::NextRegion() {

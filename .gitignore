@@ -4,6 +4,7 @@ imgui.ini
 *.awt-tmp
 /Pixel/Saves/
 /Saves/
+Logs/
 
 # Local source assets stay outside version control.
 /ArtRaw/

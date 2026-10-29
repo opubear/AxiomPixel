@@ -1190,7 +1190,8 @@ void BasicWorldGameplay() {
     const auto originalView = input->GetView();
     {
         auto view = input->GetView();
-        view.OriginPixels = {500 * 16, 190 * 16};
+        const auto scale = int32_t(view.CellSizePixels[0]);
+        view.OriginPixels = {500 * scale, 190 * scale};
         view.WorldOriginCells = {};
         input->SetView(view);
     }
@@ -1391,7 +1392,7 @@ void ForceFieldDebugGameplay() {
     for (int page = 0; page < int(Grid2D::PageCount); ++page) {
         {
             auto view = input->GetView();
-            view.OriginPixels = {-8, (page * int(Grid2D::PageHeight) - 2) * 16};
+            view.OriginPixels = {-8, (page * int(Grid2D::PageHeight) - 2) * int32_t(view.CellSizePixels[1])};
             view.WorldOriginCells = {};
             input->SetView(view);
         }
@@ -1555,6 +1556,7 @@ void TerrainMaterialsGpu() {
     for (uint32_t i = 0; i < types.size(); ++i)
         world.FillRegion({0, 2 + i * 4, 64, 3}, {types[i]});
     std::array<int64_t, 2> origin{};
+    uint32_t scale = pixel::DefaultRenderPixelsPerLogicalPixel;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = false;
@@ -1565,7 +1567,7 @@ void TerrainMaterialsGpu() {
             frame.SetRegion(origin, 64, 64);
             std::copy(cells.begin(), cells.end(), frame.Cells().begin());
             frame.View.WorldOriginCells = origin;
-            frame.View.CellSizePixels = {8, 8};
+            frame.View.CellSizePixels = {scale, scale};
             frame.View.Background = {.15f, .25f, .35f, 1};
         });
         policy = render.get();
@@ -1574,14 +1576,16 @@ void TerrainMaterialsGpu() {
     PixelSmokeApplication app(std::make_unique<PixelGame>(false));
     app.Engine->SetRender(std::move(setup));
     app.Initialize(); app.Begin();
-    for (int i = 0; i < 6; ++i) {
-        if (i == 3) origin = {(int64_t{1} << 55) + 19, -(int64_t{1} << 55) - 7};
+    constexpr std::array scales{1u, 2u, 4u, 8u, 16u};
+    for (size_t i = 0; i < scales.size() * 2; ++i) {
+        scale = scales[i % scales.size()];
+        if (i == scales.size()) origin = {(int64_t{1} << 55) + 19, -(int64_t{1} << 55) - 7};
         const auto token = Draw(app);
         app.Engine->GetRHI()->WaitIdle();
         VerifyColor(policy->PublishedFrame(), policy->WorldColor(token.Slot), catalog);
     }
     app.Shutdown();
-    std::cout << "Terrain GPU passed: Content PNGs, all materials, water alpha/surface strips, frame slots and distant UV phases\n";
+    std::cout << "Terrain GPU passed: 1/2/4/8/16 square pixel scales, Content PNGs, all materials, water alpha/surface strips, frame slots and distant UV phases\n";
 }
 
 void ElementMotionGpu() {
@@ -1655,7 +1659,10 @@ void CharacterAnimationGpu() {
     setup.Enable3DScene = false;
     setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), [&](WorldGridFrame &frame) {
-            frame.SetRegion({0, 0}, 128, 128);
+            // Cover the viewport in logical units at any configured pixel scale.
+            const auto extent = rhi.GetPresentationExtent();
+            const auto scale = view.CellSizePixels[0];
+            frame.SetRegion({0, 0}, (extent.Width + scale - 1) / scale, (extent.Height + scale - 1) / scale);
             frame.View = view;
             frame.Character = draw;
             frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
@@ -1927,14 +1934,17 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
     setup.Enable3DScene = false;
     setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
         auto render = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), [&](WorldGridFrame &frame) {
-            frame.SetRegion({0, 0}, 128, 128);
+            const auto extent = rhi.GetPresentationExtent();
+            const auto scale = view.CellSizePixels[0];
+            const auto width = (extent.Width + scale - 1) / scale;
+            const auto height = (extent.Height + scale - 1) / scale;
+            frame.SetRegion({0, 0}, width, height);
             frame.View = view;
             frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
-            const auto extent = GAxiom->Engine->GetRHI()->GetPresentationExtent();
             const auto ground = uint32_t(extent.Height * .56f) / view.CellSizePixels[1];
-            for (uint32_t y = 0; y < 128; ++y)
-                for (uint32_t x = 0; x < 128; ++x)
-                    frame.Cells()[size_t(y) * 128 + x] = field ? 0x8080FF : (terrain && y >= ground ? 1 : 0);
+            for (uint32_t y = 0; y < height; ++y)
+                for (uint32_t x = 0; x < width; ++x)
+                    frame.Cells()[size_t(y) * width + x] = field ? 0x8080FF : (terrain && y >= ground ? 1 : 0);
         }, "Pixel2DPostProcess.fs", assets);
         policy = render.get();
         return render;
@@ -1993,8 +2003,7 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
                 for (size_t c = 0; c < 3; ++c)
                     expected[c] = Linear(std::to_integer<uint8_t>(pixels[offset + c])) * alpha + expected[c] * (1 - alpha);
             }
-            if (policy->PublishedFrame().Cells[size_t(y / 16) * 128 + x / 16] == 1)
-                expected = {Linear(151), Linear(104), Linear(65)};
+            // The first capture contains only air; terrain is checked below.
             if (boundary) continue;
             for (size_t c = 0; c < 3; ++c)
                 Require(std::abs(int(first[(size_t(y) * extent.Width + x) * 4 + c]) - int(std::lround(expected[c] * 255))) <= 2,

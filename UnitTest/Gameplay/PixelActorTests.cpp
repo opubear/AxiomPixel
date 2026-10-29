@@ -142,7 +142,8 @@ void FarCoordinates() {
         camera.Reset({origin.X, origin.Y, 64, 64}, actors.Player());
         WorldGridFrame frame;
         BuildCharacterFrame(snapshot, camera.GetCamera(), {800, 600}, frame);
-        Require(frame.Character && frame.Character->Bounds == std::array<float, 4>{384, 268, 32, 64}, "distant character projection differs from camera center");
+        const float scale = pixel::DefaultRenderPixelsPerLogicalPixel;
+        Require(frame.Character && frame.Character->Bounds == std::array<float, 4>{400 - scale, 300 - 2 * scale, 2 * scale, 4 * scale}, "distant character projection differs from camera center");
         actors.Step(map.View({origin.X, origin.Y, 64, 64}), {1, false});
         camera.FollowPlayer(actors.Player(), .1f);
         Require(camera.GetCamera().GetWorldPosition().Local[0] > snapshot.Position.Local[0] + 1, "camera did not follow distant actor");

@@ -648,6 +648,7 @@ void DistantRegionProjection() {
     WorldGridFrame output;
     constexpr int64_t distant = int64_t{1} << 60;
     output.SetRegion({distant - 64, -distant}, 128, 64);
+    output.View.CellSizePixels = {16, 16};
     output.View.WorldOriginCells = {distant, -distant};
     output.View.OriginPixels = {3, -2};
     const auto local = LocalGridPixelOrigin(output.Read());
@@ -664,7 +665,7 @@ void DistantRegionProjection() {
     pixel::Camera2D camera;
     const pixel::CellCoord chunk{int64_t{1} << 45, -(int64_t{1} << 45)};
     camera.SetWorldPosition({chunk, {512.125, 510.0625}});
-    const auto view = MakeCameraView(camera, {1600, 1200}, {});
+    const auto view = MakeCameraView(camera, {1600, 1200}, output.View);
     const auto normalized = camera.GetWorldPosition();
     const std::array<int32_t, 2> expectedOrigin{int32_t(std::round(normalized.Local[0] * 16 - 800)),
                                                 int32_t(std::round(normalized.Local[1] * 16 - 600))};

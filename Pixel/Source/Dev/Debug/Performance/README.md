@@ -4,9 +4,13 @@
 
 ## 使用
 
-Pixel 默认不启用 Performance。启动时加入 `--PerfTest`（也接受 `PerfTest`、`-PerfTest`）才会采集最近 240 个 Ready 帧，并将每个已结束 scope 的事件名、开始时间和耗时写入独立 trace。没有该参数时，性能环境变量被忽略，计时/内存查询/trace 写入均关闭，面板不能自行启用采样。
+Pixel 默认不启用 Performance。启动时加入 `--PerfTest`（也接受 `PerfTest`、`-PerfTest`）才会采集最近 240 个 Ready 帧。scope 构造时立即向独立 trace 写入事件名和开始时间，析构或显式结束时写入结束时间和持续时间。没有该参数时，性能环境变量被忽略，计时/内存查询/trace 写入均关闭，面板不能自行启用采样。
 
-启用后，在 **Pixel Debug → Performance** 查看平均值、P95、独占耗时、模拟步数、上传量，以及世界和力场的内存；可以关闭采样、清空或导出 `Pixel/pixel-performance.csv` 及 `.summary.txt`。事件文件默认为 `Pixel/pixel-performance.trace.json`，逐帧刷新，正常退出完成收尾。F2 隐藏面板不关闭采样。面板展开时每 0.5 秒刷新统计，折叠时不计算汇总。所有帧内计时都是 CPU 时间，不是 GPU timestamp。
+启用后，在 **Pixel Debug → Performance** 查看平均值、P95、独占耗时、模拟步数、上传量，以及世界和力场的内存；可以关闭采样、清空或导出 `Pixel/pixel-performance.csv` 及 `.summary.txt`。事件文件默认为 `Pixel/pixel-performance.trace.json`，每条开始/结束记录立即刷新为完整 JSON，正常退出完成收尾。F2 隐藏面板不关闭采样。面板展开时每 0.5 秒刷新统计，折叠时不计算汇总。所有帧内计时都是 CPU 时间，不是 GPU timestamp。
+
+PixelApplication 在构造 Axiom 时登记游戏名 `Pixel`，通过 `GetGameName()` 读取。每次应用实例构造都会生成一个固定的运行 GUID，可通过 `GetRunGuid()` 读取。日志同时输出到控制台和 `Logs/Pixel_<YYYYMMDD_HHMMSS_毫秒>_<GUID>.log`（目录相对启动工作目录，时间为本地启动时间）；从 Pixel 目录启动时保存到 `Pixel/Logs/`，`GetLogFilePath()` 提供绝对路径。启动日志首条为 `event=run run_guid=... game_name="Pixel" log_file="..."`，trace 头含同一个 `run_guid` 和 `game_name`。这些元信息不随清空统计、暂停或重新配置采样而改变。没有 `PerfTest` 时仍写运行日志文件，但不会创建 trace。
+
+日志每条消息另带 `[steady_ns=…]`。同一 `run_guid` 下，用该整数减去 trace 头的 `clock_origin_steady_ns`，得到消息在 trace 时间轴上的纳秒位置；负值表示 trace 开始之前。计算时保留整数精度，不以本地日历时间戳推算位置。标准 trace `ts` 单位是微秒，换算到纳秒需乘以 1000。
 
 带 `--PerfTest` 启动后，用环境变量配置捕获：
 
@@ -61,7 +65,11 @@ void HeavyOperation() {
 
 已有 `PIXEL_PROFILE_SCOPE(StageName)` 自动记录阶段事件；提前结束使用 `PIXEL_PROFILE_BEGIN(timer, StageName)` / `PIXEL_PROFILE_END(timer)`。自定义名称无需登记阶段，可使用 `AXIOM_PERFORMANCE_SCOPE("事件名")`，或 `AXIOM_PERFORMANCE_BEGIN(timer, "事件名")` / `AXIOM_PERFORMANCE_END(timer)`。显式结束调用幂等 `End()`，离开作用域不会重复记录；不直接手动调用 C++ 析构函数。
 
-trace 采用 Chrome Trace Event JSON，事件含整数纳秒 `args.start_ns`、`args.duration_ns`；标准 `ts`/`dur` 按格式要求用微秒并保留三位小数。开始时间相对本次 trace 的单调时钟起点。trace 保留完整的已结束事件流，包括初始化、预热和跳帧，并不受 240 帧窗口或 `Clear samples` 影响；自定义名称仅进入 trace，不新增 CSV 列。当前仍只采集所属线程。详细格式、异常/暂停及文件刷新语义见 [Axiom Diagnostics](../../../../../Axiom/Source/Core/Diagnostics/README.md#nanosecond-event-trace)。
+trace 采用 Chrome Trace Event JSON 的 `B`/`E` 配对事件：`B` 含整数纳秒 `args.start_ns`；`E` 含 `args.start_ns`、`args.end_ns`、`args.duration_ns`。两条记录的标准 `ts` 分别表示开始/结束时间，按格式要求用微秒并保留三位小数，均相对本次 trace 的单调时钟起点。计时实例尚未结束时，文件中也能读到开始事件。逐事件刷新会增加采集开销，开始记录的写入也计入该 scope 的耗时。
+
+trace 保留开始/结束事件流，包括初始化、预热和跳帧，并不受 240 帧窗口或 `Clear samples` 影响；自定义名称仅进入 trace，不新增 CSV 列。所有 scope（包括命名宏和提前结束）须在所属线程严格嵌套。取消帧、暂停或关闭记录器时，受影响的未结束 scope 及其子 scope 按逆序写入带 `args.cancelled: true` 的结束事件，耗时截止取消时刻，后续析构不重复写入。详细格式和文件刷新语义见 [Axiom Diagnostics](../../../../../Axiom/Source/Core/Diagnostics/README.md#nanosecond-event-trace)。
+
+每帧另有 `frame.begin` / `frame.end` 标记（`cat: "frame"`、线程级瞬时事件），两者共享 `args.frame_index`。开始标记带 `start_ns`，结束标记另带 `end_ns`、`duration_ns`，均立即刷新。起点位于事件处理、限帧等待和 acquire 之前，终点位于 Present 与帧末内存采样之后。跳过 acquire 的尝试沿用同一帧区间；取消时写入 `cancelled: true` 的结束标记。帧序号从 1 开始，在预热、清空统计和暂停续写期间不重置，不能直接当作会重置的 CSV 行序号。标记不占用 B/E 嵌套栈，因此命名 scope 可以跨帧。其持续时间仅覆盖当前采样区间，CSV 的 `frame_ms` 还包含上一帧结束到本次区间开始之间的时间。
 
 独立 CPU benchmark 可自行创建 `FrameProfiler` 并在每次完整迭代外调用 `BeginFrame()/EndFrame()`，无须初始化 `GameProfiler` 或 GPU。测量与存储分离；计时核心仅在构造时分配有界历史；汇总/导出可分配。业务内存提供者的去重分配单独计时。当前仅支持同线程严格嵌套 scope，一个线程同一时间只有一个 capture；将来引入 worker 时，应为每线程独立采样和显式聚合，不跨线程共享对象。
 

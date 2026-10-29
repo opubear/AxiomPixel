@@ -70,6 +70,7 @@ int main() {
         pixel::Body sprite;
         sprite.X = 511; sprite.Y = 508;
         WorldGridFrame frame;
+        frame.View.CellSizePixels = {16, 16};
         pixel::Camera2D camera;
         camera.SetPosition({512.125, 510.0625});
         sprite.X += 0.03125f;

@@ -204,6 +204,19 @@ if(BUILD_TESTING)
     add_executable(PixelCameraTests Gameplay/PixelCameraTests.cpp)
     target_link_libraries(PixelCameraTests PRIVATE PixelPresentation)
     add_test(NAME Pixel.Camera COMMAND PixelCameraTests)
+    add_executable(PixelScaleTests Rendering/PixelScaleTests.cpp)
+    target_link_libraries(PixelScaleTests PRIVATE PixelPresentation)
+    add_test(NAME Pixel.PixelScale COMMAND PixelScaleTests)
+    foreach(scale IN ITEMS 1 2 4 8 16)
+        add_executable(PixelScaleConfig${scale}Tests Gameplay/PixelScaleConfigTests.cpp
+            ../Pixel/Source/Runtime/Gameplay/Camera/Camera2D.cpp
+            ../Pixel/Source/Runtime/Gameplay/Camera/GameCamera.cpp
+            ../Pixel/Source/Runtime/Gameplay/Camera/GridView.cpp)
+        target_link_libraries(PixelScaleConfig${scale}Tests PRIVATE PixelActors)
+        target_compile_definitions(PixelScaleConfig${scale}Tests PRIVATE
+            PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL=${scale} EXPECTED_PIXEL_SCALE=${scale})
+        add_test(NAME Pixel.PixelScaleConfig${scale} COMMAND PixelScaleConfig${scale}Tests)
+    endforeach()
     add_executable(PixelMemoryTests Performance/PixelMemoryTests.cpp)
     target_link_libraries(PixelMemoryTests PRIVATE PixelWorld)
     add_test(NAME Pixel.Memory COMMAND PixelMemoryTests)

@@ -201,6 +201,26 @@ world.FillRegion({-64, 0, 64, 64}, {pixel::CellTypes::Empty, {0, 1}});
 
 ## 风场和显示
 
+### 逻辑像素与渲染像素
+
+一个逻辑像素就是一个世界格；材料、碰撞、角色尺寸、速度、力场、构式半径和存档全部使用逻辑单位。渲染像素指帧缓冲中的一个像素，默认一个逻辑像素显示为 **4×4** 个渲染像素。相机投影、可见区域、地形、人物、设备、构式特效和鼠标选格共用 `GridView2D::CellSizePixels`，横纵值必须相等，取值范围为1～64的整数。
+
+`PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL` 是编译宏，CMake提供同名缓存参数，例如：
+
+```sh
+# 每个逻辑像素显示为8×8；省略参数时默认4×4
+cmake -S . -B build -DPIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL=8
+cmake --build build --target Pixel -j4
+# 恢复默认配置（CMake会保留上次显式设置）
+cmake -S . -B build -DPIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL=4
+```
+
+1、2、4、8、16均可配置，32和64也可用于放大观察。非CMake构建可统一定义该宏，未定义时头文件默认4；所有使用相机/视图的编译单元必须一致。`+/-`仍然按两倍放大/缩小（限制在1～64），只改变显示比例；R重置世界时恢复编译配置。调整窗口或DPI不改变比例，鼠标事件先从窗口单位换算到事件对应的帧缓冲像素，再选取逻辑格。
+
+美术纹理的texel密度与此比例独立，最近邻采样将纹理映射到逻辑世界；人物的`PixelsPerCell`仍表示素材texel/逻辑格。背景和UI沿用各自的屏幕布局规则。改变比例不会重采样世界数据，也不会更改物理数值或存档格式。
+
+`Pixel.PixelScale`验证多倍率的投影、方形约束、远坐标与HiDPI拾取；`Pixel.PixelScaleConfig1/2/4/8/16`分别编译对应宏并检查默认/重置行为；`PixelRuntimeSmoke --terrain-only`读回五种比例的真实GPU地形并检查采样颜色。
+
 普通视图已接入四层山林背景，使用 `Pixel/Content/ArtAssets.json` 配置内容目录内的相对PNG路径、镜像重复周期和显示高度。原件留在 `ArtRaw/`；运行时只读取 `Pixel/Content/Art/NaturalParallax/` 的复制件。清单和解码图片在应用生命周期内缓存，背景GPU纹理只在策略初始化后首次绘制上传一次，切换frame slot或调整窗口不重复读取/上传。F1诊断视图关闭背景；背景不参与材料、碰撞或存档。接口、内存成本及替换方法见 [美术资源接入](Docs/ArtAssetIntegration.md)。
 
 Environment可在Empty、Coarse NS、Pixel reference、Procedural、Hybrid、Adaptive NS、LBM D2Q9七策略间切换，默认Empty。Reference、Adaptive和LBM计算成本较高，可用全局暂停和单步进行诊断；切换风后端不再自动改变暂停状态。切换重建当前风后端，保留地图、基础力及物理时钟；不保存每策略的独立运行历史。
@@ -326,4 +346,10 @@ AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`，工程文档�
 
 本轮迁移范围和静态/动态库、CPU、原生窗口验证结果见 [迁移验收记录](Docs/DiagnosticsMigration.md)。
 
-Performance 现仅在启动参数包含 `--PerfTest`（亦接受 `PerfTest`、`-PerfTest`）时启用。已有阶段宏会额外写入独立 Chrome Trace JSON，默认 `Pixel/pixel-performance.trace.json`，可用 `PIXEL_PROFILE_TRACE` 改路径；事件含纳秒开始时间与耗时，不经过 Log。自定义事件与提前结束宏见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md#新增插桩)。未带参数时环境变量和面板都不会启动采样。
+Performance 现仅在启动参数包含 `--PerfTest`（亦接受 `PerfTest`、`-PerfTest`）时启用。已有阶段宏会额外写入独立 Chrome Trace JSON，默认 `Pixel/pixel-performance.trace.json`，可用 `PIXEL_PROFILE_TRACE` 改路径；构造时立即写入纳秒开始时间，析构或提前结束时写入结束时间与持续时间，以 `B`/`E` 事件配对，每条记录刷新文件，不经过 Log。自定义事件与提前结束宏见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md#新增插桩)。未带参数时环境变量和面板都不会启动采样。
+
+trace 同时自动输出每帧的 `frame.begin` / `frame.end`，携带连续帧序号和纳秒时间；结束标记包含区间耗时，未完成帧标记为已取消。
+
+Axiom 每个运行实例保存不可变的游戏名和 GUID（`GetGameName()` / `GetRunGuid()`）；Pixel 登记为 `Pixel`，引擎样例登记为 `AET`。日志同时写控制台和 `Logs/<游戏名>_<YYYYMMDD_HHMMSS_毫秒>_<GUID>.log`，时间为本地启动时间、目录相对工作目录；`GetLogFilePath()` 返回绝对路径。日志头和 trace 头包含相同的 `run_guid` / `game_name`，可据此关联一次运行的数据。运行日志不依赖 `PerfTest` 开关。
+
+日志中的 `steady_ns` 与 trace 头的 `clock_origin_steady_ns` 使用同一个单调时钟；两者做整数相减即为日志在 trace 时间轴上的纳秒位置。标准 trace `ts` 则以微秒表示。换算说明见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md)。

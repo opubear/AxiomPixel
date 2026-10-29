@@ -600,16 +600,17 @@ void RunPixelGardenUISmoke() {
     pixel::testing::SessionAccess::CommitFixtureChanges(session);
     SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
     SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
-    auto view = pixel->GetView();
-    view.WorldOriginCells = {520, surface - 20};
-    view.OriginPixels = {};
-    view.CellSizePixels = {8, 8};
-    pixel->SetView(view);
     int ww, wh, fw, fh;
     auto *platform = app.Engine->GetPlatform();
     glfwGetWindowSize(platform->GetWindows(), &ww, &wh);
     platform->GetFramebufferSize(fw, fh);
-    ClickButton(app, {float(20 * 8) * ww / fw, float(16 * 8) * wh / fh}, GLFW_MOUSE_BUTTON_RIGHT);
+    auto view = pixel->GetView();
+    view.WorldOriginCells = {540, surface - 4};
+    view.OriginPixels = {-fw / 2, -fh / 2};
+    view.CellSizePixels = {8, 8};
+    pixel->SetView(view);
+    // Keep the intended world target away from the screen-space inventory UI.
+    ClickButton(app, {ww / 2.f, wh / 2.f}, GLFW_MOUSE_BUTTON_RIGHT);
     const auto *activation = session.LastAction(pixel::NativeCaller::Input);
     Require(activation && activation->Applied() && std::holds_alternative<pixel::api::ActivationResult>(activation->Result),
             "real garden right click did not activate the applied crystal program");

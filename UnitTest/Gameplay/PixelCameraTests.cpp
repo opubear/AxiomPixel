@@ -44,6 +44,7 @@ int main() {
         Require(rejected, "negative rate must be rejected");
         camera.SetPosition({512, 510});
         GridView2D settings;
+        settings.CellSizePixels = {16, 16};
         const auto view = MakeCameraView(camera, {1600, 1200}, settings);
         Require(view.OriginPixels == std::array<int32_t, 2>{7392, 7560}, "world centre must determine visible origin");
         const auto resized = MakeCameraView(camera, {1280, 960}, settings);

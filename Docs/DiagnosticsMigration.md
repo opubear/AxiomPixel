@@ -47,3 +47,35 @@
 2026-10-28 后续改为显式 `PerfTest` 启动门控；上述复现命令已补参数，原迁移测试数字保留为历史证据。scope 现在支持 RAII/幂等提前结束，并另写 Chrome Trace JSON；CSV 仍保留原有统计。trace 纳秒字段、缓冲输出、预热和暂停语义见引擎说明。
 
 本轮验证：CPU 全量 106/106；静态/动态诊断专项各 5/5；ASan+UBSan trace 合同通过；原生 Pixel Debug UI 验证无参数禁用提示与开启权限后的内存表格；共享模块在无参数且性能环境变量非法时仍能正常配置。实际带参数捕获中，静态 Pixel 导出 496 个事件、动态 AET 导出 266 个事件；均为 3 帧预热加 12 帧正式数据。验证了整数纳秒与标准 ts/dur 精确对应、CSV/self 对账和事件明细未进入日志；注册阶段的 trace 写入及逐帧刷新通过无堆分配探针。
+
+## 后续：构造与结束分别写入 trace
+
+2026-10-29 按用户反馈，将完成时一次写入的 `X` 事件改为 `B`/`E` 配对：构造立即写入事件名和 `start_ns`，析构或幂等 `End()` 写入 `end_ns`、`duration_ns`，每条记录后刷新完整 JSON。取消帧、暂停和记录器关闭时按逆序结束受影响 scope 及其子 scope，并标记 `cancelled: true`。PerfTest 门控、独立输出和 CSV 统计接口保持不变。每条记录刷新增加文件 I/O 开销；开始记录的写入计入 scope 耗时。
+
+本轮静态专项 5/5、动态专项 5/5（含跨共享库配对与无堆分配探针）、ASan+UBSan trace 测试通过。测试直接在计时实例存活时读取文件，验证开始标记已存在，并覆盖精确纳秒、重复结束、异常析构、混合嵌套取消及暂停续写。Pixel Debug 构建成功；原生运行 1 帧预热加 3 帧正式采集后正常退出，导出 146 对 B/E（32 个阶段）及 3 行 CSV。逐项检查了嵌套配对、时间顺序、`ts` 与整数纳秒精确对应、持续时间差值，以及事件明细未进入日志。临时产物为 `/private/tmp/axiom-trace-pairs-pixel.trace.json`、同前缀 CSV 和日志。
+
+验证平台仍为 macOS/MoltenVK；本轮未重跑全量游戏测试，也不将此次捕获作为性能收益基准。
+
+## 后续：每帧开始与结束标记
+
+2026-10-29 增加 `frame.begin` / `frame.end` 线程级瞬时标记，复用采样器 BeginInterval/EndFrame 的时间戳，带连续 `frame_index` 与整数纳秒开始/结束/持续时间。帧编号跨预热、清空与暂停续写保持连续；跳过 acquire 不重复开始，取消、暂停或关闭时对未完成区间写取消结束标记。瞬时标记不占用 scope 嵌套栈，命名 scope 可跨帧。区间耗时与 CSV 相邻 Ready 帧结束的 cadence 分别保留各自口径。
+
+静态及动态专项各 5/5、ASan+UBSan trace 测试通过，覆盖立即可读、精确纳秒、跨帧 scope、预热/清空/取消/暂停、共享库和无堆分配。Pixel Debug 编译及原生采集通过：1 帧预热加 3 帧正式采集导出 4 对帧标记（序号 1～4）和 3 行 CSV；验证了时间单调、标记配对、scope 嵌套、整数纳秒与标准 ts 对应、相邻结束时间差与 CSV frame_ms 精确对账，标记明细未进入日志。产物 `/private/tmp/axiom-frame-markers-pixel.trace.json` 及同前缀 CSV、日志；平台与验证范围同上。
+
+## 后续：运行 GUID 关联日志与 trace
+
+2026-10-29 增加 `Core/Guid.h` 的 UUID v4 生成函数。每个 Axiom 实例构造时生成一次不可变 `RunGuid`，通过 `GetRunGuid()` 读取；日志先写并刷新 `event=run run_guid=...`，该标识随实例传给 CaptureSession，并作为 trace JSON 首字段 `run_guid`。会话重新配置、清空和暂停续写不更换标识；直接使用独立会话/记录器且未传入标识时自动生成。日志头独立于 PerfTest，trace 仍遵循启动门控；CLI 帮助与参数错误仍在应用实例构造前退出。
+
+静态与动态专项各 7/7，通过 GUID 格式/版本/variant、512 个并发生成样本的独立性、trace 头部及会话标识保留、日志回归、帧采样、共享库和无堆分配验证。运行时静态 Linkage 1/1、动态 Linkage/Help 2/2 通过，包含实例/会话 GUID 一致、不同实例标识不同及 Configure/Shutdown 后保持不变。静态 Pixel 与动态 AET 原生运行各采集 1 帧预热加 3 帧正式数据，验证日志首行与 trace 首字段 GUID 完全相同，两个独立进程 GUID 不同，帧标记及 CSV 数量正常。产物 `/private/tmp/axiom-run-guid-pixel.*`、`/private/tmp/axiom-run-guid-aet.*`；仅 macOS/MoltenVK 验证，未重跑全量游戏测试。
+
+## 后续：游戏元信息与按运行命名的日志文件
+
+2026-10-29 增加 Axiom 不可变 `GameName` 和 `GetGameName()`，Pixel/AET 应用分别显式登记 `Pixel`、`AET`。日志新增文件输出，默认 `Logs/<游戏名>_<YYYYMMDD_HHMMSS_毫秒>_<GUID>.log`，使用本地启动时间，`GetLogFilePath()` 返回固定绝对路径。构造时创建并写入运行头，析构在关闭服务后刷新并分离文件；控制台仍保留，日志级别不变。文件名转换不合法路径字符，原游戏名保留在元信息中；日志头与 trace 的 `game_name`、`run_guid` 一致。日志文件不依赖 PerfTest，生成目录已加入 Git 忽略。
+
+静态与动态专项各 8/8，包括新增 LogFile 的命名、中文与路径字符处理、运行头刷新、并发完整行、跨 DLL 路由、过滤、关闭与新文件隔离、失败目录检查；原 Log/Guid/Trace/Diagnostics 测试通过。运行时静态 Linkage 1/1、动态 Linkage/Help 2/2 通过。静态 Pixel 和动态 AET 的原生 1+3 帧采集均正常退出，确认实际文件名、游戏名、GUID、日志头、启动至最终成功退出消息，以及 trace 元信息相符。Pixel 文件含 12 行、AET 含 13 行 Axiom 日志，分别位于 `Pixel/Logs/` 和 `Axiom/Logs/`；验证产物索引 `/private/tmp/axiom-game-log-verified-paths.json`，控制台与 trace 位于 `/private/tmp/axiom-game-log-{pixel,aet}.*`。仅 macOS/MoltenVK 验证，本轮未重跑全量游戏测试。
+
+## 提交前联合审查：日志与 trace 时间关联
+
+2026-10-29 审查父仓库和 Axiom 子模块的全部本地修改，包括其他任务加入的时钟关联和逻辑/渲染像素分离。日志的 `steady_ns` 减去 trace 的 `clock_origin_steady_ns`，得到同一运行中相对 trace 原点的纳秒位置；日志保留原有本地时间戳。审查发现时钟原点通过流式整数输出会受全局 locale 的千位分组影响，导致 JSON 无法解析；已通过回归测试复现，并改用与事件时间相同的 `to_chars` 序列化，覆盖负值及超过 double 精确整数范围的原点。
+
+联合验证：CPU 全量 114/114；共享库专项 8/8；静态运行时 Linkage 1/1、共享 Linkage/Help 2/2；Pixel/AET/PixelRuntimeSmoke/PixelCloseSmoke 构建通过。原生静态 Pixel 和共享 AET 分别生成 300、144 条事件，均有 4 对帧标记和 3 行正式 CSV。脚本验证游戏名/GUID/文件名、B/E 配对、`ts` 与纳秒字段、CSV 帧间隔，并确认运行头位于 trace 开始前、首帧完成日志位于前后帧标记之间、退出日志位于 trace 结束后。GPU 五种倍率地形和关闭保存协商回归通过。临时证据位于 `/private/tmp/axiom-review-*`。本轮仅验证 macOS/MoltenVK，未重新执行完整 GPU 场景集或 Windows/Linux。

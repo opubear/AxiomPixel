@@ -103,9 +103,9 @@ void DistantParallax() {
     view.OriginPixels[0] = 32;
     const auto first = pixel::BackgroundPhases(assets, view, 800);
     view.WorldOriginCells[0] += 1024;
-    view.OriginPixels[0] -= 1024 * 16;
+    view.OriginPixels[0] -= 1024 * view.CellSizePixels[0];
     Check(pixel::BackgroundPhases(assets, view, 800) == first, "chunk reference change moved background");
-    view.OriginPixels[0] += 16;
+    view.OriginPixels[0] += view.CellSizePixels[0];
     const auto next = pixel::BackgroundPhases(assets, view, 800);
     Check(std::abs(next[0] - first[0] - 2.f / 65536) < 1e-7f, "remote camera lost one-cell parallax motion");
     view.WorldOriginCells[0] = -1;

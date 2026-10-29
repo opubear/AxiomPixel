@@ -1,12 +1,15 @@
 #pragma once
 #include "Camera2D.h"
+#include "PixelScale.h"
 #include <array>
 #include <cstdint>
 #include <optional>
 
 struct GridView2D {
     std::array<int32_t, 2> OriginPixels{0, 0};
-    std::array<uint32_t, 2> CellSizePixels{16, 16};
+    // Framebuffer pixels per logical world pixel. Both axes must be equal;
+    // this is independent of window DPI and source artwork texel density.
+    std::array<uint32_t, 2> CellSizePixels = pixel::DefaultLogicalPixelSize;
     std::array<float, 4> Background{0, 0, 0, 1};
     // OriginPixels is relative to this world-cell reference. GPU coordinates
     // remain small even when the camera is far from the world origin.

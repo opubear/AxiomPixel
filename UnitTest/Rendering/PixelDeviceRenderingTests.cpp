@@ -28,6 +28,7 @@ void DeviceProjection() {
     devices[2] = devices[0];
     devices[2].X = INT64_MIN;
     WorldGridFrame first, second;
+    first.View.CellSizePixels = second.View.CellSizePixels = {16, 16};
     BuildDeviceFrame(devices, camera, {160, 120}, first);
     Check(first.DeviceDraws.size() == 1, "offscreen device was published");
     const auto draw = first.DeviceDraws.front();

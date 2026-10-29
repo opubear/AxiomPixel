@@ -97,6 +97,8 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     PIXEL_PROFILE_SCOPE(Validation);
     if (!frame.Width || !frame.Height || frame.Cells.size() != size_t(frame.Width) * frame.Height || !layers || !width || !height)
         throw std::invalid_argument("grid frame requires a complete region and a drawable viewport");
+    if (!pixel::IsValidLogicalPixelSize(frame.View.CellSizePixels))
+        throw std::invalid_argument("logical pixel must project to a square of 1 to 64 framebuffer pixels per side");
     const auto localOrigin = LocalGridPixelOrigin(frame);
     const size_t regionCount = size_t((frame.Width - 1) / Grid2D::RegionSize + 1) * ((frame.Height - 1) / Grid2D::RegionSize + 1);
     if ((!frame.RegionVersions.empty() && frame.RegionVersions.size() != regionCount) || (!frame.WindRegionVersions.empty() && frame.WindRegionVersions.size() != regionCount))

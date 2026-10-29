@@ -198,6 +198,7 @@ void GravityTiming() {
 }
 void MousePicking() {
     GridView2D view;
+    view.CellSizePixels = {16, 16};
     view.OriginPixels = {32, 512 * 16 - 32};
     Check(PickGridCell(view, {8, 16}, {800, 600}, {1600, 1200}) == std::array<int64_t, 2>{3, 512}, "HiDPI picking missed terrain surface");
     Check(PickGridCell(view, {15.99, 31.99}, {800, 600}, {800, 600}) == std::array<int64_t, 2>{2, 511}, "picking rounded up at cell boundary");

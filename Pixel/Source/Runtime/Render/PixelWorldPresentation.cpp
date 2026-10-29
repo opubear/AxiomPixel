@@ -176,6 +176,8 @@ void BuildCharacterFrame(const pixel::ActorSnapshot &character, const pixel::Cam
 }
 
 pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> framebufferSize) {
+    if (!pixel::IsValidLogicalPixelSize(view.CellSizePixels))
+        throw std::invalid_argument("visible region requires square logical pixels");
     std::array<int64_t, 2> begin{};
     std::array<uint32_t, 2> size{};
     for (size_t axis = 0; axis < 2; ++axis) {

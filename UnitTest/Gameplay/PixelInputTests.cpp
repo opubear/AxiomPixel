@@ -3,6 +3,7 @@
 #include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "Runtime/System/IO/Input/GameInput.h"
 #include "Runtime/Render/GamePresentation.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -125,7 +126,7 @@ void CommandsAndReset() {
     Require(f.Presentation.Post.Values[1] == .35f, "T must invoke presentation tint");
     const auto centre = f.Camera.GetCamera().GetPosition();
     f.KeyEvent(Key::KEY_EQUAL);
-    Require(f.Camera.GetView().CellSizePixels[0] == 32 && f.Camera.GetCamera().GetPosition() == centre,
+    Require(f.Camera.GetView().CellSizePixels[0] == std::min(2 * pixel::DefaultRenderPixelsPerLogicalPixel, pixel::MaximumRenderPixelsPerLogicalPixel) && f.Camera.GetCamera().GetPosition() == centre,
             "zoom must keep camera centre");
     f.KeyEvent(Key::KEY_MINUS);
     const auto view = f.Camera.GetView();
@@ -146,7 +147,7 @@ void CommandsAndReset() {
             "R must reset simulation and terrain");
     Require(f.Input.GetControlMode() == pixel::ControlMode::DebugCamera && f.Presentation.DisplayMode == GridDisplayMode::ForceField,
             "R must preserve control and display modes");
-    Require(f.Camera.GetFramebufferSize() == f.Framebuffer && f.Camera.GetView().CellSizePixels[0] == 16 &&
+    Require(f.Camera.GetFramebufferSize() == f.Framebuffer && f.Camera.GetView().CellSizePixels == pixel::DefaultLogicalPixelSize &&
                 f.Camera.GetCamera().GetFollowRate() == 4 && f.Presentation.Post.Values[1] == 1,
             "R must refresh viewport and reset zoom/tint while retaining follow rate");
     const auto resetCentre = f.Camera.GetCamera().GetPosition();
@@ -221,7 +222,7 @@ void FormulaInputAndContinuousAim() {
     f.Camera.SetFramebufferSize({1600, 1200});
     const auto target = f.Camera.PickWorldPosition({{400.25, 300.5}, {800, 600}, {800, 600}});
     Require(target && target->Chunk == distant.Chunk &&
-                std::abs(target->Local[0] - .140625) < 1e-12 && std::abs(target->Local[1] - .78125) < 1e-12,
+                std::abs(target->Local[0] - (.125 + .25 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12 && std::abs(target->Local[1] - (.75 + .5 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12,
             "continuous old-size event lost distant fractional aim");
     Require(!f.Camera.PickWorldPosition({{800, 300}, {800, 600}, {800, 600}}), "outside continuous aim accepted");
 }
@@ -236,7 +237,8 @@ void DeviceInput() {
             "device input fixture could not add building resources");
     f.Camera.GetCamera().SetPosition({100, 100});
     const MousePointerState target{{400, 300}, {800, 600}, {800, 600}};
-    const MousePointerState body{{416, 316}, {800, 600}, {800, 600}};
+    const double scale = pixel::DefaultRenderPixelsPerLogicalPixel;
+    const MousePointerState body{{400 + scale, 300 + scale}, {800, 600}, {800, 600}};
     f.KeyEvent(Key::KEY_B);
     f.KeyEvent(Key::KEY_B, ButtonAction::ACTION_REPEAT);
     f.KeyEvent(Key::KEY_B, ButtonAction::ACTION_RELEASE);
