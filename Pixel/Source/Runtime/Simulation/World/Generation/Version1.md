@@ -1,8 +1,10 @@
 # Generation version 1 contract
 
 `WorldGenerationSettings` is the complete configurable description: `Kind`,
-`Version`, `Seed`, `SurfaceY`, and `WaterEnabled`. Both generator kinds currently
-accept only `Version=1`; unknown versions/kinds throw. `Flat=0` and `Natural=1`
+`Version`, `Seed`, `SurfaceY`, and `WaterEnabled`. This document describes
+`Version=1` for both generator kinds. Natural also supports version 2; see
+[the biome generation contract](../../../../../../Docs/BiomeWorldGeneration.md).
+Unknown versions/kinds throw. `Flat=0` and `Natural=1`
 are stable kind IDs. Everything below is frozen by version 1 and requires a new
 version if changed. No runtime parameter silently changes these constants.
 
@@ -143,7 +145,8 @@ is inferred from the thresholds.
 ## Working set
 
 Normal generation keeps one output WorldChunk and no full-sized extra material
-map. Scratch includes ChunkEdge 32-byte columns, at most
+map. Scratch includes ChunkEdge columns (now 64 bytes including the v2 climate
+fields, unused by v1), at most
 `ceil(ChunkEdge/512)+1` small lake plans, 128 temporary columns, one 16384-byte
 Air/visited classification array, and one 32768-byte uint16 queue. Groundwater
 plans are processed serially and immediately written; accepted masks are not

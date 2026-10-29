@@ -22,7 +22,8 @@ void MiningAndConstruction() {
         const auto bag = session.PlayerInventory();
         const std::array materials{CellTypeId::Dirt, CellTypeId::GroundSoil, CellTypeId::GrassSoil,
             CellTypeId::Stone, CellTypeId::CoalOre, CellTypeId::CopperOre, CellTypeId::IronOre,
-            CellTypeId::TungstenOre, CellTypeId::GoldOre};
+            CellTypeId::TungstenOre, CellTypeId::GoldOre, CellTypeId::Sand, CellTypeId::Clay,
+            CellTypeId::MossStone, CellTypeId::Sandstone, CellTypeId::Snow, CellTypeId::Ice, CellTypeId::Wood, CellTypeId::Leaves};
         for (auto material : materials) {
             world.SetCell(20, 20, {material});
             const auto receipt = session.Execute(caller, api::MineRegion{{20, 20}, uint32_t(material)});

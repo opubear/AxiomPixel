@@ -1,0 +1,36 @@
+{
+  "Tool": "built-in image_gen",
+  "Created": "2026-10-29",
+  "Assets": [
+    {
+      "name": "sandstone",
+      "prompt": "Use case: stylized-concept. Asset type: one seamless square pixel-art material texture for a 2D side-view sandbox world, sandstone. Subject: warm ochre sandstone rock, irregular thin sediment bands, sparse tiny dark mineral specks, gentle amber shadows. Flat full-frame orthographic material swatch, pattern fills all four edges and tiles seamlessly in both axes. Restrained cozy natural pixel-art style, clearly visible square pixels on an exact conceptual 64 by 64 grid magnified to fill the image. Small-scale texture, evenly distributed subtle variation. Opaque material across the entire image. No borders, no margins, no text, no labels, no lighting gradient, no perspective, no isolated objects, no UI, no tile grid lines. This is a single material, not an atlas.",
+      "Original": "Originals/sandstone.png",
+      "OriginalSHA256": "520c6dfcd54e8b0dde8093b7cbf40b12dcfd28a8e7bf3fe49317b398bda68186"
+    },
+    {
+      "name": "snow",
+      "prompt": "Use case: stylized-concept. Asset type: one seamless square pixel-art material texture for a 2D side-view sandbox world, snow. Subject: dense packed alpine snow, ivory white and pale icy blue, tiny irregular crystalline flecks, soft shallow wind ripples, no rocks. Flat full-frame orthographic material swatch, pattern fills all four edges and tiles seamlessly in both axes. Restrained cozy natural pixel-art style, clearly visible square pixels on an exact conceptual 64 by 64 grid magnified to fill the image. Small-scale texture, evenly distributed subtle variation. Opaque material across the entire image. No borders, no margins, no text, no labels, no lighting gradient, no perspective, no isolated objects, no UI, no tile grid lines. This is a single material, not an atlas.",
+      "Original": "Originals/snow.png",
+      "OriginalSHA256": "a1c5d9522ab0fb99e715bdc21e1d940ca55f5a68de44b83706288bd17f6b1f8a"
+    },
+    {
+      "name": "ice",
+      "prompt": "Use case: stylized-concept. Asset type: one seamless square pixel-art material texture for a 2D side-view sandbox world, ice. Subject: opaque glacier ice, muted turquoise and blue, sparse narrow angular pale fractures, frosted pockets, no water surface. Flat full-frame orthographic material swatch, pattern fills all four edges and tiles seamlessly in both axes. Restrained cozy natural pixel-art style, clearly visible square pixels on an exact conceptual 64 by 64 grid magnified to fill the image. Small-scale texture, evenly distributed subtle variation. Opaque material across the entire image. No borders, no margins, no text, no labels, no lighting gradient, no perspective, no isolated objects, no UI, no tile grid lines. This is a single material, not an atlas.",
+      "Original": "Originals/ice.png",
+      "OriginalSHA256": "368bb53aad6902219f296bcf49f39f2393ce794c3634704af5e73f8769a80647"
+    },
+    {
+      "name": "wood",
+      "prompt": "Use case: stylized-concept. Asset type: one seamless square pixel-art material texture for a 2D side-view sandbox world, wood. Subject: forest tree bark cross section side texture, warm dark umber, narrow irregular vertical bark fissures, subtle knots. Flat full-frame orthographic material swatch, pattern fills all four edges and tiles seamlessly in both axes. Restrained cozy natural pixel-art style, clearly visible square pixels on an exact conceptual 64 by 64 grid magnified to fill the image. Small-scale texture, evenly distributed subtle variation. Opaque material across the entire image. No borders, no margins, no text, no labels, no lighting gradient, no perspective, no isolated objects, no UI, no tile grid lines. This is a single material, not an atlas.",
+      "Original": "Originals/wood.png",
+      "OriginalSHA256": "683cbb4b1dafb8e1967a38f6f660f4dce8747f22a5ad736c1c2b6dd486b26bed"
+    },
+    {
+      "name": "leaves",
+      "prompt": "Use case: stylized-concept. Asset type: one seamless square pixel-art material texture for a 2D side-view sandbox world, leaves. Subject: dense forest foliage, interlocking small leaf clusters in sage and deep moss green with restrained olive highlights. Flat full-frame orthographic material swatch, pattern fills all four edges and tiles seamlessly in both axes. Restrained cozy natural pixel-art style, clearly visible square pixels on an exact conceptual 64 by 64 grid magnified to fill the image. Small-scale texture, evenly distributed subtle variation. Opaque material across the entire image. No borders, no margins, no text, no labels, no lighting gradient, no perspective, no isolated objects, no UI, no tile grid lines. This is a single material, not an atlas.",
+      "Original": "Originals/leaves.png",
+      "OriginalSHA256": "43c39882a77da04bb7f2a709046220c2f208aded1902bab6334a60c5947459d7"
+    }
+  ]
+}

@@ -71,6 +71,38 @@
             {
                 "Layer": 12,
                 "Path": "Art/Elements/03_fire_body.png"
+            },
+            {
+                "Layer": 13,
+                "Path": "Art/Biomes/sand.png"
+            },
+            {
+                "Layer": 14,
+                "Path": "Art/Biomes/clay.png"
+            },
+            {
+                "Layer": 15,
+                "Path": "Art/Biomes/moss_stone.png"
+            },
+            {
+                "Layer": 16,
+                "Path": "Art/Biomes/sandstone.png"
+            },
+            {
+                "Layer": 17,
+                "Path": "Art/Biomes/snow.png"
+            },
+            {
+                "Layer": 18,
+                "Path": "Art/Biomes/ice.png"
+            },
+            {
+                "Layer": 19,
+                "Path": "Art/Biomes/wood.png"
+            },
+            {
+                "Layer": 20,
+                "Path": "Art/Biomes/leaves.png"
             }
         ],
         "Materials": [
@@ -128,6 +160,38 @@
             {
                 "TypeId": 52,
                 "Layer": 12
+            },
+            {
+                "TypeId": 22,
+                "Layer": 13
+            },
+            {
+                "TypeId": 23,
+                "Layer": 14
+            },
+            {
+                "TypeId": 31,
+                "Layer": 15
+            },
+            {
+                "TypeId": 32,
+                "Layer": 16
+            },
+            {
+                "TypeId": 60,
+                "Layer": 17
+            },
+            {
+                "TypeId": 61,
+                "Layer": 18
+            },
+            {
+                "TypeId": 70,
+                "Layer": 19
+            },
+            {
+                "TypeId": 71,
+                "Layer": 20
             }
         ]
     }

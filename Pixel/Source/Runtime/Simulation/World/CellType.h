@@ -10,7 +10,11 @@ enum class CellTypeId : uint32_t {
     Dirt = 10,
     GroundSoil = 20,
     GrassSoil = 21,
+    Sand = 22,
+    Clay = 23,
     Stone = 30,
+    MossStone = 31,
+    Sandstone = 32,
     CoalOre = 40,
     CopperOre = 41,
     IronOre = 42,
@@ -19,6 +23,10 @@ enum class CellTypeId : uint32_t {
     Water = 50,
     Steam = 51,
     Fire = 52,
+    Snow = 60,
+    Ice = 61,
+    Wood = 70,
+    Leaves = 71,
 };
 
 // Compatibility names for existing world operations; empty space is air.
@@ -62,6 +70,15 @@ template <> struct CellDefinition<CellTypeId::Water> { inline static constexpr C
 template <> struct CellDefinition<CellTypeId::Steam> { inline static constexpr CellInfo Info{0.f, false, false, false}; };
 template <> struct CellDefinition<CellTypeId::Fire> { inline static constexpr CellInfo Info{0.f, false, false, false}; };
 
+template <> struct CellDefinition<CellTypeId::Sand> { inline static constexpr CellInfo Info{1.f}; };
+template <> struct CellDefinition<CellTypeId::Clay> { inline static constexpr CellInfo Info{1.f}; };
+template <> struct CellDefinition<CellTypeId::MossStone> { inline static constexpr CellInfo Info{2.f}; };
+template <> struct CellDefinition<CellTypeId::Sandstone> { inline static constexpr CellInfo Info{2.f}; };
+template <> struct CellDefinition<CellTypeId::Snow> { inline static constexpr CellInfo Info{1.f}; };
+template <> struct CellDefinition<CellTypeId::Ice> { inline static constexpr CellInfo Info{1.f}; };
+template <> struct CellDefinition<CellTypeId::Wood> { inline static constexpr CellInfo Info{1.f}; };
+template <> struct CellDefinition<CellTypeId::Leaves> { inline static constexpr CellInfo Info{0.f, false, false, true}; };
+
 constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     switch (type) {
     case CellTypeId::Air:
@@ -79,6 +96,14 @@ constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     case CellTypeId::Water: return CellDefinition<CellTypeId::Water>::Info;
     case CellTypeId::Steam: return CellDefinition<CellTypeId::Steam>::Info;
     case CellTypeId::Fire: return CellDefinition<CellTypeId::Fire>::Info;
+    case CellTypeId::Sand: return CellDefinition<CellTypeId::Sand>::Info;
+    case CellTypeId::Clay: return CellDefinition<CellTypeId::Clay>::Info;
+    case CellTypeId::MossStone: return CellDefinition<CellTypeId::MossStone>::Info;
+    case CellTypeId::Sandstone: return CellDefinition<CellTypeId::Sandstone>::Info;
+    case CellTypeId::Snow: return CellDefinition<CellTypeId::Snow>::Info;
+    case CellTypeId::Ice: return CellDefinition<CellTypeId::Ice>::Info;
+    case CellTypeId::Wood: return CellDefinition<CellTypeId::Wood>::Info;
+    case CellTypeId::Leaves: return CellDefinition<CellTypeId::Leaves>::Info;
     }
     throw std::invalid_argument("cell type has no static information");
 }
@@ -89,7 +114,16 @@ constexpr bool IsKnownCellType(CellTypeId type) {
     case CellTypeId::GrassSoil: case CellTypeId::Stone: case CellTypeId::CoalOre:
     case CellTypeId::CopperOre: case CellTypeId::IronOre: case CellTypeId::TungstenOre:
     case CellTypeId::GoldOre: case CellTypeId::Water:
-    case CellTypeId::Steam: case CellTypeId::Fire: return true;
+    case CellTypeId::Steam: case CellTypeId::Fire:
+    case CellTypeId::Sand:
+    case CellTypeId::Clay:
+    case CellTypeId::MossStone:
+    case CellTypeId::Sandstone:
+    case CellTypeId::Snow:
+    case CellTypeId::Ice:
+    case CellTypeId::Wood:
+    case CellTypeId::Leaves:
+        return true;
     }
     return false;
 }

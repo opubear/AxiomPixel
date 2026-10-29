@@ -430,6 +430,7 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
             if (value.Kind != api::GeneratorKind::Flat && value.Kind != api::GeneratorKind::Natural)
                 return {api::ControlStatus::Rejected, api::Reason::Unsupported, "Unsupported"};
             NextGeneration.Kind = value.Kind == api::GeneratorKind::Flat ? WorldGeneratorKind::Flat : WorldGeneratorKind::Natural;
+            NextGeneration.Version = NextGeneration.Kind == WorldGeneratorKind::Natural ? LatestNaturalGenerationVersion : 1;
         } else if constexpr (std::is_same_v<T, api::SetNextSeed>) {
             NextGeneration.Seed = value.Seed;
         } else {

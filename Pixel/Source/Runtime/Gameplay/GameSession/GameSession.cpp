@@ -49,6 +49,7 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
         std::random_device random;
         settings.Seed = (uint64_t(random()) << 32) ^ uint64_t(random());
     }
+    settings.Version = settings.Kind == WorldGeneratorKind::Natural ? LatestNaturalGenerationVersion : 1;
     return settings;
 }
 

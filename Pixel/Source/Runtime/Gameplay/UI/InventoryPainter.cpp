@@ -73,6 +73,13 @@ class Painter {
         case items::ItemId::CopperOre: light = {223,139,77,255}; break;
         case items::ItemId::IronOre: light = {201,169,145,255}; break;
         case items::ItemId::TungstenOre: light = {139,194,210,255}; break;
+        case items::ItemId::Sand: base = {190,154,87,255}; light = {233,209,151,255}; break;
+        case items::ItemId::Clay: base = {133,80,58,255}; light = {186,127,91,255}; break;
+        case items::ItemId::Sandstone: base = {160,112,60,255}; light = {218,176,107,255}; break;
+        case items::ItemId::Snow: base = {173,204,219,255}; light = {237,246,250,255}; break;
+        case items::ItemId::Ice: base = {71,142,172,255}; light = {153,218,231,255}; break;
+        case items::ItemId::Wood: base = {91,57,35,255}; light = {151,105,57,255}; break;
+        case items::ItemId::Leaves: base = {50,82,37,255}; light = {121,157,65,255}; break;
         case items::ItemId::GoldOre: light = {249,204,75,255}; break;
         default: break;
         }

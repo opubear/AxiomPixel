@@ -11,7 +11,7 @@
 #include <stdexcept>
 
 namespace {
-constexpr std::array<uint32_t, 13> RequiredTypes{0, 10, 20, 21, 30, 40, 41, 42, 43, 44, 50, 51, 52};
+constexpr std::array<uint32_t, 21> RequiredTypes{0, 10, 20, 21, 30, 40, 41, 42, 43, 44, 50, 51, 52, 22, 23, 31, 32, 60, 61, 70, 71};
 
 void Check(bool value, const char *reason) {
     if (!value)
@@ -41,19 +41,19 @@ std::vector<char> ReadContent(std::string_view name) {
 void RuntimeCopies() {
     const auto root = std::filesystem::path(PIXEL_TEST_CONTENT).parent_path().parent_path();
     size_t copies = 0;
-    for (const auto group : {"NaturalBlocks", "Elements"}) {
+    for (const auto group : {"NaturalBlocks", "Elements", "Biomes"}) {
         const auto record = nlohmann::json::parse(ReadContent(std::string("Art/") + group + "/SOURCE.json"));
         Check(record.at("CopiedWithoutModification") == true, "runtime copy lost provenance");
         for (const auto &entry : record.at("Resources")) {
             const auto target = ReadContent(std::string("Art/") + group + "/" + entry.at("Path").get<std::string>());
             const auto source = ReadFile(root / entry.at("Source").get<std::string>());
-            Check(target == source, "runtime PNG differs from its preserved ArtRaw source");
+            Check(target == source, "runtime PNG differs from its preserved raw source");
             Check(entry.at("Width") == 64 && entry.at("Height") == 64 && entry.at("SHA256").get<std::string>().size() == 64,
                   "runtime copy has incomplete dimensions or source hash");
             ++copies;
         }
     }
-    Check(copies == 12, "runtime terrain copies are incomplete");
+    Check(copies == 20, "runtime terrain copies are incomplete");
 }
 
 void CatalogAndCache() {
@@ -67,7 +67,7 @@ void CatalogAndCache() {
         return ReadContent(name);
     });
     const auto terrain = assets.LoadTerrain("ArtAssets.json", RequiredTypes);
-    Check(terrain->Images.size() == 12 && terrain->Materials.size() == RequiredTypes.size() && terrain->CellsPerTile == 64,
+    Check(terrain->Images.size() == 20 && terrain->Materials.size() == RequiredTypes.size() && terrain->CellsPerTile == 64,
           "terrain manifest did not load every natural material");
     for (const auto &entry : terrain->Images)
         Check(entry.Image->Width == 64 && entry.Image->Height == 64 && entry.Image->Pixels.size() == 64 * 64 * 4,
@@ -78,7 +78,7 @@ void CatalogAndCache() {
 
     pixel::GamePresentation presentation;
     const auto fallback = presentation.MakeTextures();
-    Check(fallback.Width == 1 && fallback.Height == 1 && fallback.Layers == 13 && fallback.CellsPerTile == 1,
+    Check(fallback.Width == 1 && fallback.Height == 1 && fallback.Layers == 21 && fallback.CellsPerTile == 1,
           "CPU fallback changed its one-cell texture sampling contract");
     for (const auto type : RequiredTypes)
         Check(presentation.Appearances.contains(type), "default presentation has an unmapped registered material");
@@ -87,7 +87,7 @@ void CatalogAndCache() {
 
     const auto catalog = presentation.LoadTextures(assets);
     ValidateGridTextureCatalog(catalog);
-    Check(catalog.Width == 64 && catalog.Height == 64 && catalog.Layers == 13 && catalog.CellsPerTile == 64,
+    Check(catalog.Width == 64 && catalog.Height == 64 && catalog.Layers == 21 && catalog.CellsPerTile == 64,
           "Content catalog lost image dimensions or world repeat period");
     const size_t layerBytes = 64 * 64 * 4;
     Check(std::all_of(catalog.Pixels.begin(), catalog.Pixels.begin() + layerBytes, [](auto value) { return value == std::byte{}; }),
@@ -108,7 +108,7 @@ void CatalogAndCache() {
     Check(visibleWaterEdge, "water surface strip selected the source image's transparent sky");
 
     const auto background = assets.LoadBackground("ArtAssets.json");
-    Check(background->Layers.size() == 4 && reads["ArtAssets.json"] == 1 && assets.CachedImageCount() == 16,
+    Check(background->Layers.size() == 4 && reads["ArtAssets.json"] == 1 && assets.CachedImageCount() == 24,
           "background and terrain did not share manifest ownership");
     const auto json = nlohmann::json::parse(ReadContent("ArtAssets.json"));
     replacements["alias.json"] = json.dump();
@@ -135,7 +135,7 @@ void CatalogAndCache() {
     reject([](auto &j) { j["Terrain"]["Materials"] = nlohmann::json::object(); });
     reject([](auto &j) { j["Terrain"]["Images"] = nlohmann::json::array(); });
     reject([](auto &j) { j["Terrain"]["Images"][0]["Layer"] = 0; });
-    reject([](auto &j) { j["Terrain"]["Images"][0]["Layer"] = 13; });
+    reject([](auto &j) { j["Terrain"]["Images"][0]["Layer"] = 21; });
     reject([](auto &j) { j["Terrain"]["Images"][0]["Layer"] = 2; });
     reject([](auto &j) { j["Terrain"]["Images"][0]["Path"] = "Art/NaturalParallax/00_far.png"; });
     reject([](auto &j) { j["Terrain"]["CellsPerTile"] = 0; });
@@ -147,8 +147,8 @@ void CatalogAndCache() {
     reject([](auto &j) { j["Terrain"]["Materials"].erase(0); });
     reject([](auto &j) { j["Terrain"]["Materials"][0]["Layer"] = 1; });
     reject([](auto &j) { j["Terrain"]["Materials"][1]["Layer"] = 0; });
-    reject([](auto &j) { j["Terrain"]["Materials"][1]["Layer"] = 13; });
-    reject([](auto &j) { j["Terrain"]["Materials"][3]["SurfaceLayer"] = 13; });
+    reject([](auto &j) { j["Terrain"]["Materials"][1]["Layer"] = 21; });
+    reject([](auto &j) { j["Terrain"]["Materials"][3]["SurfaceLayer"] = 21; });
     reject([](auto &j) { j["Terrain"]["Materials"][3]["SurfaceStrip"] = 8; });
     reject([](auto &j) { j["Terrain"]["Materials"][1]["SurfaceStrip"] = 1; });
     reject([](auto &j) { j["Terrain"]["Materials"][1]["TypeId"] = -1; });

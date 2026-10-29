@@ -16,7 +16,10 @@ constexpr std::array RequiredMaterials{
     uint32_t(CellTypeId::GrassSoil), uint32_t(CellTypeId::Stone), uint32_t(CellTypeId::CoalOre),
     uint32_t(CellTypeId::CopperOre), uint32_t(CellTypeId::IronOre), uint32_t(CellTypeId::TungstenOre),
     uint32_t(CellTypeId::GoldOre), uint32_t(CellTypeId::Water),
-    uint32_t(CellTypeId::Steam), uint32_t(CellTypeId::Fire)};
+    uint32_t(CellTypeId::Steam), uint32_t(CellTypeId::Fire),
+    uint32_t(CellTypeId::Sand), uint32_t(CellTypeId::Clay), uint32_t(CellTypeId::MossStone),
+    uint32_t(CellTypeId::Sandstone), uint32_t(CellTypeId::Snow), uint32_t(CellTypeId::Ice),
+    uint32_t(CellTypeId::Wood), uint32_t(CellTypeId::Leaves)};
 
 CellAppearanceTable DefaultAppearances() {
     return {{uint32_t(CellTypeId::Air), 0}, {uint32_t(CellTypeId::Dirt), 1},
@@ -25,7 +28,11 @@ CellAppearanceTable DefaultAppearances() {
             {uint32_t(CellTypeId::CopperOre), 5}, {uint32_t(CellTypeId::IronOre), 6},
             {uint32_t(CellTypeId::TungstenOre), 7}, {uint32_t(CellTypeId::GoldOre), 8},
             {uint32_t(CellTypeId::Water), {9, 10, 3}},
-            {uint32_t(CellTypeId::Steam), 11}, {uint32_t(CellTypeId::Fire), 12}};
+            {uint32_t(CellTypeId::Steam), 11}, {uint32_t(CellTypeId::Fire), 12},
+            {uint32_t(CellTypeId::Sand), 13}, {uint32_t(CellTypeId::Clay), 14},
+            {uint32_t(CellTypeId::MossStone), 15}, {uint32_t(CellTypeId::Sandstone), 16},
+            {uint32_t(CellTypeId::Snow), 17}, {uint32_t(CellTypeId::Ice), 18},
+            {uint32_t(CellTypeId::Wood), 19}, {uint32_t(CellTypeId::Leaves), 20}};
 }
 
 uint64_t PublicationCapacity(WorldRect region) {
@@ -135,14 +142,18 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
 
 GridTextureCatalog GamePresentation::MakeTextures() {
     // Terrain textures only; the character uses a separate composition pass.
-    GridTextureCatalog textures{1, 1, 13, {}};
+    GridTextureCatalog textures{1, 1, 21, {}};
     for (const auto color : {std::array{0, 0, 0, 0}, std::array{151, 104, 65, 255},
                             std::array{102, 143, 58, 255}, std::array{111, 113, 114, 255},
                             std::array{49, 48, 47, 255}, std::array{167, 104, 57, 255},
                             std::array{171, 146, 125, 255}, std::array{89, 106, 115, 255},
                             std::array{207, 166, 48, 255}, std::array{38, 102, 166, 180},
                             std::array{92, 167, 196, 210}, std::array{216, 229, 232, 100},
-                            std::array{255, 137, 35, 255}})
+                            std::array{255, 137, 35, 255},
+                            std::array{218, 188, 121, 255}, std::array{160, 100, 73, 255},
+                            std::array{90, 113, 69, 255}, std::array{191, 143, 75, 255},
+                            std::array{226, 239, 245, 255}, std::array{102, 177, 202, 255},
+                            std::array{98, 66, 42, 255}, std::array{73, 113, 48, 255}})
         for (int channel : color)
             textures.Pixels.push_back(std::byte(channel));
     return textures;

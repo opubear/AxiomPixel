@@ -1548,11 +1548,13 @@ void TerrainMaterialsGpu() {
     pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
     pixel::GamePresentation presentation;
     const auto catalog = presentation.LoadTextures(store);
-    pixel::testing::SimulatedWorld world(64, 64);
+    pixel::testing::SimulatedWorld world(64, 128);
     constexpr std::array types{pixel::CellTypeId::Dirt, pixel::CellTypeId::GroundSoil,
         pixel::CellTypeId::GrassSoil, pixel::CellTypeId::Stone, pixel::CellTypeId::CoalOre,
         pixel::CellTypeId::CopperOre, pixel::CellTypeId::IronOre, pixel::CellTypeId::TungstenOre,
-        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water, pixel::CellTypeId::Steam, pixel::CellTypeId::Fire};
+        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water, pixel::CellTypeId::Steam, pixel::CellTypeId::Fire,
+        pixel::CellTypeId::Sand, pixel::CellTypeId::Clay, pixel::CellTypeId::MossStone, pixel::CellTypeId::Sandstone,
+        pixel::CellTypeId::Snow, pixel::CellTypeId::Ice, pixel::CellTypeId::Wood, pixel::CellTypeId::Leaves};
     for (uint32_t i = 0; i < types.size(); ++i)
         world.FillRegion({0, 2 + i * 4, 64, 3}, {types[i]});
     std::array<int64_t, 2> origin{};
@@ -1564,7 +1566,7 @@ void TerrainMaterialsGpu() {
         auto render = std::make_unique<PixelRender>(rhi, catalog, [&](WorldGridFrame &frame) {
             BuildWorldGridFrame(world.ReadState(), presentation.Appearances, frame);
             const std::vector<uint32_t> cells(frame.Cells().begin(), frame.Cells().end());
-            frame.SetRegion(origin, 64, 64);
+            frame.SetRegion(origin, 64, 128);
             std::copy(cells.begin(), cells.end(), frame.Cells().begin());
             frame.View.WorldOriginCells = origin;
             frame.View.CellSizePixels = {scale, scale};

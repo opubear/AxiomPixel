@@ -14,7 +14,7 @@ Core 的[Allocator与容器后端接入](.awtcontext/GlobalDoc/CoreAllocatorAndC
 
 世界现按需加载1024×1024物理块，由稀疏四叉树组织64×64区域，采用同步材料更新、文件存档和跟随玩家的开放风域。现行接口、存储布局和失败处理见 [世界表示约定](Docs/WorldRepresentation.md)，本轮实测及验证限制见 [验证与性能报告](Docs/WorldRepresentationValidation.md)。早期文档中的整图连续数组、移动链和四张固定世界纹理已被替代。
 
-新建游戏默认采用Natural世界生成策略：起伏地形、固定土岩、洞穴、五种矿石、有限湖泊/地下积水及干燥地表草皮。保留Superflat调试策略；F2的World generation选择下一世界的生成器和种子，按R创建新世界（当前不保存进度）。入口、版本兼容和资源配置见 [世界生成与自然材质](.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
+新建游戏默认采用 Natural v2：低频温度/湿度/抬升场控制森林、沙漠和雪山，群落权重混合丘陵、沙丘与岩脊，再生成不同土岩、洞穴矿物、有限水体和树木。新增沙土、黏土、苔石、砂岩、雪、冰、树干、树叶；原件与运行时纹理已接入。保留 Natural v1 的旧档生成和 Superflat 调试策略；F2 选择下一世界的生成器与种子，R 创建新世界（当前不保存进度）。参数、资源和验证见[分层群落世界生成](Docs/BiomeWorldGeneration.md)，旧版合同见[原生成实现](.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
 
 `Pixel/Source` 按运行时与开发支持分成两个根目录；以下五个领域是源码归属入口。
 

@@ -1,0 +1,61 @@
+{
+  "CopiedWithoutModification": true,
+  "Resources": [
+    {
+      "Path": "clay.png",
+      "Source": "RawData/Materials/Biomes/Textures64/clay.png",
+      "SHA256": "d42a8ee8e3f302c749e3c84203990c12760a24c16545f9d13d39bd514bd4c061",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "ice.png",
+      "Source": "RawData/Materials/Biomes/Textures64/ice.png",
+      "SHA256": "7efc8dd4f0cc676c7e94d8992e6736133ade5bef27868d82896a93da99dc128b",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "leaves.png",
+      "Source": "RawData/Materials/Biomes/Textures64/leaves.png",
+      "SHA256": "6f38118e3923ce3fa2d7baf74bed5520cb91107946733f46e6e12ab854cccb0e",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "moss_stone.png",
+      "Source": "RawData/Materials/Biomes/Textures64/moss_stone.png",
+      "SHA256": "8ec66d5269f161fa65e610bdb387a8d5dab702ffd8ef8da480b2262bab95b97b",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "sand.png",
+      "Source": "RawData/Materials/Biomes/Textures64/sand.png",
+      "SHA256": "164d6efdab1d48548c7b95c43f52c7fff45c1753f77d1e31f064fb1dc7878c2a",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "sandstone.png",
+      "Source": "RawData/Materials/Biomes/Textures64/sandstone.png",
+      "SHA256": "dbbbcf83cc291d8a40a7864ea943b0f6f1fdb0297636df20998615050d8f5572",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "snow.png",
+      "Source": "RawData/Materials/Biomes/Textures64/snow.png",
+      "SHA256": "64770d21daae4789e10f3bc9370d27d1f117b801ac95c221d3f398e5abb759dd",
+      "Width": 64,
+      "Height": 64
+    },
+    {
+      "Path": "wood.png",
+      "Source": "RawData/Materials/Biomes/Textures64/wood.png",
+      "SHA256": "d4333f363395c3def05994ba57125f1d73bb2604cdb2920fc297cd4f82a690be",
+      "Width": 64,
+      "Height": 64
+    }
+  ]
+}

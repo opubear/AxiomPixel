@@ -8,7 +8,14 @@ std::span<const ItemDefinition> Definitions() {
         ItemDefinition{ItemId::Soil, "soil"}, ItemDefinition{ItemId::Stone, "stone"},
         ItemDefinition{ItemId::Coal, "coal"}, ItemDefinition{ItemId::CopperOre, "copper_ore"},
         ItemDefinition{ItemId::IronOre, "iron_ore"}, ItemDefinition{ItemId::TungstenOre, "tungsten_ore"},
-        ItemDefinition{ItemId::GoldOre, "gold_ore"}};
+        ItemDefinition{ItemId::GoldOre, "gold_ore"},
+        ItemDefinition{ItemId::Sand, "sand"},
+        ItemDefinition{ItemId::Clay, "clay"},
+        ItemDefinition{ItemId::Sandstone, "sandstone"},
+        ItemDefinition{ItemId::Snow, "snow"},
+        ItemDefinition{ItemId::Ice, "ice"},
+        ItemDefinition{ItemId::Wood, "wood"},
+        ItemDefinition{ItemId::Leaves, "leaves"}};
     return values;
 }
 bool IsKnown(ItemId item) {

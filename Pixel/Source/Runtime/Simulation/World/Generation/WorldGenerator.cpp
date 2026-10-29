@@ -1,5 +1,6 @@
 #include "WorldGenerator.h"
 #include "GenerationNoise.h"
+#include "BiomeTerrain.h"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -76,11 +77,13 @@ struct Column {
     int64_t DryHeight = 0, Height = 0, LakeLevel = 0;
     uint32_t SoilDepth = 0;
     bool Wet = false;
+    GenerationEnvironment Environment;
 };
 
 class NaturalModel {
   public:
-    explicit NaturalModel(WorldGenerationSettings settings) : Settings(settings), Noise(settings.Seed), SpawnHeight(RawHeight(SpawnX)) {}
+    explicit NaturalModel(WorldGenerationSettings settings)
+        : Settings(settings), Noise(settings.Seed), Biomes(settings.Seed), SpawnHeight(RawHeight(SpawnX)) {}
 
     int64_t DryHeight(int64_t x) const {
         const int64_t distance = x >= SpawnX ? x - SpawnX : SpawnX - x;
@@ -109,6 +112,10 @@ class NaturalModel {
         Column column;
         column.DryHeight = column.Height = DryHeight(x);
         column.SoilDepth = uint32_t(std::clamp<int64_t>(18 + FixedRound(int64_t(6) * Perlin(Noise.Soil, x, 0, 256, 256)), 12, 24));
+        if (Settings.Version == 2) {
+            column.Environment = Biomes.Environment(x);
+            column.SoilDepth = Biomes.SoilThickness(x, column.Environment);
+        }
         for (const auto &lake : lakes) {
             if (x < lake.Center - lake.Radius || x > lake.Center + lake.Radius)
                 continue;
@@ -124,13 +131,18 @@ class NaturalModel {
         const int64_t depth = point.Y - column.Height;
         if (depth < 0)
             return CellTypeId::Air;
+        const auto host = Settings.Version == 2
+            ? Biomes.Stratum(point, depth, column.SoilDepth, column.Environment)
+            : depth < column.SoilDepth ? CellTypeId::GroundSoil : CellTypeId::Stone;
         if (depth < column.SoilDepth)
-            return CellTypeId::GroundSoil;
-        if (through >= GenerationStage::Caves && IsCave(point, depth, lakes))
+            return host;
+        if (through >= GenerationStage::Caves && IsCave(point, depth, column.Environment, lakes))
             return CellTypeId::Air;
-        if (through >= GenerationStage::Ores)
-            return OreAt(point, depth);
-        return CellTypeId::Stone;
+        if (through >= GenerationStage::Ores && host != CellTypeId::Ice) {
+            const auto ore = OreAt(point, depth);
+            if (ore != CellTypeId::Stone) return ore;
+        }
+        return host;
     }
 
     void Fill(WorldRect bounds, std::span<CellTypeId> output, GenerationStage through) const {
@@ -168,6 +180,8 @@ class NaturalModel {
                 if (output[index] == CellTypeId::GroundSoil)
                     output[index] = CellTypeId::GrassSoil;
             }
+        if (through >= GenerationStage::Surface && Settings.Version == 2)
+            AddTrees(bounds, output);
     }
 
     std::vector<GenerationWaterBody> WaterPlans(WorldRect bounds) const {
@@ -189,9 +203,12 @@ class NaturalModel {
   private:
     WorldGenerationSettings Settings;
     Channels Noise;
+    BiomeTerrain Biomes;
     int64_t SpawnHeight;
 
     int64_t RawHeight(int64_t x) const {
+        if (Settings.Version == 2)
+            return Settings.SurfaceY + Biomes.HeightOffset(x, Biomes.Environment(x));
         return Settings.SurfaceY + FixedRound(int64_t(48) * Perlin(Noise.Height0, x, 0, 1024, 1024) +
                                                int64_t(12) * Perlin(Noise.Height1, x, 0, 256, 256) +
                                                int64_t(4) * Perlin(Noise.Height2, x, 0, 64, 64));
@@ -211,6 +228,12 @@ class NaturalModel {
         LakePlan lake;
         lake.Feature = feature;
         lake.Center = FeatureOrigin(feature) + 256 + int64_t(hash % 129) - 64;
+        if (Settings.Version == 2) {
+            const auto environment = Biomes.Environment(lake.Center);
+            // Rare desert oases; no liquid surface lakes on the alpine cap.
+            if (environment.SnowWeight > 32768 || (environment.DesertWeight > 32768 && (hash >> 32) % 8 != 0))
+                return std::nullopt;
+        }
         lake.Radius = 16 + int64_t((hash >> 8) % 49);
         lake.TargetDepth = 2 + uint32_t((hash >> 16) % 7);
         const int64_t left = lake.Center - lake.Radius, right = lake.Center + lake.Radius;
@@ -258,16 +281,51 @@ class NaturalModel {
         return false;
     }
 
-    bool IsCave(CellCoord point, int64_t depth, std::span<const LakePlan> lakes) const {
+    bool IsCave(CellCoord point, int64_t depth, const GenerationEnvironment &environment, std::span<const LakePlan> lakes) const {
         if (depth < 48 || LakeProtected(point, lakes))
             return false;
         const int32_t strength = depth >= 96 ? FixedOne : int32_t((depth - 48) * FixedOne / 48);
-        const int32_t roomThreshold = FixedOne - FixedMultiply(FixedOne - 29491, strength);
+        // Alpine rock has narrower fissures; humid forest rock has larger
+        // chambers. Blend thresholds rather than cutting caves at biome edges.
+        const int32_t roomBase = Settings.Version == 2
+            ? 28000 + FixedMultiply(6000, environment.SnowWeight) - FixedMultiply(2500, environment.ForestWeight)
+            : 29491;
+        const int32_t roomThreshold = FixedOne - FixedMultiply(FixedOne - roomBase, strength);
         if (Perlin(Noise.CaveRoom, point.X, point.Y, 128, 128) > roomThreshold)
             return true;
-        const int32_t tunnelWidth = FixedMultiply(3932, strength);
+        const int32_t tunnelBase = Settings.Version == 2 ? 4200 - FixedMultiply(1800, environment.SnowWeight) : 3932;
+        const int32_t tunnelWidth = FixedMultiply(tunnelBase, strength);
         return std::abs(Perlin(Noise.CaveTunnel, point.X, point.Y, 256, 64)) < tunnelWidth &&
                Perlin(Noise.CaveGate, point.X, point.Y, 512, 512) > 0;
+    }
+
+    void AddTrees(WorldRect bounds, std::span<CellTypeId> output) const {
+        // Every query visits complete feature anchors whose canopy could touch
+        // it. Features cannot overlap (max radius 22, anchor spacing >=65).
+        for (int64_t feature = FloorDivide(bounds.X - 22, 128);
+             feature <= FloorDivide(bounds.X + bounds.Width - 1 + 22, 128); ++feature) {
+            int64_t center;
+            uint32_t height, radius;
+            if (!Biomes.HasTree(feature, center, height, radius) || std::abs(center - SpawnX) < 96)
+                continue;
+            const auto lakes = LakesFor(center, 1);
+            const auto column = GetColumn(center, lakes);
+            if (column.Wet || std::abs(DryHeight(center - 4) - DryHeight(center + 4)) > 5)
+                continue;
+            const int64_t crownY = column.Height - height + radius;
+            const int64_t left = std::max(bounds.X, center - radius), right = std::min(bounds.X + bounds.Width, center + radius + 1);
+            const int64_t top = std::max(bounds.Y, column.Height - height), bottom = std::min(bounds.Y + bounds.Height, column.Height);
+            for (int64_t y = top; y < bottom; ++y)
+                for (int64_t x = left; x < right; ++x) {
+                    auto &cell = output[size_t(y - bounds.Y) * bounds.Width + size_t(x - bounds.X)];
+                    if (cell != CellTypeId::Air) continue;
+                    const int64_t dx = x - center, dy = y - crownY;
+                    if (std::abs(dx) <= 2 && y >= crownY)
+                        cell = CellTypeId::Wood;
+                    else if (dx * dx + dy * dy <= int64_t(radius) * radius)
+                        cell = CellTypeId::Leaves;
+                }
+        }
     }
 
     CellTypeId OreAt(CellCoord point, int64_t depth) const {
@@ -412,7 +470,7 @@ class NaturalGenerator final : public IWorldGenerator {
 void ValidateGenerationSettings(const WorldGenerationSettings &settings) {
     if (settings.Kind != WorldGeneratorKind::Flat && settings.Kind != WorldGeneratorKind::Natural)
         throw std::invalid_argument("unknown world generator");
-    if (settings.Version != 1)
+    if (settings.Version != 1 && !(settings.Kind == WorldGeneratorKind::Natural && settings.Version == 2))
         throw std::invalid_argument("unsupported world generator version");
     ValidatePoint({0, settings.SurfaceY});
 }
@@ -456,7 +514,8 @@ WorldGenerationColumn SampleGenerationColumn(WorldGenerationSettings settings, i
     const NaturalModel model(settings);
     const auto lakes = model.LakesFor(x, 1);
     const auto column = model.GetColumn(x, lakes);
-    return {column.DryHeight, column.Height, column.SoilDepth, column.Wet ? std::optional(column.LakeLevel) : std::nullopt};
+    return {column.DryHeight, column.Height, column.SoilDepth,
+            column.Wet ? std::optional(column.LakeLevel) : std::nullopt, column.Environment};
 }
 
 std::vector<CellTypeId> SampleGeneration(WorldGenerationSettings settings, WorldRect bounds, GenerationStage through) {

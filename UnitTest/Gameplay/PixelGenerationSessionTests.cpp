@@ -59,25 +59,30 @@ void ConvertToLegacyMetadata(const std::filesystem::path &metadata, unsigned ver
            << " 0" << windAndPause << '\n' << rest.str();
 }
 
-void NaturalPersistenceAndStrategySelection() {
+void NaturalPersistenceAndStrategySelection(uint32_t version = 1) {
     SaveRoot files;
     WorldGenerationSettings natural;
     natural.Kind = WorldGeneratorKind::Natural;
     natural.Seed = 42;
+    natural.Version = version;
     std::filesystem::path original;
     {
         GameSession session(true, natural);
         Require(session.GetGenerationSettings() == natural && !session.IsPaused(), "new world did not use natural strategy");
         auto &world = pixel::testing::SessionAccess::World(session);
-        Require(world.GetCell(511, session.GetPlayer()->GetWorldPosition().Cell().Y + 4).Type == CellTypeId::GrassSoil,
-                "natural spawn lacks a grass platform");
+        Require(BlocksCharacter(world.GetCell(511, session.GetPlayer()->GetWorldPosition().Cell().Y + 4).Type),
+                "natural spawn lacks a solid platform");
         world.SetCell(32, 10, {CellTypeId::Water});
+        world.SetCell(33, 10, {CellTypeId::Ice});
+        world.SetCell(34, 10, {CellTypeId::Leaves});
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         original = session.GetSaveDirectory();
     }
     {
         GameSession restored(true); // Constructor default must not override saved strategy.
         Require(restored.GetGenerationSettings() == natural, "loaded seed or strategy changed");
+        Require(testing::SessionAccess::World(restored).GetCell(33, 10).Type == CellTypeId::Ice && testing::SessionAccess::World(restored).GetCell(34, 10).Type == CellTypeId::Leaves,
+                "biome materials did not survive a chunk checkpoint");
         Require(pixel::testing::SessionAccess::World(restored).GetCell(32, 10).Type == CellTypeId::Water, "saved water was regenerated");
         pixel::testing::SessionAccess::World(restored).SetCell(32, 10, {});
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
@@ -92,6 +97,10 @@ void NaturalPersistenceAndStrategySelection() {
         Require(pixel::testing::SessionAccess::World(restored).GetCell(40, 511).Type == CellTypeId::Air && pixel::testing::SessionAccess::World(restored).GetCell(40, 512).Type == CellTypeId::Dirt,
                 "debug superflat boundary changed");
         Require(std::filesystem::exists(testing::CheckpointDirectory(original) / "world.meta"), "reset removed the old world");
+        restored.Control(NativeCaller::Driver, api::SetNextGenerator{api::GeneratorKind::Natural});
+        Require(restored.GetNextGenerationSettings().Version == LatestNaturalGenerationVersion &&
+                    restored.GetGenerationSettings().Kind == WorldGeneratorKind::Flat && restored.GetGenerationSettings().Version == 1,
+                "selecting Natural did not choose v2 or mutated the active flat generator");
     }
 }
 
@@ -248,6 +257,7 @@ int main() {
     try {
         TemporaryGamesIgnoreSavesAndDiscardProgress();
         NaturalPersistenceAndStrategySelection();
+        NaturalPersistenceAndStrategySelection(2);
         LegacyFlatAndResetFailure();
         FailedRecoveryIsIsolatedAndRetryable();
         Version3GenerationRemainsReadable();

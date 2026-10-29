@@ -61,8 +61,10 @@ void NoiseContractAndSettings() {
     changed = settings;
     changed.WaterEnabled = false;
     Require(GenerationFingerprint(changed) != GenerationFingerprint(settings), "water switch is absent from generation identity");
-    changed = settings; changed.Version = 2;
+    changed = settings; changed.Version = 3;
     RequireRejected([&] { CreateWorldGenerator(changed); }, "unknown natural version was accepted");
+    changed.Kind = WorldGeneratorKind::Flat; changed.Version = 2;
+    RequireRejected([&] { CreateWorldGenerator(changed); }, "natural v2 was incorrectly accepted as flat v2");
     changed = settings; changed.Kind = WorldGeneratorKind(99);
     RequireRejected([&] { CreateWorldGenerator(changed); }, "unknown generator was accepted");
     changed = settings; changed.SurfaceY = int64_t{1} << 60;
@@ -232,7 +234,9 @@ void CheckWaterBody(WorldGenerationSettings settings, const GenerationWaterBody 
                     "initial water body has a sideways or downward four-neighbour leak");
             freeSurface |= halo.Y + y == body.Level && cells[index - halo.Width] == CellTypeId::Air;
             if (body.Kind == GenerationWaterKind::SurfaceLake && cells[index + halo.Width] != CellTypeId::Water)
-                Require(cells[index + halo.Width] == CellTypeId::GroundSoil, "submerged lake floor acquired grass or lost soil");
+                Require(settings.Version == 1 ? cells[index + halo.Width] == CellTypeId::GroundSoil
+                                              : BlocksCharacter(cells[index + halo.Width]) && cells[index + halo.Width] != CellTypeId::GrassSoil,
+                        "submerged lake floor acquired grass or lost solid support");
         }
     Require(volume == body.CellCount && volume > 0 && freeSurface, "water plan volume or free surface differs from generated material");
     Require(volume <= (body.Kind == GenerationWaterKind::SurfaceLake ? 129 * 8 : 128 * 128), "water body exceeds finite capacity");
@@ -303,6 +307,88 @@ void FiniteWaterAndFeatureBoundaries() {
     for (const auto &body : PlanGenerationWater(negativeSurface, {-4096, -1024, 8192, 3072}))
         Require(body.Bounds.Height <= 128 && body.CellCount <= 16384, "negative surface broke bounded water geometry");
 }
+void LayeredBiomes() {
+    auto settings = Natural(42);
+    settings.Version = LatestNaturalGenerationVersion;
+    std::array<int64_t, 3> centers{};
+    std::array<bool, 3> found{};
+    for (int64_t x = -16384; x < 16384; x += 16) {
+        const auto column = SampleGenerationColumn(settings, x);
+        const auto &environment = column.Environment;
+        Require(environment.ForestWeight >= 0 && environment.DesertWeight >= 0 && environment.SnowWeight >= 0 &&
+                    environment.ForestWeight + environment.DesertWeight + environment.SnowWeight == generation::FixedOne,
+                "biome weights are not a normalized continuous blend");
+        const auto next = SampleGenerationColumn(settings, x + 1);
+        Require(std::abs(next.DrySurfaceY - column.DrySurfaceY) <= 8,
+                "biome transition introduced a vertical terrain cliff");
+        Require(column.SoilThickness >= 4 && column.SoilThickness <= 48, "v2 soil depth escaped its bounds");
+        const size_t biome = size_t(environment.Biome);
+        const auto weight = std::array{environment.ForestWeight, environment.DesertWeight, environment.SnowWeight}[biome];
+        if (!found[biome] && weight > 62000) {
+            centers[biome] = x;
+            found[biome] = true;
+        }
+    }
+    Require(std::all_of(found.begin(), found.end(), [](bool value) { return value; }), "v2 seed 42 lacks a major biome");
+
+    std::array<uint64_t, 72> counts{};
+    std::optional<CellCoord> treeCell;
+    for (size_t biome = 0; biome < centers.size(); ++biome) {
+        const auto column = SampleGenerationColumn(settings, centers[biome]);
+        const WorldRect region{centers[biome] - 256, column.SurfaceY - 96, 512, 512};
+        const auto materials = SampleGeneration(settings, region);
+        for (size_t i = 0; i < materials.size(); ++i) {
+            const auto type = materials[i];
+            Require(IsKnownCellType(type), "v2 emitted an unregistered material");
+            ++counts[size_t(type)];
+            if (!treeCell && type == CellTypeId::Leaves)
+                treeCell = CellCoord{region.X + int64_t(i % region.Width), region.Y + int64_t(i / region.Width)};
+        }
+        const auto stratum = SampleGeneration(settings, {centers[biome], column.SurfaceY, 1, 1}, GenerationStage::Strata)[0];
+        Require(stratum == std::array{CellTypeId::GroundSoil, CellTypeId::Sand, CellTypeId::Snow}[biome],
+                "biome surface does not use its environment's substrate");
+        CompareTiling(settings, {centers[biome] - 39, column.SurfaceY - 65, 96, 160});
+    }
+    for (auto type : {CellTypeId::Sand, CellTypeId::Clay, CellTypeId::MossStone, CellTypeId::Sandstone,
+                     CellTypeId::Snow, CellTypeId::Ice, CellTypeId::Wood, CellTypeId::Leaves}) {
+        std::cout << "v2 material " << uint32_t(type) << ": " << counts[size_t(type)] << '\n';
+        Require(counts[size_t(type)] > 0, "v2 fixture lacks one of the eight biome materials");
+    }
+    const auto snowy = SampleGenerationColumn(settings, centers[2]);
+    const auto forest = SampleGenerationColumn(settings, centers[0]);
+    Require(snowy.SurfaceY + 60 < forest.SurfaceY && snowy.SoilThickness < forest.SoilThickness,
+            "alpine biome does not have higher relief and thinner cover than forest");
+
+    const int64_t distant = int64_t{1} << 55;
+    for (const auto x : {-distant - 17, distant + 13}) {
+        const auto column = SampleGenerationColumn(settings, x);
+        CompareTiling(settings, {x, column.SurfaceY - 64, 65, 128});
+    }
+    const auto spawn = SampleGenerationColumn(settings, 512).SurfaceY;
+    const auto clearance = SampleGeneration(settings, {496, spawn - 32, 33, 32});
+    Require(std::all_of(clearance.begin(), clearance.end(), [](auto type) { return type == CellTypeId::Air; }),
+            "v2 vegetation or water obstructed the spawn platform");
+    CheckActualChunkIntersection(settings, {-12, SampleGenerationColumn(settings, 0).SurfaceY - 65, 24, 160});
+    Require(treeCell.has_value(), "v2 has no cross-chunk canopy fixture");
+    auto translated = settings;
+    translated.SurfaceY += storage::ChunkEdge - treeCell->Y;
+    CheckActualChunkIntersection(translated, {treeCell->X - 24, storage::ChunkEdge - 24, 48, 80});
+    Require(MaterialDigest(SampleGeneration(settings, {-129, 440, 256, 1024})) == 10966160894043670998ull,
+            "natural/2 fixed material golden region changed");
+
+    uint32_t lakes = 0, groundwater = 0;
+    for (const auto &body : PlanGenerationWater(settings, {-16384, 0, 32768, 3072})) {
+        if ((body.Kind == GenerationWaterKind::SurfaceLake ? lakes++ : groundwater++) == 0)
+            CheckWaterBody(settings, body);
+    }
+    std::cout << "v2 water: " << lakes << " lakes, " << groundwater << " groundwater bodies\n";
+    Require(lakes && groundwater, "v2 removed all finite lakes or groundwater");
+    settings.WaterEnabled = false;
+    Require(PlanGenerationWater(settings, {-8192, 0, 16384, 2048}).empty(), "v2 ignored the disabled water setting");
+    const auto dry = SampleGeneration(settings, {centers[0], forest.SurfaceY - 64, 128, 256});
+    Require(std::find(dry.begin(), dry.end(), CellTypeId::Water) == dry.end(), "v2 dry generation emitted water");
+    Require(GenerationFingerprint(settings) != GenerationFingerprint(Natural(42)), "v2 did not change generation identity");
+}
 } // namespace
 
 int main() {
@@ -312,6 +398,7 @@ int main() {
         CoordinatesTilingAndChunkPublication();
         NaturalStagesAndContent();
         FiniteWaterAndFeatureBoundaries();
+        LayeredBiomes();
         std::cout << "Deterministic generation, stages, finite water and chunk consistency tests passed\n";
         return 0;
     } catch (const std::exception &error) {

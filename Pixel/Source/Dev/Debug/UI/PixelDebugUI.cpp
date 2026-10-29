@@ -221,7 +221,7 @@ void DrawGeneration(GameSession &session) {
     if (!ImGui::CollapsingHeader("World generation", ImGuiTreeNodeFlags_DefaultOpen))
         return;
     const auto &current = session.GetGenerationSettings();
-    ImGui::Text("Current: %s; seed %llu", GeneratorName(current.Kind), static_cast<unsigned long long>(current.Seed));
+    ImGui::Text("Current: %s v%u; seed %llu", GeneratorName(current.Kind), current.Version, static_cast<unsigned long long>(current.Seed));
     int selected = int(session.GetNextGenerationSettings().Kind);
     if (ImGui::Combo("Next world", &selected, "Superflat (debug)\0Natural\0"))
         session.Control(NativeCaller::Debug, api::SetNextGenerator{api::GeneratorKind(selected)});
