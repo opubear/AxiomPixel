@@ -92,5 +92,6 @@
 | Performance引擎迁移验收 | `workspace:Docs/DiagnosticsMigration.md` | 通用诊断边界、PerfTest与纳秒trace、静态动态库及原生窗口验收结果 | |
 | Axiom统一日志 | `workspace:Axiom/Source/Log/README.md` | 默认毫秒时间戳、日志级别和格式化接口、共享实例及静态动态链接验证 | |
 | 分层群落世界生成v2 | `workspace:Docs/BiomeWorldGeneration.md` | 温湿度抬升场、群落细节地层与树木、新材料RawData和Content、版本与验证 | |
+| Axiom跨平台系统信息查询 | `workspace:Axiom/Source/HAL/Platform/README.md` | CPU拓扑缓存指令集、GPU与内存、OS版本架构、未知语义及三平台构建验证入口 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

@@ -12,6 +12,8 @@
 
 Core 的[Allocator与容器后端接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md)区分内存资源和存储算法：默认Array/Map使用标准库后端与Axiom池分配器，自定义后端按模板显式选择。Pixel区块保留独立64 KiB对齐资源，材料scratch扩容及时释放旧池；池缓存寿命和引用失效规则见该合同。
 
+引擎的 [Platform 系统信息查询](Axiom/Source/HAL/Platform/README.md)提供 Linux、Windows 和 macOS 的 CPU 型号/核心/缓存/指令集、GPU 与内存、操作系统版本和架构查询。`Axiom::Platform` 可独立用于无窗口工具，未知字段与统一内存/独立显存采用明确的返回语义。
+
 世界现按需加载1024×1024物理块，由稀疏四叉树组织64×64区域，采用同步材料更新、文件存档和跟随玩家的开放风域。现行接口、存储布局和失败处理见 [世界表示约定](Docs/WorldRepresentation.md)，本轮实测及验证限制见 [验证与性能报告](Docs/WorldRepresentationValidation.md)。早期文档中的整图连续数组、移动链和四张固定世界纹理已被替代。
 
 新建游戏默认采用 Natural v2：低频温度/湿度/抬升场控制森林、沙漠和雪山，群落权重混合丘陵、沙丘与岩脊，再生成不同土岩、洞穴矿物、有限水体和树木。新增沙土、黏土、苔石、砂岩、雪、冰、树干、树叶；原件与运行时纹理已接入。保留 Natural v1 的旧档生成和 Superflat 调试策略；F2 选择下一世界的生成器与种子，R 创建新世界（当前不保存进度）。参数、资源和验证见[分层群落世界生成](Docs/BiomeWorldGeneration.md)，旧版合同见[原生成实现](.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
