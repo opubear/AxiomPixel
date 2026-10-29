@@ -115,7 +115,7 @@ struct MockRHI : DynamicRHI {
     RHIPresentationExtent Extent{101, 77};
     uint32_t Submits = 0, Waits = 0, InputReads = 0;
     bool FailRecord = false, SRGB = true;
-    void RHIInit(PlatformInterface *) override {}
+    void RHIInit(PlatformInterface *, bool) override {}
     void ThreadResourceInit() override {}
     void CreateSyncObjects() override {}
     RHIFrameBeginResult NewFrame() override { return {true, RHIFrameSkipReason::None, Commands.Token}; }

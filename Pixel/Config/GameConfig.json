@@ -1,6 +1,7 @@
 {
     "Root": "Root.json",
     "MaxFPS": 60,
+    "VSync": true,
     "Window": {
         "Width": 800,
         "Height": 600,

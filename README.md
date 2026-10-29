@@ -127,6 +127,17 @@ git submodule update --init --recursive
 
 也接受 `--max-fps=120`；值须为非负32位整数，重复参数取最后一个。`0` 跳过限帧休眠和自旋，GPU/交换链同步仍保留，实际 FPS 可能受显示和工作负载限制。启动日志包含最终 `max_fps` 和 `max_fps_source`。
 
+同一文件的顶层 `VSync` 控制呈现同步，必须为 JSON 布尔值，缺省为 `true`；修改后重启生效。`true` 保留 Mailbox 优先、FIFO 回退的同步策略；`false` 优先使用 Immediate，允许应用帧率超过屏幕刷新率，但可能出现撕裂。设备不支持 Immediate 时回退到 Mailbox／FIFO 并记录警告。窗口重建沿用启动配置，日志 `event=swapchain_created` 显示实际 `present_mode`。
+
+`VSync` 与 `MaxFPS` 独立；关闭垂直同步并取消主动限帧，在原配置中设置：
+
+```json
+"MaxFPS": 0,
+"VSync": false
+```
+
+也可以只设置 `"VSync": false`，启动时用 `--max-fps 0` 覆盖帧率上限。`VSync` 当前仅通过配置文件设置。
+
 手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
 
 M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。当前默认临时游戏直接接受关闭，不执行保存；显式持久化测试会话仍在该钩子中保存，保存失败或 Deferred 时拒绝退出。
