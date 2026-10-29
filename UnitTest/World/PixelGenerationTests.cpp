@@ -27,7 +27,8 @@ WorldGenerationSettings Natural(uint64_t seed = 1) {
     return {WorldGeneratorKind::Natural, 1, seed};
 }
 
-uint64_t MaterialDigest(std::span<const CellTypeId> materials) {
+template<class Range>
+uint64_t MaterialDigest(const Range &materials) {
     uint64_t digest = 14695981039346656037ull;
     for (CellTypeId material : materials) {
         uint32_t value = uint32_t(material);
@@ -132,7 +133,7 @@ void CoordinatesTilingAndChunkPublication() {
     Require(generator->WorkingBytes() <= 256 * 1024 || storage::ChunkEdge > 1024, "default natural scratch reservation exceeds 256KiB");
     const int64_t chunkY = FloorDivide(512, storage::ChunkEdge);
     auto right = generator->GenerateChunk({0, chunkY});
-    const uint64_t digest = MaterialDigest({right->Data().Materials.data(), right->Data().Materials.size()});
+    const uint64_t digest = MaterialDigest(right->Data().Materials);
     auto left = generator->GenerateChunk({-1, chunkY});
     const auto sample = SampleGeneration(settings, {-8, 512, 16, 64});
     for (uint32_t y = 0; y < 64; ++y)
@@ -145,7 +146,7 @@ void CoordinatesTilingAndChunkPublication() {
         }
     right.reset();
     right = generator->GenerateChunk({0, chunkY});
-    Require(MaterialDigest({right->Data().Materials.data(), right->Data().Materials.size()}) == digest && !right->Dirty,
+    Require(MaterialDigest(right->Data().Materials) == digest && !right->Dirty,
             "chunk regeneration after reverse-order work changed its base materials");
     for (size_t i = 0; i < right->Data().Materials.size(); ++i)
         Require(right->Data().Directions[i].X == 0 && right->Data().Directions[i].Y == 1 &&

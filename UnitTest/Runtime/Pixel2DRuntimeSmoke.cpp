@@ -2085,6 +2085,11 @@ int main(int argc, char **argv) {
             ElementMotionGpu();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--fields-only") {
+            WindVisualizationGpu();
+            ForceFieldDebugGameplay();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--terrain-only") {
             TerrainMaterialsGpu();
             return 0;

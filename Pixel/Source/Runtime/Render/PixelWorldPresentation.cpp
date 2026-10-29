@@ -120,14 +120,19 @@ void BuildForceFieldFrameImpl(const ReadWorld &world, WorldGridFrame &output) {
                 continue;
             bool changed = false;
             for (uint32_t y = beginY; y < std::min(output.GetHeight(), beginY + Grid2D::RegionSize); ++y) {
+                const auto forceRow = source.TryForceRow({origin[0] + beginX, origin[1] + y},
+                    std::min(Grid2D::RegionSize, output.GetWidth() - beginX));
                 for (uint32_t x = beginX; x < std::min(output.GetWidth(), beginX + Grid2D::RegionSize); ++x) {
                     const auto index = size_t(y) * output.GetWidth() + x;
-                    if (!world.TryGetCell(origin[0] + x, origin[1] + y)) {
+                    if (!forceRow && !world.TryGetCell(origin[0] + x, origin[1] + y)) {
                         changed |= cells[index] != Grid2D::MissingCell;
                         cells[index] = Grid2D::MissingCell;
                         continue;
                     }
-                    const auto color = FieldDirectionColor(world.GetFieldVelocity(origin[0] + x, origin[1] + y));
+                    const auto velocity = forceRow
+                        ? world.GetFieldVelocity(origin[0] + x, origin[1] + y, (*forceRow)[x - beginX])
+                        : world.GetFieldVelocity(origin[0] + x, origin[1] + y);
+                    const auto color = FieldDirectionColor(velocity);
                     uint32_t packed = 0;
                     for (size_t channel = 0; channel < color.size(); ++channel)
                         packed |= uint32_t(std::lround(std::clamp(color[channel], 0.f, 1.f) * 255)) << (channel * 8);

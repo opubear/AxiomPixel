@@ -24,6 +24,8 @@ class WorldBuffer {
     WindVelocity SampleWind(CellCoord cell) const { return Wind.SampleWorld(cell); }
     ForceVector SampleForce(CellCoord cell) const;
     WindVelocity FieldVelocity(CellCoord cell) const;
+    // Compose a value from an already validated, borrowed base-force row.
+    WindVelocity FieldVelocity(CellCoord cell, ForceVector base) const;
 
   private:
     friend class WorldBuffers;
@@ -32,6 +34,7 @@ class WorldBuffer {
     WorldBuffer();
     WorldBuffer(uint32_t width, uint32_t height);
     void ShareFrom(const WorldBuffer &source);
+    ForceVector SampleForce(CellCoord cell, ForceVector base) const;
     WorldMap Map;
     ForceField BaseForces;
     FieldSources Sources;

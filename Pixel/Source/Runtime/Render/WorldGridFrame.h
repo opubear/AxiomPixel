@@ -160,7 +160,7 @@ class WorldGridFrame {
     std::vector<ActorDraw> ActorDraws;
 
   private:
-    std::vector<uint32_t> CellStorage, WindStorage;
+    pixel::memory::PageBuffer<uint32_t> CellStorage, WindStorage;
     uint32_t Width = Grid2D::RegionSize, Height = Grid2D::RegionSize;
     std::array<int64_t, 2> CellOrigin{};
     std::vector<uint64_t> SourceVersions, Versions, WindVersions, WindSourceVersions;

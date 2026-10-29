@@ -15,5 +15,5 @@ add_library(PixelWorld STATIC
     Environment/Wind/AdaptiveWindField.cpp
     Environment/Wind/LbmWindField.cpp
     Environment/Wind/WindField.cpp)
-target_link_libraries(PixelWorld PUBLIC PixelPerformance PixelIO Axiom::Core)
+target_link_libraries(PixelWorld PUBLIC PixelPerformance PixelIO PixelMemory Axiom::Core)
 target_compile_definitions(PixelWorld PUBLIC PIXEL_CHUNK_EDGE=${PIXEL_CHUNK_EDGE})

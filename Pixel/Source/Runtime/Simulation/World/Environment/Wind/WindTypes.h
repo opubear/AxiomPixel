@@ -33,7 +33,7 @@ inline int64_t WindCoordinateOffset(int64_t coordinate, int64_t origin) {
 }
 
 // Air velocity in world pixels/second; positive Y points down.
-struct WindVelocity {
+struct alignas(8) WindVelocity {
     float X = 0;
     float Y = 0;
     bool operator==(const WindVelocity &) const = default;

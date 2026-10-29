@@ -45,7 +45,7 @@ axiom::Ring<int, Storage, axiom::custom::Ring> ring(16);
 
 ## Pixel 当前消费者
 
-- [WorldChunk](../../Pixel/Source/Runtime/Simulation/World/WorldMap.h) 用 `axiom::Array<ChunkPayload, axiom::Allocator<ChunkPayload, storage::ChunkAlignment>>` 保存一个连续载荷，明确指定64 KiB起始对齐。每块拥有独立 allocator；块销毁后释放该资源缓存，未把所有区块接到长寿命全局池。
+- 2026-10-29 起，[WorldChunk](../../Pixel/Source/Runtime/Simulation/World/WorldMap.h) 的三列载荷迁移到 System/Memory 的页对齐 ChunkedGrid；不再使用单个64 KiB对齐的 Axiom Array。当前合同见[统一空间场存储](../../Docs/SpatialFieldStorage.md)，下方历史验证仍对应当时的接入版本。
 - [WorldMap/WorldStreamer](../../Pixel/Source/Runtime/Simulation/World/WorldStreamer.h) 的索引、请求和完成队列使用默认 Array/Map，即标准库后端；World 仍只依赖 Core 与 CPU 性能模块。
 - [Environment::AppendScratch](../../Pixel/Source/Runtime/Simulation/World/Environment/Environment.cpp) 扩容先核算新旧容量共存，再创建独立资源、复制并交换；旧容器离开作用域后释放旧池。保持该资源边界才能避免每次增长留下旧尺寸池。
 - [区块测试](../../UnitTest/World/PixelChunkTests.cpp) 直接检查真实载荷地址对齐与容量统计；Cpu、Persistence、WindDomains、Memory 回归覆盖这些容器的实际世界使用路径。组件容量统计不等于进程 RSS，也不覆盖池的全部管理开销，详见[内存统计口径](../../Docs/MemoryProfiling.md)及[世界预算](../../Docs/WorldRepresentation.md)。

@@ -11,8 +11,8 @@ class Neighbours {
 
     bool Is(int x, int y, CellTypeId material) const {
         const auto position = At(x, y);
-        const auto value = Bounds.Contains(position) ? Map.TryGet(position) : std::nullopt;
-        return value && value->Type == material;
+        const auto value = Bounds.Contains(position) ? Map.TryGetMaterial(position) : std::nullopt;
+        return value && *value == material;
     }
 
     bool Empty(int x, int y) const { return Is(x, y, CellTypeId::Air); }

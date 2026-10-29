@@ -160,6 +160,10 @@ WindVelocity World::GetFieldVelocity(int64_t x, int64_t y) const {
     return FieldResponse::MovementVelocity(GetForce(x, y));
 }
 
+WindVelocity World::GetFieldVelocity(int64_t x, int64_t y, ForceVector base) const {
+    return FieldResponse::MovementVelocity(Environment.SampleForce({x, y}, GetSimulationBounds(), base));
+}
+
 void World::GenerateTerrain(uint32_t surfaceRow) {
     RequireFinite();
     Environment.RequireSourceMutation();

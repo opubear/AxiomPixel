@@ -30,10 +30,12 @@ void CoordinatesStorageAndPublication() {
     for (const CellCoord coordinate : {CellCoord{-1, -1}, CellCoord{0, 0}, CellCoord{3, -2}})
         map.Insert(std::make_unique<WorldChunk>(coordinate));
     auto *chunk = map.FindChunk({-1, -1});
-    Require(map.GetMemoryUsage().ReservedHeapBytes - map.GetMemoryUsage().UsedHeapBytes == map.ChunkCount() * (storage::ChunkReservedBytes - sizeof(ChunkPayload)),
-            "map totals lost the aligned chunk reservation");
-    Require(reinterpret_cast<uintptr_t>(&chunk->Data()) % storage::ChunkAlignment == 0, "chunk payload is not page aligned");
-    Require(sizeof(ChunkPayload) == storage::ChunkCells * 14, "chunk must retain separated compact fields");
+    Require(map.GetMemoryUsage().ReservedHeapBytes == map.ChunkCount()
+                * (chunk->GetMemoryUsage().ReservedBytes() + WorldMap::ChunkIndexReservation())
+            && map.GetMemoryUsage().ReservedHeapBytes >= map.GetMemoryUsage().UsedHeapBytes,
+            "map totals lost the aligned chunk or tree reservation");
+    Require(reinterpret_cast<uintptr_t>(chunk->Data().Materials.StorageAddress()) % memory::SystemPageSize() == 0, "chunk payload is not page aligned");
+    Require(chunk->Data().Materials.UsedBytes() + chunk->Data().Directions.UsedBytes() + chunk->Data().BaseForces.UsedBytes() == storage::ChunkCells * 14, "chunk must retain separated compact fields");
     map.Set({-1, -1}, {CellTypes::Dirt, {-1, 0}});
     map.SetForce({-1, -1}, {12, 34});
     map.Set({0, 0}, {CellTypes::Dirt, {0, -1}});
@@ -51,7 +53,7 @@ void CoordinatesStorageAndPublication() {
     const auto before = map.GetMemoryUsage().ReservedBytes();
     map.Remove({-1, -1});
     snapshot.Update(map, {-64, -64, 128, 128});
-    Require(!snapshot.TryGet({-1, -1}) && map.GetMemoryUsage().ReservedBytes() + sizeof(ChunkPayload) <= before,
+    Require(!snapshot.TryGet({-1, -1}) && map.GetMemoryUsage().ReservedBytes() + storage::ChunkPayloadBytes <= before,
             "unload did not release chunk storage and snapshot region");
 
     WorldMap other(2, 2);
@@ -138,6 +140,26 @@ void FilesBudgetAndFailure() {
     map.Set({-1, 42}, {CellTypes::Dirt, {-1, 1}});
     map.SetForce({-1, 42}, {17.25f, -99.5f});
     WorldStreamer::WriteChunk(files.Path, *map.FindChunk({-1, 0}));
+    // Verify the v1 wire offsets independently of the new tiled reader. A
+    // matching encoder/decoder bug must not silently redefine existing saves.
+    {
+        std::ifstream wire(files.Path / "chunks" / "-1_0.bin", std::ios::binary);
+        wire.exceptions(std::ios::failbit | std::ios::badbit);
+        constexpr size_t header = 3 * sizeof(uint32_t) + 2 * sizeof(int64_t);
+        const size_t index = 42 * storage::ChunkEdge + storage::ChunkEdge - 1;
+        uint32_t material = 0;
+        wire.seekg(header + index * sizeof(uint32_t));
+        wire.read(reinterpret_cast<char *>(&material), sizeof(material));
+        Require(material == uint32_t(CellTypeId::Dirt), "v1 material row order changed");
+        PackedDirection direction;
+        wire.seekg(header + storage::ChunkCells * sizeof(uint32_t) + index * sizeof(PackedDirection));
+        wire.read(reinterpret_cast<char *>(&direction), sizeof(direction));
+        Require(direction.X == -1 && direction.Y == 1, "v1 direction plane offset changed");
+        ForceVector force;
+        wire.seekg(header + storage::ChunkCells * (sizeof(uint32_t) + sizeof(PackedDirection)) + index * sizeof(ForceVector));
+        wire.read(reinterpret_cast<char *>(&force), sizeof(force));
+        Require(force == ForceVector{17.25f, -99.5f}, "v1 force plane offset changed");
+    }
     auto loaded = WorldStreamer::ReadChunk(files.Path, {-1, 0}, 512);
     WorldMap restored;
     restored.Insert(std::move(loaded));
@@ -157,7 +179,7 @@ void FilesBudgetAndFailure() {
 
     WorldStreamSettings settings;
     settings.Directory = files.Path;
-    settings.BudgetBytes = 3 * (storage::ChunkReservedBytes + sizeof(WorldChunk) + 128 * 1024);
+    settings.BudgetBytes = 3 * (storage::ChunkReservedBytes() + sizeof(WorldChunk) + 128 * 1024);
     WorldStreamer streamer(map, settings);
     streamer.LoadNow({2 * int64_t(storage::ChunkEdge), 0, storage::ChunkEdge, storage::ChunkEdge});
     streamer.Update({2 * int64_t(storage::ChunkEdge), 0, storage::ChunkEdge, storage::ChunkEdge}, {});

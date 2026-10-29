@@ -10,7 +10,7 @@ namespace pixel {
 namespace {
 constexpr uint32_t FileMagic = 0x50435841; // AXCP
 constexpr uint32_t FileVersion = 1;
-constexpr uint64_t ChunkReservation = storage::ChunkReservedBytes + sizeof(WorldChunk) + WorldStreamer::ChunkWorkingReserve;
+const uint64_t ChunkReservation = storage::ChunkReservedBytes() + sizeof(ChunkPayload) + sizeof(WorldChunk) + WorldStreamer::ChunkWorkingReserve;
 
 std::filesystem::path ChunkFile(const std::filesystem::path &directory, CellCoord coordinate) {
     return directory / "chunks" / (std::to_string(coordinate.X) + "_" + std::to_string(coordinate.Y) + ".bin");
@@ -44,7 +44,9 @@ WorldStreamer::WorldStreamer(std::function<const WorldMap &()> read, std::functi
     Worker = std::jthread([this] { Run(); });
 }
 
-uint64_t WorldStreamer::LoadReservation() const { return ChunkReservation + Generator->WorkingBytes(); }
+uint64_t WorldStreamer::LoadReservation() const {
+    return ChunkReservation + WorldMap::ChunkIndexReservation() + Generator->WorkingBytes();
+}
 
 WorldStreamer::~WorldStreamer() {
     // Owning session explicitly saves, so destructor only joins outstanding I/O.
@@ -328,9 +330,16 @@ void WorldStreamer::WriteChunk(const std::filesystem::path &directory, const Wor
         Write(output, chunk.Coordinate.X);
         Write(output, chunk.Coordinate.Y);
         const auto &data = chunk.Data();
-        output.write(reinterpret_cast<const char *>(data.Materials.data()), data.Materials.size() * sizeof(CellTypeId));
-        output.write(reinterpret_cast<const char *>(data.Directions.data()), data.Directions.size() * sizeof(PackedDirection));
-        output.write(reinterpret_cast<const char *>(data.BaseForces.data()), data.BaseForces.size() * sizeof(ForceVector));
+        const auto writePlane = [&]<class T>(const memory::ChunkedGrid<T> &plane) {
+            memory::PageBuffer<T> row(storage::ChunkEdge);
+            for (uint32_t y = 0; y < storage::ChunkEdge; ++y) {
+                plane.CopyRowTo(y, row);
+                output.write(reinterpret_cast<const char *>(row.data()), row.size() * sizeof(T));
+            }
+        };
+        writePlane(data.Materials);
+        writePlane(data.Directions);
+        writePlane(data.BaseForces);
     });
 }
 
@@ -354,12 +363,19 @@ std::unique_ptr<WorldChunk> WorldStreamer::ReadChunk(const std::filesystem::path
     Read(input, edge);
     Read(input, stored.X);
     Read(input, stored.Y);
-    if (magic != FileMagic || version != FileVersion || edge != storage::ChunkEdge || stored != coordinate || std::filesystem::file_size(path) != 3 * sizeof(uint32_t) + 2 * sizeof(int64_t) + sizeof(ChunkPayload))
+    if (magic != FileMagic || version != FileVersion || edge != storage::ChunkEdge || stored != coordinate || std::filesystem::file_size(path) != 3 * sizeof(uint32_t) + 2 * sizeof(int64_t) + storage::ChunkPayloadBytes)
         throw WorldStorageError("incompatible or truncated chunk file: " + path.string());
     auto &data = chunk->Data();
-    input.read(reinterpret_cast<char *>(data.Materials.data()), data.Materials.size() * sizeof(CellTypeId));
-    input.read(reinterpret_cast<char *>(data.Directions.data()), data.Directions.size() * sizeof(PackedDirection));
-    input.read(reinterpret_cast<char *>(data.BaseForces.data()), data.BaseForces.size() * sizeof(ForceVector));
+    const auto readPlane = [&]<class T>(memory::ChunkedGrid<T> &plane) {
+        memory::PageBuffer<T> row(storage::ChunkEdge);
+        for (uint32_t y = 0; y < storage::ChunkEdge; ++y) {
+            input.read(reinterpret_cast<char *>(row.data()), row.size() * sizeof(T));
+            plane.CopyRowFrom(y, row);
+        }
+    };
+    readPlane(data.Materials);
+    readPlane(data.Directions);
+    readPlane(data.BaseForces);
     for (size_t i = 0; i < storage::ChunkCells; ++i) {
         const auto direction = data.Directions[i];
         const auto force = data.BaseForces[i];

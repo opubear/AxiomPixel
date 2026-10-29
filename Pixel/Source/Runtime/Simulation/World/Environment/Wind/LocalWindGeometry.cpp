@@ -14,8 +14,8 @@ LocalWindGeometry::LocalWindGeometry(uint32_t width, uint32_t height, const Loca
         || !std::isfinite(settings.Deflection) || settings.Deflection < 0 || settings.Deflection > 1
         || !std::isfinite(settings.WakeStrength) || settings.WakeStrength < 0 || settings.WakeStrength > 1)
         throw std::invalid_argument("invalid local wind geometry settings");
-    Solid.resize(size_t(width) * height);
-    Nearest.assign(Solid.size(), -1);
+    Solid.Reset(width, height);
+    Nearest.Reset(width, height, -1);
     Queue.reserve(Solid.size());
 }
 bool LocalWindGeometry::IsSolid(uint32_t x, uint32_t y) const { return x < Width && y < Height && Solid[size_t(y) * Width + x]; }
@@ -24,7 +24,7 @@ void LocalWindGeometry::Update(WorldMapView world) {
         throw std::invalid_argument("local wind geometry requires complete matching world");
     bool changed = false;
     for (size_t i = 0; i < Solid.size(); ++i) {
-        const bool solid = world.AtIndex(i).Type != CellTypes::Empty;
+        const bool solid = world.MaterialAtIndex(i) != CellTypes::Empty;
         changed |= Solid[i] != solid;
         Solid[i] = solid;
     }
@@ -32,7 +32,7 @@ void LocalWindGeometry::Update(WorldMapView world) {
         RebuildDistance();
 }
 void LocalWindGeometry::RebuildDistance() {
-    std::fill(Nearest.begin(), Nearest.end(), -1);
+    Nearest.Fill(-1);
     Queue.clear();
     for (uint32_t i = 0; i < Solid.size(); ++i)
         if (Solid[i]) {

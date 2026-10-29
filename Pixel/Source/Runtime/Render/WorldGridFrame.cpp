@@ -12,16 +12,20 @@ void WorldGridFrame::SetRegion(std::array<int64_t, 2> origin, uint32_t width, ui
         return;
 
     const bool shapeChanged = width != Width || height != Height;
-    Width = width;
-    Height = height;
-    CellOrigin = origin;
     if (shapeChanged) {
-        std::vector<uint32_t>(size_t(width) * height, Grid2D::MissingCell).swap(CellStorage);
-        std::vector<uint32_t>(size_t(width) * height, WindSolidTexel).swap(WindStorage);
+        pixel::memory::PageBuffer<uint32_t> cells;
+        cells.assign(size_t(width) * height, Grid2D::MissingCell);
+        pixel::memory::PageBuffer<uint32_t> wind;
+        wind.assign(size_t(width) * height, WindSolidTexel);
+        cells.swap(CellStorage);
+        wind.swap(WindStorage);
     } else {
         std::fill(CellStorage.begin(), CellStorage.end(), Grid2D::MissingCell);
         std::fill(WindStorage.begin(), WindStorage.end(), WindSolidTexel);
     }
+    Width = width;
+    Height = height;
+    CellOrigin = origin;
     SourceVersions.clear();
     Versions.clear();
     WindVersions.clear();

@@ -32,16 +32,16 @@ LbmWindField::LbmWindField(WorldMapView world, uint32_t height, const LbmWindSet
     // instability. Keep a dissipative floor and report its effective viscosity.
     Tau = std::max(settings.Boundary == WindBoundaryMode::Open ? .6 : .51, .5 + 3 * settings.Viscosity * settings.LatticeSeconds);
     Report.EffectiveViscosity = (Tau - .5) / (3 * settings.LatticeSeconds);
-    F.resize(size_t(Width) * Height);
-    Next.resize(F.size());
-    Solid.resize(F.size());
-    Velocity.resize(F.size());
+    F.Reset(Width, Height);
+    Next.Reset(Width, Height);
+    Solid.Reset(Width, Height);
+    Velocity.Reset(Width, Height);
     std::mt19937 random(settings.Seed);
     const double phase = double(random()) / std::mt19937::max() * 2 * std::numbers::pi;
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             const auto i = size_t(y) * Width + x;
-            Solid[i] = world.AtIndex(i).Type != CellTypes::Empty;
+            Solid[i] = world.MaterialAtIndex(i) != CellTypes::Empty;
             const WindVelocity v{settings.Ambient.X + settings.GustSpeed * float(std::sin(2 * std::numbers::pi * (y + .5) / Height + phase)),
                                  settings.Ambient.Y + settings.GustSpeed * float(std::sin(2 * std::numbers::pi * (x + .5) / Width - phase))};
             F[i] = Equilibrium(1, Solid[i] ? WindVelocity{} : v);
@@ -158,8 +158,9 @@ void LbmWindField::SetObstacles(WorldMapView world) {
     if (!world.IsValid() || world.Width != Width || world.Height < Height || world.CellCount() != size_t(world.Width) * world.Height)
         throw std::invalid_argument("LBM obstacle extent mismatch");
     bool changed = false;
-    for (size_t i = 0; i < Solid.size(); ++i) {
-        const bool solid = world.AtIndex(i).Type != CellTypes::Empty;
+    for (size_t linear = 0; linear < Solid.size(); ++linear) {
+        const auto i = Solid.Address(uint32_t(linear % Width), uint32_t(linear / Width));
+        const bool solid = world.MaterialAtIndex(linear) != CellTypes::Empty;
         if (Solid[i] != solid) {
             Solid[i] = solid;
             F[i] = Equilibrium(1, {});
@@ -172,7 +173,8 @@ void LbmWindField::SetObstacles(WorldMapView world) {
 void LbmWindField::Measure() {
     Report.MinDensity = std::numeric_limits<double>::infinity();
     Report.MaxDensity = Report.Mass = 0;
-    for (size_t i = 0; i < F.size(); ++i) {
+    for (size_t linear = 0; linear < F.size(); ++linear) {
+        const auto i = F.Address(uint32_t(linear % Width), uint32_t(linear / Width));
         Velocity[i] = {};
         if (Solid[i])
             continue;
@@ -193,11 +195,11 @@ void LbmWindField::Measure() {
         Report.MinDensity = 0;
 }
 void LbmWindField::CollideAndStream() {
-    std::fill(Next.begin(), Next.end(), Distribution{});
+    Next.Fill(Distribution{});
     const float blend = float(-std::expm1(-Settings.Relaxation * Settings.LatticeSeconds));
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
-            const auto i = size_t(y) * Width + x;
+            const auto i = F.Address(x, y);
             if (Solid[i])
                 continue;
             const double rho = std::accumulate(F[i].begin(), F[i].end(), 0.);
@@ -223,7 +225,7 @@ void LbmWindField::CollideAndStream() {
                 } else if (nx < 0 || ny < 0 || nx >= int(Width) || ny >= int(Height)) {
                     continue; // Outgoing populations leave; unknown incoming populations follow below.
                 }
-                const auto j = size_t(ny) * Width + size_t(nx);
+                const auto j = F.Address(uint32_t(nx), uint32_t(ny));
                 if (Solid[j])
                     Next[i][Opposite[q]] = post[q];
                 else

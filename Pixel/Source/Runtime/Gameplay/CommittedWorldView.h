@@ -20,6 +20,8 @@ class CommittedWorldView {
     std::optional<CellState> TryGetCell(int64_t x, int64_t y) const { return Buffer && RequestedBounds.Contains({x, y}) ? Buffer->GetMap().TryGet({x, y}) : std::nullopt; }
     WindVelocity SampleWind(CellCoord cell) const { const auto material = TryGetCell(cell.X, cell.Y); return material && material->Type == CellTypeId::Air ? Buffer->SampleWind(cell) : WindVelocity{}; }
     WindVelocity GetFieldVelocity(int64_t x, int64_t y) const { return TryGetCell(x, y) ? Buffer->FieldVelocity({x, y}) : WindVelocity{}; }
+    // base must come from this view's validated TryForceRow.
+    WindVelocity GetFieldVelocity(int64_t x, int64_t y, ForceVector base) const { return Buffer->FieldVelocity({x, y}, base); }
     uint64_t WindRevision() const { return WindVersion; }
     uint64_t FieldSourceRevision() const { return FieldSourceVersion; }
     uint32_t GetWindEndRow() const { return WindBounds.Height; }

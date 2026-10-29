@@ -37,7 +37,11 @@ performance::MemoryUsage Environment::GetMemoryUsage() const {
 }
 
 ForceVector Environment::SampleForce(CellCoord cell, WorldRect bounds) const {
-    auto result = FieldResponse::AddWind(GetBaseForceField().Get(cell.X, cell.Y), GetWindSimulation().SampleForMaterial(cell));
+    return SampleForce(cell, bounds, GetBaseForceField().Get(cell.X, cell.Y));
+}
+
+ForceVector Environment::SampleForce(CellCoord cell, WorldRect bounds, ForceVector base) const {
+    auto result = FieldResponse::AddWind(base, GetWindSimulation().SampleForMaterial(cell));
     const auto acceleration = GetFieldSources().Sample(cell, bounds);
     result.X += acceleration.X;
     result.Y += acceleration.Y;
@@ -174,6 +178,7 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
     for (uint32_t row = 0; row < region.Height; ++row) {
         const CellCoord begin{region.X, region.Y + row};
         const auto materials = map.MaterialRow(begin, region.Width);
+        const auto forces = map.ForceRow(begin, region.Width);
         for (uint32_t column = 0; column < region.Width; ++column) {
             const auto type = materials[column];
             if (type != CellTypeId::Dirt && type != CellTypeId::Water && !cellular::IsTransient(type))
@@ -181,7 +186,7 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
             const CellCoord source{begin.X + column, begin.Y};
             ForceDirection direction{0, 0};
             if (type == CellTypeId::Dirt) {
-                direction = FieldResponse::MovementDirection(world.GetFieldVelocity(source.X, source.Y));
+                direction = FieldResponse::MovementDirection(FieldResponse::MovementVelocity(SampleForce(source, bounds, forces[column])));
             } else {
                 hasTransient |= cellular::IsTransient(type);
                 const auto update = cellular::Evaluate(map, bounds, source, type, step, GetWindSimulation().SampleWorld(source));
@@ -197,8 +202,8 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
             const CellCoord destination{source.X + direction.X, source.Y + direction.Y};
             if (!bounds.Contains(destination))
                 continue;
-            const auto target = map.TryGet(destination);
-            if (target && target->Type == CellTypes::Empty) {
+            const auto target = map.TryGetMaterial(destination);
+            if (target && *target == CellTypes::Empty) {
                 if (Proposals.empty())
                     ProposalDirection = direction;
                 else if (ProposalDirection != direction)
@@ -252,11 +257,11 @@ void Environment::ResolveConflicts(World &world, WorldRect bounds) {
     // compete for a destination. Gravity-dominated dense motion needs no table.
     if (SharedProposalDirection)
         return;
-    const auto cells = size_t(bounds.Width) * bounds.Height;
-    if (Winners.size() != cells) {
-        world.ReserveSimulationBytes(ScratchBytes(*this) + cells * 2 * sizeof(uint32_t));
+    if (Winners.Width() != bounds.Width || Winners.Height() != bounds.Height) {
+        world.ReserveSimulationBytes(ScratchBytes(*this)
+            + 2 * memory::ChunkedGrid<uint32_t>::AllocationBytes(bounds.Width, bounds.Height));
         {
-            axiom::Array<uint32_t> winners(cells), epochs(cells);
+            memory::ChunkedGrid<uint32_t> winners(bounds.Width, bounds.Height), epochs(bounds.Width, bounds.Height);
             Winners.swap(winners);
             WinnerEpochs.swap(epochs);
         }
@@ -264,11 +269,11 @@ void Environment::ResolveConflicts(World &world, WorldRect bounds) {
         Epoch = 0;
     }
     if (++Epoch == 0) {
-        std::fill(WinnerEpochs.begin(), WinnerEpochs.end(), 0);
+        WinnerEpochs.Fill(0);
         Epoch = 1;
     }
     const auto index = [&](CellCoord cell) {
-        return size_t(cell.Y - bounds.Y) * bounds.Width + size_t(cell.X - bounds.X);
+        return Winners.Address(uint32_t(cell.X - bounds.X), uint32_t(cell.Y - bounds.Y));
     };
     for (uint32_t i = 0; i < Proposals.size(); ++i) {
         const auto target = index(Proposals[i].Destination);

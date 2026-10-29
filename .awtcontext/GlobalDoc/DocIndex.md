@@ -21,7 +21,7 @@
 | 风场策略首版 | `WindStrategiesV1.md` | 六策略切换、四类候选首版、力场独立与数值/成本验证和独立审查 | 已实现，限制见正文 |
 | 风场多尺度模拟方案评估 | `WindSimulationAlternatives.md` | 四类候选方案、推荐混合结构、现有求解器成本基线与原型验证计划 | 四类 CPU 首版已实现，GPU 与后续目标未实现 |
 | 逐像素力场与风场基准（2026-10-12） | `PixelWindBaseline.md` | 连续基础力场、1:1 MAC硬边界基准、误差/成本实验、代码审查与使用边界 | 已实现，验证记录见正文 |
-| 世界分块与流式接口 | `workspace:Docs/WorldRepresentation.md` | 现行分块、四叉树、同步规则、预算、存档、移动风域及区域发布契约 | |
+| 分块、四叉树与流式世界 | `workspace:Docs/WorldRepresentation.md` | 当前世界表示、材料调度、流式预算、文件与显示接口；空间场存储已统一 | |
 | 世界改造验证与性能 | `workspace:Docs/WorldRepresentationValidation.md` | 同步参考、三轮Release原始数据、CPU及GPU最终结果与独立审查结论 | |
 | 初版自然世界素材候选 | `context:GlobalDoc/NaturalWorldAssetResearch-2026-10-20.md` | 免费试用的舒适自然横版像素素材、推荐组合、配套资源及替换边界 | |
 | ArtRaw素材原件与来源 | `workspace:ArtRaw/README.md` | 19组下载与3组生成素材的入口、来源记录、运行时复制及完整性说明 | |
@@ -93,5 +93,10 @@
 | Axiom统一日志 | `workspace:Axiom/Source/Log/README.md` | 默认毫秒时间戳、日志级别和格式化接口、共享实例及静态动态链接验证 | |
 | 分层群落世界生成v2 | `workspace:Docs/BiomeWorldGeneration.md` | 温湿度抬升场、群落细节地层与树木、新材料RawData和Content、版本与验证 | |
 | Axiom跨平台系统信息查询 | `workspace:Axiom/Source/HAL/Platform/README.md` | CPU拓扑缓存指令集、GPU与内存、OS版本架构、未知语义及三平台构建验证入口 | |
+| 世界空间场统一分块存储 | `workspace:Docs/SpatialFieldStorage.md` | 页与元素对齐、tile和四叉树、多分辨率、GPU交换及已迁移字段清单 | |
+| 空间场存储验证与性能 | `workspace:Docs/SpatialFieldStorageValidation.md` | CPU、64格、ASan/UBSan、原生GPU及改造前后三轮Release结果与限制 | |
+| 空间存储区域更新Release数据 | `workspace:Docs/SpatialStorage-regions-2026-10-29.csv` | 三轮改造前后活动区域与全图参考的耗时、访问量、容量和材料哈希 | |
+| 空间存储风策略Release数据 | `workspace:Docs/SpatialStorage-wind-2026-10-29.csv` | 三轮六风策略空场墙体狭缝的耗时及速度散度质量诊断 | |
+| 空间存储提交与打包Release数据 | `workspace:Docs/SpatialStorage-buffers-2026-10-29.csv` | 三轮有无读者的动态风与运动材料提交、F1打包、容量及校验值 | |
 
 角色与双控制模式：见工程 `README.md` 的构建和运行章节，代码位于 `Gameplay/Actors/Actors.*`、`Gameplay/Actors/Body.*`、`Gameplay/Actors/PlayerInput.h`、`Gameplay/GameSession.*`、`System/IO/Input/GameInput.*`、`Gameplay/Camera/GameCamera.*` 和 `Render/PixelWorldPresentation.*`；CPU碰撞与快照测试为 `PixelBodyTests` 和 `PixelSessionTests`，完整键鼠行为由 `PixelInputTests` 验证，GPU模式/外观回归位于 `PixelRuntimeSmoke`。`Gameplay/Application/PixelGame.*` 只装配模块、编排生命周期并转发输入；`GameInput` 负责监听后的全部游戏输入处理和功能调用，PlayerInput保留Gameplay的运动意图契约。

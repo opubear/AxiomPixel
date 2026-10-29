@@ -43,11 +43,11 @@ void WorldPartitionAndReset() {
     const auto initial = world.GetMemoryUsage();
     const size_t chunkCount = world.GetMap().ChunkCount();
     const uint64_t forcePayloadBytes = chunkCount * storage::ChunkCells * sizeof(ForceVector);
-    const uint64_t worldPayloadBytes = chunkCount * (sizeof(ChunkPayload) - storage::ChunkCells * sizeof(ForceVector));
+    const uint64_t worldPayloadBytes = chunkCount * (storage::ChunkPayloadBytes - storage::ChunkCells * sizeof(ForceVector));
     Require(chunkCount > 0, "finite world owns resident chunks");
     Require(initial.World.UsedHeapBytes >= worldPayloadBytes, "world accounts for each chunk's material and direction payload");
     Require(initial.BaseForces.UsedHeapBytes == forcePayloadBytes, "base forces scale with resident chunk cells");
-    Require(initial.World.UsedHeapBytes + initial.BaseForces.UsedHeapBytes >= chunkCount * sizeof(ChunkPayload),
+    Require(initial.World.UsedHeapBytes + initial.BaseForces.UsedHeapBytes >= chunkCount * storage::ChunkPayloadBytes,
             "world and force owners account for the complete chunk payload");
     Require(initial.Get(MemoryComponent::Total) == initial.World + initial.BaseForces + initial.Wind,
             "whole world memory sums disjoint owners");
@@ -73,8 +73,8 @@ void WorldPartitionAndReset() {
     Require(largerChunkCount > chunkCount, "larger extent creates the expected additional chunk");
     Require(largerUsage.BaseForces.UsedHeapBytes == largerChunkCount * storage::ChunkCells * sizeof(ForceVector),
             "base force ownership uses the actual resident chunk count");
-    const uint64_t largerWorldPayloadBytes = largerChunkCount * (sizeof(ChunkPayload) - storage::ChunkCells * sizeof(ForceVector));
-    Require(largerUsage.World.UsedHeapBytes >= largerWorldPayloadBytes && largerUsage.World.UsedHeapBytes + largerUsage.BaseForces.UsedHeapBytes >= largerChunkCount * sizeof(ChunkPayload),
+    const uint64_t largerWorldPayloadBytes = largerChunkCount * (storage::ChunkPayloadBytes - storage::ChunkCells * sizeof(ForceVector));
+    Require(largerUsage.World.UsedHeapBytes >= largerWorldPayloadBytes && largerUsage.World.UsedHeapBytes + largerUsage.BaseForces.UsedHeapBytes >= largerChunkCount * storage::ChunkPayloadBytes,
             "world and force owners account for each resident chunk payload");
 }
 

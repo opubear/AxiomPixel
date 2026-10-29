@@ -38,7 +38,7 @@ CellAppearanceTable DefaultAppearances() {
 uint64_t PublicationCapacity(WorldRect region) {
     const uint64_t cells = uint64_t(region.Width) * region.Height;
     const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
-    return CommittedWorldView::CapacityFor(region) + cells * 2 * sizeof(uint32_t) + regions * 512 + 2048
+    return CommittedWorldView::CapacityFor(region) + memory::PageBuffer<uint32_t>::AllocationBytes(cells) * 2 + regions * 512 + 2048
         + 2 * api::GameplayObservation::MaximumRetainedBytes
         + Actors::MaximumCount * TrainingDummyDrawParts * sizeof(ActorDraw);
 }

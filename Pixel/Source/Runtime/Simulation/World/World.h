@@ -37,6 +37,7 @@ class World {
     const ForceField &GetBaseForceField() const { return Environment.GetBaseForceField(); }
     ForceVector GetForce(int64_t x, int64_t y) const { return Environment.SampleForce({x, y}, GetSimulationBounds()); }
     WindVelocity GetFieldVelocity(int64_t x, int64_t y) const;
+    WindVelocity GetFieldVelocity(int64_t x, int64_t y, ForceVector base) const;
 
     std::optional<FieldSourceHandle> InstallFieldSource(uint64_t owner, const FieldSourceSpec &spec) {
         return Environment.InstallFieldSource(*this, owner, spec);

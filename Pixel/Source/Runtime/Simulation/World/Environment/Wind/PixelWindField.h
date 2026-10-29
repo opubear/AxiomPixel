@@ -1,4 +1,5 @@
 #pragma once
+#include "Runtime/System/Memory/ChunkedGrid.h"
 
 #include "Dev/Debug/Performance/MemoryUsage.h"
 
@@ -59,15 +60,15 @@ class PixelWindField {
     uint32_t Width = 0, Height = 0;
     PixelWindSettings Settings;
     WindSolveReport Report;
-    std::vector<double> U, V, NextU, NextV;
-    std::vector<double> RightU, BottomV;
-    std::vector<uint8_t> Solid, OpenX, OpenY, SupportX, SupportY;
-    std::vector<double> Pressure, Residual, Direction, Product, Preconditioned, Diagonal;
-    size_t Index(int x, int y) const;
-    size_t CheckedIndex(uint32_t x, uint32_t y) const;
-    double SampleFace(const std::vector<double> &values, const std::vector<uint8_t> &open, double x, double y) const;
+    memory::ChunkedGrid<double> U, V, NextU, NextV;
+    memory::ChunkedGrid<double> RightU, BottomV;
+    memory::ChunkedGrid<uint8_t> Solid, OpenX, OpenY, SupportX, SupportY;
+    memory::ChunkedGrid<double> Pressure, Residual, Direction, Product, Preconditioned, Diagonal;
+    memory::GridAddress Index(int x, int y) const;
+    memory::GridAddress CheckedIndex(uint32_t x, uint32_t y) const;
+    double SampleFace(const memory::ChunkedGrid<double> &values, const memory::ChunkedGrid<uint8_t> &open, double x, double y) const;
     void Transport(double dt);
-    void ApplyMatrix(const std::vector<double> &input, std::vector<double> &output) const;
+    void ApplyMatrix(const memory::ChunkedGrid<double> &input, memory::ChunkedGrid<double> &output) const;
     void Project();
     void MeasureDivergence();
     void RebuildFaces();

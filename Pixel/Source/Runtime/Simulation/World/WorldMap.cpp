@@ -3,11 +3,6 @@
 #include <atomic>
 #include <limits>
 #include <stdexcept>
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace pixel {
 namespace {
@@ -22,22 +17,6 @@ void ValidateCoordinate(CellCoord cell) {
 void ValidateRect(WorldRect rect) {
     ValidateCoordinate({rect.X, rect.Y});
     ValidateCoordinate({rect.X + rect.Width, rect.Y + rect.Height});
-}
-
-void ValidateAlignment() {
-    static const bool valid = [] {
-#if defined(_WIN32)
-        SYSTEM_INFO info{};
-        GetSystemInfo(&info);
-        const size_t page = info.dwPageSize;
-#else
-        const long page = sysconf(_SC_PAGESIZE);
-#endif
-        if (page <= 0 || storage::ChunkAlignment % size_t(page) != 0)
-            throw std::runtime_error("chunk alignment must be a multiple of the system page size");
-        return true;
-    }();
-    (void)valid;
 }
 
 size_t LocalIndex(CellCoord cell) {
@@ -63,15 +42,17 @@ WorldChunk::WorldChunk(CellCoord coordinate) : Coordinate(coordinate) {
     Generation = nextGeneration.fetch_add(1);
     if (coordinate.X <= -CoordinateLimit / storage::ChunkEdge || coordinate.X >= CoordinateLimit / storage::ChunkEdge || coordinate.Y <= -CoordinateLimit / storage::ChunkEdge || coordinate.Y >= CoordinateLimit / storage::ChunkEdge)
         throw std::out_of_range("chunk coordinate exceeds supported range");
-    ValidateAlignment();
-    Payload = std::make_shared<PayloadStorage>();
-    Payload->resize(1);
+    Payload = std::make_shared<ChunkPayload>();
+    const memory::GridGeometry geometry{coordinate.X * storage::ChunkEdge, coordinate.Y * storage::ChunkEdge};
+    Payload->Materials.SetGeometry(geometry);
+    Payload->Directions.SetGeometry(geometry);
+    Payload->BaseForces.SetGeometry(geometry);
     Initialize(std::nullopt);
 }
 
 ChunkPayload &WorldChunk::Data() {
-    if (Payload.use_count() != 1) Payload = std::make_shared<PayloadStorage>(*Payload);
-    return Payload->front();
+    if (Payload.use_count() != 1) Payload = std::make_shared<ChunkPayload>(*Payload);
+    return *Payload;
 }
 
 void WorldChunk::ShareFrom(const WorldChunk &source) {
@@ -82,18 +63,14 @@ void WorldChunk::ShareFrom(const WorldChunk &source) {
     // Reuse the other ping-pong allocation, synchronizing only changed regions.
     // A replacement/resident chunk has a different generation even if its
     // region revisions happen to match the previous occupant.
-    auto &target = Payload->front();
+    auto &target = *Payload;
     const auto &input = source.Data();
     for (size_t region = 0; region < storage::RegionsPerChunk; ++region) {
         if (RegionVersions[region] == source.RegionVersions[region]) continue;
-        const auto x = (region % storage::RegionsPerAxis) * storage::RegionEdge;
-        const auto y = (region / storage::RegionsPerAxis) * storage::RegionEdge;
-        for (size_t row = 0; row < storage::RegionEdge; ++row) {
-            const auto offset = (y + row) * storage::ChunkEdge + x;
-            std::copy_n(input.Materials.begin() + offset, storage::RegionEdge, target.Materials.begin() + offset);
-            std::copy_n(input.Directions.begin() + offset, storage::RegionEdge, target.Directions.begin() + offset);
-            std::copy_n(input.BaseForces.begin() + offset, storage::RegionEdge, target.BaseForces.begin() + offset);
-        }
+        const auto x = uint32_t(region % storage::RegionsPerAxis), y = uint32_t(region / storage::RegionsPerAxis);
+        if (MaterialVersions[region] != source.MaterialVersions[region]) target.Materials.CopyTileFrom(input.Materials, x, y);
+        if (DirectionVersions[region] != source.DirectionVersions[region]) target.Directions.CopyTileFrom(input.Directions, x, y);
+        if (ForceVersions[region] != source.ForceVersions[region]) target.BaseForces.CopyTileFrom(input.BaseForces, x, y);
     }
     auto allocation = std::move(Payload);
     *this = source;
@@ -102,14 +79,15 @@ void WorldChunk::ShareFrom(const WorldChunk &source) {
 
 void WorldChunk::Initialize(std::optional<int64_t> surface) {
     auto &data = Data();
-    std::fill(data.Materials.begin(), data.Materials.end(), CellTypes::Empty);
-    std::fill(data.Directions.begin(), data.Directions.end(), PackedDirection{});
-    std::fill(data.BaseForces.begin(), data.BaseForces.end(), ForceVector{0, 3600});
+    data.Materials.Fill(CellTypes::Empty);
+    data.Directions.Fill(PackedDirection{});
+    data.BaseForces.Fill(ForceVector{0, 3600});
     if (surface) {
         const int64_t local = std::clamp(*surface - Coordinate.Y * storage::ChunkEdge, int64_t{0}, int64_t(storage::ChunkEdge));
         std::fill(data.Materials.begin() + local * storage::ChunkEdge, data.Materials.end(), CellTypes::Dirt);
     }
     RegionVersions.fill(1);
+    MaterialVersions.fill(1); DirectionVersions.fill(1); ForceVersions.fill(1);
     Active.fill(1);
     Recount();
 }
@@ -123,7 +101,7 @@ void WorldChunk::Recount() {
 }
 
 performance::MemoryUsage WorldChunk::GetMemoryUsage() const {
-    return {sizeof(*this), sizeof(ChunkPayload), storage::ChunkReservedBytes};
+    return {sizeof(*this), sizeof(ChunkPayload) + storage::ChunkPayloadBytes, sizeof(ChunkPayload) + storage::ChunkReservedBytes()};
 }
 
 struct WorldMap::Node {
@@ -207,11 +185,18 @@ struct WorldMap::Node {
     }
 };
 
+uint64_t WorldMap::ChunkIndexReservation() {
+    // A complete local subtree plus a root path for every chunk bounds even a
+    // sparse far-world rebuild. Sharing paths only reduces actual usage.
+    constexpr uint64_t localNodes = (4 * storage::RegionsPerChunk - 1) / 3;
+    return (localNodes + 64) * sizeof(Node) + sizeof(CellCoord) + sizeof(std::unique_ptr<WorldChunk>) + 4 * sizeof(void *);
+}
+
 void WorldMap::PrepareChunks(std::span<const CellCoord> coordinates) {
     uint64_t bytes = 0;
     for (const auto coordinate : coordinates)
         if (const auto *chunk = FindChunk(coordinate); chunk && chunk->SharesStorage())
-            bytes += storage::ChunkReservedBytes;
+            bytes += storage::ChunkReservedBytes() + sizeof(ChunkPayload);
     if (!bytes) return;
     if (ReserveWrite) ReserveWrite(bytes, coordinates);
     // Allocate every copy before the batch changes any cells.
@@ -253,8 +238,8 @@ performance::MemoryUsage WorldMap::UniqueStorage(std::unordered_set<const void *
     auto usage = GetMemoryUsage();
     for (const auto &[coordinate, chunk] : Chunks)
         if (!seen.insert(chunk->StorageIdentity()).second) {
-            usage.UsedHeapBytes -= sizeof(ChunkPayload);
-            usage.ReservedHeapBytes -= storage::ChunkReservedBytes;
+            usage.UsedHeapBytes -= sizeof(ChunkPayload) + storage::ChunkPayloadBytes;
+            usage.ReservedHeapBytes -= sizeof(ChunkPayload) + storage::ChunkReservedBytes();
         }
     return usage;
 }
@@ -307,6 +292,13 @@ CellState WorldMap::Get(CellCoord cell) const {
     return *result;
 }
 
+std::optional<CellTypeId> WorldMap::TryGetMaterial(CellCoord cell) const {
+    if (!Contains(cell)) return std::nullopt;
+    const auto *chunk = FindChunk(ChunkOf(cell));
+    if (!chunk) return std::nullopt;
+    return chunk->Data().Materials[Index(cell)];
+}
+
 ForceVector WorldMap::GetForce(CellCoord cell) const {
     if (!Contains(cell))
         throw std::out_of_range("force coordinate is outside the world");
@@ -339,6 +331,7 @@ void WorldMap::Set(CellCoord coordinate, CellState cell) {
     chunk.Data().Directions[index] = {int8_t(cell.Force.X), int8_t(cell.Force.Y)};
     chunk.Data().BaseForces[index] = {3600.f * cell.Force.X, 3600.f * cell.Force.Y};
     Changed(chunk, coordinate, true);
+    chunk.MaterialVersions[region] = chunk.DirectionVersions[region] = chunk.ForceVersions[region] = Version;
 }
 
 void WorldMap::SetMaterial(CellCoord coordinate, CellTypeId type) {
@@ -352,6 +345,7 @@ void WorldMap::SetMaterial(CellCoord coordinate, CellTypeId type) {
     count += type != CellTypes::Empty;
     old = type;
     Changed(chunk, coordinate, true);
+    chunk.MaterialVersions[RegionIndex(coordinate)] = Version;
 }
 
 void WorldMap::SetForce(CellCoord coordinate, ForceVector force) {
@@ -363,6 +357,7 @@ void WorldMap::SetForce(CellCoord coordinate, ForceVector force) {
     PrepareWrite({coordinate.X, coordinate.Y, 1, 1});
     chunk.Data().BaseForces[Index(coordinate)] = force;
     Changed(chunk, coordinate, false);
+    chunk.ForceVersions[RegionIndex(coordinate)] = Version;
 }
 
 void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves, std::span<const MaterialChange> changes) {
@@ -370,13 +365,13 @@ void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves, std::spa
         return;
     // Validate against the same step-start state before any source is cleared.
     for (const auto &move : moves) {
-        const auto source = TryGet(move.Source), target = TryGet(move.Destination);
-        if (!source || !target || source->Type != move.Type || target->Type != CellTypeId::Air)
+        const auto source = TryGetMaterial(move.Source), target = TryGetMaterial(move.Destination);
+        if (!source || !target || *source != move.Type || *target != CellTypeId::Air)
             throw std::logic_error("material commit requires matching sources and empty resident targets");
     }
     for (const auto &change : changes) {
-        const auto cell = TryGet(change.Cell);
-        if (!cell || cell->Type != change.Before || !IsKnownCellType(change.After))
+        const auto cell = TryGetMaterial(change.Cell);
+        if (!cell || *cell != change.Before || !IsKnownCellType(change.After))
             throw std::logic_error("material change requires a matching resident source and registered result");
     }
     std::vector<CellCoord> changedChunks;
@@ -409,6 +404,8 @@ void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves, std::spa
         ++destinationChunk->MaterialCounts[RegionIndex(move.Destination)];
         sourceChunk->RegionVersions[RegionIndex(move.Source)] = revision;
         destinationChunk->RegionVersions[RegionIndex(move.Destination)] = revision;
+        sourceChunk->MaterialVersions[RegionIndex(move.Source)] = revision;
+        destinationChunk->MaterialVersions[RegionIndex(move.Destination)] = revision;
         sourceChunk->Revision = destinationChunk->Revision = revision;
         sourceChunk->Dirty = destinationChunk->Dirty = true;
     }
@@ -419,6 +416,7 @@ void WorldMap::CommitMaterialMoves(std::span<const MaterialMove> moves, std::spa
         count -= change.Before != CellTypeId::Air;
         count += change.After != CellTypeId::Air;
         chunk.RegionVersions[RegionIndex(change.Cell)] = revision;
+        chunk.MaterialVersions[RegionIndex(change.Cell)] = revision;
         chunk.Revision = revision;
         chunk.Dirty = true;
     }
@@ -467,6 +465,7 @@ void WorldMap::Fill(WorldRect region, CellState cell) {
         chunk->Dirty = true;
         chunk->Revision = ++Version;
         chunk->RegionVersions.fill(Version);
+        chunk->MaterialVersions.fill(Version); chunk->DirectionVersions.fill(Version); chunk->ForceVersions.fill(Version);
         chunk->Active.fill(1);
     }
     RebuildIndex();
@@ -491,6 +490,7 @@ void WorldMap::FillForce(WorldRect region, ForceVector force) {
         chunk->Dirty = true;
         chunk->Revision = ++Version;
         chunk->RegionVersions.fill(Version);
+        chunk->ForceVersions.fill(Version);
         chunk->Active.fill(1);
     }
     RebuildIndex();
@@ -513,6 +513,7 @@ void WorldMap::FillDirection(WorldRect region, ForceDirection direction) {
                                              storage::ChunkEdge, storage::ChunkEdge});
         if (Finite)
             overlap = Intersection(overlap, Extent);
+        if (!overlap.Empty()) chunk->DirectionVersions.fill(Version);
         for (uint32_t row = 0; row < overlap.Height; ++row)
             std::fill_n(chunk->Data().Directions.begin() + Index({overlap.X, overlap.Y + row}), overlap.Width,
                         PackedDirection{int8_t(direction.X), int8_t(direction.Y)});
@@ -529,7 +530,9 @@ void WorldMap::Invalidate(WorldRect region) {
         auto &chunk = *node.Chunk;
         chunk.Dirty = true;
         chunk.Revision = ++Version;
-        chunk.RegionVersions[LocalRegion({node.X, node.Y})] = Version;
+        const auto index = LocalRegion({node.X, node.Y});
+        chunk.RegionVersions[index] = Version;
+        chunk.MaterialVersions[index] = chunk.DirectionVersions[index] = chunk.ForceVersions[index] = Version;
         chunk.Active[LocalRegion({node.X, node.Y})] = 1;
     });
 }
@@ -583,11 +586,18 @@ axiom::Array<WorldRect> WorldMap::TakeActiveRegions(WorldRect bounds, WorldRect 
     return regions;
 }
 
-std::span<const CellTypeId> WorldMap::MaterialRow(CellCoord begin, uint32_t count) const {
+memory::ChunkedGrid<CellTypeId>::ConstRow WorldMap::MaterialRow(CellCoord begin, uint32_t count) const {
     const auto *chunk = FindChunk(ChunkOf(begin));
     if (!chunk || count > storage::ChunkEdge - Index(begin) % storage::ChunkEdge)
         throw std::out_of_range("material row must fit one resident chunk");
-    return {chunk->Data().Materials.data() + Index(begin), count};
+    return chunk->Data().Materials.Row(uint32_t(Index(begin) % storage::ChunkEdge), uint32_t(Index(begin) / storage::ChunkEdge), count);
+}
+
+memory::ChunkedGrid<ForceVector>::ConstRow WorldMap::ForceRow(CellCoord begin, uint32_t count) const {
+    const auto *chunk = FindChunk(ChunkOf(begin));
+    if (!chunk || count > storage::ChunkEdge - Index(begin) % storage::ChunkEdge)
+        throw std::out_of_range("force row must fit one resident chunk");
+    return chunk->Data().BaseForces.Row(uint32_t(Index(begin) % storage::ChunkEdge), uint32_t(Index(begin) / storage::ChunkEdge), count);
 }
 
 void WorldMap::Insert(std::unique_ptr<WorldChunk> chunk) {
@@ -596,6 +606,7 @@ void WorldMap::Insert(std::unique_ptr<WorldChunk> chunk) {
     if (Chunks.contains(coordinate))
         throw std::invalid_argument("chunk is already resident");
     chunk->RegionVersions.fill(++Version);
+    chunk->MaterialVersions.fill(Version); chunk->DirectionVersions.fill(Version); chunk->ForceVersions.fill(Version);
     chunk->Active.fill(1);
     Chunks.emplace(coordinate, std::move(chunk));
     ++ResidencyVersion;
@@ -672,13 +683,15 @@ performance::MemoryUsage WorldMap::GetMemoryUsage() const {
     const uint64_t nodes = Root ? Root->Count() * sizeof(Node) : 0;
     const uint64_t indexBytes = nodes + Chunks.size() * (sizeof(CellCoord) + sizeof(std::unique_ptr<WorldChunk>) + 4 * sizeof(void *));
     usage.UsedHeapBytes += indexBytes;
-    usage.ReservedHeapBytes += indexBytes;
+    // Retain this budget allowance through both queued and resident states;
+    // accepting a load must not introduce previously uncharged tree nodes.
+    usage.ReservedHeapBytes += Chunks.size() * ChunkIndexReservation();
     return usage;
 }
 
 performance::MemoryUsage WorldMap::GetForceMemoryUsage() const {
     const uint64_t bytes = Chunks.size() * storage::ChunkCells * sizeof(ForceVector);
-    return {0, bytes, bytes};
+    return {0, bytes, Chunks.size() * memory::ChunkedGrid<ForceVector>::AllocationBytes(storage::ChunkEdge, storage::ChunkEdge)};
 }
 
 std::optional<CellState> WorldMapView::TryAtLocal(uint32_t x, uint32_t y) const {
@@ -700,6 +713,23 @@ CellState WorldMapView::AtIndex(size_t index) const {
     if (index >= CellCount() || !Width)
         throw std::out_of_range("view index outside rectangle");
     return AtLocal(uint32_t(index % Width), uint32_t(index / Width));
+}
+
+CellTypeId WorldMapView::MaterialAtIndex(size_t index) const {
+    if (index >= CellCount() || !Width)
+        throw std::out_of_range("view index outside rectangle");
+    if (!Map) return AtIndex(index).Type;
+    return Map->TryGetMaterial({Origin.X + int64_t(index % Width), Origin.Y + int64_t(index / Width)})
+        .value_or(static_cast<CellTypeId>(UINT32_MAX));
+}
+
+std::optional<memory::ChunkedGrid<ForceVector>::ConstRow> WorldMapView::TryForceRow(CellCoord begin, uint32_t count) const {
+    const WorldRect bounds{Origin.X, Origin.Y, Width, Height};
+    if (!Map || !count || !bounds.Contains(begin) || count > Width - uint32_t(begin.X - Origin.X)) return std::nullopt;
+    const CellCoord end{begin.X + count - 1, begin.Y};
+    if (!Map->Contains(begin) || !Map->Contains(end) || ChunkOf(begin) != ChunkOf(end) || !Map->FindChunk(ChunkOf(begin)))
+        return std::nullopt;
+    return Map->ForceRow(begin, count);
 }
 
 uint64_t WorldMapView::RegionVersion(int64_t x, int64_t y) const {
@@ -733,8 +763,8 @@ void WorldSnapshot::Update(const WorldMap &map, WorldRect bounds) {
         auto &region = Regions[key];
         if (region.Version == version)
             return;
-        region.Cells.resize(size_t(storage::RegionEdge) * storage::RegionEdge);
         const CellCoord origin{key.X * storage::RegionEdge, key.Y * storage::RegionEdge};
+        region.Cells.Reset(storage::RegionEdge, storage::RegionEdge, {}, {origin.X, origin.Y});
         const auto *chunk = map.FindChunk(ChunkOf(origin));
         for (uint32_t y = 0; y < storage::RegionEdge; ++y)
             for (uint32_t x = 0; x < storage::RegionEdge; ++x) {
@@ -765,7 +795,7 @@ performance::MemoryUsage WorldSnapshot::GetMemoryUsage() const {
     performance::MemoryUsage usage{sizeof(*this)};
     for (const auto &[coordinate, region] : Regions) {
         usage.UsedHeapBytes += region.Cells.size() * sizeof(CellState) + sizeof(region) + sizeof(coordinate);
-        usage.ReservedHeapBytes += region.Cells.capacity() * sizeof(CellState) + sizeof(region) + sizeof(coordinate);
+        usage.ReservedHeapBytes += region.Cells.ReservedBytes() + sizeof(region) + sizeof(coordinate);
     }
     return usage;
 }

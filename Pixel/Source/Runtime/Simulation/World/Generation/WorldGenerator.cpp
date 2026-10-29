@@ -145,7 +145,8 @@ class NaturalModel {
         return host;
     }
 
-    void Fill(WorldRect bounds, std::span<CellTypeId> output, GenerationStage through) const {
+    template<class Output>
+    void Fill(WorldRect bounds, Output &output, GenerationStage through) const {
         const auto lakes = LakesFor(bounds.X, bounds.Width);
         std::vector<Column> columns(bounds.Width);
         for (uint32_t x = 0; x < bounds.Width; ++x)
@@ -299,7 +300,8 @@ class NaturalModel {
                Perlin(Noise.CaveGate, point.X, point.Y, 512, 512) > 0;
     }
 
-    void AddTrees(WorldRect bounds, std::span<CellTypeId> output) const {
+    template<class Output>
+    void AddTrees(WorldRect bounds, Output &output) const {
         // Every query visits complete feature anchors whose canopy could touch
         // it. Features cannot overlap (max radius 22, anchor spacing >=65).
         for (int64_t feature = FloorDivide(bounds.X - 22, 128);
@@ -446,7 +448,7 @@ class NaturalGenerator final : public IWorldGenerator {
         const auto bounds = ChunkBounds(coordinate);
         auto chunk = std::make_unique<WorldChunk>(coordinate);
         auto &materials = chunk->Data().Materials;
-        Model.Fill(bounds, {materials.data(), materials.size()}, GenerationStage::Surface);
+        Model.Fill(bounds, materials, GenerationStage::Surface);
         chunk->Recount();
         chunk->Dirty = false;
         return chunk;

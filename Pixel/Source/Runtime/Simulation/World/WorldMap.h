@@ -27,11 +27,13 @@ struct WorldMapView {
     std::optional<CellState> TryAtLocal(uint32_t x, uint32_t y) const;
     CellState AtLocal(uint32_t x, uint32_t y) const;
     CellState AtIndex(size_t index) const;
+    CellTypeId MaterialAtIndex(size_t index) const;
+    std::optional<memory::ChunkedGrid<ForceVector>::ConstRow> TryForceRow(CellCoord begin, uint32_t count) const;
     uint64_t RegionVersion(int64_t x, int64_t y) const;
     uint64_t Identity() const;
 };
 
-struct PackedDirection {
+struct alignas(2) PackedDirection {
     int8_t X = 0, Y = 1;
 };
 
@@ -45,13 +47,14 @@ struct MaterialChange {
     CellTypeId Before, After;
 };
 
-// One allocation, with material scans independent of direction and force storage.
-struct ChunkPayload {
-    axiom::StaticArray<CellTypeId, storage::ChunkCells> Materials;
-    axiom::StaticArray<PackedDirection, storage::ChunkCells> Directions;
-    axiom::StaticArray<ForceVector, storage::ChunkCells> BaseForces;
+// Layout belongs to the shared field container. Each column has page-aligned
+// storage; a quadtree leaf addresses exactly one contiguous storage tile.
+struct alignas(memory::TileAlignment) ChunkPayload {
+    memory::ChunkedGrid<CellTypeId> Materials{storage::ChunkEdge, storage::ChunkEdge};
+    memory::ChunkedGrid<PackedDirection> Directions{storage::ChunkEdge, storage::ChunkEdge};
+    memory::ChunkedGrid<ForceVector> BaseForces{storage::ChunkEdge, storage::ChunkEdge};
 };
-static_assert(sizeof(ChunkPayload) == storage::ChunkCells * 14);
+static_assert(decltype(ChunkPayload::Materials)::TileSize == storage::RegionEdge);
 
 class WorldChunk {
   public:
@@ -63,11 +66,12 @@ class WorldChunk {
     bool Dirty = false;
     uint64_t Revision = 1;
     axiom::StaticArray<uint64_t, storage::RegionsPerChunk> RegionVersions{};
+    axiom::StaticArray<uint64_t, storage::RegionsPerChunk> MaterialVersions{}, DirectionVersions{}, ForceVersions{};
     axiom::StaticArray<uint32_t, storage::RegionsPerChunk> MaterialCounts{};
     axiom::StaticArray<uint8_t, storage::RegionsPerChunk> Active{};
 
     ChunkPayload &Data();
-    const ChunkPayload &Data() const { return Payload->front(); }
+    const ChunkPayload &Data() const { return *Payload; }
     const void *StorageIdentity() const { return Payload.get(); }
     bool SharesStorage() const { return Payload.use_count() > 1; }
     performance::MemoryUsage GetMemoryUsage() const;
@@ -75,8 +79,7 @@ class WorldChunk {
     void Recount();
 
   private:
-    using PayloadStorage = axiom::Array<ChunkPayload, axiom::Allocator<ChunkPayload, storage::ChunkAlignment>>;
-    std::shared_ptr<PayloadStorage> Payload;
+    std::shared_ptr<ChunkPayload> Payload;
     uint64_t Generation = 0;
 };
 
@@ -99,6 +102,7 @@ class WorldMap {
     WorldMapView View(WorldRect bounds) const { return {bounds.Width, bounds.Height, {bounds.X, bounds.Y}, this}; }
     WorldMapView Read() const { return View(Extent); }
     std::optional<CellState> TryGet(CellCoord cell) const;
+    std::optional<CellTypeId> TryGetMaterial(CellCoord cell) const;
     CellState Get(CellCoord cell) const;
     ForceVector GetForce(CellCoord cell) const;
     void Set(CellCoord coordinate, CellState cell);
@@ -121,7 +125,8 @@ class WorldMap {
     uint64_t RegionVersion(CellCoord cell) const;
     void ForEachRegion(WorldRect bounds, const std::function<void(WorldRect, uint64_t)> &visitor) const;
     axiom::Array<WorldRect> TakeActiveRegions(WorldRect bounds, WorldRect dynamicForces = {});
-    std::span<const CellTypeId> MaterialRow(CellCoord begin, uint32_t count) const;
+    memory::ChunkedGrid<CellTypeId>::ConstRow MaterialRow(CellCoord begin, uint32_t count) const;
+    memory::ChunkedGrid<ForceVector>::ConstRow ForceRow(CellCoord begin, uint32_t count) const;
 
     WorldChunk *FindChunk(CellCoord chunk);
     const WorldChunk *FindChunk(CellCoord chunk) const;
@@ -134,6 +139,7 @@ class WorldMap {
     uint64_t GetResidencyVersion() const { return ResidencyVersion; }
     performance::MemoryUsage GetMemoryUsage() const;
     performance::MemoryUsage GetForceMemoryUsage() const;
+    static uint64_t ChunkIndexReservation();
 
   private:
     struct Node;
@@ -166,7 +172,7 @@ class WorldSnapshot {
   private:
     struct Region {
         uint64_t Version = 0;
-        axiom::Array<CellState> Cells;
+        memory::ChunkedGrid<CellState> Cells;
     };
     WorldRect Extent;
     uint64_t MapIdentity = 0;

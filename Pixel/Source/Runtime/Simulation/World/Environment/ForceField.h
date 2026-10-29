@@ -25,9 +25,9 @@ class ForceField {
 
     ForceField(uint32_t width, uint32_t height) : Width(width), Height(height) {
         const uint64_t count = uint64_t(width) * height;
-        if (!width || !height || count > Values.max_size())
+        if (!width || !height || count > size_t(PTRDIFF_MAX) / sizeof(ForceVector))
             throw std::invalid_argument("force field dimensions must fit a nonempty array");
-        Values.resize(size_t(count));
+        Values.Reset(width, height);
     }
     explicit ForceField(WorldMap &map) : Width(map.Bounds().Width), Height(map.Bounds().Height), Map(&map) {}
     uint32_t GetWidth() const { return Width; }
@@ -52,13 +52,13 @@ class ForceField {
             Map->FillForce(Map->Bounds(), value);
             return;
         }
-        std::fill(Values.begin(), Values.end(), value);
+        Values.Fill(value);
     }
 
   private:
     uint32_t Width, Height;
     WorldMap *Map = nullptr;
-    axiom::Array<ForceVector> Values;
+    memory::ChunkedGrid<ForceVector> Values;
     static void Validate(ForceVector value) {
         if (!std::isfinite(value.X) || !std::isfinite(value.Y))
             throw std::invalid_argument("force must be finite");

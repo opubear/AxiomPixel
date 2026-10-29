@@ -50,6 +50,32 @@ void PublishedVersionsAndReuse() {
           "slow readers were overwritten after both slots were used");
 }
 
+void IndependentFieldPublication() {
+    WorldMap source(128, 128), target;
+    const auto view = source.View({1, 1, 65, 65});
+    Check(view.TryForceRow({1, 1}, 63).has_value(), "resident force row unavailable");
+    Check(!view.TryForceRow({0, 1}, 1) && !view.TryForceRow({65, 1}, 2)
+          && !view.TryForceRow({1, 66}, 1), "force row escaped a bounded read view");
+    Check(!source.View({120, 1, 32, 1}).TryForceRow({120, 1}, 16), "force row exposed finite-map padding");
+    Check(!target.View({0, 0, 64, 64}).TryForceRow({0, 0}, 64), "missing chunk produced a force row");
+    target.ShareFrom(source);
+    const auto storage = target.FindChunk({0, 0})->StorageIdentity();
+    source.SetForce({63, 63}, {12, 34});
+    source.SetMaterial({64, 64}, CellTypeId::Stone);
+    target.ShareFrom(source);
+    Check(target.FindChunk({0, 0})->StorageIdentity() == storage, "field sync replaced a reusable allocation");
+    Check(target.GetForce({63, 63}) == ForceVector{12, 34}
+          && target.Get({64, 64}).Type == CellTypeId::Stone
+          && target.GetForce({64, 64}) == ForceVector{0, 3600}, "tile sync mixed material and force columns");
+    source.FillDirection({63, 63, 2, 2}, {-1, 0});
+    source.SetMaterial({64, 64}, CellTypeId::Water);
+    target.ShareFrom(source);
+    Check(target.Get({63, 63}).Force.X == -1 && target.Get({64, 64}).Force.X == -1
+          && target.GetForce({64, 64}) == ForceVector{-3600, 0}
+          && target.Get({64, 64}).Type == CellTypeId::Water, "cross-tile direction sync lost a column revision");
+    Check(target.GetForce({62, 63}) == ForceVector{0, 3600}, "partial tile update changed an adjacent cell");
+}
+
 void ReaderOutlivesWorldAndReplacement() {
     WorldBuffers::ReadLease old;
     {
@@ -87,6 +113,11 @@ void EveryWindStrategyIsFrozen() {
         const auto velocity = old->SampleWind({8, 8});
         const auto force = old->SampleForce({8, 8});
         const auto revision = old->GetWind().GetRevision();
+        const auto row = old->Read({0, 0, 16, 16}).TryForceRow({4, 8}, 8);
+        Check(row.has_value(), "published force row unavailable");
+        for (uint32_t x = 4; x < 12; ++x)
+            Check(old->FieldVelocity({x, 8}, (*row)[x - 4]) == old->FieldVelocity({x, 8}),
+                  "row-based force composition changed wind or source semantics");
         world.AddWindImpulse(8, 8, 3, {10, 5});
         Check(world.StepEnvironment(0), "wind step failed");
         world.PublishBuffers();
@@ -106,14 +137,14 @@ void CopyBudgetIsAtomic() {
     settings.Directory = directory;
     settings.WindowEdge = 64;
     settings.SurfaceY = 10000;
-    settings.BudgetBytes = 6 * storage::ChunkReservedBytes + 8 * 1024 * 1024;
+    settings.BudgetBytes = 6 * storage::ChunkReservedBytes() + 8 * 1024 * 1024;
     world.EnableStreaming(settings, {0, 0, storage::ChunkEdge + 64, 64});
     world.SetCell(10, 10, {CellTypeId::Dirt});
     world.SetCell(storage::ChunkEdge + 10, 10, {CellTypeId::Dirt});
     world.PublishBuffers();
     const auto old = world.ReadBuffers();
     const auto available = settings.BudgetBytes - world.GetStreamer()->RetainedBytes();
-    world.SetPublicationBytes(available - storage::ChunkReservedBytes - 32 * 1024);
+    world.SetPublicationBytes(available - storage::ChunkReservedBytes() - 32 * 1024);
     Check(!world.StepEnvironment(0), "copy pressure did not defer the material batch");
     Check(world.GetCell(10, 10).Type == CellTypeId::Dirt
           && world.GetCell(storage::ChunkEdge + 10, 10).Type == CellTypeId::Dirt,
@@ -138,7 +169,7 @@ void SlowReadersCannotExhaustMetadataBudget() {
     settings.Directory = directory;
     settings.WindowEdge = 64;
     settings.SurfaceY = 10000;
-    settings.BudgetBytes = 4 * storage::ChunkReservedBytes + 8 * 1024 * 1024;
+    settings.BudgetBytes = 4 * storage::ChunkReservedBytes() + 8 * 1024 * 1024;
     world.EnableStreaming(settings, {0, 0, 64, 64});
     world.PublishBuffers();
     std::vector<WorldBuffers::ReadLease> readers{world.ReadBuffers()};
@@ -168,7 +199,7 @@ void StreamingRetriesWithoutLosingCompletedChunks() {
     settings.Directory = directory;
     settings.WindowEdge = 64;
     settings.SurfaceY = 10000;
-    settings.BudgetBytes = 6 * storage::ChunkReservedBytes + 8 * 1024 * 1024;
+    settings.BudgetBytes = 6 * storage::ChunkReservedBytes() + 8 * 1024 * 1024;
     WorldStreamer stream([&]() -> const WorldMap & { return map; }, [&]() -> WorldMap & {
         if (!writable) throw WorldBudgetUnavailable{};
         return map;
@@ -194,7 +225,7 @@ void StreamingRetriesWithoutLosingCompletedChunks() {
 
 int main() {
     try {
-        PublishedVersionsAndReuse(); ReaderOutlivesWorldAndReplacement(); EveryWindStrategyIsFrozen(); CopyBudgetIsAtomic();
+        PublishedVersionsAndReuse(); IndependentFieldPublication(); ReaderOutlivesWorldAndReplacement(); EveryWindStrategyIsFrozen(); CopyBudgetIsAtomic();
         SlowReadersCannotExhaustMetadataBudget();
         StreamingRetriesWithoutLosingCompletedChunks();
         std::cout << "World buffer publication and ownership passed\n";

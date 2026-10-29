@@ -1,4 +1,5 @@
 #pragma once
+#include "Runtime/System/Memory/ChunkedGrid.h"
 
 #include "Dev/Debug/Performance/MemoryUsage.h"
 #include "WindStrategy.h"
@@ -22,8 +23,8 @@ class LocalWindGeometry {
     uint32_t Width, Height;
     LocalWindSettings Settings;
     WindBoundaryMode Boundary;
-    std::vector<uint8_t> Solid;
-    std::vector<int32_t> Nearest;
+    memory::ChunkedGrid<uint8_t> Solid;
+    memory::ChunkedGrid<int32_t> Nearest;
     std::vector<uint32_t> Queue;
     void RebuildDistance();
 };

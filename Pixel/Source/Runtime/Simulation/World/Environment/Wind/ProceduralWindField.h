@@ -1,4 +1,5 @@
 #pragma once
+#include "Runtime/System/Memory/ChunkedGrid.h"
 
 #include "Dev/Debug/Performance/MemoryUsage.h"
 #include "WindField.h"
@@ -25,6 +26,6 @@ class ProceduralWindField {
     CellCoord Origin{};
     WindSettings Settings;
     double Time = 0, Phase = 0;
-    std::vector<WindVelocity> Impulses;
+    memory::ChunkedGrid<WindVelocity> Impulses;
 };
 } // namespace pixel

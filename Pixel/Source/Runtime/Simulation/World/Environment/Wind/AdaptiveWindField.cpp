@@ -19,9 +19,9 @@ AdaptiveWindField::AdaptiveWindField(WorldMapView world, uint32_t height, const 
     initial.Reset(Width, Height, settings.Flow);
     if (!world.IsValid() || world.Height < Height || world.CellCount() != size_t(Width) * world.Height)
         throw std::invalid_argument("adaptive wind requires complete matching world");
-    Solid.assign(size_t(Width) * Height, 2); // Force first geometry rebuild.
-    Owner.assign(Solid.size(), -1);
-    std::vector<WindVelocity> previous(Solid.size());
+    Solid.Reset(Width, Height, 2); // Force first geometry rebuild.
+    Owner.Reset(Width, Height, -1);
+    memory::ChunkedGrid<WindVelocity> previous(Width, Height);
     for (uint32_t y = 0; y < Height; ++y)
         for (uint32_t x = 0; x < Width; ++x) {
             previous[size_t(y) * Width + x] = initial.Sample(x + .5f, y + .5f);
@@ -34,7 +34,7 @@ AdaptiveWindField::AdaptiveWindField(WorldMapView world, uint32_t height, const 
     InitializeFaceVelocities();
     Project();
 }
-void AdaptiveWindField::Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const std::vector<WindVelocity> &previous) {
+void AdaptiveWindField::Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const memory::ChunkedGrid<WindVelocity> &previous) {
     uint32_t solids = 0;
     for (uint32_t py = y; py < y + h; ++py)
         for (uint32_t px = x; px < x + w; ++px)
@@ -65,7 +65,8 @@ void AdaptiveWindField::Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, co
 }
 void AdaptiveWindField::MoveDomain(WorldMapView world, uint32_t height, int64_t offsetX, int64_t offsetY) {
     AdaptiveWindField next(world, height, Settings);
-    std::vector<WindVelocity> velocities(size_t(world.Width) * height, Settings.Flow.Ambient);
+    memory::PageBuffer<WindVelocity> velocities;
+    velocities.assign(size_t(world.Width) * height, Settings.Flow.Ambient);
     for (uint32_t y = 0; y < height; ++y)
         for (uint32_t x = 0; x < world.Width; ++x) {
             const double oldX = double(x) + double(offsetX), oldY = double(y) + double(offsetY);
@@ -81,17 +82,17 @@ void AdaptiveWindField::SetObstacles(WorldMapView world) {
         throw std::invalid_argument("adaptive obstacle extent mismatch");
     bool changed = false;
     for (size_t i = 0; i < Solid.size(); ++i)
-        changed |= Solid[i] != (world.AtIndex(i).Type != CellTypes::Empty);
+        changed |= Solid[i] != (world.MaterialAtIndex(i) != CellTypes::Empty);
     if (!changed)
         return;
-    std::vector<WindVelocity> previous(Solid.size());
+    memory::ChunkedGrid<WindVelocity> previous(Width, Height);
     for (size_t i = 0; i < Solid.size(); ++i) {
         if (Owner[i] >= 0)
             previous[i] = Cells[size_t(Owner[i])].Velocity;
-        Solid[i] = world.AtIndex(i).Type != CellTypes::Empty;
+        Solid[i] = world.MaterialAtIndex(i) != CellTypes::Empty;
     }
     Cells.clear();
-    std::fill(Owner.begin(), Owner.end(), -1);
+    Owner.Fill(-1);
     for (uint32_t y = 0; y < Height; y += Settings.BlockSize)
         for (uint32_t x = 0; x < Width; x += Settings.BlockSize)
             Split(x, y, std::min(Settings.BlockSize, Width - x), std::min(Settings.BlockSize, Height - y), previous);

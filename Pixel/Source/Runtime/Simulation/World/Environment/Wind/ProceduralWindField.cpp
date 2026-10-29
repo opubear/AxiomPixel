@@ -17,12 +17,12 @@ ProceduralWindField::ProceduralWindField(uint32_t width, uint32_t height, const 
     validation.Reset(width, height, settings);
     if (width > 2048 || height > 2048)
         throw std::invalid_argument("procedural wind dimensions must be <= 2048");
-    Impulses.resize(size_t(width) * height);
+    Impulses.Reset(width, height);
     std::mt19937 random(settings.Seed);
     Phase = double(random()) / std::mt19937::max() * 2 * std::numbers::pi;
 }
 void ProceduralWindField::MoveDomain(uint32_t width, uint32_t height, CellCoord origin) {
-    std::vector<WindVelocity> next(size_t(width) * height);
+    memory::ChunkedGrid<WindVelocity> next(width, height);
     const int64_t dx = WindCoordinateOffset(origin.X, Origin.X);
     const int64_t dy = WindCoordinateOffset(origin.Y, Origin.Y);
     if (dx < int64_t(Width) && dy < int64_t(Height) && dx > -int64_t(width) && dy > -int64_t(height))
@@ -43,10 +43,9 @@ void ProceduralWindField::Step(float seconds) {
     const double dt = std::min(double(seconds), .25);
     Time += dt;
     const float decay = float(std::exp(-Settings.Relaxation * dt));
-    for (auto &v : Impulses) {
-        v.X *= decay;
-        v.Y *= decay;
-    }
+    memory::ForEachGridRow([&](auto row) {
+        for (auto &v : row) { v.X *= decay; v.Y *= decay; }
+    }, Impulses);
 }
 WindVelocity ProceduralWindField::Sample(float x, float y) const {
     if (!std::isfinite(x) || !std::isfinite(y) || x < 0 || y < 0 || x >= Width || y >= Height)

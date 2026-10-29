@@ -3,9 +3,22 @@
 #include <array>
 
 namespace pixel::performance {
-using axiom::diagnostics::MeasureObject;
 using axiom::diagnostics::MemoryUsage;
-using axiom::diagnostics::VectorStorage;
+
+template<class Buffer>
+MemoryUsage VectorStorage(const Buffer &values) {
+    if constexpr (requires { values.UsedBytes(); values.ReservedBytes(); })
+        return {0, values.UsedBytes(), values.ReservedBytes()};
+    else
+        return axiom::diagnostics::VectorStorage(values);
+}
+
+template<class Object, class... Buffers>
+MemoryUsage MeasureObject(const Object &, const Buffers &...buffers) {
+    MemoryUsage result{sizeof(Object)};
+    (result.AddEmbedded(pixel::performance::VectorStorage(buffers)), ...);
+    return result;
+}
 
 enum class MemoryComponent : size_t { World,
                                       Fields,

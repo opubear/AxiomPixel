@@ -19,7 +19,11 @@ void WorldBuffer::ShareFrom(const WorldBuffer &source) {
 }
 
 ForceVector WorldBuffer::SampleForce(CellCoord cell) const {
-    auto result = FieldResponse::AddWind(Map.GetForce(cell), Wind.SampleForMaterial(cell));
+    return SampleForce(cell, Map.GetForce(cell));
+}
+
+ForceVector WorldBuffer::SampleForce(CellCoord cell, ForceVector base) const {
+    auto result = FieldResponse::AddWind(base, Wind.SampleForMaterial(cell));
     const auto contribution = Sources.Sample(cell, Simulation);
     result.X += contribution.X;
     result.Y += contribution.Y;
@@ -28,6 +32,10 @@ ForceVector WorldBuffer::SampleForce(CellCoord cell) const {
 
 WindVelocity WorldBuffer::FieldVelocity(CellCoord cell) const {
     return FieldResponse::MovementVelocity(SampleForce(cell));
+}
+
+WindVelocity WorldBuffer::FieldVelocity(CellCoord cell, ForceVector base) const {
+    return FieldResponse::MovementVelocity(SampleForce(cell, base));
 }
 
 WorldBuffers::WorldBuffers() { Slots[0].reset(new WorldBuffer); }
@@ -46,7 +54,7 @@ WorldBuffer &WorldBuffers::Write() {
     const bool replace = !Slots[next] || Slots[next].use_count() != 1;
     const auto metadataBytes = [](const WorldBuffer &buffer) {
         return sizeof(WorldBuffer) + buffer.Map.GetMemoryUsage().ReservedHeapBytes
-            - buffer.Map.ChunkCount() * storage::ChunkReservedBytes;
+            - buffer.Map.ChunkCount() * (storage::ChunkReservedBytes() + sizeof(ChunkPayload));
     };
     const auto targetBytes = metadataBytes(Current());
     const auto reusableBytes = replace ? 0 : metadataBytes(*Slots[next]);

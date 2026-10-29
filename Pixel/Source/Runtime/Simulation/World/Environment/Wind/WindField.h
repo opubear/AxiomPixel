@@ -1,4 +1,5 @@
 #pragma once
+#include "Runtime/System/Memory/ChunkedGrid.h"
 
 #include "Dev/Debug/Performance/MemoryUsage.h"
 
@@ -52,27 +53,27 @@ class WindField {
     uint32_t Width = 0, Height = 0;
     float SpacingX = 1, SpacingY = 1;
     // X lives at (x, y+1/2), Y at (x+1/2, y). Shared periodic array extents.
-    std::vector<WindVelocity> Velocity, Previous;
-    std::vector<float> Pressure, Divergence;
-    std::vector<float> RightU, BottomV;
-    std::vector<float> DirtCoverage;
-    std::vector<WindVelocity> DirtVelocitySum;
-    std::vector<WindVelocity> DirtBlockage, PressureMobility;
+    memory::ChunkedGrid<WindVelocity> Velocity, Previous;
+    memory::ChunkedGrid<float> Pressure, Divergence;
+    memory::ChunkedGrid<float> RightU, BottomV;
+    memory::ChunkedGrid<float> DirtCoverage;
+    memory::ChunkedGrid<WindVelocity> DirtVelocitySum;
+    memory::ChunkedGrid<WindVelocity> DirtBlockage, PressureMobility;
     // Union of occupied rows/columns, so thickness cannot multiply frontal area.
-    std::vector<uint32_t> LastDirtRow;
-    std::vector<uint8_t> OccupiedColumns;
-    size_t Index(int x, int y) const;
-    WindVelocity SampleGrid(const std::vector<WindVelocity> &field, float x, float y) const;
+    memory::ChunkedGrid<uint32_t> LastDirtRow;
+    memory::ChunkedGrid<uint8_t> OccupiedColumns;
+    memory::GridAddress Index(int x, int y) const;
+    WindVelocity SampleGrid(const memory::ChunkedGrid<WindVelocity> &field, float x, float y) const;
     void Diffuse(float seconds);
     void Advect(float seconds);
-    void Project(std::span<const WindVelocity> mobility = {});
+    void Project(const memory::ChunkedGrid<WindVelocity> &mobility = {});
     bool Periodic() const { return Settings.Boundary == WindBoundaryMode::Periodic; }
     bool Inflow(WindBoundarySide side) const { return IsWindInflow(side, Settings.Ambient); }
     float UFace(int x, int y) const;
     float VFace(int x, int y) const;
     float ImpulseWeight(float x, float y, float radius, float faceX, float faceY) const;
     void PrescribeInflow();
-    void ProjectOpen(std::span<const WindVelocity> mobility);
+    void ProjectOpen(const memory::ChunkedGrid<WindVelocity> &mobility);
     void AccumulateDirt(uint32_t x, uint32_t y, float coverage, WindVelocity velocity);
 };
 } // namespace pixel

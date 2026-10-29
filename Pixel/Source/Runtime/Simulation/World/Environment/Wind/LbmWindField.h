@@ -1,4 +1,5 @@
 #pragma once
+#include "Runtime/System/Memory/ChunkedGrid.h"
 
 #include "Dev/Debug/Performance/MemoryUsage.h"
 #include "WindTypes.h"
@@ -46,9 +47,9 @@ class LbmWindField {
     LbmWindSettings Settings;
     LbmWindReport Report;
     double Remainder = 0, Tau = .6;
-    std::vector<uint8_t> Solid;
-    std::vector<Distribution> F, Next;
-    std::vector<WindVelocity> Velocity;
+    memory::ChunkedGrid<uint8_t> Solid;
+    memory::ChunkedGrid<Distribution> F, Next;
+    memory::ChunkedGrid<WindVelocity> Velocity;
     Distribution Equilibrium(double rho, WindVelocity velocity);
     void CollideAndStream();
     void Measure();

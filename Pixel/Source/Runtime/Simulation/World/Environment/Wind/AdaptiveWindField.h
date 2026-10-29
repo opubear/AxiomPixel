@@ -43,8 +43,8 @@ class AdaptiveWindField {
     uint32_t Width, Height;
     AdaptiveWindSettings Settings;
     WindSolveReport Report;
-    std::vector<uint8_t> Solid;
-    std::vector<int32_t> Owner;
+    memory::ChunkedGrid<uint8_t> Solid;
+    memory::ChunkedGrid<int32_t> Owner;
     std::vector<Cell> Cells;
     struct BoundaryFace {
         uint32_t Owner;
@@ -53,7 +53,7 @@ class AdaptiveWindField {
     };
     std::vector<Face> Faces;
     std::vector<BoundaryFace> BoundaryFaces;
-    void Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const std::vector<WindVelocity> &previous);
+    void Split(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const memory::ChunkedGrid<WindVelocity> &previous);
     void BuildFaces();
     void InitializeFaceVelocities();
     void ReconstructVelocities();

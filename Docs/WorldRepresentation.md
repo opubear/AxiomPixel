@@ -1,6 +1,6 @@
 # 分块、四叉树与流式世界
 
-2026-10-19。本文件是当前 World、风域、存档和发布接口的约定；早期设计文档中的整图数组、移动链、四张固定纹理与游戏周期边界已由本文替代。原算法及成本调查保留在 [MaterialUpdatePerformance.md](MaterialUpdatePerformance.md)，不能用于判断新材料规则的正确性。
+2026-10-29 更新存储合同。本文件是当前 World、风域、存档和发布接口的约定；早期设计文档中的整图数组、移动链、四张固定纹理与游戏周期边界已由本文替代。原算法及成本调查保留在 [MaterialUpdatePerformance.md](MaterialUpdatePerformance.md)，不能用于判断新材料规则的正确性。
 
 ## 配置与所有权
 
@@ -8,7 +8,7 @@
 |---|---|---|
 | 物理块 | 1024×1024 | CMake `PIXEL_CHUNK_EDGE` → `WorldStorageConfig.h` |
 | 调度/版本区域 | 64×64 | `storage::RegionEdge` |
-| 载荷起始对齐 | 64 KiB | `storage::ChunkAlignment`，首次分配检查系统页大小 |
+| 场载荷起始对齐 | 系统内存页 | `memory::PageBuffer`；tile 至少 128 字节，元素满足类型对齐 |
 | 玩家模拟窗口 | 1024×1024 | `WorldStreamSettings::WindowEdge`；游戏环境变量 `PIXEL_SIMULATION_WINDOW` |
 | 世界 CPU 预算 | 512 MiB | `WorldStreamSettings::BudgetBytes`；游戏环境变量 `PIXEL_WORLD_BUDGET_MIB` |
 | 保存目录 | `Saves/<world-id>/` | `PIXEL_SAVE_ROOT` 或 `WorldStreamSettings::Directory` |
@@ -18,7 +18,7 @@
 
 `World` 编排 `WorldBuffers`、`Environment` 及 `WorldStreamer`。角色归属 Session 下的 `Actors`，通过只读地形视图推进。`WorldBuffers` 的每个版本拥有 `WorldMap`（材料、兼容方向、基础力）、动态风后端与场源；`Environment` 独占模拟版本的写权限，并拥有待提交环境步及材料临时集合；Session的SimulationCoordinator拥有固定步时钟和跨领域提交顺序。World 仅链接 Axiom::Core 和 CPU 性能采样模块，没有窗口、RHI、UI 或纹理类型。
 
-`WorldChunk` 每块拥有独立 Axiom allocator。一份连续、64 KiB 对齐的 `axiom::Array<ChunkPayload, Allocator<..., alignment>>` 分配包含三个 `axiom::StaticArray` 列：32位材料ID、两个有符号8位方向、两个float基础力。有效数据正好14字节/格，默认14 MiB/块；区域计数、活动位与版本单独保存。块销毁同时释放allocator缓存。材料移动只写材料列；方向及基础力始终属于空间位置。
+`WorldChunk` 的材料、兼容方向、基础力分别由 `memory::ChunkedGrid<T>` 管理，以 64×64 样本 tile 连续存储，每列独立页对齐。有效数据仍为32位材料ID、两个有符号8位方向和两个float基础力，共14字节/格，默认14 MiB/块；区域计数、活动位及各列版本单独保存。材料移动只写材料列；方向及基础力始终属于空间位置。双缓冲只同步变化的 tile/列，首次共享写入仍按整个 WorldChunk 做 COW。统一对齐、采样分辨率和GPU交换合同见 [空间场存储](SpatialFieldStorage.md)。
 
 稀疏四叉树的根随驻留块扩展，1024层级关联物理块，细分到64层级；节点聚合材料数量、活动性与版本。插入/卸载重建稀疏索引并回收空分支；首次定位后材料扫描使用块内连续行，不逐格遍历树根。默认预算下只有数十块驻留，暂未引入树节点池或多线程材料计算。
 
@@ -37,7 +37,7 @@ world.FillBaseForceRegion({-64, 0, 64, 64}, {0, 3600});
 
 查询区分Missing、Loading、Saving、Resident和Failed；`TryGetCell`/`TryAtLocal`为空表示不可用，不能解释为空气。强制读取/批量写入未驻留区域会拒绝操作，批量入口先核对整个范围再写。角色将不可用格视为障碍；材料目标必须驻留且在模拟窗口内。
 
-`WorldMapView` 是借用只读视图，带原点、范围、坐标访问、区域版本；Map视图不能跨地图修改/卸载当作快照保存。`MaterialRow` 返回仅在本次稳定访问期间有效的块内连续材料span。写入走Map编辑接口，统一更新版本、数量和邻域唤醒；`GetMutableMap` 和块载荷仅用于CPU集成/批量生成，直接写载荷后必须 `Recount` 和 `Invalidate`。
+`WorldMapView` 是借用只读视图，带原点、范围、坐标访问、区域版本；Map视图不能跨地图修改/卸载当作快照保存。`MaterialRow` 返回仅在本次稳定访问期间有效的材料行视图，可跨 tile；单 tile 内的行连续。写入走Map编辑接口，统一更新版本、数量和邻域唤醒；`GetMutableMap` 和块载荷仅用于CPU集成/批量生成，直接写载荷后必须 `Recount` 和 `Invalidate`。
 
 运行时的材料、基础力、风和场源由 `WorldBuffers` 统一双缓冲；模拟独占写槽，呈现/观测共享上一完整提交的只读租约。详见[固定步与提交](Architecture/SimulationCommits.md)。
 

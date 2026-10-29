@@ -16,7 +16,7 @@ struct CellState {
     bool operator==(const CellState &) const = default;
 };
 
-struct ForceVector {
+struct alignas(8) ForceVector {
     float X = 0, Y = 0;
     bool operator==(const ForceVector &) const = default;
 };

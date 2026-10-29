@@ -31,7 +31,7 @@ class Environment {
     FieldSources &MutableSources() { return Buffers->Write().Sources; }
     axiom::Array<MaterialMove> Proposals;
     axiom::Array<MaterialChange> Changes;
-    axiom::Array<uint32_t> Winners, WinnerEpochs;
+    memory::ChunkedGrid<uint32_t> Winners, WinnerEpochs;
     uint32_t Epoch = 0;
     ForceDirection ProposalDirection;
     bool SharedProposalDirection = true;
@@ -51,6 +51,7 @@ class Environment {
     void RestoreFieldSources(World &world, const FieldSourcesState &state);
     void StepMaterials(World &world);
     void ProposeRegion(World &world, WorldRect region);
+    ForceVector SampleForce(CellCoord cell, WorldRect bounds, ForceVector base) const;
     void ResolveConflicts(World &world, WorldRect bounds);
 };
 } // namespace pixel

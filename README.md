@@ -10,7 +10,7 @@
 
 基于 Axiom 的早期像素游戏，从引擎 `2DRender` 的 `5c8af21` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
 
-Core 的[Allocator与容器后端接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md)区分内存资源和存储算法：默认Array/Map使用标准库后端与Axiom池分配器，自定义后端按模板显式选择。Pixel区块保留独立64 KiB对齐资源，材料scratch扩容及时释放旧池；池缓存寿命和引用失效规则见该合同。
+Core 的[Allocator与容器后端接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md)区分内存资源和存储算法：默认Array/Map使用标准库后端与Axiom池分配器，自定义后端按模板显式选择。Pixel空间场现由[统一分块存储](Docs/SpatialFieldStorage.md)管理页对齐载荷、64×64 tile、多分辨率和GPU交换；可变长材料scratch扩容仍及时释放旧池。
 
 引擎的 [Platform 系统信息查询](Axiom/Source/HAL/Platform/README.md)提供 Linux、Windows 和 macOS 的 CPU 型号/核心/缓存/指令集、GPU 与内存、操作系统版本和架构查询。`Axiom::Platform` 可独立用于无窗口工具，未知字段与统一内存/独立显存采用明确的返回语义。
 
@@ -274,6 +274,8 @@ ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-fail
 (cd Pixel && PIXEL_UI_CAPTURE_DIR=/private/tmp/pixel-ui ../build/tests/PixelRuntimeSmoke --inventory-ui-only)
 # 连续144步的水、蒸汽、火及动态区域上传；可选导出每24步截图
 (cd Pixel && PIXEL_ELEMENT_CAPTURE_DIR=/private/tmp/pixel-elements ../build/tests/PixelRuntimeSmoke --elements-only)
+# 统一存储、风可视化与F1力场连续行打包专项
+(cd Pixel && ../build/tests/PixelRuntimeSmoke --fields-only)
 # 持续场安装/清理的F1实际GPU读回，可导出对比截图
 (cd Pixel && PIXEL_FIELD_CAPTURE_DIR=/private/tmp/pixel-fields ../build/tests/PixelRuntimeSmoke --formula-only)
 # 只验证本轮背景PNG、sRGB/alpha、视差与F1（可选输出PPM截图）
@@ -298,6 +300,8 @@ cmake --build build-region-release --target PixelWorldBufferBenchmark -j4
 Environment显示驻留/排队块、预算与I/O错误；Performance显示阶段时间、P95、材料访问格数、活动区域、上传量及内存，支持CSV。内存为所有权容量与工作预留，不等于进程RSS；风求解器单列，GPU不计。自动捕获和扩展方式见 [采样模块](Pixel/Source/Dev/Debug/Performance/README.md)。本轮结果以 [新规则基准和最终验证](Docs/WorldRepresentationValidation.md) 为准，早期测量保留于Docs/PerformanceProfiling.md、MemoryProfiling.md和MaterialUpdatePerformance.md。
 
 2026-10-26世界双缓冲：CPU 97/97、64格专项12/12、Apple M5元素GPU专项及独立review通过。动态风配合1–3个读视图的CPU提交与场图打包总耗时下降19%–26%；无读者及运动材料的时间/内存取舍见[双缓冲验证与三轮性能对照](Docs/WorldBuffersValidation.md)。
+
+2026-10-29统一空间场存储：CPU 117/117、64格专项11/11、ASan/UBSan 6/6通过；Apple M5最终风/力场及两轮生命周期专项通过。最后版本完整GPU回归两次停在批量鼠标输入断言，原因未确认；三轮Release数据和各路径的性能取舍见[存储验证报告](Docs/SpatialFieldStorageValidation.md)。
 
 Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置光标，可设置 `XDG_SESSION_TYPE=x11` 运行smoke。2026-10-19历史RTX 3070/X11完整Pixel smoke曾在后续生命周期阶段报 `no drawable 2D frame`；Axiom `--skip-minimize`两轮通过，该历史结果不覆盖最小化恢复。本机Apple M5完整Pixel smoke通过（含两轮最小化恢复），AET --skip-minimize两轮通过；validation layer不可用，完整范围见验证报告。
 

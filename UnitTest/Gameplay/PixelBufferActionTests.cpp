@@ -19,7 +19,7 @@ void BudgetRefusalsPreserveDomainTransactions() {
     stream.Directory = files.Directory;
     stream.WindowEdge = 64;
     stream.SurfaceY = 10000;
-    stream.BudgetBytes = 6 * storage::ChunkReservedBytes + 8 * 1024 * 1024;
+    stream.BudgetBytes = 6 * storage::ChunkReservedBytes() + 8 * 1024 * 1024;
     world.EnableStreaming(stream, {0, 0, storage::ChunkEdge + 64, 64});
     world.SetCell(10, 10, {CellTypeId::Stone});
     WindStrategySettings wind;
@@ -54,7 +54,7 @@ void BudgetRefusalsPreserveDomainTransactions() {
           "refused action changed a sealed version");
 
     world.SetPublicationBytes(0);
-    testing::WorldAccess::SaturateBudget(world, storage::ChunkReservedBytes + 32 * 1024);
+    testing::WorldAccess::SaturateBudget(world, storage::ChunkReservedBytes() + 32 * 1024);
     const auto brush = session.Execute(NativeCaller::Driver,
         api::SpawnElement{{int64_t(storage::ChunkEdge), 20}, uint32_t(CellTypeId::Water), 2});
     Check(brush.Rejection == api::Reason::WaitingForBudget
