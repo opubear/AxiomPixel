@@ -68,11 +68,13 @@ void HeavyOperation() {
 
 trace 采用 Chrome Trace Event JSON 的 `B`/`E` 配对事件：`B` 含整数纳秒 `args.start_ns`；`E` 含 `args.start_ns`、`args.end_ns`、`args.duration_ns`。两条记录的标准 `ts` 分别表示开始/结束时间，按格式要求用微秒并保留三位小数，均相对本次 trace 的单调时钟起点。计时实例尚未结束时，文件中也能读到开始事件。逐事件刷新会增加采集开销，开始记录的写入也计入该 scope 的耗时。
 
+每条 scope 与帧记录都有 `pid` / `tid`；三线程共用同一 trace 时钟，Render / Main 为 tid 1、Game 为 tid 2、Simulation 为 tid 3。这是 trace 内的逻辑编号，不是操作系统线程号。标准 `ph: "M"` / `thread_name` 元数据保存可读名称，同名绑定只输出一次；重新编译并采集后，Axiom Trace 可显示这些名称。旧文件仍可按数字 ID 分轨。应用帧标记只在主线程输出，线程重叠耗时不能相加为帧 wall time。
+
 trace 保留开始/结束事件流，包括初始化、预热和跳帧，并不受 240 帧窗口或 `Clear samples` 影响；自定义名称仅进入 trace，不新增 CSV 列。所有 scope（包括命名宏和提前结束）须在所属线程严格嵌套。取消帧、暂停或关闭记录器时，受影响的未结束 scope 及其子 scope 按逆序写入带 `args.cancelled: true` 的结束事件，耗时截止取消时刻，后续析构不重复写入。详细格式和文件刷新语义见 [Axiom Diagnostics](../../../../../Axiom/Source/Core/Diagnostics/README.md#nanosecond-event-trace)。
 
 每帧另有 `frame.begin` / `frame.end` 标记（`cat: "frame"`、线程级瞬时事件），两者共享 `args.frame_index`。开始标记带 `start_ns`，结束标记另带 `end_ns`、`duration_ns`，均立即刷新。起点位于事件处理、限帧等待和 acquire 之前，终点位于 Present 与帧末内存采样之后。跳过 acquire 的尝试沿用同一帧区间；取消时写入 `cancelled: true` 的结束标记。帧序号从 1 开始，在预热、清空统计和暂停续写期间不重置，不能直接当作会重置的 CSV 行序号。标记不占用 B/E 嵌套栈，因此命名 scope 可以跨帧。其持续时间仅覆盖当前采样区间，CSV 的 `frame_ms` 还包含上一帧结束到本次区间开始之间的时间。
 
-独立 CPU benchmark 可自行创建 `FrameProfiler` 并在每次完整迭代外调用 `BeginFrame()/EndFrame()`，无须初始化 `GameProfiler` 或 GPU。测量与存储分离；计时核心仅在构造时分配有界历史；汇总/导出可分配。业务内存提供者的去重分配单独计时。当前仅支持同线程严格嵌套 scope，一个线程同一时间只有一个 capture；将来引入 worker 时，应为每线程独立采样和显式聚合，不跨线程共享对象。
+独立 CPU benchmark 可自行创建 `FrameProfiler` 并在每次完整迭代外调用 `BeginFrame()/EndFrame()`，无须初始化 `GameProfiler` 或 GPU。测量与存储分离；计时核心仅在构造时分配有界历史；汇总/导出可分配。业务内存提供者的去重分配单独计时。每线程的 scope 严格嵌套，一个线程同一时间只有一个 capture；游戏与模拟 worker 使用独立 collector，在 join 后显式合并到应用帧，Trace 仅共享加锁 sink 和时钟，不跨线程共享调用栈。
 
 `CancelFrame()` 丢弃未完成帧并断开活跃 scope；析构自动取消。开关在下一帧生效，禁用时清除上次时刻，重新启用不会把禁用间隔计成卡顿。清空统计在帧边界执行，保留正常 cadence。计时器用 `steady_clock`，测试注入时钟验证精确数值而非 sleep。
 
@@ -112,7 +114,7 @@ performance::MemoryUsage Component::GetMemoryUsage() const {
 
 测试入口：`ctest --test-dir build-cpu -R 'Pixel\.(Performance|Memory)' --output-on-failure`。除原计时测试外，覆盖容器 size/capacity、所有权分区、七策略、维度变化、重置/关闭、缺失样本、同帧替换、窗口峰值过期及 CSV；`PixelRuntimeSmoke` 检查生产 ImGui 开关和内存表格。
 
-世界分块版本新增 `active_regions` 计数；材料访问格数、活动区域、区域上传字节与驻留预算的约定见 [世界表示](../../../Docs/WorldRepresentation.md)。
+世界分块版本新增 `active_regions` 计数；材料访问格数、活动区域、区域上传字节与驻留预算的约定见 [世界表示](../../../../../Docs/WorldRepresentation.md)。
 
 ## 引擎阶段与兼容性
 

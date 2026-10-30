@@ -49,7 +49,7 @@ class SimulationWorker {
 
   private:
     void Execute() {
-        axiom::diagnostics::TraceThreadScope trace(Trace, 3);
+        axiom::diagnostics::TraceThreadScope trace(Trace, 3, "Simulation");
         if (!Profile) { Job(); return; }
         Metrics.BeginParallelWork();
         try {
