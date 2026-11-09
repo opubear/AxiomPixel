@@ -16,7 +16,7 @@ process::ProgramArtifact Program(std::string_view source) {
 ProcessCarrier Carrier(double x = 10.5) {
     ProcessCarrier carrier;
     carrier.Kind = ProcessCarrierKind::NaturalSource;
-    carrier.Origin = WorldPosition::FromAbsolute(x, 10.5);
+    carrier.Origin = WorldPosition::FromCells(x, 10.5);
     carrier.Scope = {0, 0, 64, 64};
     carrier.Credits = 6;
     return carrier;
@@ -171,14 +171,14 @@ void DistantPositionPrecision() {
         testing::WorldAccess::Map(world).Insert(std::make_unique<WorldChunk>(ChunkOf({far, 0})));
         testing::WorldAccess::SimulationBounds(world) = {far, 0, 32, 32};
         auto carrier = Carrier();
-        carrier.Origin = {ChunkOf({far, 0}), {10.125, 10.375}};
+        carrier.Origin = WorldPosition::FromChunkCells(ChunkOf({far, 0}), {10.125, 10.375});
         carrier.Scope = {far, 0, 32, 32};
         FormulaBridge bridge;
         bridge.ApplyProcess(Program("process 1; emit bolt(1, speed(0), ticks(3)); wait ticks(2);"));
         Check(bridge.CastCarrier(world, carrier), "distant checkpoint carrier refused");
         RoundTrip(bridge, world);
         const auto position = bridge.Projectiles().front().Position;
-        Check(position.Cell().X == far + 10 && position.RelativeTo({far + 10, 10}) == std::array<double, 2>{.125, .375},
+        Check(position.Cell().X == far + 10 && position.RelativeCellsTo({far + 10, 10}) == std::array<double, 2>{.125, .375},
             "checkpoint rounded distant coordinates or fractional position");
     }
 }
@@ -197,7 +197,7 @@ void CorruptionAndDefaultProcess() {
         try { bridge.RestoreState(invalid); } catch (const std::invalid_argument &) { rejected = true; }
         Check(rejected && bridge.CaptureState() == valid, "corrupt or obsolete restore mutated the existing bridge");
     }
-    Check(bridge.Cast(world, WorldPosition::FromAbsolute(10.5, 10.5), 0), "default cast failed");
+    Check(bridge.Cast(world, WorldPosition::FromCells(10.5, 10.5), 0), "default cast failed");
     RoundTrip(bridge, world);
     Check(bridge.Stats().Roots == 1 && bridge.Projectiles().size() == 1 && bridge.Projectiles()[0].ResourceId == 2,
           "default active bolt was not preserved by save");

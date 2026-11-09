@@ -13,7 +13,7 @@ void Check(bool condition, const char *message) {
 }
 
 FieldSourceSpec Source(double x = 32.5, double y = 32.5, uint64_t lifetime = 10) {
-    return {WorldPosition::FromAbsolute(x, y), 8, {3600, -3600}, lifetime};
+    return {WorldPosition::FromCells(x, y), 8, {3600, -3600}, lifetime};
 }
 
 template<class F> void Invalid(F operation, const char *message) {
@@ -143,14 +143,14 @@ void DistantCoordinatesAndDomainExit() {
         auto &map = testing::WorldAccess::Map(world);
         map.Insert(std::make_unique<WorldChunk>(ChunkOf({origin, origin})));
         testing::WorldAccess::SimulationBounds(world) = {origin, origin, 64, 64};
-        FieldSourceSpec spec{{ChunkOf({origin, origin}), {16.5, 16.5}}, 1, {3600, 0}, 10};
+        FieldSourceSpec spec{WorldPosition::FromCell({origin + 16, origin + 16}, {.5, .5}), 1, {3600, 0}, 10};
         const auto handle = world.InstallFieldSource(1, spec);
         Check(handle && world.GetForce(origin + 16, origin + 16).X == 3600
             && world.GetForce(origin + 17, origin + 16).X == 3600
             && world.GetForce(origin + 18, origin + 16).X == 0, "distant source rounded adjacent cells");
-        spec.Center.Local = {1, 1};
+        spec.Center.Local = {50, 50};
         Check(world.InstallFieldSource(2, spec).has_value(), "disk touching domain edge was refused");
-        spec.Center.Local = {.999, 1};
+        spec.Center.Local = {49.95f, 50};
         Check(!world.InstallFieldSource(2, spec), "disk crossing domain edge was admitted");
         testing::WorldAccess::SimulationBounds(world) = {origin + 17, origin, 64, 64};
         Check(world.GetForce(origin + 16, origin + 16).X == 0 && world.GetForce(origin + 17, origin + 16).X == 0,
@@ -218,7 +218,7 @@ void MissingCenterFreezesAllContribution() {
     const int64_t edge = storage::ChunkEdge;
     testing::WorldAccess::SimulationBounds(world) = {edge - 24, 0, 64, 64};
     world.FillBaseForceRegion(world.GetSimulationBounds(), {});
-    const FieldSourceSpec spec{WorldPosition::FromAbsolute(double(edge) - .5, 20.5), 4, {3600, 0}, 2};
+    const FieldSourceSpec spec{WorldPosition::FromCells(double(edge) - .5, 20.5), 4, {3600, 0}, 2};
     const auto handle = world.InstallFieldSource(1, spec);
     Check(handle && world.GetForce(edge, 20).X == 3600, "cross-chunk source fixture failed");
     auto unloaded = map.Remove({0, 0});

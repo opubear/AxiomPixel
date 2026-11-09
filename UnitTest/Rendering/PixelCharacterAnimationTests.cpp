@@ -59,7 +59,7 @@ void Playback() {
     pixel::ArtAssetStore store(Read);
     const auto art = store.LoadCharacter();
     pixel::CharacterAnimation animation;
-    pixel::ActorSnapshot actor{{1}, pixel::ActorKind::Player, {{-(int64_t(1) << 48), 0}, {10, 10}}, true};
+    pixel::ActorSnapshot actor{{1}, pixel::ActorKind::Player, pixel::WorldPosition::FromChunkCells({-(int64_t(1) << 48), 0}, {10, 10}), true};
     pixel::Camera2D camera;
     camera.SetWorldPosition(actor.Position);
     WorldGridFrame frame;
@@ -76,7 +76,7 @@ void Playback() {
     Check(std::abs(idle.Bounds[1] + idle.Bounds[3] - 384) < .001, "sprite feet left collision bottom");
     Check(publish(.5).FrameTexels[0] == 240, "idle did not advance on simulation clock");
     Check(publish(.5).FrameTexels[0] == 240, "paused animation moved");
-    actor.Position.Local[0] -= 1;
+    actor.Position.Local[0] -= 50;
     const auto run = publish(.6);
     Check(animation.Motion() == pixel::CharacterMotion::Run && run.FrameTexels[1] == 128 && run.Sprite[1] == 1,
           "far-coordinate movement did not select mirrored run");
@@ -84,11 +84,11 @@ void Playback() {
     const auto stopped = publish(.7);
     Check(animation.Motion() == pixel::CharacterMotion::Idle && stopped.Sprite[1] == 1, "stopping lost facing");
     actor.Grounded = false;
-    actor.Position.Local[1] = 9;
+    actor.Position.Local[1] = 450;
     Check(publish(.8).FrameTexels[1] == 192, "ascending did not select jump");
-    actor.Position.Local[1] = 8;
+    actor.Position.Local[1] = 400;
     Check(publish(1.8).FrameTexels[0] == 240, "non-looping jump did not hold final pose");
-    actor.Position.Local[1] = 9;
+    actor.Position.Local[1] = 450;
     Check(publish(1.9).FrameTexels[1] == 256, "descending did not select fall");
     actor.Grounded = true;
     Check(publish(2).FrameTexels[1] == 0, "landing did not return to idle");

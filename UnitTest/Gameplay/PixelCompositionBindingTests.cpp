@@ -15,7 +15,7 @@ process::ProgramArtifact Program(std::string_view source) {
     if (const auto *error = std::get_if<process::Diagnostic>(&result)) throw std::runtime_error(error->Message);
     return std::get<process::ProgramArtifact>(std::move(result));
 }
-WorldPosition At(double x, double y = 10.5) { return WorldPosition::FromAbsolute(x, y); }
+WorldPosition At(double x, double y = 10.5) { return WorldPosition::FromCells(x, y); }
 ProcessCarrier Carrier(ProcessCarrierKind kind = ProcessCarrierKind::NaturalSource) {
     ProcessCarrier carrier;
     carrier.Kind = kind; carrier.Subject = 87; carrier.Origin = At(10.5);

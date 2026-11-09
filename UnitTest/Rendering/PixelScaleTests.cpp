@@ -20,11 +20,11 @@ void ProjectionAndPicking() {
     pixel::GameCamera camera;
     camera.SetFramebufferSize({1600, 1200});
     Check(camera.GetView().CellSizePixels == pixel::DefaultLogicalPixelSize, "default camera scale differs from configuration");
-    const pixel::WorldPosition centre{{-(int64_t{1} << 40), int64_t{1} << 40}, {32, 32}};
+    const pixel::WorldPosition centre = pixel::WorldPosition::FromChunkCells({-(int64_t{1} << 40), int64_t{1} << 40}, {32, 32});
     const auto reference = centre.Cell();
     for (uint32_t scale : {1, 2, 4, 8, 16, 32, 64}) {
         GridView2D settings;
-        settings.CellSizePixels = {scale, scale};
+        settings.CellSizePixels = {float(scale), float(scale)};
         camera.SetView(settings);
         camera.GetCamera().SetWorldPosition(centre);
         for (int dpi : {1, 2}) {
@@ -50,7 +50,7 @@ void ProjectionAndPicking() {
         frame.View = camera.GetView();
         const pixel::ActorSnapshot actor{{1}, pixel::ActorKind::Player, centre, true};
         BuildCharacterFrame(actor, camera.GetCamera(), {1600, 1200}, frame);
-        Check(frame.Character->Bounds == std::array<float, 4>{800, 600, float(pixel::Body::Width * scale), float(pixel::Body::Height * scale)}, "body dimensions are not measured in logical pixels");
+        Check(frame.Character->Bounds == std::array<float, 4>{800, 600, float(pixel::Body::WidthCells * scale), float(pixel::Body::HeightCells * scale)}, "body dimensions are not measured in logical pixels");
         pixel::FormulaProjectile projectile;
         projectile.Position = centre;
         projectile.Radius = .5;
@@ -72,7 +72,7 @@ void InvalidShapes() {
     pixel::GameCamera camera;
     camera.SetFramebufferSize({800, 600});
     const auto before = camera.GetView();
-    for (const auto size : {std::array<uint32_t, 2>{0, 0}, {4, 8}, {65, 65}, {UINT32_MAX, UINT32_MAX}}) {
+    for (const auto size : {std::array<float, 2>{0, 0}, {4, 8}, {65, 65}, {INFINITY, INFINITY}}) {
         auto view = before;
         view.CellSizePixels = size;
         Reject([&] { camera.SetView(view); });

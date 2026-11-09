@@ -154,7 +154,7 @@ bool WindSimulation::AddWorldImpulse(WorldPosition position, float radius, WindV
         || !std::isfinite(delta.X) || !std::isfinite(delta.Y))
         return false;
     position.Normalize();
-    const auto local = position.RelativeTo(Domain.Origin);
+    const auto local = position.RelativeCellsTo(Domain.Origin);
     if (local[0] < 0 || local[1] < 0 || local[0] >= Domain.Width || local[1] >= Domain.Height)
         return false;
     const auto narrowInside = [](double value, uint32_t extent) {

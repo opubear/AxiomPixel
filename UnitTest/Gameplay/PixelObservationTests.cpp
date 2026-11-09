@@ -116,8 +116,7 @@ void FarResidentProjectionAndChunkLifecycle() {
     const auto chunk = ChunkOf(base);
     testing::WorldAccess::Map(world).Insert(std::make_unique<WorldChunk>(chunk));
     world.SetCell(baseX + 10, baseY + 10, {CellTypeId::Dirt, {0, 1}});
-    testing::SessionAccess::SetPlayerPosition(session, {chunk, {double(baseX - chunk.X * storage::ChunkEdge) + .125,
-                                 double(baseY - chunk.Y * storage::ChunkEdge) + .125}});
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCell(base, {.125, .125}));
     testing::SessionAccess::PublishFixtureChanges(session);
     const api::Rect scope{{baseX, baseY}, 16, 16};
     auto result = session.Observe(NativeCaller::Driver, scope);
@@ -164,7 +163,7 @@ void PendingStepUsesOnlyCompleteCopies() {
     settings.SurfaceY = 10000;
     settings.BudgetBytes = 50ull * 1024 * 1024;
     world.EnableStreaming(settings);
-    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(191.9, 128));
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindDomain(256, wind);
@@ -172,7 +171,7 @@ void PendingStepUsesOnlyCompleteCopies() {
     testing::SessionAccess::PublishFixtureChanges(session);
     session.Control(NativeCaller::Driver, api::SetPaused{false});
 
-    const auto source = world.InstallFieldSource(999, {WorldPosition::FromAbsolute(100, 100), 2, {100, 0}, 20});
+    const auto source = world.InstallFieldSource(999, {WorldPosition::FromCells(100, 100), 2, {100, 0}, 20});
     Require(source.has_value(), "pending source setup failed");
     testing::SessionAccess::PublishFixtureChanges(session);
 

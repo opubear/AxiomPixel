@@ -25,6 +25,9 @@ target_link_libraries(PixelGameplay PUBLIC PixelActors PixelFormulaBridge PixelG
 
 add_subdirectory(UI)
 add_subdirectory(Camera)
+add_library(PixelDisplaySettings STATIC Application/DisplaySettings.cpp)
+target_link_libraries(PixelDisplaySettings PUBLIC PixelCamera PixelUI)
+target_include_directories(PixelDisplaySettings PRIVATE "${AXIOM_ENGINE_DIR}/ThirdParty/nlohmannJson/single_include")
 add_subdirectory(LLMView)
 add_subdirectory(LLM)
 add_subdirectory(WorldWill)

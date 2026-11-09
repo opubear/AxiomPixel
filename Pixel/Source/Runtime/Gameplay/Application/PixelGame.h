@@ -28,6 +28,10 @@ class PixelGame final : public IGameInterface {
     pixel::llm::ViewService &GetObservationViews() { return ObservationViews; }
     pixel::will::WorldWill &GetWorldWill() { return WorldWill; }
     pixel::ui::InventoryUI &GetUI() { return UI; }
+    float GetSceneScale() const { return Camera.GetSceneScale(); }
+    void SetSceneScale(float scale) { Camera.SetSceneScale(scale); }
+    float GetUIScale() const { return UI.GetUIScale(); }
+    void SetUIScale(float scale) { UI.SetUIScale(scale); }
     pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }

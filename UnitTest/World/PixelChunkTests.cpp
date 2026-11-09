@@ -62,10 +62,10 @@ void CoordinatesStorageAndPublication() {
     Require(snapshot.TryGet({0, 0})->Type == CellTypes::Empty, "new map identity reused old snapshot contents");
     snapshot.Update(other, {0, 0, 64, 64});
     Require(!snapshot.TryGet({2, 0}), "snapshot exposed padding outside finite map bounds");
-    WorldPosition distant{{int64_t{1} << 40, -(int64_t{1} << 40)}, {double(storage::ChunkEdge) - .125, .25}};
-    distant.Local[0] += .25;
+    WorldPosition distant = WorldPosition::FromChunkCells({int64_t{1} << 40, -(int64_t{1} << 40)}, {double(storage::ChunkEdge) - .125, .25});
+    distant.Local[0] += 12.5f;
     distant.Normalize();
-    Require(distant.Local[0] == .125 && distant.Local[1] == .25 && distant.Chunk.X == (int64_t{1} << 40) + 1,
+    Require(distant.Local[0] == 6.25f && distant.Local[1] == 12.5f && distant.Chunk.X == (int64_t{1} << 40) + 1,
             "distant fractional position lost precision across chunk edge");
 }
 

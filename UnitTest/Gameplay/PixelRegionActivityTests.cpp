@@ -16,7 +16,7 @@ process::ProgramArtifact Program(std::string_view source) {
 ProcessCarrier Carrier(ProcessCarrierKind kind = ProcessCarrierKind::NaturalSource) {
     ProcessCarrier result;
     result.Kind = kind;
-    result.Origin = WorldPosition::FromAbsolute(20.5, 20.5);
+    result.Origin = WorldPosition::FromCells(20.5, 20.5);
     result.Scope = {0, 0, 64, 64};
     return result;
 }
@@ -163,7 +163,7 @@ void ScopeCapacityAndProcessDelay() {
     }
     Move(world, bridge, 64);
     bridge.BeginFrame();
-    auto remote = Carrier(); remote.Origin = WorldPosition::FromAbsolute(84, 20); remote.Scope = {64, 0, 64, 64};
+    auto remote = Carrier(); remote.Origin = WorldPosition::FromCells(84, 20); remote.Scope = {64, 0, 64, 64};
     Check(!bridge.CastCarrier(world, remote) && bridge.ProcessStats().SuspendedInstances == 16,
           "suspension evaded instance capacity");
     bridge.Clear(world);
@@ -252,7 +252,7 @@ void DeviceStreamingAndDestruction() {
         settings.SurfaceY = 10000;
         settings.BudgetBytes = 64ull * 1024 * 1024;
         world.EnableStreaming(settings, {64, 64, 128, 128});
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(128, 128));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(128, 128));
         Stock(session, items::ItemId::Stone, 4);
         Stock(session, items::ItemId::CopperOre, 2);
         Stock(session, items::ItemId::Coal, 2);
@@ -267,7 +267,7 @@ void DeviceStreamingAndDestruction() {
         const auto continuation = session.GetFormulaRuntime().InspectProcesses()[0];
         const auto source = world.GetEnvironment().GetFieldSources().Sources()[0];
         const auto fuel = session.GetInventory().Inspect(session.GetDevices().Find(id)->FuelContainer);
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(8192 + 128, 128));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(8192 + 128, 128));
         world.LoadSimulationNow();
         session.Tick(0, {}); // Paused streaming alone synchronizes lifecycle.
         Check(Device(session, id).State == DeviceState::OutsideActiveArea && Device(session, id).Instance == running.Instance
@@ -289,7 +289,7 @@ void DeviceStreamingAndDestruction() {
         session.Observe(NativeCaller::Driver, {64, 64, 64, 64});
         Check(session.GetFormulaRuntime().InspectProcesses()[0].Suspended
             && world.GetStreamer()->PendingCount() == beforeObservation, "query activated or loaded frozen region");
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(128, 128));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(128, 128));
         world.LoadSimulationNow();
         session.Tick(0, {});
         Check(Device(session, id).State == DeviceState::Running && Device(session, id).Instance == running.Instance
@@ -301,12 +301,12 @@ void DeviceStreamingAndDestruction() {
         Check(Device(session, id).Cycles == 1 && Device(session, id).Fuel == 1, "cycle caught up early");
         Step(session);
         Check(Device(session, id).Cycles == 2 && Device(session, id).Fuel == 0, "cycle did not finish after remaining active time");
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(8192 + 128, 128));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(8192 + 128, 128));
         session.Tick(0, {});
         const auto removed = session.Execute(NativeCaller::Driver, api::RemoveDevice{Device(session, id).Ref});
         Check(removed.Applied() && session.GetFormulaRuntime().ProcessStats().Instances == 0
             && world.GetEnvironment().GetFieldSources().Size() == 0, "frozen removal retained source or instance");
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(128, 128));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(128, 128));
         world.LoadSimulationNow();
         session.Tick(0, {});
         Check(session.GetDevices().Count() == 0 && world.GetForce(100, 100).X == 0, "removed identity reappeared on load");

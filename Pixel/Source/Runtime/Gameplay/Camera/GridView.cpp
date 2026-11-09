@@ -12,7 +12,7 @@ std::optional<std::array<int64_t, 2>> PickGridCell(const GridView2D &view,
     for (size_t axis = 0; axis < 2; ++axis) {
         if (windowSize[axis] <= 0 || framebufferSize[axis] <= 0 || !std::isfinite(cursor[axis]) || cursor[axis] < 0 || cursor[axis] >= windowSize[axis])
             return std::nullopt;
-        const double pixel = std::floor(cursor[axis] * framebufferSize[axis] / windowSize[axis]) + view.OriginPixels[axis];
+        const double pixel = std::floor(cursor[axis] * framebufferSize[axis] / windowSize[axis]) + .5 + view.OriginPixels[axis];
         const double local = std::floor(pixel / view.CellSizePixels[axis]);
         if (local < double(INT64_MIN) || local >= double(INT64_MAX))
             return std::nullopt;
@@ -31,7 +31,7 @@ GridView2D MakeCameraView(const pixel::Camera2D &camera, std::array<int, 2> fram
     const auto cameraPosition = camera.GetWorldPosition();
     const pixel::CellCoord reference{cameraPosition.Chunk.X * pixel::storage::ChunkEdge,
                                      cameraPosition.Chunk.Y * pixel::storage::ChunkEdge};
-    const auto local = cameraPosition.RelativeTo(reference);
+    const auto local = cameraPosition.RelativeCellsTo(reference);
     settings.WorldOriginCells = {reference.X, reference.Y};
     for (size_t axis = 0; axis < 2; ++axis) {
         if (framebufferSize[axis] < 0)

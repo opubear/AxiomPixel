@@ -16,7 +16,7 @@ void Require(bool value, const char *message) {
         throw std::runtime_error(message);
 }
 
-WorldPosition At(double x, double y) { return WorldPosition::FromAbsolute(x, y); }
+WorldPosition At(double x, double y) { return WorldPosition::FromCells(x, y); }
 
 void DefaultAndVersioning() {
     World world(64, 64);
@@ -25,7 +25,7 @@ void DefaultAndVersioning() {
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 10 && runtime.AppliedProgram().ResourceId == 2,
             "default must produce a process bolt");
     runtime.Step(world);
-    Require(std::abs(runtime.Projectiles()[0].Position.RelativeTo({10, 10})[0] - 1.5) < 1e-9, "bolt did not move one cell per tick");
+    Require(std::abs(runtime.Projectiles()[0].Position.RelativeCellsTo({10, 10})[0] - 1.5) < 1e-9, "bolt did not move one cell per tick");
     runtime.Clear(world);
     runtime.ApplyProcess(Program("process 1;"));
     Require(runtime.Cast(world, At(10.5, 10.5), 0) && runtime.Stats().Roots == 0, "empty process must retire");
@@ -47,7 +47,7 @@ void SweptGeometry() {
     world.SetCell(15, 10, {CellTypeId::Stone});
     auto hit = FormulaWorldAdapter::Sweep(world, At(10.5, 10.5), At(20.5, 10.5));
     Require(hit.Kind == FormulaContactKind::Solid && hit.Cell == CellCoord{15, 10}, "fast ball tunneled through thin wall");
-    Require(std::abs(hit.Fraction - .415) < 1e-9 && std::abs(hit.Position.RelativeTo({14, 10})[0] - .65) < 1e-9,
+    Require(std::abs(hit.Fraction - .415) < 1e-9 && std::abs(hit.Position.RelativeCellsTo({14, 10})[0] - .65) < 1e-9,
             "sweep did not return contact ball center");
     world.SetCell(15, 10, {});
     world.SetCell(10, 10, {CellTypeId::Stone});
@@ -77,7 +77,7 @@ void ClosedSetFaceTangencies() {
     for (const auto &test : solids) {
         world.SetCell(test.Cell.X, test.Cell.Y, {CellTypeId::Stone});
         for (const bool moving : {false, true}) {
-            const auto to = moving ? FormulaWorldAdapter::Offset(test.Position, test.AlongFace) : test.Position;
+            const auto to = moving ? FormulaWorldAdapter::OffsetCells(test.Position, test.AlongFace) : test.Position;
             const auto contact = FormulaWorldAdapter::Sweep(world, test.Position, to);
             Require(contact.Kind == FormulaContactKind::Solid && contact.Cell == test.Cell && contact.Fraction == 0,
                     "face tangency must include both adjacent candidate cells for stationary and parallel motion");
@@ -97,7 +97,7 @@ void ClosedSetFaceTangencies() {
     };
     for (const auto &test : boundaries) {
         for (const bool moving : {false, true}) {
-            const auto to = moving ? FormulaWorldAdapter::Offset(test.Position, test.AlongFace) : test.Position;
+            const auto to = moving ? FormulaWorldAdapter::OffsetCells(test.Position, test.AlongFace) : test.Position;
             const auto contact = FormulaWorldAdapter::Sweep(world, test.Position, to);
             Require(contact.Kind == FormulaContactKind::OutOfSimulation && contact.Fraction == 0,
                     "closed-set tangency with each simulation boundary must discard without entering unknown space");
@@ -166,7 +166,8 @@ void WindAdapterBoundaries() {
     Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1, {60, 0}) == FormulaWindResult::Unavailable, "disabled wind was silently enabled");
     world.ConfigureWindStrategy(64, Coarse());
     Require(FormulaWorldAdapter::Wind(world, At(10, 10), 1.0 / 256, {60, 0}) == FormulaWindResult::Applied, "minimum resolved radius was rejected");
-    Require(FormulaWorldAdapter::Wind(world, At(64 - 1e-10, 10), 1, {60, 0}) == FormulaWindResult::Applied, "domain-inside rounding reached outside");
+    const auto inside = WorldPosition::FromAbsolute(std::nextafter(3200.f, 0.f), 500.f);
+    Require(FormulaWorldAdapter::Wind(world, inside, 1, {60, 0}) == FormulaWindResult::Applied, "domain-inside rounding reached outside");
     Require(FormulaWorldAdapter::Wind(world, At(64, 10), 1, {60, 0}) == FormulaWindResult::Unavailable, "outside wind was clamped into domain");
     auto tooLarge = Coarse(); tooLarge.Coarse.Columns = 33;
     world.ConfigureWindStrategy(64, tooLarge);
@@ -209,13 +210,13 @@ void DistantCoordinates() {
             const int64_t baseY = FloorDivide(far, storage::ChunkEdge) * storage::ChunkEdge;
             world.EnableStreaming(settings, {baseX, baseY, storage::ChunkEdge, storage::ChunkEdge});
             world.FillRegion(world.GetSimulationBounds(), {});
-            WorldPosition anchor{ChunkOf({baseX, baseY}), {10.25, 10.5}};
+            WorldPosition anchor = WorldPosition::FromChunkCells(ChunkOf({baseX, baseY}), {10.25, 10.5});
             world.SetCell(baseX + 15, baseY + 10, {CellTypeId::Stone});
             FormulaBridge runtime;
             runtime.Cast(world, anchor, 0);
             runtime.Step(world);
             Require(runtime.Projectiles()[0].Position.Cell() == CellCoord{baseX + 11, baseY + 10}
-                    && std::abs(runtime.Projectiles()[0].Position.RelativeTo({baseX + 11, baseY + 10})[0] - .25) < 1e-10,
+                    && std::abs(runtime.Projectiles()[0].Position.RelativeCellsTo({baseX + 11, baseY + 10})[0] - .25) < 1e-10,
                     "far coordinate bolt lost fractional movement");
             for (int i = 0; i < 4; ++i)
                 runtime.Step(world);

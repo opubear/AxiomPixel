@@ -1,6 +1,7 @@
 #pragma once
 
 #include "WorldStorageConfig.h"
+#include "WorldUnits.h"
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -47,35 +48,68 @@ struct WorldRect {
     bool operator==(const WorldRect &) const = default;
 };
 
-// Continuous positions keep fractional precision independently of distance from origin.
+// Integer chunk addresses plus float centimetres within the chunk. Never merge a
+// distant chunk address into a float before subtracting the local reference.
 struct WorldPosition {
     CellCoord Chunk;
-    std::array<double, 2> Local{};
+    std::array<float, 2> Local{};
+    static constexpr float ChunkCentimeters = storage::ChunkEdge * CentimetersPerCell;
 
     void Normalize() {
         for (size_t axis = 0; axis < 2; ++axis) {
-            if (!std::isfinite(Local[axis]) || std::abs(Local[axis]) > double(int64_t{1} << 50))
+            if (!std::isfinite(Local[axis]) || std::abs(Local[axis]) > float(int64_t{1} << 50))
                 throw std::invalid_argument("invalid continuous world position");
-            const auto shift = int64_t(std::floor(Local[axis] / storage::ChunkEdge));
+            const auto shift = FloorDivide(int64_t(std::floor(Local[axis])), int64_t(ChunkCentimeters));
             auto &chunk = axis == 0 ? Chunk.X : Chunk.Y;
-            if (std::abs(double(chunk)) + std::abs(double(shift)) > double(int64_t{1} << 49))
+            constexpr int64_t limit = int64_t{1} << 49;
+            if (chunk < -limit || chunk > limit || shift < -limit - chunk || shift > limit - chunk)
                 throw std::out_of_range("world position exceeds supported coordinate range");
             chunk += shift;
-            Local[axis] -= double(shift) * storage::ChunkEdge;
+            Local[axis] = std::fmod(Local[axis], ChunkCentimeters);
+            if (Local[axis] < 0) {
+                Local[axis] += ChunkCentimeters;
+                // A tiny negative offset must stay on the preceding side of a boundary.
+                if (Local[axis] >= ChunkCentimeters)
+                    Local[axis] = std::nextafter(ChunkCentimeters, 0.f);
+            }
         }
     }
     CellCoord Cell() const {
-        return {Chunk.X * storage::ChunkEdge + int64_t(std::floor(Local[0])),
-                Chunk.Y * storage::ChunkEdge + int64_t(std::floor(Local[1]))};
+        return {Chunk.X * storage::ChunkEdge + int64_t(std::floor(CentimetersToCells(Local[0]))),
+                Chunk.Y * storage::ChunkEdge + int64_t(std::floor(CentimetersToCells(Local[1])))};
     }
-    std::array<double, 2> RelativeTo(CellCoord origin) const {
-        return {double(Chunk.X * storage::ChunkEdge - origin.X) + Local[0],
-                double(Chunk.Y * storage::ChunkEdge - origin.Y) + Local[1]};
+    std::array<float, 2> RelativeTo(CellCoord origin) const {
+        return {CellsToCentimeters(float(Chunk.X * storage::ChunkEdge - origin.X)) + Local[0],
+                CellsToCentimeters(float(Chunk.Y * storage::ChunkEdge - origin.Y)) + Local[1]};
     }
-    static WorldPosition FromAbsolute(double x, double y) {
+    static WorldPosition FromAbsolute(float x, float y) {
         WorldPosition result{{}, {x, y}};
         result.Normalize();
         return result;
+    }
+
+    // Explicit grid/protocol adapters. Double here preserves legacy cell-valued
+    // serialization and solver arithmetic; the stored game position is float cm.
+    std::array<double, 2> RelativeCellsTo(CellCoord origin) const {
+        return {double(Chunk.X * storage::ChunkEdge - origin.X) + double(Local[0]) / CentimetersPerCell,
+                double(Chunk.Y * storage::ChunkEdge - origin.Y) + double(Local[1]) / CentimetersPerCell};
+    }
+    static WorldPosition FromChunkCells(CellCoord chunk, std::array<double, 2> localCells) {
+        WorldPosition result{chunk, {float(localCells[0] * CentimetersPerCell), float(localCells[1] * CentimetersPerCell)}};
+        result.Normalize();
+        return result;
+    }
+    static WorldPosition FromCell(CellCoord cell, std::array<double, 2> offsetCells = {}) {
+        const auto chunk = ChunkOf(cell);
+        return FromChunkCells(chunk, {double(cell.X - chunk.X * storage::ChunkEdge) + offsetCells[0],
+                                     double(cell.Y - chunk.Y * storage::ChunkEdge) + offsetCells[1]});
+    }
+    static WorldPosition FromCells(double x, double y) {
+        if (!std::isfinite(x) || !std::isfinite(y) || std::abs(x) >= double(int64_t{1} << 59)
+            || std::abs(y) >= double(int64_t{1} << 59))
+            throw std::invalid_argument("invalid cell position");
+        const CellCoord cell{int64_t(std::floor(x)), int64_t(std::floor(y))};
+        return FromCell(cell, {x - std::floor(x), y - std::floor(y)});
     }
 };
 } // namespace pixel

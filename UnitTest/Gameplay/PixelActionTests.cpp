@@ -25,7 +25,7 @@ void ThreeEntrances() {
         GamePresentation presentation;
         ui::InventoryUI ui;
         GameInput input(session, camera, presentation, ui, {[] {}, [] {}, [] {}, [] { return std::array{800, 600}; }});
-        camera.GetCamera().SetPosition({520, 512});
+        camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(520, 512));
         const MousePointerState pointer{{400, 300}, {800, 600}, {800, 600}};
         if (caller == NativeCaller::Input)
             input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), pointer);
@@ -97,7 +97,7 @@ void ProgramAndControls() {
     const auto cast = session.Execute(NativeCaller::Input, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}});
     Require(cast.Applied() && std::get<ActivationResult>(cast.Result).ActivationId != 0, "activation identity missing");
     const auto original = session.GetFormulaRuntime().Projectiles().front();
-    const auto position = original.Position.RelativeTo({513, 510});
+    const auto position = original.Position.RelativeCellsTo({513, 510});
     Require(std::abs(position[0] - .6) < 1e-9 && std::abs(position[1]) < 1e-9, "muzzle geometry changed");
     session.Control(NativeCaller::Driver, SetPaused{true});
     session.Tick(.1f, {});
@@ -112,7 +112,7 @@ void ProgramAndControls() {
     session.Control(NativeCaller::Debug, StepSimulation{});
     session.Tick(.1f, {});
     const auto &ball = session.GetFormulaRuntime().Projectiles().front();
-    Require(ball.Version == original.Version && std::abs(ball.Position.RelativeTo(original.Position.Cell())[0] - 1.6) < 1e-8,
+    Require(ball.Version == original.Version && std::abs(ball.Position.RelativeCellsTo(original.Position.Cell())[0] - 1.6) < 1e-8,
             "apply changed old instances or single-step timing");
     Require(session.Control(NativeCaller::Debug, ClearRunning{}).Succeeded() && session.GetFormulaRuntime().Stats().Roots == 0,
             "clear left running roots");
@@ -141,7 +141,7 @@ void WaitingAndFarCoordinates() {
             "waiting did not refuse clearing running state");
     pixel::testing::SessionAccess::RestoreClock(session, 0, 0);
     const CellCoord far{(int64_t{1} << 45) + 17, -(int64_t{1} << 45) - 17};
-    WorldPosition point{ChunkOf(far), {17.125, 33.875}};
+    WorldPosition point = WorldPosition::FromChunkCells(ChunkOf(far), {17.125, 33.875});
     point.Normalize();
     const auto dto = ActionPosition(point);
     Require(dto.AnchorCell == Cell{point.Cell().X, point.Cell().Y} && dto.Offset == std::array{.125, .875},

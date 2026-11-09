@@ -96,7 +96,7 @@ void GameSession::RestoreSocialData(const GameplaySaveData &data, const std::str
             throw WorldStorageError("intervention carrier and authority disagree");
         for (const auto &source : data.FieldSources.Sources) {
             if (source.Owner != process.State.Id) continue;
-            const auto center = source.Spec.Center.RelativeTo({scope.Origin.X, scope.Origin.Y});
+            const auto center = source.Spec.Center.RelativeCellsTo({scope.Origin.X, scope.Origin.Y});
             const auto radius = source.Spec.Radius;
             if (radius > carrier.MaximumRadius || center[0] - radius < 0 || center[1] - radius < 0
                 || center[0] + radius >= scope.Width || center[1] + radius >= scope.Height)

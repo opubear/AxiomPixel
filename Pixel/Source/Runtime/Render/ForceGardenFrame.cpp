@@ -10,7 +10,7 @@ void BuildForceGardenFrame(const std::optional<ForceGardenObservation> &garden, 
         return;
 
     const auto reference = camera.GetWorldPosition().Cell();
-    const auto centre = camera.RelativeTo(reference);
+    const auto centre = camera.RelativeCellsTo(reference);
     const auto relativeCell = [](int64_t cell, int64_t origin) {
         return cell >= origin ? double(uint64_t(cell) - uint64_t(origin))
                               : -double(uint64_t(origin) - uint64_t(cell));

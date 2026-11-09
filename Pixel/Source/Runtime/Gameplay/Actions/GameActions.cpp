@@ -24,8 +24,7 @@ bool ValidPosition(const api::Position &position) {
 }
 WorldPosition WorldPoint(const api::Position &position) {
     const CellCoord cell{position.AnchorCell.X, position.AnchorCell.Y};
-    const auto chunk = ChunkOf(cell);
-    return {chunk, {double(cell.X - chunk.X * storage::ChunkEdge) + position.Offset[0], double(cell.Y - chunk.Y * storage::ChunkEdge) + position.Offset[1]}};
+    return WorldPosition::FromCell(cell, position.Offset);
 }
 api::Reason Validate(const api::Action &action) {
     return std::visit([](const auto &value) {
@@ -349,7 +348,7 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
             if (!player || !GameWorld.GetSimulationBounds().Contains(cell) || !GameWorld.TryGetCell(cell.X, cell.Y)) {
                 receipt.Rejection = api::Reason::NotReady;
             } else {
-                const auto position = player->GetWorldPosition().RelativeTo(cell);
+                const auto position = player->GetWorldPosition().RelativeCellsTo(cell);
                 // Native measurement tool: proximity authorizes observation,
                 // not program inspection, copying, editing or device control.
                 if (std::hypot(position[0], position[1]) > 32)

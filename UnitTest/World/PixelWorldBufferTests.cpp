@@ -18,7 +18,7 @@ void Check(bool value, const char *message) { if (!value) throw std::runtime_err
 void PublishedVersionsAndReuse() {
     World world(64, 64);
     world.SetCell(10, 10, {CellTypeId::Dirt});
-    const auto source = world.InstallFieldSource(7, {WorldPosition::FromAbsolute(20.5, 20.5), 4, {3600, 0}, 10});
+    const auto source = world.InstallFieldSource(7, {WorldPosition::FromCells(20.5, 20.5), 4, {3600, 0}, 10});
     Check(source.has_value(), "source fixture failed");
     world.PublishBuffers();
     auto first = world.ReadBuffers();

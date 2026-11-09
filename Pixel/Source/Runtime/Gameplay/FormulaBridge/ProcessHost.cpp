@@ -14,26 +14,24 @@ constexpr size_t MaximumReceipts = 256, MaximumEffects = 256;
 process::Position LanguagePosition(WorldPosition position) {
     position.Normalize();
     const auto cell = position.Cell();
-    const auto offset = position.RelativeTo(cell);
+    const auto offset = position.RelativeCellsTo(cell);
     return {cell.X, cell.Y, offset[0], offset[1]};
 }
 WorldPosition WorldPoint(process::Position position) {
     const CellCoord cell{position.CellX, position.CellY};
-    const auto chunk = ChunkOf(cell);
-    return {chunk, {double(cell.X - chunk.X * storage::ChunkEdge) + position.OffsetX,
-                    double(cell.Y - chunk.Y * storage::ChunkEdge) + position.OffsetY}};
+    return WorldPosition::FromCell(cell, {position.OffsetX, position.OffsetY});
 }
 api::Position PublicPosition(process::Position position) {
     return {{position.CellX, position.CellY}, {position.OffsetX, position.OffsetY}};
 }
 bool ContainsDisk(WorldRect scope, WorldPosition position, double radius) {
-    const auto offset = position.RelativeTo({scope.X, scope.Y});
+    const auto offset = position.RelativeCellsTo({scope.X, scope.Y});
     return offset[0] - radius >= 0 && offset[1] - radius >= 0
         && offset[0] + radius < scope.Width && offset[1] + radius < scope.Height;
 }
 double ScopeExit(WorldRect scope, WorldPosition from, WorldPosition to) {
-    const auto start = from.RelativeTo({scope.X, scope.Y});
-    const auto end = to.RelativeTo({scope.X, scope.Y});
+    const auto start = from.RelativeCellsTo({scope.X, scope.Y});
+    const auto end = to.RelativeCellsTo({scope.X, scope.Y});
     const double extent[]{double(scope.Width), double(scope.Height)};
     double first = 1;
     for (size_t axis = 0; axis < 2; ++axis) {
@@ -153,7 +151,7 @@ struct ProcessHost::State {
         if (!Characters) throw std::logic_error("actor binding requires an actor registry");
         const auto *actor = Characters->Find(carrier.AttachedActor);
         if (!actor) return false;
-        carrier.Origin = FormulaWorldAdapter::Offset(actor->Body.GetWorldPosition(),
+        carrier.Origin = FormulaWorldAdapter::OffsetCells(actor->Body.GetWorldPosition(),
             {carrier.LocalOffset[0], carrier.LocalOffset[1]});
         return true;
     }
@@ -250,14 +248,14 @@ struct ProcessHost::State {
                 it = Bolts.erase(it);
                 continue;
             }
-            const auto to = FormulaWorldAdapter::Offset(it->Position, {it->Velocity.X / 60, it->Velocity.Y / 60});
+            const auto to = FormulaWorldAdapter::OffsetCells(it->Position, {it->Velocity.X / 60, it->Velocity.Y / 60});
             auto contact = FormulaWorldAdapter::Sweep(world, it->Position, to, FormulaWorldAdapter::BoltRadius, ActorTargets);
             // Scope exit competes with terrain by time of contact. A wall hit
             // inside the scope still wins over a later unauthorized segment.
             if (!ContainsDisk(root.Carrier.Scope, to, FormulaWorldAdapter::BoltRadius)) {
                 const auto exit = ScopeExit(root.Carrier.Scope, it->Position, to);
                 if (contact.Kind == FormulaContactKind::None || exit <= contact.Fraction) {
-                    const auto position = FormulaWorldAdapter::Offset(it->Position,
+                    const auto position = FormulaWorldAdapter::OffsetCells(it->Position,
                         {it->Velocity.X / 60 * exit, it->Velocity.Y / 60 * exit});
                     contact = {FormulaContactKind::OutOfSimulation, exit, position, position.Cell()};
                 }

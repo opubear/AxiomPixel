@@ -79,10 +79,10 @@ void UpdateObjects(api::ObservationSnapshot &snapshot, const Actors &actors, con
     snapshot.Player.reset();
     if (const auto player = actors.PlayerSnapshot()) {
         const auto position = player->GetWorldPosition();
-        const auto local = position.RelativeTo({snapshot.Scope.Origin.X, snapshot.Scope.Origin.Y});
+        const auto local = position.RelativeCellsTo({snapshot.Scope.Origin.X, snapshot.Scope.Origin.Y});
         if (local[0] < snapshot.Scope.Width && local[1] < snapshot.Scope.Height
-            && local[0] + Body::Width > 0 && local[1] + Body::Height > 0)
-            snapshot.Player = api::PlayerObservation{ActionPosition(position), {Body::Width, Body::Height}, player->Grounded, player->Id.Value};
+            && local[0] + Body::WidthCells > 0 && local[1] + Body::HeightCells > 0)
+            snapshot.Player = api::PlayerObservation{ActionPosition(position), {Body::WidthCells, Body::HeightCells}, player->Grounded, player->Id.Value};
     }
     const auto stats = formulas.Stats();
     snapshot.Programs = {formulas.AppliedProgram(), uint32_t(stats.Roots), uint32_t(stats.Projectiles), uint32_t(stats.Pending)};

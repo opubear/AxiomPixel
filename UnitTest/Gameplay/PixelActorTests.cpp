@@ -18,18 +18,18 @@ template<class Error, class Function> void Throws(Function function, const char 
 
 void IdentitiesAndReuse() {
     Actors actors;
-    const auto player = *actors.Spawn(ActorKind::Player, WorldPosition::FromAbsolute(10, 10));
-    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(20, 10));
+    const auto player = *actors.Spawn(ActorKind::Player, WorldPosition::FromCells(10, 10));
+    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(20, 10));
     const auto saved = actors.Require(resident);
     Require(saved.Id != actors.Require(player).Id && actors.Resolve(saved.Id) == resident, "actors need distinct stable identities");
     Require(actors.Remove(resident) && !actors.Remove(resident) && !actors.Find(saved.Id), "deleted actor remains reachable");
-    const auto replacement = *actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(30, 10));
+    const auto replacement = *actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(30, 10));
     Require(replacement.Slot == resident.Slot && replacement.Generation != resident.Generation
                 && actors.Require(replacement).Id != saved.Id && !actors.Find(resident), "slot reuse resurrected an old reference");
     Throws<std::logic_error>([&] { actors.Require(resident); }, "internal stale handle must fail early");
     const auto restored = *actors.Restore(saved);
     Require(restored.Slot != resident.Slot && actors.Require(restored).Id == saved.Id
-                && actors.Require(restored).Body.X == saved.Body.X && !actors.Find(resident), "restore confused persistent ID with storage slot");
+                && pixel::CentimetersToCells(actors.Require(restored).Body.X) == pixel::CentimetersToCells(saved.Body.X) && !actors.Find(resident), "restore confused persistent ID with storage slot");
     Throws<std::invalid_argument>([&] { actors.Restore(saved); }, "duplicate restored ID accepted");
     Throws<std::logic_error>([&] { actors.Spawn(ActorKind::Player, {}); }, "duplicate player accepted");
     Actors another;
@@ -60,18 +60,18 @@ void ResidentTerrainAndRestore() {
     map.Fill(map.Bounds(), {CellTypeId::Air, {}});
     map.Fill({0, 40, 64, 24}, {CellTypeId::Dirt, {}});
     Actors actors;
-    const auto player = *actors.Spawn(ActorKind::Player, WorldPosition::FromAbsolute(10.125, 10));
-    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(30.125, 10));
-    const auto frozen = *actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(80, 10));
+    const auto player = *actors.Spawn(ActorKind::Player, WorldPosition::FromCells(10.125, 10));
+    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(30.125, 10));
+    const auto frozen = *actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(80, 10));
     const auto mapVersion = map.GetVersion();
     for (int step = 0; step < 120; ++step) actors.Step(map.Read(), {});
-    Require(actors.Require(resident).Body.Grounded && std::abs(actors.Require(resident).Body.Y - 36) < 1e-6
+    Require(actors.Require(resident).Body.Grounded && std::abs(pixel::CentimetersToCells(actors.Require(resident).Body.Y) - 36) < 1e-6
                 && actors.Require(player).Body.Grounded, "second actor did not land on read-only terrain");
     actors.Step(map.Read(), {1, true});
-    Require(actors.Require(player).Body.X > 10.125 && actors.Require(player).Body.Y < 36
-                && actors.Require(resident).Body.X == 30.125 && std::abs(actors.Require(resident).Body.Y - 36) < 1e-6,
+    Require(pixel::CentimetersToCells(actors.Require(player).Body.X) > 10.125 && pixel::CentimetersToCells(actors.Require(player).Body.Y) < 36
+                && pixel::CentimetersToCells(actors.Require(resident).Body.X) == 30.125 && std::abs(pixel::CentimetersToCells(actors.Require(resident).Body.Y) - 36) < 1e-6,
             "player intent leaked into resident behavior");
-    Require(actors.Require(frozen).Body.Y == 10 && map.GetVersion() == mapVersion, "actor wrote terrain or advanced outside active domain");
+    Require(pixel::CentimetersToCells(actors.Require(frozen).Body.Y) == 10 && map.GetVersion() == mapVersion, "actor wrote terrain or advanced outside active domain");
 
     // Copying a trusted runtime record retains falling/jumping state, while a new
     // collection assigns a fresh handle. Disk checkpoint format belongs to M4.6.
@@ -86,20 +86,20 @@ void ResidentTerrainAndRestore() {
             "restored actor lost motion state");
     map.Fill({24, 0, 20, 40}, {CellTypeId::Water, {}});
     for (int step = 0; step < 120; ++step) actors.Step(map.Read(), {});
-    Require(actors.Require(resident).Body.Y < 36, "resident did not respond to water buoyancy");
+    Require(pixel::CentimetersToCells(actors.Require(resident).Body.Y) < 36, "resident did not respond to water buoyancy");
 }
 
 void PartialTerrainFreezes() {
     WorldMap map(128, 128);
     map.Fill(map.Bounds(), {CellTypeId::Air, {}});
     Actors actors;
-    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(10, 62));
+    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(10, 62));
     const auto revision = actors.Revision();
     actors.Step(map.View({0, 0, 64, 64}), {});
-    Require(actors.Require(resident).Body.Y == 62 && !actors.Require(resident).Body.Grounded
+    Require(pixel::CentimetersToCells(actors.Require(resident).Body.Y) == 62 && !actors.Require(resident).Body.Grounded
                 && actors.Revision() == revision, "partial window relocated resident through collision escape");
     actors.Step(map.Read(), {});
-    Require(actors.Require(resident).Body.Y > 62, "resident did not resume after full body became active");
+    Require(pixel::CentimetersToCells(actors.Require(resident).Body.Y) > 62, "resident did not resume after full body became active");
 
     WorldMap sparse;
     auto upper = std::make_unique<WorldChunk>(CellCoord{0, 0});
@@ -107,16 +107,16 @@ void PartialTerrainFreezes() {
     sparse.Insert(std::move(upper));
     Actors streamed;
     const auto edge = storage::ChunkEdge;
-    const auto split = *streamed.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(20, edge - 2));
+    const auto split = *streamed.Spawn(ActorKind::Resident, WorldPosition::FromCells(20, edge - 2));
     const auto window = sparse.View({0, int64_t(edge) - 64, 64, 128});
     streamed.Step(window, {});
-    Require(streamed.Require(split).Body.Y == edge - 2 && !streamed.Require(split).Body.Grounded,
+    Require(CentimetersToCells(streamed.Require(split).Body.Y) == edge - 2 && !streamed.Require(split).Body.Grounded,
             "missing body terrain was treated as solid overlap");
     auto lower = std::make_unique<WorldChunk>(CellCoord{0, 1});
     lower->Initialize(std::nullopt);
     sparse.Insert(std::move(lower));
     streamed.Step(window, {});
-    Require(streamed.Require(split).Body.Y > edge - 2, "resident did not resume after body terrain loaded");
+    Require(CentimetersToCells(streamed.Require(split).Body.Y) > edge - 2, "resident did not resume after body terrain loaded");
 }
 
 void FarCoordinates() {
@@ -129,11 +129,11 @@ void FarCoordinates() {
         map.Insert(std::move(data));
         map.Fill({origin.X, origin.Y + 40, 64, 24}, {CellTypeId::Dirt, {}});
         Actors actors;
-        const auto handle = *actors.Spawn(ActorKind::Player, {chunk, {10.125, 36}});
+        const auto handle = *actors.Spawn(ActorKind::Player, WorldPosition::FromChunkCells(chunk, {10.125, 36}));
         actors.Step(map.View({origin.X, origin.Y, 64, 64}), {1, false});
         const auto snapshot = *actors.PlayerSnapshot();
         Require(snapshot.Position.Chunk == chunk && snapshot.Id == actors.Require(handle).Id
-                    && std::abs(snapshot.Position.Local[0] - (10.125 + 16. / 60)) < 1e-7,
+                    && std::abs(snapshot.Position.Local[0] - (506.25 + 800. / 60)) < .001,
                 "distant actor lost fractional walking precision");
         Require(actors.Occupies({origin.X + 10, origin.Y + 38}) && !actors.Occupies({origin.X + 14, origin.Y + 38}),
                 "distant actor occupancy rounded through absolute doubles");
@@ -146,14 +146,14 @@ void FarCoordinates() {
         Require(frame.Character && frame.Character->Bounds == std::array<float, 4>{400 - scale, 300 - 2 * scale, 2 * scale, 4 * scale}, "distant character projection differs from camera center");
         actors.Step(map.View({origin.X, origin.Y, 64, 64}), {1, false});
         camera.FollowPlayer(actors.Player(), .1f);
-        Require(camera.GetCamera().GetWorldPosition().Local[0] > snapshot.Position.Local[0] + 1, "camera did not follow distant actor");
+        Require(camera.GetCamera().GetWorldPosition().Local[0] > snapshot.Position.Local[0] + 50, "camera did not follow distant actor");
     }
 }
 
 void SessionOccupancyAndPublication() {
     GameSession session;
     auto &actors = testing::SessionAccess::Actors(session);
-    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(100.25, 100.5));
+    const auto resident = *actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(100.25, 100.5));
     auto view = session.CreateReadView();
     session.RefreshReadView(*view, {500, 500, 32, 32});
     const auto player = *view->GetPlayer();
@@ -166,12 +166,12 @@ void SessionOccupancyAndPublication() {
     actors.Remove(resident);
     Require(session.Execute(NativeCaller::Driver, api::MineRegion{{520, 512}, {}}).Applied(), "fixture mining failed");
     Require(session.Execute(NativeCaller::Driver, api::PlaceMaterial{{100, 101}}).Applied(), "removed actor still blocks placement");
-    const auto destination = WorldPosition::FromAbsolute(513.125, 508);
+    const auto destination = WorldPosition::FromCells(513.125, 508);
     testing::SessionAccess::SetPlayerPosition(session, destination);
     testing::SessionAccess::PublishFixtureChanges(session);
     Require(view->GetPlayer()->Id == player.Id && view->GetPlayer()->Position.Chunk == destination.Chunk
                 && view->GetPlayer()->Position.Local == destination.Local, "player relocation changed identity or missed its destination");
-    const auto spawn = WorldPosition::FromAbsolute(511, 508);
+    const auto spawn = WorldPosition::FromCells(511, 508);
     Require(player.Position.Chunk == spawn.Chunk && player.Position.Local == spawn.Local,
             "player relocation mutated a published value");
     const auto oldHandle = *actors.Resolve(player.Id);

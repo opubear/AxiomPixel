@@ -15,8 +15,7 @@ const formula::process::ProgramArtifact &ForceEmitterProgram() {
 }
 WorldPosition Origin(const DeviceSnapshot &device) {
     const CellCoord cell{device.X + 1, device.Y + 1};
-    const auto chunk = ChunkOf(cell);
-    return {chunk, {double(cell.X - chunk.X * storage::ChunkEdge), double(cell.Y - chunk.Y * storage::ChunkEdge)}};
+    return WorldPosition::FromCell(cell);
 }
 } // namespace
 

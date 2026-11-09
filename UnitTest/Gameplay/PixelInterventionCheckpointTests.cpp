@@ -259,7 +259,7 @@ void FrozenLeaseUsesRemainingGlobalTime() {
         GameSession session(true);
         instance = Aid(session, SetupGarden(session));
         Step(session, 4);
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(3072, 508));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(3072, 508));
         testing::SessionAccess::World(session).LoadSimulationNow();
         session.Tick(0, {});
         Step(session, 5);

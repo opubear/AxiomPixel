@@ -141,9 +141,12 @@ void SelectWindStrategy(Axiom &app, int selected) {
                 popup->Pos.y + style.WindowPadding.y + selected * (text + style.ItemSpacing.y) + text * .5f});
     Require(ImGui::GetCurrentContext()->OpenPopupStack.empty(), "strategy selection did not close the production combo");
 }
-void EnterScalar(Axiom &app, const char *label, const char *value, const char *scope = nullptr) {
+void EnterScalar(Axiom &app, const char *label, const char *value, const char *scope = nullptr, bool slider = false) {
     auto &engine = *app.Engine;
-    Click(app, ControlPoint(app, label, "Pixel Debug", nullptr, scope));
+    const auto point = ControlPoint(app, label, "Pixel Debug", nullptr, scope);
+    if (slider) SendKey(app, GLFW_KEY_LEFT_CONTROL, true, GLFW_MOD_CONTROL);
+    Click(app, point, slider ? GLFW_MOD_CONTROL : 0);
+    if (slider) SendKey(app, GLFW_KEY_LEFT_CONTROL, false);
     auto *window = ImGui::FindWindowByName("Pixel Debug");
     const auto id = scope ? ImHashStr(label, 0, window->GetID(scope)) : window->GetID(label);
     Require(ImGui::GetActiveID() == id && ImGui::GetInputTextState(id),
@@ -518,6 +521,24 @@ void RunPixelDebugUISmoke() {
     EnterBoundary(app, "512");
     Require(world.GetWindEndRow() == 512, "UI stopped working after resize");
     CheckMemoryPanel(app);
+    const auto baseStyle = ImGui::GetStyle();
+    debugWindow->StateStorage.SetInt(debugWindow->GetID("Display scale"), 1);
+    for (float scale : {.75f, 1.5f, 1.f}) {
+        pixel->SetUIScale(scale);
+        pixel->SetSceneScale(1.375f);
+        Draw(app, 3);
+        Require(std::abs(ImGui::GetStyle().FontScaleMain - baseStyle.FontScaleMain * scale) < .0001f,
+                "UIScale did not scale debug fonts");
+        Require(ImGui::GetStyle().FramePadding.x == std::floor(baseStyle.FramePadding.x * scale),
+                "debug dimensions accumulated rounding across scale changes");
+        Require(pixel->GetSceneScale() == 1.375f, "debug UI scaling changed the scene");
+    }
+    EnterScalar(app, "SceneScale", "2", nullptr, true);
+    Require(pixel->GetSceneScale() == 2 && pixel->GetUIScale() == 1, "SceneScale slider did not change only the scene");
+    EnterScalar(app, "UIScale", "1.25", nullptr, true);
+    Require(pixel->GetUIScale() == 1.25f && pixel->GetSceneScale() == 2, "UIScale slider did not apply independently");
+    Click(app, ControlPoint(app, "Reset display scales"));
+    Require(pixel->GetSceneScale() == 1 && pixel->GetUIScale() == 1, "display reset did not restore both scales");
     app.Shutdown();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
     std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
@@ -538,7 +559,7 @@ void RunPixelGamePauseUISmoke() {
     const auto start = session.GetPlayer()->GetWorldPosition();
     SendKey(app, GLFW_KEY_D, true);
     pixel->Tick(1.f / 60);
-    Require(session.GetPlayer()->GetWorldPosition().RelativeTo(start.Cell())[0] > start.RelativeTo(start.Cell())[0],
+    Require(session.GetPlayer()->GetWorldPosition().RelativeCellsTo(start.Cell())[0] > start.RelativeCellsTo(start.Cell())[0],
             "default running game ignored platform movement input");
     SendKey(app, GLFW_KEY_D, false);
     world.SetCell(32, 10, {pixel::CellTypeId::Dirt});
@@ -561,10 +582,10 @@ void RunPixelGamePauseUISmoke() {
     SendKey(app, GLFW_KEY_SPACE, false);
     SendKey(app, GLFW_KEY_F3, true);
     SendKey(app, GLFW_KEY_F3, false);
-    const auto camera = pixel->GetCamera().GetPosition();
+    const auto camera = pixel->GetCamera().GetWorldPosition().RelativeCellsTo({});
     SendKey(app, GLFW_KEY_D, true);
     pixel->Tick(.1f);
-    Require(pixel->GetCamera().GetPosition()[0] > camera[0] && session.CurrentCommit() == stamp,
+    Require(pixel->GetCamera().GetWorldPosition().RelativeCellsTo({})[0] > camera[0] && session.CurrentCommit() == stamp,
             "global pause blocked debug camera or advanced the world through it");
     SendKey(app, GLFW_KEY_D, false);
     pixel->OnKeyEvent(Key::KEY_F2, 0, ButtonAction::ACTION_PRESS, Mod{});
@@ -577,8 +598,8 @@ void RunPixelGamePauseUISmoke() {
     SendKey(app, GLFW_KEY_D, true);
     SendKey(app, GLFW_KEY_SPACE, true);
     pixel->Tick(1.f / 60);
-    const auto resumed = session.GetPlayer()->GetWorldPosition().RelativeTo(frozen.Position.Cell());
-    const auto before = frozen.Position.RelativeTo(frozen.Position.Cell());
+    const auto resumed = session.GetPlayer()->GetWorldPosition().RelativeCellsTo(frozen.Position.Cell());
+    const auto before = frozen.Position.RelativeCellsTo(frozen.Position.Cell());
     Require(resumed[0] > before[0] && resumed[1] < before[1], "resume did not restore platform walking and jumping");
     Draw(app, 2);
     app.Shutdown();
@@ -618,7 +639,7 @@ void RunPixelGardenUISmoke() {
             "garden Apply did not install the natural crystal program");
     // Position the player as a fixture, then exercise the actual platform input
     // and GameInput aiming path. Activation must remain player-local.
-    pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromAbsolute(535, double(surface - 4)));
+    pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromCells(535, double(surface - 4)));
     pixel::testing::SessionAccess::CommitFixtureChanges(session);
     SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
     SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
@@ -952,7 +973,7 @@ void RunPixelFormulaUISmoke() {
         && attached[0].Subject == 9001, "actor button did not preserve separate binding and source");
     const auto projectilePosition = runtime.Projectiles().front().Position;
     auto moved = pixel->GetSession().GetPlayer()->GetWorldPosition();
-    moved.Local[0] += 2;
+    moved.Local[0] += 100;
     pixel::testing::SessionAccess::Actors(pixel->GetSession()).SetPlayerPosition(moved);
     pixel::testing::SessionAccess::PublishFixtureChanges(pixel->GetSession());
     Draw(app, 2);

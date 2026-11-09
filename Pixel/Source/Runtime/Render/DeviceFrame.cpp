@@ -23,7 +23,7 @@ void BuildDeviceFrame(std::span<const DeviceSnapshot> devices, const Camera2D &c
         return;
 
     const auto reference = camera.GetWorldPosition().Cell();
-    const auto centre = camera.RelativeTo(reference);
+    const auto centre = camera.RelativeCellsTo(reference);
     const double radiusX = DeviceWidth * .5 * output.View.CellSizePixels[0];
     const double radiusY = DeviceHeight * .5 * output.View.CellSizePixels[1];
     const auto relativeCell = [](int64_t cell, int64_t origin) {

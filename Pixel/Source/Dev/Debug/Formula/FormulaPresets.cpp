@@ -83,7 +83,7 @@ api::ControlReceipt RunFormulaPreset(GameSession &session, size_t index, double 
     carrier.Kind = ProcessCarrierKind::FixedFixture;
     carrier.Subject = FormulaPresetSubject(index);
     carrier.Binding = preset.Binding;
-    carrier.Origin = FormulaWorldAdapter::Offset(player->Position, {preset.Offset[0], preset.Offset[1]});
+    carrier.Origin = FormulaWorldAdapter::OffsetCells(player->Position, {preset.Offset[0], preset.Offset[1]});
     if (preset.Binding == ProcessBindingKind::Actor) {
         carrier.AttachedActor = player->Id;
         carrier.LocalOffset = preset.Offset;

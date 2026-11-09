@@ -24,7 +24,7 @@
 
 ## 坐标、访问与编辑
 
-`CellCoord` 使用 `int64_t`。负坐标按向下取整分块，例如(-1,-1)位于块(-1,-1)的右下格。当前可访问格坐标范围为±2^60之内，避免邻域/树范围运算溢出。`WorldPosition` 保存块坐标及块内double连续坐标，角色和相机移动不先合并成绝对double。GPU只接收相机附近的相对坐标；远处采样使用 `SampleWind(CellCoord, offsetX, offsetY)`，先做整数差值再转浮点。
+`CellCoord` 使用 `int64_t`。负坐标按向下取整分块，例如(-1,-1)位于块(-1,-1)的右下格。当前可访问格坐标范围为±2^60之内，避免邻域/树范围运算溢出。`WorldPosition` 保存整数块坐标及块内float厘米坐标，一格50厘米；角色和相机移动不先合并成绝对float。游戏/格子/旧存档之间使用显式换算，见[空间单位](WorldUnits.md)。GPU只接收相机附近的相对坐标；远处网格采样使用 `SampleWind(CellCoord, offsetX, offsetY)`，先做整数差值再转浮点，网格offset仍使用格单位。
 
 ```cpp
 const pixel::CellQuery query = world.QueryCell(-1, 511);

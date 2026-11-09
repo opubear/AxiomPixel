@@ -76,13 +76,14 @@ void PixelGame::Initialize() {
     Input.ResetView();
     if (auto *ui = GAxiom->GetDebugUI())
         ui->SetFrameContent([this] {
-            if (const auto mode = DebugUI.Draw(Session, Camera, Presentation, Input, Performance, WorldWill))
+            if (const auto mode = DebugUI.Draw(Session, Camera, Presentation, Input, Performance, WorldWill, UI))
                 SetControlMode(*mode);
         });
     axiom::Log::Info("{}", pixel::GameInput::ControlsDescription());
 }
 
 void PixelGame::FrameBegin() {
+    DebugUI.ApplyUIScale(UI.GetUIScale());
     ProfileSimulation = Diagnostics && Diagnostics->IsCollecting();
     ObservationViews.AdvanceServiceFrame();
     Session.BeginFrame();

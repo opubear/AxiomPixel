@@ -25,7 +25,7 @@ void Measure(std::ostream &out, size_t count) {
             world.SetCell(x, y, {CellTypeId::Dirt});
     world.FillRegion({112, 144, 32, 1}, {CellTypeId::Stone});
     for (size_t source = 0; source < count; ++source)
-        if (!world.InstallFieldSource(source + 1, {WorldPosition::FromAbsolute(128, 128), 16, {0, -3600.f / float(count)}, 3600}))
+        if (!world.InstallFieldSource(source + 1, {WorldPosition::FromCells(128, 128), 16, {0, -3600.f / float(count)}, 3600}))
             throw std::runtime_error("benchmark source admission failed");
     world.StepEnvironment(0);
     std::vector<double> steps, samples;

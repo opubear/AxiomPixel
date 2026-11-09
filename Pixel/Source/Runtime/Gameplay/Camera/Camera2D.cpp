@@ -5,7 +5,7 @@
 namespace pixel {
 namespace {
 void ValidatePosition(Camera2D::Position position) {
-    for (double value : position)
+    for (float value : position)
         if (!std::isfinite(value))
             throw std::invalid_argument("camera position must be finite");
 }
@@ -43,7 +43,7 @@ void Camera2D::FollowWorld(WorldPosition target, double duration) {
     target.Normalize();
     const CellCoord origin{WorldCentre.Chunk.X * storage::ChunkEdge, WorldCentre.Chunk.Y * storage::ChunkEdge};
     const auto relative = target.RelativeTo(origin);
-    const double blend = -std::expm1(-FollowRate * duration);
+    const float blend = float(-std::expm1(-FollowRate * duration));
     auto next = WorldCentre;
     for (size_t axis = 0; axis < next.Local.size(); ++axis)
         next.Local[axis] = std::lerp(next.Local[axis], relative[axis], blend);

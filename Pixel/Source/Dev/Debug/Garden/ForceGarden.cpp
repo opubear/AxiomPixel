@@ -13,7 +13,7 @@ static void StartGardenCrystal(World &world, FormulaBridge &formulas, const Forc
     ProcessCarrier carrier;
     carrier.Kind = ProcessCarrierKind::NaturalSource;
     carrier.Subject = GardenCrystalSubject;
-    carrier.Origin = WorldPosition::FromAbsolute(double(GardenCrystalX), double(y));
+    carrier.Origin = WorldPosition::FromCells(double(GardenCrystalX), double(y));
     carrier.Scope = {GardenCrystalX - 8, y - 8, 17, 17};
     carrier.MaximumRadius = carrier.ActivityRadius = 8;
     carrier.Credits = 1;
@@ -24,7 +24,7 @@ static void StartGardenCrystal(World &world, FormulaBridge &formulas, const Forc
 
 void InitializeForceGarden(World &world, FormulaBridge &formulas, ForceGardenState &garden, const Body &player) {
     garden.Enabled = true;
-    garden.SurfaceY = player.GetWorldPosition().Cell().Y + int64_t(Body::Height);
+    garden.SurfaceY = player.GetWorldPosition().Cell().Y + int64_t(Body::HeightCells);
     const auto y = garden.SurfaceY;
     // Authored content is installed once, before the first checkpoint. Loading
     // never replenishes these deposits or reconstructs modified terrain.

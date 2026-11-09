@@ -172,11 +172,11 @@ GridTextureCatalog Catalog() {
 void CircleProjection() {
     pixel::Camera2D camera;
     const pixel::CellCoord chunk{int64_t{1} << 45, -(int64_t{1} << 45)};
-    camera.SetWorldPosition({chunk, {8.125, 9.25}});
+    camera.SetWorldPosition(pixel::WorldPosition::FromChunkCells(chunk, {8.125, 9.25}));
     std::vector<pixel::FormulaProjectile> live(2);
     live[0].WorldEpoch = 4; live[0].CastId = 7; live[0].ProjectileId = 9;
-    live[0].Position = {chunk, {10.25, 9.5}};
-    live[1].Position = {chunk, {1000, 1000}};
+    live[0].Position = pixel::WorldPosition::FromChunkCells(chunk, {10.25, 9.5});
+    live[1].Position = pixel::WorldPosition::FromChunkCells(chunk, {1000, 1000});
     WorldGridFrame first, second;
     first.View.CellSizePixels = second.View.CellSizePixels = {16, 16};
     pixel::BuildFormulaFrame(live, camera, {160, 120}, first);
@@ -185,7 +185,7 @@ void CircleProjection() {
     const auto circle = first.Read().FormulaDraws.front();
     Check(circle.CenterRadius == std::array<float, 4>{114, 64, 5.6f, 5.6f}, "fractional far-coordinate projection lost precision");
     Check(circle.WorldEpoch == 4 && circle.CastId == 7 && circle.ProjectileId == 9, "combined identity was lost");
-    live[0].Position.Local[0] += 1;
+    live[0].Position.Local[0] += 50;
     pixel::BuildFormulaFrame(live, camera, {160, 120}, second);
     Check(first.Read().FormulaDraws.front().CenterRadius[0] == 114 && second.Read().FormulaDraws.front().CenterRadius[0] == 130,
           "independent render frames retained shared gameplay storage");
@@ -261,9 +261,9 @@ void PublisherIsolation() {
     pixel::GameSession session;
     pixel::GameCamera camera;
     camera.SetFramebufferSize({160, 120});
-    camera.GetCamera().SetPosition({20, 20});
+    camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(20, 20));
     auto &runtime = pixel::testing::SessionAccess::Runtime(session);
-    Check(runtime.Cast(pixel::testing::SessionAccess::World(session), pixel::WorldPosition::FromAbsolute(20, 20), 0), "publisher fixture could not activate bolt");
+    Check(runtime.Cast(pixel::testing::SessionAccess::World(session), pixel::WorldPosition::FromCells(20, 20), 0), "publisher fixture could not activate bolt");
     Check(runtime.Projectiles().size() == 1, "publisher fixture bolt was unexpectedly blocked");
     pixel::GamePresentation presentation;
     auto publishFirst = presentation.CreateFramePublisher(session, camera);

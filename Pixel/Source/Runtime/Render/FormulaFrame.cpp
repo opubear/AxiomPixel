@@ -11,9 +11,9 @@ void BuildFormulaFrame(std::span<const FormulaProjectile> projectiles, const Cam
 
     const auto &cameraPosition = camera.GetWorldPosition();
     const auto reference = cameraPosition.Cell();
-    const auto centre = cameraPosition.RelativeTo(reference);
+    const auto centre = cameraPosition.RelativeCellsTo(reference);
     for (const auto &projectile : projectiles) {
-        const auto local = projectile.Position.RelativeTo(reference);
+        const auto local = projectile.Position.RelativeCellsTo(reference);
         const double x = (local[0] - centre[0]) * output.View.CellSizePixels[0] + framebufferSize[0] / 2.0;
         const double y = (local[1] - centre[1]) * output.View.CellSizePixels[1] + framebufferSize[1] / 2.0;
         const double radiusX = projectile.Radius * output.View.CellSizePixels[0];

@@ -8,7 +8,7 @@ class SimulatedActorWorld : public SimulatedWorld {
   public:
     using SimulatedWorld::SimulatedWorld;
     const Body *GetPlayer() const { return Characters.Player(); }
-    void SpawnPlayer(double x, double y) { RestorePlayer(WorldPosition::FromAbsolute(x, y)); }
+    void SpawnPlayer(double x, double y) { RestorePlayer(WorldPosition::FromCells(x, y)); }
     void RestorePlayer(WorldPosition position) {
         Characters.SetPlayerPosition(position);
         SetSimulationFocus(position);

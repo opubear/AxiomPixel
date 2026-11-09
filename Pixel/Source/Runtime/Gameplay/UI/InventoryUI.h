@@ -2,6 +2,7 @@
 
 #include "Runtime/Gameplay/GameAPI/GameplayObservations.h"
 #include "Runtime/Gameplay/Items/Inventory.h"
+#include "UIScale.h"
 #include <array>
 #include <cstddef>
 #include <optional>
@@ -20,7 +21,7 @@ struct InventoryLayout {
     static constexpr size_t Columns = 7, Rows = 5, SlotCount = Columns * Rows;
     static Rect QuickSlot(size_t index);
     static Rect BagSlot(size_t index);
-    static Rect Placement(std::array<int, 2> framebuffer);
+    static Rect Placement(std::array<int, 2> framebuffer, float uiScale = 1);
 };
 
 struct Slot {
@@ -43,11 +44,14 @@ struct InventoryView {
 struct Canvas {
     uint64_t Revision = 0;
     std::vector<std::byte> Pixels;
+    float UIScale = 1;
 };
 
 class InventoryUI {
   public:
     InventoryUI();
+    float GetUIScale() const { return Image.UIScale; }
+    void SetUIScale(float scale);
     void ToggleInventory();
     bool CloseInventory();
     bool IsExpanded() const { return View.Expanded; }

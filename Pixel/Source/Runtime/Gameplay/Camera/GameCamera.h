@@ -16,6 +16,8 @@ class GameCamera {
     GridView2D GetView() const;
     GridView2D GetViewForFramebuffer(std::array<int, 2> size) const;
     void SetView(const GridView2D &view);
+    float GetSceneScale() const { return ViewSettings.CellSizePixels[0] / DefaultRenderPixelsPerLogicalPixel; }
+    void SetSceneScale(float scale);
     void Reset(WorldRect bounds, const Body *player);
     void FollowPlayer(const Body *player, float duration);
     void Pan(std::array<int, 2> direction, float duration);

@@ -197,7 +197,7 @@ void InputValidation() {
     frame.View.CellSizePixels[0] = 0;
     Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
     frame.View = {};
-    frame.View.CellSizePixels[1] = UINT32_MAX;
+    frame.View.CellSizePixels[1] = std::numeric_limits<float>::max();
     Reject([&] { ValidateWorldGridFrame(frame, 4, 101, 77); });
     frame.View = {};
     frame.View.OriginPixels[0] = INT32_MAX;
@@ -247,9 +247,18 @@ void NativeInventoryOverlay() {
     policy.SetOverlayDrawCallback([&](RHICommandList &) { rhi.Commands.Events.push_back("debug"); });
     policy.Initialize();
     for (uint32_t i = 0; i < 6; ++i) {
+        const float scale = i % 2 ? 1.5f : .5f;
+        ui.SetUIScale(scale);
         rhi.Commands.Token = {i + 1, 1, i % 3, 0};
         policy.FrameBegin();
+        ui.SetUIScale(2);
         policy.Draw();
+        std::array<float, 4> bounds{};
+        std::memcpy(bounds.data(), rhi.Commands.Constants.back().data(), sizeof(bounds));
+        const auto extent = rhi.GetPresentationExtent();
+        const auto placement = pixel::ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)}, scale);
+        Check(bounds == std::array<float, 4>{placement.X, placement.Y, placement.Width, placement.Height},
+              "UI scale was not captured with the published frame");
         Check(published == i + 1, "UI publisher read again during Draw");
         const std::vector<std::string> suffix{"post", "draw", "draw", "debug", "end"};
         const auto &events = rhi.Commands.Events;
@@ -652,7 +661,7 @@ void DistantRegionProjection() {
     output.View.WorldOriginCells = {distant, -distant};
     output.View.OriginPixels = {3, -2};
     const auto local = LocalGridPixelOrigin(output.Read());
-    Check(local == std::array<int32_t, 2>{1027, -2}, "distant region lost integer cell precision");
+    Check(local == std::array<float, 2>{1027, -2}, "distant region lost integer cell precision");
     const auto picked = PickGridCell(output.View, {0, 0}, {80, 60}, {80, 60});
     Check(picked && *picked == std::array<int64_t, 2>{distant, -distant - 1},
           "negative or distant coordinate picking truncated the cell coordinate");
@@ -664,17 +673,17 @@ void DistantRegionProjection() {
 
     pixel::Camera2D camera;
     const pixel::CellCoord chunk{int64_t{1} << 45, -(int64_t{1} << 45)};
-    camera.SetWorldPosition({chunk, {512.125, 510.0625}});
+    camera.SetWorldPosition(pixel::WorldPosition::FromChunkCells(chunk, {512.125, 510.0625}));
     const auto view = MakeCameraView(camera, {1600, 1200}, output.View);
     const auto normalized = camera.GetWorldPosition();
-    const std::array<int32_t, 2> expectedOrigin{int32_t(std::round(normalized.Local[0] * 16 - 800)),
-                                                int32_t(std::round(normalized.Local[1] * 16 - 600))};
+    const std::array<int32_t, 2> expectedOrigin{int32_t(std::round(pixel::CentimetersToCells(normalized.Local[0]) * 16 - 800)),
+                                                int32_t(std::round(pixel::CentimetersToCells(normalized.Local[1]) * 16 - 600))};
     Check(view.OriginPixels == expectedOrigin && view.WorldOriginCells == std::array<int64_t, 2>{normalized.Chunk.X * pixel::storage::ChunkEdge, normalized.Chunk.Y * pixel::storage::ChunkEdge},
           "distant camera discarded its fractional position before GPU projection");
     pixel::Body player;
     player.OriginChunk = chunk;
-    player.X = 511.03125;
-    player.Y = 508;
+    player.X = 25551.5625f;
+    player.Y = 25400;
     output.View = view;
     const pixel::ActorSnapshot snapshot{pixel::ActorId{1}, pixel::ActorKind::Player, player.GetWorldPosition(), player.Grounded};
     BuildCharacterFrame(snapshot, camera, {1600, 1200}, output);

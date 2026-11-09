@@ -322,9 +322,27 @@ void DrawWindAppearance(GamePresentation &presentation) {
     }
 }
 } // namespace
+void PixelDebugUI::ApplyUIScale(float scale) {
+    if (!ui::IsValidUIScale(scale))
+        throw std::invalid_argument("invalid debug UI scale");
+    if (!ImGui::GetCurrentContext() || AppliedUIScale == scale) return;
+    if (!ScaleStyle) {
+        ScaleStyle = [base = ImGui::GetStyle(), legacyFontScale = ImGui::GetIO().FontGlobalScale](float value) {
+            auto &style = ImGui::GetStyle();
+            style = base;
+            style.ScaleAllSizes(value);
+            style.FontScaleMain = base.FontScaleMain * legacyFontScale * value;
+            ImGui::GetIO().FontGlobalScale = 1;
+        };
+    }
+    // Rebuild from the initial style to avoid accumulating rounded dimensions.
+    ScaleStyle(scale);
+    AppliedUIScale = scale;
+}
+
 std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &camera,
                                                GamePresentation &presentation, GameInput &input,
-                                               performance::GameProfiler &performance, will::WorldWill &worldWill) {
+                                               performance::GameProfiler &performance, will::WorldWill &worldWill, ui::InventoryUI &ui) {
     PIXEL_PROFILE_SCOPE(DebugUI);
     const auto mode = input.GetControlMode();
     std::optional<ControlMode> requestedMode;
@@ -337,11 +355,28 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
         ImGui::End();
     }
     if (Visible) {
-        ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({360, 0}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints({300, 120}, {std::max(300.f, ImGui::GetIO().DisplaySize.x - 32),
-                                                       std::max(120.f, ImGui::GetIO().DisplaySize.y - 32)});
+        const float scale = ui.GetUIScale();
+        ImGui::SetNextWindowPos({16 * scale, 16 * scale}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({360 * scale, 0}, ImGuiCond_FirstUseEver);
+        const ImVec2 available{std::max(1.f, ImGui::GetIO().DisplaySize.x - 32),
+                               std::max(1.f, ImGui::GetIO().DisplaySize.y - 32)};
+        ImGui::SetNextWindowSizeConstraints({std::min(300 * scale, available.x), std::min(120 * scale, available.y)}, available);
         if (ImGui::Begin("Pixel Debug", &Visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+            if (ImGui::CollapsingHeader("Display scale")) {
+                float sceneScale = camera.GetSceneScale();
+                if (ImGui::SliderFloat("SceneScale", &sceneScale, MinimumSceneScale, MaximumSceneScale, "%.2fx", ImGuiSliderFlags_AlwaysClamp))
+                    camera.SetSceneScale(sceneScale);
+                float uiScale = ui.GetUIScale();
+                if (ImGui::SliderFloat("UIScale", &uiScale, ui::MinimumUIScale, ui::MaximumUIScale, "%.2fx", ImGuiSliderFlags_AlwaysClamp))
+                    ui.SetUIScale(uiScale);
+                if (ImGui::Button("Reset display scales")) {
+                    camera.SetSceneScale(1);
+                    ui.SetUIScale(1);
+                }
+                const auto size = camera.GetFramebufferSize();
+                const float metersPerPixel = .5f / camera.GetView().CellSizePixels[0];
+                ImGui::Text("Visible world: %.1f x %.1f m", size[0] * metersPerPixel, size[1] * metersPerPixel);
+            }
             ImGui::BeginDisabled(!session.IsReady());
             bool paused = session.IsPaused();
             if (ImGui::Checkbox("Pause game", &paused))

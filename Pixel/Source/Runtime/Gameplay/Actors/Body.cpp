@@ -18,8 +18,8 @@ void Body::RestoreState(BodyState state) {
 bool Body::HasTerrain(WorldMapView terrain) const {
     const auto first = GetWorldPosition().Cell();
     const auto origin = CellOrigin();
-    const CellCoord last{origin.X + int64_t(std::ceil(X + Width)) - 1,
-                         origin.Y + int64_t(std::ceil(Y + Height)) - 1};
+    const CellCoord last{origin.X + int64_t(std::ceil(CentimetersToCells(X + Width))) - 1,
+                         origin.Y + int64_t(std::ceil(CentimetersToCells(Y + Height))) - 1};
     const WorldRect active{terrain.Origin.X, terrain.Origin.Y, terrain.Width, terrain.Height};
     if (!active.Contains(first) || !active.Contains(last)) return false;
     for (auto y = first.Y; y <= last.Y; ++y)
@@ -30,14 +30,15 @@ bool Body::HasTerrain(WorldMapView terrain) const {
 
 bool Body::Occupies(int64_t x, int64_t y) const {
     const auto origin = CellOrigin();
-    const double localX = double(x - origin.X), localY = double(y - origin.Y);
-    return localX + 1 > X && localX < X + Width && localY + 1 > Y && localY < Y + Height;
+    const float localX = CellsToCentimeters(float(x - origin.X)), localY = CellsToCentimeters(float(y - origin.Y));
+    return localX + CentimetersPerCell > X && localX < X + Width
+        && localY + CentimetersPerCell > Y && localY < Y + Height;
 }
 
-bool Body::Collides(WorldMapView world, double x, double y) const {
+bool Body::Collides(WorldMapView world, float x, float y) const {
     const auto origin = CellOrigin();
-    const auto firstX = int64_t(std::floor(x)), firstY = int64_t(std::floor(y));
-    const auto lastX = int64_t(std::ceil(x + Width)), lastY = int64_t(std::ceil(y + Height));
+    const auto firstX = int64_t(std::floor(CentimetersToCells(x))), firstY = int64_t(std::floor(CentimetersToCells(y)));
+    const auto lastX = int64_t(std::ceil(CentimetersToCells(x + Width))), lastY = int64_t(std::ceil(CentimetersToCells(y + Height)));
     for (int64_t row = firstY; row < lastY; ++row) {
         for (int64_t column = firstX; column < lastX; ++column) {
             const CellCoord cell{origin.X + column, origin.Y + row};
@@ -52,33 +53,33 @@ bool Body::Collides(WorldMapView world, double x, double y) const {
     return false;
 }
 
-double Body::Submersion(WorldMapView world) const {
+float Body::Submersion(WorldMapView world) const {
     const auto origin = CellOrigin();
-    double area = 0;
-    for (int64_t y = int64_t(std::floor(Y)); y < int64_t(std::ceil(Y + Height)); ++y)
-        for (int64_t x = int64_t(std::floor(X)); x < int64_t(std::ceil(X + Width)); ++x) {
+    float area = 0;
+    for (int64_t y = int64_t(std::floor(CentimetersToCells(Y))); y < int64_t(std::ceil(CentimetersToCells(Y + Height))); ++y)
+        for (int64_t x = int64_t(std::floor(CentimetersToCells(X))); x < int64_t(std::ceil(CentimetersToCells(X + Width))); ++x) {
             const CellCoord cell{origin.X + x, origin.Y + y};
             const int64_t vx = cell.X - world.Origin.X, vy = cell.Y - world.Origin.Y;
             if (vx < 0 || vy < 0 || vx >= world.Width || vy >= world.Height)
                 continue;
             const auto state = world.TryAtLocal(uint32_t(vx), uint32_t(vy));
             if (state && state->Type == CellTypeId::Water)
-                area += std::max(0.0, std::min(X + Width, double(x + 1)) - std::max(X, double(x)))
-                    * std::max(0.0, std::min(Y + Height, double(y + 1)) - std::max(Y, double(y)));
+                area += std::max(0.f, std::min(X + Width, CellsToCentimeters(float(x + 1))) - std::max(X, CellsToCentimeters(float(x))))
+                    * std::max(0.f, std::min(Y + Height, CellsToCentimeters(float(y + 1))) - std::max(Y, CellsToCentimeters(float(y))));
         }
     return area / (Width * Height);
 }
 
-void Body::MoveAxis(WorldMapView world, double distance, bool vertical) {
-    const int steps = std::max(1, int(std::ceil(std::abs(distance) / 0.25)));
-    const double step = distance / steps;
+void Body::MoveAxis(WorldMapView world, float distance, bool vertical) {
+    const int steps = std::max(1, int(std::ceil(std::abs(distance) / 12.5f)));
+    const float step = distance / steps;
     for (int i = 0; i < steps; ++i) {
-        const double x = X + (vertical ? 0 : step);
-        const double y = Y + (vertical ? step : 0);
+        const float x = X + (vertical ? 0 : step);
+        const float y = Y + (vertical ? step : 0);
         if (Collides(world, x, y)) {
-            double low = 0, high = 1;
+            float low = 0, high = 1;
             for (int iteration = 0; iteration < 20; ++iteration) {
-                const double middle = (low + high) * .5;
+                const float middle = (low + high) * .5f;
                 if (Collides(world, X + (vertical ? 0 : step * middle), Y + (vertical ? step * middle : 0)))
                     high = middle;
                 else
@@ -98,10 +99,10 @@ void Body::Tick(float duration, WorldMapView world, int horizontal, bool jump) {
     if (!std::isfinite(duration) || duration <= 0)
         return;
     if (Collides(world, X, Y)) {
-        const double original = Y;
-        const double top = double(world.Origin.Y - CellOrigin().Y);
+        const float original = Y;
+        const float top = CellsToCentimeters(float(world.Origin.Y - CellOrigin().Y));
         while (Y > top && Collides(world, X, Y))
-            Y = std::max(top, std::floor(Y) - 1);
+            Y = std::max(top, CellsToCentimeters(std::floor(CentimetersToCells(Y)) - 1));
         if (Collides(world, X, Y)) {
             Y = original;
             Grounded = false;
@@ -109,19 +110,19 @@ void Body::Tick(float duration, WorldMapView world, int horizontal, bool jump) {
         }
         VerticalSpeed = 0;
     }
-    Grounded = Collides(world, X, Y + .01);
+    Grounded = Collides(world, X, Y + .5f);
     if (jump && (Grounded || Submersion(world) > 0))
-        VerticalSpeed = -32;
-    double remaining = std::min(double(duration), .25);
+        VerticalSpeed = -JumpSpeed;
+    float remaining = std::min(duration, .25f);
     while (remaining > 0) {
-        const double dt = std::min(remaining, 1.0 / 120);
-        const double submerged = Submersion(world);
-        MoveAxis(world, std::clamp(horizontal, -1, 1) * 16.0 * (1 - .4 * submerged) * dt, false);
-        VerticalSpeed = std::min((VerticalSpeed + 90 * (1 - 1.2 * submerged) * dt) * std::exp(-3 * submerged * dt), 80.0);
+        const float dt = std::min(remaining, 1.f / 120);
+        const float submerged = Submersion(world);
+        MoveAxis(world, std::clamp(horizontal, -1, 1) * WalkSpeed * (1 - .4f * submerged) * dt, false);
+        VerticalSpeed = std::min((VerticalSpeed + Gravity * (1 - 1.2f * submerged) * dt) * std::exp(-3 * submerged * dt), MaximumFallSpeed);
         MoveAxis(world, VerticalSpeed * dt, true);
         remaining -= dt;
     }
-    Grounded = VerticalSpeed >= 0 && Collides(world, X, Y + .01);
+    Grounded = VerticalSpeed >= 0 && Collides(world, X, Y + .5f);
     auto position = GetWorldPosition();
     position.Normalize();
     OriginChunk = position.Chunk;

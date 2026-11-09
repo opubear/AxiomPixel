@@ -34,6 +34,7 @@ void InventoryOverlay::Prepare(uint32_t slot) {
     if (!canvas.Revision || canvas.Pixels.size() != size_t(ui::InventoryLayout::Width) * ui::InventoryLayout::Height * 4)
         throw std::invalid_argument("invalid inventory UI canvas");
     PendingRevision = canvas.Revision;
+    frame.UIScale = canvas.UIScale;
     if (frame.Revision != PendingRevision) frame.Upload->Write(canvas.Pixels);
 }
 
@@ -48,7 +49,7 @@ void InventoryOverlay::Upload(RHICommandList &commands, uint32_t slot) {
 
 void InventoryOverlay::Draw(RHICommandList &commands, uint32_t slot, RHIPresentationExtent extent) {
     if (!Publish) return;
-    const auto placement = ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)});
+    const auto placement = ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)}, Frames.at(slot).UIScale);
     const std::array<float, 4> bounds{placement.X, placement.Y, placement.Width, placement.Height};
     commands.SetViewport({placement.X, placement.Y, placement.Width, placement.Height, 0, 1});
     commands.SetScissor({0, 0, extent.Width, extent.Height});

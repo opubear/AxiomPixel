@@ -83,17 +83,17 @@ void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
     if (!catalog.Width || !catalog.Height || !catalog.Layers || !catalog.CellsPerTile || catalog.CellsPerTile > 4096 || size_t(catalog.Width) > maximum / 4 / catalog.Height / catalog.Layers || catalog.Pixels.size() != size_t(catalog.Width) * catalog.Height * catalog.Layers * 4)
         throw std::invalid_argument("texture catalog requires equal-sized, tightly packed RGBA8 layers");
 }
-std::array<int32_t, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame) {
-    std::array<int32_t, 2> origin{};
+std::array<float, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame) {
+    std::array<float, 2> origin{};
     for (size_t axis = 0; axis < 2; ++axis) {
         const int64_t a = frame.View.WorldOriginCells[axis], b = frame.CellOrigin[axis];
         if ((b > 0 && a < INT64_MIN + b) || (b < 0 && a > INT64_MAX + b))
             throw std::invalid_argument("render region is too far from the camera reference");
         const int64_t difference = a - b;
         const double pixels = frame.View.OriginPixels[axis] + double(difference) * frame.View.CellSizePixels[axis];
-        if (pixels < INT32_MIN || pixels > INT32_MAX)
+        if (!std::isfinite(pixels) || pixels < INT32_MIN || pixels > INT32_MAX)
             throw std::invalid_argument("render region is too far from the camera reference");
-        origin[axis] = int32_t(pixels);
+        origin[axis] = float(pixels);
     }
     return origin;
 }
@@ -112,7 +112,7 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     const std::array<uint32_t, 2> extent{width, height};
     for (size_t axis = 0; axis < 2; ++axis) {
         const auto size = frame.View.CellSizePixels[axis];
-        if (!size || uint64_t(size) * world[axis] > maximum || extent[axis] > uint32_t(maximum) || int64_t(localOrigin[axis]) + extent[axis] - 1 > maximum)
+        if (!size || double(size) * world[axis] > maximum || extent[axis] > uint32_t(maximum) || int64_t(localOrigin[axis]) + extent[axis] - 1 > maximum)
             throw std::invalid_argument("grid view dimensions or origin exceed integer pixel coordinates");
     }
     if (frame.View.Background[3] != 1 || std::any_of(frame.View.Background.begin(), frame.View.Background.end(), [](float v) { return !std::isfinite(v) || v < 0 || v > 1; }) || std::any_of(frame.Post.Values.begin(), frame.Post.Values.end(), [](float v) { return !std::isfinite(v); }))

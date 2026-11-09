@@ -92,23 +92,24 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
             if (!nearCharacter && x > 32 && y > 32 && x + 1 != extent.Width && y + 1 != extent.Height && (x * 13 + y * 7) % 97 != 0)
                 continue;
             const auto localOrigin = LocalGridPixelOrigin(frame);
-            const int64_t qx = int64_t(localOrigin[0]) + x;
-            const int64_t qy = int64_t(localOrigin[1]) + y;
+            const double qx = double(localOrigin[0]) + x + .5;
+            const double qy = double(localOrigin[1]) + y + .5;
             auto expected = frame.View.Background;
             const auto cw = frame.View.CellSizePixels[0], ch = frame.View.CellSizePixels[1];
             if (qx >= 0 && qy >= 0 && qx < int64_t(frame.Width) * cw && qy < int64_t(frame.Height) * ch) {
-                const auto id = frame.Cells[size_t(qy / ch) * frame.Width + size_t(qx / cw)];
+                const int64_t cx = int64_t(std::floor(qx / cw)), cy = int64_t(std::floor(qy / ch));
+                const auto id = frame.Cells[size_t(cy) * frame.Width + size_t(cx)];
                 if (id == Grid2D::MissingCell) {
-                    const float shade = ((qx / cw / 4 + qy / ch / 4) & 1) ? .22f : .30f;
+                    const float shade = ((cx / 4 + cy / 4) & 1) ? .22f : .30f;
                     expected = {shade, shade, shade, 1};
                 } else if (frame.DisplayMode == GridDisplayMode::ForceField) {
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = float((id >> (8 * c)) & 255) / 255;
                 } else if (id) {
                     const auto phase = [&](int64_t cell) { return (cell % catalog.CellsPerTile + catalog.CellsPerTile) % catalog.CellsPerTile; };
-                    const double fx = (double(qx % cw) + .5) / cw, fy = (double(qy % ch) + .5) / ch;
-                    const double u = (double((qx / cw % catalog.CellsPerTile + phase(frame.CellOrigin[0])) % catalog.CellsPerTile) + fx) / catalog.CellsPerTile;
-                    double v = (double((qy / ch % catalog.CellsPerTile + phase(frame.CellOrigin[1])) % catalog.CellsPerTile) + fy) / catalog.CellsPerTile;
+                    const double fx = qx / cw - cx, fy = qy / ch - cy;
+                    const double u = (double((cx % catalog.CellsPerTile + phase(frame.CellOrigin[0])) % catalog.CellsPerTile) + fx) / catalog.CellsPerTile;
+                    double v = (double((cy % catalog.CellsPerTile + phase(frame.CellOrigin[1])) % catalog.CellsPerTile) + fy) / catalog.CellsPerTile;
                     if (id & Grid2D::SurfaceCellFlag)
                         v = (double((id & Grid2D::SurfaceStripMask) >> Grid2D::SurfaceStripShift) + fy) / 8;
                     const size_t tx = std::min<size_t>(catalog.Width - 1, size_t(u * catalog.Width));
@@ -586,7 +587,7 @@ void Lifecycle(int iteration) {
         }
         {
             auto view = input->GetView();
-            view.CellSizePixels = i == 7 ? std::array<uint32_t, 2>{32, 32} : std::array<uint32_t, 2>{16, 16};
+            view.CellSizePixels = i == 7 ? std::array<float, 2>{32, 32} : std::array<float, 2>{16, 16};
             input->SetView(view);
         }
         expected.View = input->GetView();
@@ -647,7 +648,7 @@ void Lifecycle(int iteration) {
     const auto frames = policy->SubmittedFrames();
     Require(policy->UploadedWorldBytes() > 0 && policy->UploadedWorldBytes() <= frames * Grid2D::UploadBytes, "regional upload accounting incorrect");
     const auto generation = engine.GetRHI()->GetSwapchainGeneration();
-    const auto cameraBeforeResize = input->GetCamera().GetPosition();
+    const auto cameraBeforeResize = input->GetCamera().GetWorldPosition().RelativeCellsTo({});
     glfwSetWindowSize(engine.GetPlatform()->GetWindows(), 640, 480);
     RHIFrameToken token{};
     for (int attempt = 0; attempt < 100; ++attempt) {
@@ -657,7 +658,7 @@ void Lifecycle(int iteration) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     Require(engine.GetRHI()->GetSwapchainGeneration() > generation, "resize did not recreate the swapchain");
-    Require(input->GetCamera().GetPosition() == cameraBeforeResize, "resize changed camera world centre");
+    Require(input->GetCamera().GetWorldPosition().RelativeCellsTo({}) == cameraBeforeResize, "resize changed camera world centre");
     int width = 0, height = 0;
     engine.GetPlatform()->GetFramebufferSize(width, height);
     Require(policy->SceneColor(token.Slot).Desc.Width == uint32_t(width) && policy->SceneColor(token.Slot).Desc.Height == uint32_t(height), "resize color extent stale");
@@ -726,11 +727,14 @@ std::optional<CharacterDraw> ExpectedCharacter(const PixelGame &game) {
     const auto &player = *game.GetSession().GetPlayer();
     int width, height;
     GAxiom->Engine->GetPlatform()->GetFramebufferSize(width, height);
-    const auto centre = game.GetCamera().GetPosition();
+    const auto reference = player.GetWorldPosition().Cell();
+    const auto centre = game.GetCamera().GetWorldPosition().RelativeCellsTo(reference);
+    const auto position = player.GetWorldPosition().RelativeCellsTo(reference);
     const auto scale = game.GetView().CellSizePixels;
     CharacterDraw expected;
-    expected.Bounds = {float((player.X - centre[0]) * scale[0] + width / 2.0),
-                       float((player.Y - centre[1]) * scale[1] + height / 2.0), float(2 * scale[0]), float(4 * scale[1])};
+    expected.Bounds = {float((position[0] - centre[0]) * scale[0] + width / 2.0),
+                       float((position[1] - centre[1]) * scale[1] + height / 2.0),
+                       float(pixel::Body::WidthCells * scale[0]), float(pixel::Body::HeightCells * scale[1])};
     expected.HeadColor = {Linear(255), Linear(212), Linear(140), 1};
     expected.BodyColor = {Linear(40), Linear(210), Linear(180), 1};
     return expected;
@@ -855,7 +859,7 @@ void FormulaGameplayGpu() {
     for (const auto kind : {pixel::ProcessCarrierKind::NaturalSource, pixel::ProcessCarrierKind::FixedFixture}) {
         pixel::ProcessCarrier carrier;
         carrier.Kind = kind;
-        carrier.Origin = pixel::WorldPosition::FromAbsolute(kind == pixel::ProcessCarrierKind::NaturalSource ? 518.5 : 520.5, 506.5);
+        carrier.Origin = pixel::WorldPosition::FromCells(kind == pixel::ProcessCarrierKind::NaturalSource ? 518.5 : 520.5, 506.5);
         carrier.Scope = session.GetWorld().GetSimulationBounds();
         Require(session.StartProcessFixture(pixel::NativeCaller::Driver, carrier).Succeeded(), "process GPU fixture failed");
     }
@@ -996,7 +1000,7 @@ void ForceGardenGameplayGpu(bool aid = false) {
     app.Engine->GetPlatform()->GetFramebufferSize(width, height);
     auto view = input->GetView();
     const auto scale = uint32_t(std::max(1, std::min(width / 100, height / 40)));
-    view.CellSizePixels = {scale, scale};
+    view.CellSizePixels = {float(scale), float(scale)};
     view.WorldOriginCells = {460, surface - 20};
     view.OriginPixels = {};
     input->SetView(view);
@@ -1130,7 +1134,7 @@ void BasicWorldGameplay() {
         MousePointerState pointer;
         pointer.FramebufferSize = {currentWidth + delta, currentHeight + delta};
         pointer.WindowSize = {pointer.FramebufferSize[0] / 2, pointer.FramebufferSize[1] / 2};
-        const auto centre = input->GetCamera().GetPosition();
+        const auto centre = input->GetCamera().GetWorldPosition().RelativeCellsTo({});
         const auto scale = input->GetView().CellSizePixels;
         const std::array<double, 2> target{512.5, 507.5};
         for (size_t axis = 0; axis < 2; ++axis) {
@@ -1155,62 +1159,62 @@ void BasicWorldGameplay() {
     }
     verify(); // No accidental edits at the displaced coordinates.
 
-    const auto initialCamera = input->GetCamera().GetPosition();
+    const auto initialCamera = input->GetCamera().GetWorldPosition().RelativeCellsTo({});
     for (int quarterPixel = 1; quarterPixel <= 4; ++quarterPixel) {
-        pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(511 + quarterPixel / 64.f, 508 + quarterPixel / 64.f));
+        pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromCells(511 + quarterPixel / 64.f, 508 + quarterPixel / 64.f));
         verify(); // Each quarter-pixel shift must produce the expected edge coverage.
         const auto sprite = policy->PublishedFrame().Character;
         Require(sprite && std::abs(sprite->Bounds[0] - ExpectedCharacter(*input)->Bounds[0]) < 1e-6,
                 "subpixel position was quantized during publication");
-        Require(input->GetCamera().GetPosition() == initialCamera, "render-only fixture changed camera");
+        Require(input->GetCamera().GetWorldPosition().RelativeCellsTo({}) == initialCamera, "render-only fixture changed camera");
     }
     const auto unscaledView = input->GetView();
     for (uint32_t scale : {1u, 8u, 32u}) {
         auto clipped = unscaledView;
-        clipped.CellSizePixels = {scale, scale};
+        clipped.CellSizePixels = {float(scale), float(scale)};
         clipped.OriginPixels = {int32_t(511 * scale + 1), int32_t(508 * scale + 1)};
         clipped.WorldOriginCells = {};
         input->SetView(clipped);
-        pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(511.0625f, 508.0625f));
+        pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromCells(511.0625f, 508.0625f));
         verify(); // Fractional rectangle clipped by the viewport, including minimum zoom.
     }
     input->SetView(unscaledView);
-    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(511, 508));
+    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromCells(511, 508));
 
     Require(input->GetControlMode() == PixelGame::ControlMode::Standard, "default mode must control the character");
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
-    const auto playerX = input->GetSession().GetPlayer()->X;
+    const auto playerX = pixel::CentimetersToCells(input->GetSession().GetPlayer()->X);
     const auto camera = input->GetView().OriginPixels;
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
-    Require(input->GetSession().GetPlayer()->X > playerX && input->GetView().OriginPixels[0] > camera[0], "standard mode must move and follow player");
-    const double targetX = input->GetSession().GetPlayer()->X + pixel::Body::Width / 2;
-    Require(input->GetCamera().GetPosition()[0] < targetX, "camera must approach player gradually instead of snapping");
-    Require(std::abs(input->GetCamera().GetPosition()[0] - (playerX + 1 + (targetX - playerX - 1) * (1 - std::exp(-1.0)))) < 1e-6,
+    Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) > playerX && input->GetView().OriginPixels[0] > camera[0], "standard mode must move and follow player");
+    const double targetX = pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) + pixel::Body::WidthCells / 2;
+    Require(input->GetCamera().GetWorldPosition().RelativeCellsTo({})[0] < targetX, "camera must approach player gradually instead of snapping");
+    Require(std::abs(input->GetCamera().GetWorldPosition().RelativeCellsTo({})[0] - (playerX + 1 + (targetX - playerX - 1) * (1 - std::exp(-1.0)))) < 1e-4,
             "camera must follow distance-proportional speed");
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
-    const auto debugX = input->GetSession().GetPlayer()->X;
+    const auto debugX = pixel::CentimetersToCells(input->GetSession().GetPlayer()->X);
     const auto debugCamera = input->GetView().OriginPixels;
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
     engine.GetInput()->Dispatch();
     input->Tick(0.125f);
-    Require(input->GetSession().GetPlayer()->X == debugX && input->GetView().OriginPixels == debugCamera, "switch must clear held input");
+    Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) == debugX && input->GetView().OriginPixels == debugCamera, "switch must clear held input");
     input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(0.125f);
-    Require(input->GetSession().GetPlayer()->X == debugX && input->GetView().OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
+    Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) == debugX && input->GetView().OriginPixels[0] > debugCamera[0], "debug mode must move camera only");
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_REPEAT, Mod{});
     Require(input->GetControlMode() == PixelGame::ControlMode::DebugCamera, "F3 repeat toggled mode");
-    const auto beforeReturn = input->GetCamera().GetPosition();
+    const auto beforeReturn = input->GetCamera().GetWorldPosition().RelativeCellsTo({});
     input->OnKeyEvent(Key::KEY_F3, 0, ButtonAction::ACTION_PRESS, Mod{});
-    Require(input->GetCamera().GetPosition() == beforeReturn, "return to standard must not snap camera");
+    Require(input->GetCamera().GetWorldPosition().RelativeCellsTo({}) == beforeReturn, "return to standard must not snap camera");
     input->Tick(0.125f);
-    Require(std::abs(input->GetCamera().GetPosition()[0] -
-                     (beforeReturn[0] + (input->GetSession().GetPlayer()->X + 1 - beforeReturn[0]) * (1 - std::exp(-1.0)))) < 1e-6,
+    Require(std::abs(input->GetCamera().GetWorldPosition().RelativeCellsTo({})[0] -
+                     (beforeReturn[0] + (pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) + 1 - beforeReturn[0]) * (1 - std::exp(-1.0)))) < 1e-4,
             "return from debug must smoothly approach player from current camera position");
     engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
     engine.GetInput()->Dispatch();
     input->Tick(0.125f);
-    Require(input->GetSession().GetPlayer()->X == debugX, "return to standard retained movement after repeat");
+    Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) == debugX, "return to standard retained movement after repeat");
     // UI capture and focus loss use this same clear hook. A held key must not
     // become a new press when repeat events resume after the clear.
     for (const auto mode : {PixelGame::ControlMode::Standard, PixelGame::ControlMode::DebugCamera}) {
@@ -1219,40 +1223,40 @@ void BasicWorldGameplay() {
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_PRESS, 0);
             engine.GetInput()->Dispatch();
             input->ClearInputState();
-            const auto clearedX = input->GetSession().GetPlayer()->X;
+            const auto clearedX = pixel::CentimetersToCells(input->GetSession().GetPlayer()->X);
             const auto clearedCamera = input->GetView().OriginPixels;
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_REPEAT, 0);
             engine.GetInput()->Dispatch();
             input->Tick(0.125f);
-            Require(input->GetSession().GetPlayer()->X == clearedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == clearedCamera),
+            Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) == clearedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == clearedCamera),
                     "repeat reactivated movement after input clear");
             engine.GetPlatform()->OnKeyButtonCallback(key, 0, GLFW_RELEASE, 0);
             engine.GetInput()->Dispatch();
         }
-        const auto beforePressX = input->GetSession().GetPlayer()->X;
+        const auto beforePressX = pixel::CentimetersToCells(input->GetSession().GetPlayer()->X);
         const auto beforePressCamera = input->GetView().OriginPixels;
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_PRESS, 0);
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_REPEAT, 0);
         engine.GetInput()->Dispatch();
         input->Tick(0.125f);
-        Require(mode == PixelGame::ControlMode::Standard ? input->GetSession().GetPlayer()->X > beforePressX
+        Require(mode == PixelGame::ControlMode::Standard ? pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) > beforePressX
                                                          : input->GetView().OriginPixels[0] > beforePressCamera[0],
                 "fresh press followed by repeat must preserve movement");
         engine.GetPlatform()->OnKeyButtonCallback(GLFW_KEY_D, 0, GLFW_RELEASE, 0);
         engine.GetInput()->Dispatch();
-        const auto releasedX = input->GetSession().GetPlayer()->X;
+        const auto releasedX = pixel::CentimetersToCells(input->GetSession().GetPlayer()->X);
         const auto releasedCamera = input->GetView().OriginPixels;
         input->Tick(0.125f);
-        Require(input->GetSession().GetPlayer()->X == releasedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == releasedCamera),
+        Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) == releasedX && (mode == PixelGame::ControlMode::Standard || input->GetView().OriginPixels == releasedCamera),
                 "release must stop movement");
     }
     input->SetControlMode(PixelGame::ControlMode::Standard);
     input->OnKeyEvent(Key::KEY_SPACE, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(1.f / 60);
-    Require(input->GetSession().GetPlayer()->Y < 508, "standard Space must jump");
+    Require(pixel::CentimetersToCells(input->GetSession().GetPlayer()->Y) < 508, "standard Space must jump");
     verify();
     input->SetControlMode(PixelGame::ControlMode::DebugCamera);
-    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(530, 508)); // Leave the legacy editing fixtures unobstructed.
+    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromCells(530, 508)); // Leave the legacy editing fixtures unobstructed.
     // Exercise the real default field: empty sky must not disturb the terrain.
     for (int i = 0; i < 5; ++i)
         input->Tick(1.f / 60);
@@ -1339,9 +1343,9 @@ void BasicWorldGameplay() {
     expectedCells[511 * Grid2D::Width + 512] = 0;
     verify();
     // Zoom and pan, then verify the event-to-cell mapping on the actual HiDPI window.
-    const auto cameraBeforeZoom = input->GetCamera().GetPosition();
+    const auto cameraBeforeZoom = input->GetCamera().GetWorldPosition().RelativeCellsTo({});
     input->OnKeyEvent(Key::KEY_EQUAL, 0, ButtonAction::ACTION_PRESS, Mod{});
-    Require(input->GetCamera().GetPosition() == cameraBeforeZoom, "zoom changed camera world centre");
+    Require(input->GetCamera().GetWorldPosition().RelativeCellsTo({}) == cameraBeforeZoom, "zoom changed camera world centre");
     {
         auto view = input->GetView();
         view.OriginPixels[0] += 16;
@@ -1365,8 +1369,8 @@ void BasicWorldGameplay() {
     supplySoil();
     input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false});
     VerifyDefaultWorldField(world);
-    Require(input->GetSession().GetPlayer() && input->GetSession().GetPlayer()->X == 511 && input->GetSession().GetPlayer()->Y == 508, "R must reset player");
-    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromAbsolute(530, 508));
+    Require(input->GetSession().GetPlayer() && pixel::CentimetersToCells(input->GetSession().GetPlayer()->X) == 511 && pixel::CentimetersToCells(input->GetSession().GetPlayer()->Y) == 508, "R must reset player");
+    pixel::testing::SessionAccess::SetPlayerPosition(input->GetSession(), pixel::WorldPosition::FromCells(530, 508));
     Require(world.GetWind().Sample(512.5f, 200.5f) == initialWind, "R reset retained wind time or impulse state");
     verify();
     // A block at height 599 must cross the entire stable sky band vertically.
@@ -1633,7 +1637,7 @@ void TerrainMaterialsGpu() {
     for (uint32_t i = 0; i < types.size(); ++i)
         world.FillRegion({0, 2 + i * 4, 64, 3}, {types[i]});
     std::array<int64_t, 2> origin{};
-    uint32_t scale = pixel::DefaultRenderPixelsPerLogicalPixel;
+    float scale = pixel::DefaultRenderPixelsPerLogicalPixel;
     PixelRender *policy = nullptr;
     RenderSetup setup;
     setup.Enable3DScene = false;
@@ -1644,7 +1648,7 @@ void TerrainMaterialsGpu() {
             frame.SetRegion(origin, 64, 128);
             std::copy(cells.begin(), cells.end(), frame.Cells().begin());
             frame.View.WorldOriginCells = origin;
-            frame.View.CellSizePixels = {scale, scale};
+            frame.View.CellSizePixels = {float(scale), float(scale)};
             frame.View.Background = {.15f, .25f, .35f, 1};
         });
         policy = render.get();
@@ -1653,7 +1657,7 @@ void TerrainMaterialsGpu() {
     PixelSmokeApplication app(std::make_unique<PixelGame>(false));
     app.Engine->SetRender(std::move(setup));
     app.Initialize(); app.Begin();
-    constexpr std::array scales{1u, 2u, 4u, 8u, 16u};
+    constexpr std::array scales{1.f, 2.f, 3.3f, 4.f, 5.5f, 8.f, 16.f};
     for (size_t i = 0; i < scales.size() * 2; ++i) {
         scale = scales[i % scales.size()];
         if (i == scales.size()) origin = {(int64_t{1} << 55) + 19, -(int64_t{1} << 55) - 7};
@@ -1662,7 +1666,7 @@ void TerrainMaterialsGpu() {
         VerifyColor(policy->PublishedFrame(), policy->WorldColor(token.Slot), catalog);
     }
     app.Shutdown();
-    std::cout << "Terrain GPU passed: 1/2/4/8/16 square pixel scales, Content PNGs, all materials, water alpha/surface strips, frame slots and distant UV phases\n";
+    std::cout << "Terrain GPU passed: 1/2/3.3/4/5.5/8/16 pixel scales, Content PNGs, all materials, water alpha/surface strips, frame slots and distant UV phases\n";
 }
 
 void ElementMotionGpu() {
@@ -1799,7 +1803,7 @@ void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const
                               const char *captureName) {
     auto &rhi = *engine.GetRHI();
     const auto extent = rhi.GetPresentationExtent();
-    const auto placement = pixel::ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)});
+    const auto placement = pixel::ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)}, canvas.UIScale);
     const std::array<float, 4> bounds{placement.X, placement.Y, placement.Width, placement.Height};
     auto target = rhi.CreateTexture({extent.Width, extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
     auto texture = rhi.CreateTexture({pixel::ui::InventoryLayout::Width, pixel::ui::InventoryLayout::Height, 1, RHITextureFormat::RGBA8SRGB});
@@ -1923,6 +1927,14 @@ void InventoryUIGpu() {
     app.Engine->GetRHI()->WaitIdle();
     Require(input->GetUI().IsExpanded(), "Tab did not expand inventory in production app");
     VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-open.ppm");
+    for (float scale : {.5f, 1.5f, 4.f, 1.f}) {
+        input->SetUIScale(scale);
+        input->SetSceneScale(1.375f);
+        for (int i = 0; i < 4; ++i) token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        Require(input->GetUIScale() == scale && input->GetSceneScale() == 1.375f, "production scales interfered");
+        VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-scaled.ppm");
+    }
     input->OnKeyEvent(Key::KEY_ESCAPE, 0, ButtonAction::ACTION_PRESS, Mod{});
     Require(!input->GetUI().IsExpanded(), "Escape did not close production inventory");
     Draw(app);
@@ -2013,8 +2025,8 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
         auto render = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), [&](WorldGridFrame &frame) {
             const auto extent = rhi.GetPresentationExtent();
             const auto scale = view.CellSizePixels[0];
-            const auto width = (extent.Width + scale - 1) / scale;
-            const auto height = (extent.Height + scale - 1) / scale;
+            const auto width = uint32_t(std::ceil(extent.Width / scale));
+            const auto height = uint32_t(std::ceil(extent.Height / scale));
             frame.SetRegion({0, 0}, width, height);
             frame.View = view;
             frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;

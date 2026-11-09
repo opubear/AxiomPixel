@@ -92,7 +92,7 @@ void ScopeAndNativeOwnership() {
     GameSession session;
     auto device = Place(session);
     auto &world = testing::SessionAccess::World(session);
-    const auto source = world.InstallFieldSource(999, {WorldPosition::FromAbsolute(501.25, 471.5), 3, {120, -240}, 10});
+    const auto source = world.InstallFieldSource(999, {WorldPosition::FromCells(501.25, 471.5), 3, {120, -240}, 10});
     Check(source.has_value(), "native source failed");
     testing::SessionAccess::PublishFixtureChanges(session);
     const auto values = Observe(session);

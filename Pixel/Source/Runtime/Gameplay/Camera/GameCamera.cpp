@@ -17,17 +17,17 @@ void GameCamera::SetView(const GridView2D &view) {
         throw std::invalid_argument("logical pixel must project to a square of 1 to 64 framebuffer pixels per side");
     WorldPosition position;
     position.Chunk = ChunkOf({view.WorldOriginCells[0], view.WorldOriginCells[1]});
-    position.Local = {double(view.WorldOriginCells[0] - position.Chunk.X * storage::ChunkEdge) + (double(view.OriginPixels[0]) + FramebufferSize[0] / 2.0) / view.CellSizePixels[0],
-                      double(view.WorldOriginCells[1] - position.Chunk.Y * storage::ChunkEdge) + (double(view.OriginPixels[1]) + FramebufferSize[1] / 2.0) / view.CellSizePixels[1]};
+    position = WorldPosition::FromChunkCells(position.Chunk,
+        {double(view.WorldOriginCells[0] - position.Chunk.X * storage::ChunkEdge) + (double(view.OriginPixels[0]) + FramebufferSize[0] / 2.0) / view.CellSizePixels[0],
+         double(view.WorldOriginCells[1] - position.Chunk.Y * storage::ChunkEdge) + (double(view.OriginPixels[1]) + FramebufferSize[1] / 2.0) / view.CellSizePixels[1]});
     Camera.SetWorldPosition(position);
     ViewSettings = view;
 }
 void GameCamera::Reset(WorldRect bounds, const Body *player) {
-    ViewSettings.CellSizePixels = DefaultLogicalPixelSize;
     const auto chunk = ChunkOf({bounds.X, bounds.Y});
-    WorldPosition position{chunk,
+    WorldPosition position = WorldPosition::FromChunkCells(chunk,
         {double(bounds.X - chunk.X * storage::ChunkEdge) + bounds.Width / 2.0,
-         double(bounds.Y - chunk.Y * storage::ChunkEdge) + bounds.Height / 2.0}};
+         double(bounds.Y - chunk.Y * storage::ChunkEdge) + bounds.Height / 2.0});
     if (player) {
         position = player->GetWorldPosition();
         position.Local[0] += Body::Width / 2;
@@ -44,14 +44,19 @@ void GameCamera::FollowPlayer(const Body *player, float duration) {
 }
 void GameCamera::Pan(std::array<int, 2> direction, float duration) {
     // Keep 240 framebuffer pixels/second, independently of zoom.
-    const float distance = std::min(duration, .25f) * 240;
+    const float distance = std::min(duration, .25f) * 240 * CentimetersPerCell;
     Camera.Translate({direction[0] * distance / ViewSettings.CellSizePixels[0],
                       direction[1] * distance / ViewSettings.CellSizePixels[1]});
 }
 void GameCamera::Zoom(bool in) {
-    const uint32_t old = ViewSettings.CellSizePixels[0];
-    const uint32_t next = in ? std::min(MaximumRenderPixelsPerLogicalPixel, old * 2) : std::max(1u, old / 2);
-    ViewSettings.CellSizePixels = {next, next};
+    SetSceneScale(std::clamp(GetSceneScale() * (in ? 2.f : .5f), MinimumSceneScale, MaximumSceneScale));
+}
+
+void GameCamera::SetSceneScale(float scale) {
+    if (!IsValidSceneScale(scale))
+        throw std::invalid_argument("SceneScale must produce 1 to 64 framebuffer pixels per cell");
+    const float pixels = DefaultRenderPixelsPerLogicalPixel * scale;
+    ViewSettings.CellSizePixels = {pixels, pixels};
 }
 void GameCamera::NextRegion() {
     auto view = GetView();
@@ -73,7 +78,7 @@ std::optional<WorldPosition> GameCamera::PickWorldPosition(const MousePointerSta
             || pointer.Position[axis] >= pointer.WindowSize[axis])
             return std::nullopt;
         const double pixel = pointer.Position[axis] * pointer.FramebufferSize[axis] / pointer.WindowSize[axis];
-        position.Local[axis] += (pixel - pointer.FramebufferSize[axis] / 2.0) / ViewSettings.CellSizePixels[axis];
+        position.Local[axis] += CellsToCentimeters(float((pixel - pointer.FramebufferSize[axis] / 2.0) / ViewSettings.CellSizePixels[axis]));
     }
     position.Normalize();
     return position;

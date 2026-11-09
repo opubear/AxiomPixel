@@ -39,25 +39,25 @@ void HeldInputAndModes() {
     Require(!f.Input.ConsumePlayerInput().Jump, "jump must be consumed once");
     f.KeyEvent(Key::KEY_F3);
     Require(f.Input.GetControlMode() == pixel::ControlMode::DebugCamera, "F3 must change mode directly");
-    const auto centre = f.Camera.GetCamera().GetPosition();
+    const auto centre = f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
     f.KeyEvent(Key::KEY_D, ButtonAction::ACTION_REPEAT);
     f.Input.UpdateCamera(.1f);
-    Require(f.Camera.GetCamera().GetPosition() == centre, "mode change must clear held input and suppress repeats");
+    Require(f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({}) == centre, "mode change must clear held input and suppress repeats");
     f.KeyEvent(Key::KEY_SPACE);
     Require(f.Presentation.Post.Values[1] == .35f, "debug space must execute tint change");
     f.KeyEvent(Key::KEY_D);
     f.Input.UpdateCamera(.1f);
-    Require(f.Camera.GetCamera().GetPosition()[0] > centre[0] && f.Input.ConsumePlayerInput().Horizontal == 0,
+    Require(f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({})[0] > centre[0] && f.Input.ConsumePlayerInput().Horizontal == 0,
             "debug input must pan camera without controlling the player");
     f.Input.ClearInputState();
-    const auto cleared = f.Camera.GetCamera().GetPosition();
+    const auto cleared = f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
     f.KeyEvent(Key::KEY_D, ButtonAction::ACTION_REPEAT);
     f.Input.UpdateCamera(.1f);
     f.KeyEvent(Key::KEY_F3, ButtonAction::ACTION_REPEAT);
-    Require(f.Camera.GetCamera().GetPosition() == cleared && f.Input.GetControlMode() == pixel::ControlMode::DebugCamera,
+    Require(f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({}) == cleared && f.Input.GetControlMode() == pixel::ControlMode::DebugCamera,
             "UI clear and repeats must not restore input or toggle mode");
     f.KeyEvent(Key::KEY_F3);
-    Require(f.Camera.GetCamera().GetPosition() == cleared, "mode switch must preserve camera position");
+    Require(f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({}) == cleared, "mode switch must preserve camera position");
     f.KeyEvent(Key::KEY_D);
     f.KeyEvent(Key::KEY_D, ButtonAction::ACTION_RELEASE);
     Require(f.Input.ConsumePlayerInput().Horizontal == 0, "release must stop movement");
@@ -67,8 +67,8 @@ void HeldInputAndModes() {
     f.Session.Tick(.001f, {1, true});
     f.Input.ClearInputState();
     f.Session.Tick(1.f / 60, f.Input.ConsumePlayerInput());
-    const auto after = f.Session.GetPlayer()->GetWorldPosition().RelativeTo(position.Cell());
-    const auto before = position.RelativeTo(position.Cell());
+    const auto after = f.Session.GetPlayer()->GetWorldPosition().RelativeCellsTo(position.Cell());
+    const auto before = position.RelativeCellsTo(position.Cell());
     Require(after[0] == before[0] && after[1] >= before[1],
             "clear must remove intent queued in the session before the next step");
 }
@@ -79,8 +79,8 @@ void RunningPlayerAndGlobalPause() {
     f.KeyEvent(Key::KEY_D);
     f.KeyEvent(Key::KEY_SPACE);
     f.Session.Tick(1.f / 60, f.Input.ConsumePlayerInput());
-    const auto moved = f.Session.GetPlayer()->GetWorldPosition().RelativeTo(start.Cell());
-    const auto initial = start.RelativeTo(start.Cell());
+    const auto moved = f.Session.GetPlayer()->GetWorldPosition().RelativeCellsTo(start.Cell());
+    const auto initial = start.RelativeCellsTo(start.Cell());
     Require(moved[0] > initial[0] && moved[1] < initial[1], "new game must accept walking and jumping without a resume action");
 
     Require(f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true}).Succeeded(), "game pause failed");
@@ -96,10 +96,10 @@ void RunningPlayerAndGlobalPause() {
     Require(f.Session.Execute(pixel::NativeCaller::Input, pixel::api::MineRegion{{520, 512}}).Rejection == pixel::api::Reason::GamePaused,
             "global pause accepted a world-changing input action");
     f.KeyEvent(Key::KEY_F3);
-    const auto debug = f.Camera.GetCamera().GetPosition();
+    const auto debug = f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
     f.KeyEvent(Key::KEY_D);
     f.Input.UpdateCamera(.1f);
-    Require(f.Camera.GetCamera().GetPosition()[0] > debug[0] && f.Session.CurrentCommit() == stamp,
+    Require(f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({})[0] > debug[0] && f.Session.CurrentCommit() == stamp,
             "global pause must leave debug camera responsive without changing the world");
     f.KeyEvent(Key::KEY_F3);
     Require(f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{false}).Succeeded(), "game resume failed");
@@ -124,9 +124,9 @@ void CommandsAndReset() {
     Require(f.PanelToggles == 1 && f.QuitRequests == 1, "host actions must execute once per press");
     f.KeyEvent(Key::KEY_T);
     Require(f.Presentation.Post.Values[1] == .35f, "T must invoke presentation tint");
-    const auto centre = f.Camera.GetCamera().GetPosition();
+    const auto centre = f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
     f.KeyEvent(Key::KEY_EQUAL);
-    Require(f.Camera.GetView().CellSizePixels[0] == std::min(2 * pixel::DefaultRenderPixelsPerLogicalPixel, pixel::MaximumRenderPixelsPerLogicalPixel) && f.Camera.GetCamera().GetPosition() == centre,
+    Require(f.Camera.GetView().CellSizePixels[0] == std::min(2 * pixel::DefaultRenderPixelsPerLogicalPixel, pixel::MaximumRenderPixelsPerLogicalPixel) && f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({}) == centre,
             "zoom must keep camera centre");
     f.KeyEvent(Key::KEY_MINUS);
     const auto view = f.Camera.GetView();
@@ -150,9 +150,9 @@ void CommandsAndReset() {
     Require(f.Camera.GetFramebufferSize() == f.Framebuffer && f.Camera.GetView().CellSizePixels == pixel::DefaultLogicalPixelSize &&
                 f.Camera.GetCamera().GetFollowRate() == 4 && f.Presentation.Post.Values[1] == 1,
             "R must refresh viewport and reset zoom/tint while retaining follow rate");
-    const auto resetCentre = f.Camera.GetCamera().GetPosition();
+    const auto resetCentre = f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
     f.Input.UpdateCamera(.1f);
-    Require(f.Camera.GetCamera().GetPosition() == resetCentre, "R must clear held camera movement");
+    Require(f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({}) == resetCentre, "R must clear held camera movement");
 }
 void PendingResetKeepsView() {
     Fixture f;
@@ -173,7 +173,7 @@ void MouseEditing() {
     Require(f.Session.Execute(pixel::NativeCaller::Driver, pixel::api::MineRegion{{520, 512}, {}}).Applied(),
             "mouse fixture needs one soil item");
     auto &world = pixel::testing::SessionAccess::World(f.Session);
-    f.Camera.GetCamera().SetPosition({100, 100});
+    f.Camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(100, 100));
     f.Camera.SetFramebufferSize({1600, 1200});
     const MousePointerState oldEvent{{400, 300}, {800, 600}, {800, 600}};
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, oldEvent);
@@ -203,7 +203,7 @@ void FormulaInputAndContinuousAim() {
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, centre);
     Require(runtime.Projectiles().size() == 1, "paused right press must create the final bolt");
     const auto ball = runtime.Projectiles().front();
-    const auto relative = ball.Position.RelativeTo({512, 510});
+    const auto relative = ball.Position.RelativeCellsTo({512, 510});
     Require(std::abs(relative[0] - 1.6) < 1e-9 && std::abs(relative[1]) < 1e-9,
             "zero-distance aim must use right-facing muzzle outside the player");
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_RELEASE, 0, centre);
@@ -213,16 +213,16 @@ void FormulaInputAndContinuousAim() {
             "release or pause moved/repeated the bolt");
     f.Session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     f.Session.Tick(.2f, {});
-    const auto moved = runtime.Projectiles().front().Position.RelativeTo(ball.Position.Cell());
-    const auto before = ball.Position.RelativeTo(ball.Position.Cell());
+    const auto moved = runtime.Projectiles().front().Position.RelativeCellsTo(ball.Position.Cell());
+    const auto before = ball.Position.RelativeCellsTo(ball.Position.Cell());
     Require(std::abs(moved[0] - before[0] - 1) < 1e-9, "single step must move the default bolt one cell");
 
-    const pixel::WorldPosition distant{{int64_t{1} << 44, -(int64_t{1} << 44)}, {.125, .75}};
+    const pixel::WorldPosition distant = pixel::WorldPosition::FromChunkCells({int64_t{1} << 44, -(int64_t{1} << 44)}, {.125, .75});
     f.Camera.GetCamera().SetWorldPosition(distant);
     f.Camera.SetFramebufferSize({1600, 1200});
     const auto target = f.Camera.PickWorldPosition({{400.25, 300.5}, {800, 600}, {800, 600}});
     Require(target && target->Chunk == distant.Chunk &&
-                std::abs(target->Local[0] - (.125 + .25 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12 && std::abs(target->Local[1] - (.75 + .5 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12,
+                std::abs(target->Local[0] / pixel::CentimetersPerCell - (.125 + .25 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12 && std::abs(target->Local[1] / pixel::CentimetersPerCell - (.75 + .5 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12,
             "continuous old-size event lost distant fractional aim");
     Require(!f.Camera.PickWorldPosition({{800, 300}, {800, 600}, {800, 600}}), "outside continuous aim accepted");
 }
@@ -235,7 +235,7 @@ void DeviceInput() {
                                pixel::items::ItemAmount{pixel::items::ItemId::Soil, 1}};
     Require(inventory.Add(inventory.Reference(f.Session.PlayerInventory()), resources) == pixel::items::Result::Applied,
             "device input fixture could not add building resources");
-    f.Camera.GetCamera().SetPosition({100, 100});
+    f.Camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(100, 100));
     const MousePointerState target{{400, 300}, {800, 600}, {800, 600}};
     const double scale = pixel::DefaultRenderPixelsPerLogicalPixel;
     const MousePointerState body{{400 + scale, 300 + scale}, {800, 600}, {800, 600}};
@@ -287,7 +287,7 @@ void InventoryInput() {
 
 void ElementBrushInput() {
     Fixture f;
-    f.Camera.GetCamera().SetPosition({100, 100});
+    f.Camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(100, 100));
     const MousePointerState pointer{{400, 300}, {800, 600}, {800, 600}};
     for (const auto [key, type] : {std::pair{Key::KEY_2, pixel::CellTypeId::Water},
                                   std::pair{Key::KEY_3, pixel::CellTypeId::Steam},

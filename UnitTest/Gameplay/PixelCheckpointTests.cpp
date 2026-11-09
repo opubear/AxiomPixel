@@ -85,10 +85,10 @@ void ActiveDomainsResumeOnce() {
         GameSession session(true);
         auto &world = testing::SessionAccess::World(session);
         id = BuildEmitter(session);
-        const auto actor = testing::SessionAccess::Actors(session).Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(550, 450));
+        const auto actor = testing::SessionAccess::Actors(session).Spawn(ActorKind::Resident, WorldPosition::FromCells(550, 450));
         Check(actor.has_value(), "resident spawn failed");
         auto &actors = testing::SessionAccess::Actors(session);
-        const auto discarded = actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(560, 450));
+        const auto discarded = actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(560, 450));
         Check(discarded && actors.Remove(*discarded), "retired actor setup failed");
         auto &inventory = testing::SessionAccess::Inventory(session);
         const auto retiredContainer = inventory.Create(64);
@@ -104,7 +104,7 @@ void ActiveDomainsResumeOnce() {
         ProcessCarrier carrier;
         carrier.Kind = ProcessCarrierKind::Player;
         carrier.Subject = session.GetActors().PlayerSnapshot()->Id.Value;
-        carrier.Origin = WorldPosition::FromAbsolute(450.5, 450.5);
+        carrier.Origin = WorldPosition::FromCells(450.5, 450.5);
         carrier.Scope = world.GetSimulationBounds();
         world.SetCell(450, 450, {CellTypeId::Stone});
         Check(bridge.CastCarrier(world, carrier), "checkpoint process failed");
@@ -147,7 +147,7 @@ void ActiveDomainsResumeOnce() {
             && restoredProcesses[i].State.Instruction == savedProcesses[i].State.Instruction
             && restoredProcesses[i].Credits == savedProcesses[i].Credits, "program continuation changed");
     auto &actors = testing::SessionAccess::Actors(loaded);
-    const auto newActor = actors.Spawn(ActorKind::Resident, WorldPosition::FromAbsolute(560, 450));
+    const auto newActor = actors.Spawn(ActorKind::Resident, WorldPosition::FromCells(560, 450));
     Check(newActor && actors.Require(*newActor).Id.Value == savedActors.NextId, "retired actor ID was reused");
     auto &inventory = testing::SessionAccess::Inventory(loaded);
     const auto newContainer = inventory.Create(64);
@@ -180,7 +180,7 @@ void FrozenAndUnloadedChangesAreAtomic() {
         previous = store.ResolveCheckpoint(directory);
         world.SetCell(450, 450, {CellTypeId::TungstenOre});
         world.Save(); // Flushed working chunk is later unloaded, never overwrites previous.
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(8192, 508));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(8192, 508));
         world.LoadSimulationNow();
         testing::SessionAccess::PublishFixtureChanges(session);
         testing::WorldAccess::Map(world).Remove(ChunkOf({450, 450}));
@@ -207,7 +207,7 @@ void FrozenAndUnloadedChangesAreAtomic() {
     const auto frozen = world.GetEnvironment().GetFieldSources().Sources()[0];
     Check(frozen.Handle.Id == sourceId && frozen.Remaining == remaining && frozen.Suspended
         && !world.TryGetCell(450, 450), "frozen checkpoint aged or loaded remote program");
-    testing::SessionAccess::SetPlayerPosition(loaded, WorldPosition::FromAbsolute(511, 508));
+    testing::SessionAccess::SetPlayerPosition(loaded, WorldPosition::FromCells(511, 508));
     world.LoadSimulationNow();
     testing::SessionAccess::PublishFixtureChanges(loaded);
     Check(world.GetCell(450, 450).Type == CellTypeId::TungstenOre

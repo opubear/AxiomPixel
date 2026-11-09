@@ -257,7 +257,10 @@ SessionSaveData SessionStore::ReadMetadata(const std::filesystem::path &director
         || edge != storage::ChunkEdge)
         throw WorldStorageError("incompatible world metadata");
     data.Generation = version >= 3 ? ReadGeneration(input) : WorldGenerationSettings{};
-    input >> data.Player.Chunk.X >> data.Player.Chunk.Y >> data.Player.Local[0] >> data.Player.Local[1];
+    std::array<double, 2> playerCells;
+    input >> data.Player.Chunk.X >> data.Player.Chunk.Y >> playerCells[0] >> playerCells[1];
+    try { data.Player = WorldPosition::FromChunkCells(data.Player.Chunk, playerCells); }
+    catch (const std::exception &error) { throw WorldStorageError(error.what()); }
     if (version < 5) {
         double legacyTime;
         bool deferred;
@@ -290,7 +293,8 @@ void SessionStore::WriteMetadata(const std::filesystem::path &directory, const S
         out << "AxiomPixelWorld " << SessionSaveData::CurrentVersion << ' ' << storage::ChunkEdge << ' '
             << data.WindowEdge << ' ' << data.BudgetBytes << '\n';
         WriteGeneration(out, data.Generation);
-        out << data.Player.Chunk.X << ' ' << data.Player.Chunk.Y << ' ' << data.Player.Local[0] << ' ' << data.Player.Local[1] << '\n'
+        out << data.Player.Chunk.X << ' ' << data.Player.Chunk.Y << ' ' << double(data.Player.Local[0]) / CentimetersPerCell
+            << ' ' << double(data.Player.Local[1]) / CentimetersPerCell << '\n'
             << data.CommittedTime << ' ' << data.TimeRemainder << ' '
             << data.WindBoundary << ' ' << data.WindEnabled << ' ' << data.Paused << '\n';
         WriteSettings(out, data.Wind);

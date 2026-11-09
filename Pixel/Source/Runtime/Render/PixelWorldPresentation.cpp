@@ -167,14 +167,14 @@ void BuildCharacterFrame(const pixel::ActorSnapshot &character, const pixel::Cam
     };
     const auto cameraPosition = camera.GetWorldPosition();
     const auto reference = cameraPosition.Cell();
-    const auto player = character.GetWorldPosition().RelativeTo(reference);
-    const auto centre = cameraPosition.RelativeTo(reference);
+    const auto player = character.GetWorldPosition().RelativeCellsTo(reference);
+    const auto centre = cameraPosition.RelativeCellsTo(reference);
     CharacterDraw draw;
     draw.Bounds = {
         float((player[0] - centre[0]) * output.View.CellSizePixels[0] + framebufferSize[0] / 2.0),
         float((player[1] - centre[1]) * output.View.CellSizePixels[1] + framebufferSize[1] / 2.0),
-        pixel::Body::Width * output.View.CellSizePixels[0],
-        pixel::Body::Height * output.View.CellSizePixels[1]};
+        pixel::Body::WidthCells * output.View.CellSizePixels[0],
+        pixel::Body::HeightCells * output.View.CellSizePixels[1]};
     draw.HeadColor = linearColor({255, 212, 140});
     draw.BodyColor = linearColor({40, 210, 180});
     output.Character = draw;

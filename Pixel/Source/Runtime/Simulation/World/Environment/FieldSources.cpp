@@ -39,14 +39,14 @@ FieldSourceSpec FieldSources::Validate(uint64_t owner, FieldSourceSpec spec) {
 
 bool FieldSources::Fits(const FieldSourceSpec &spec, WorldRect bounds) {
     if (bounds.Empty()) return false;
-    const auto center = spec.Center.RelativeTo({bounds.X, bounds.Y});
+    const auto center = spec.Center.RelativeCellsTo({bounds.X, bounds.Y});
     return center[0] >= spec.Radius && center[1] >= spec.Radius
         && center[0] + spec.Radius <= bounds.Width && center[1] + spec.Radius <= bounds.Height;
 }
 
 WorldRect FieldSources::Bounds(const FieldSourceSpec &spec) {
     const auto cell = spec.Center.Cell();
-    const auto center = spec.Center.RelativeTo(cell);
+    const auto center = spec.Center.RelativeCellsTo(cell);
     const auto left = int64_t(std::floor(center[0] - spec.Radius));
     const auto top = int64_t(std::floor(center[1] - spec.Radius));
     const auto right = int64_t(std::floor(center[0] + spec.Radius));
@@ -97,7 +97,7 @@ ForceVector FieldSources::Sample(CellCoord cell, WorldRect bounds) const {
     RefreshResidency();
     for (size_t index = 0; index < Count; ++index) {
         const auto &source = Values[index];
-        const auto center = source.Spec.Center.RelativeTo(cell);
+        const auto center = source.Spec.Center.RelativeCellsTo(cell);
         const auto dx = center[0] - .5, dy = center[1] - .5;
         if (dx * dx + dy * dy > source.Spec.Radius * source.Spec.Radius) continue;
         if (!Active(index, bounds)) continue;

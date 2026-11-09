@@ -112,7 +112,7 @@ void FormulaDebugUI::DrawProcessExample(GameSession &session) {
             ProcessCarrier carrier;
             carrier.Kind = kind;
             carrier.Subject = 1;
-            carrier.Origin = FormulaWorldAdapter::Offset(player->GetWorldPosition(), {natural ? 8.0 : -8.0, 1});
+            carrier.Origin = FormulaWorldAdapter::OffsetCells(player->GetWorldPosition(), {natural ? 8.0 : -8.0, 1});
             carrier.Scope = session.GetWorld().GetSimulationBounds();
             carrier.AngleDegrees = 45;
             carrier.Credits = natural ? 6 : 4;

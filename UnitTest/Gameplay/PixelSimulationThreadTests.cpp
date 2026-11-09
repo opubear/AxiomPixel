@@ -121,7 +121,7 @@ void BudgetRetryHoldsQueuedEffects() {
     settings.SurfaceY = 10000;
     settings.BudgetBytes = 256ull * 1024 * 1024;
     world.EnableStreaming(settings);
-    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(100, 100));
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(100, 100));
     world.LoadSimulationNow();
     world.SetCell(32, 10, {CellTypeId::Dirt, {0, 1}});
     world.SetCell(32, 9, {CellTypeId::Fire});
@@ -178,7 +178,7 @@ void ThreeThreadsAndPlayerPresentation() {
         const auto before = player.Player->Position;
         session.RunFrame(duration, {1, false}, [&] {
             player.Advance(duration, {1, false});
-            Require(player.Player->Position.RelativeTo(before.Cell())[0] > before.RelativeTo(before.Cell())[0],
+            Require(player.Player->Position.RelativeCellsTo(before.Cell())[0] > before.RelativeCellsTo(before.Cell())[0],
                     "game-owned player motion waited for authoritative publication");
             camera.FollowPlayer(&*player.Motion, duration);
         });

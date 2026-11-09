@@ -48,7 +48,7 @@ void BudgetRefusalsPreserveDomainTransactions() {
     const auto compiled = formula::process::Compile("budget-wind", "process 1; emit wind(cells(2), speed(60), speed(0)); wait ticks(1);");
     Check(std::holds_alternative<formula::process::ProgramArtifact>(compiled), "wind fixture compilation failed");
     bridge.ApplyProcess(std::get<formula::process::ProgramArtifact>(compiled));
-    Check(bridge.Cast(world, WorldPosition::FromAbsolute(20.5, 20.5), 0), "budget wind process did not activate");
+    Check(bridge.Cast(world, WorldPosition::FromCells(20.5, 20.5), 0), "budget wind process did not activate");
     bridge.SynchronizeActivity(world);
     Check(world.ReadBuffers() == published && published->SampleWind({20, 20}) == oldWind && published->GetMap().Get({10, 10}).Type == CellTypeId::Stone,
           "refused action changed a sealed version");

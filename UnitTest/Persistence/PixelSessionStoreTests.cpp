@@ -81,7 +81,7 @@ void MetadataCompatibility() {
     Require(data.WindowEdge == 256 && data.BudgetBytes == 123456789 && data.Generation == NaturalRecipe(),
             "metadata lost storage settings or generation identity");
     Require(data.Player.Chunk == CellCoord{-1234567890123, 2345678901234}
-                && data.Player.Local == std::array<double, 2>{.125, 63.75}, "metadata lost distant position precision");
+                && data.Player.Local == std::array<float, 2>{6.25f, 3187.5f}, "metadata lost distant position precision");
     Require(data.CommittedTime == 12.25 && data.TimeRemainder == .125
                 && data.WindBoundary == -23456 && data.WindEnabled && !data.Paused,
             "metadata lost committed clock or session state");

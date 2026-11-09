@@ -81,18 +81,18 @@ GameSession::GameSession(SessionMode mode, WorldGenerationSettings generation)
 void GameSession::InitializeScene() {
     const auto &generation = StreamConfiguration.Generation;
     const auto surface = GameWorld.GetStreamer() ? CreateWorldGenerator(generation)->SurfaceHeight(512) : int64_t(512);
-    Characters.SetPlayerPosition(WorldPosition::FromAbsolute(511, double(surface - int64_t(Body::Height))));
+    Characters.SetPlayerPosition(WorldPosition::FromCells(511, double(surface - int64_t(Body::HeightCells))));
     GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
     GameWorld.UpdateStreaming();
     GameWorld.LoadSimulationNow();
     const auto feet = GetPlayer()->GetWorldPosition().Cell();
-    for (int y = 0; y < int(Body::Height); ++y)
-        for (int x = 0; x < int(Body::Width); ++x) {
+    for (int y = 0; y < int(Body::HeightCells); ++y)
+        for (int x = 0; x < int(Body::WidthCells); ++x) {
             const auto cell = GameWorld.TryGetCell(feet.X + x, feet.Y + y);
             if (!cell || cell->Type != CellTypeId::Air)
                 throw std::logic_error("generated spawn is not dry and clear");
         }
-    for (int x = 0; x < int(Body::Width); ++x) {
+    for (int x = 0; x < int(Body::WidthCells); ++x) {
         const auto support = GameWorld.TryGetCell(feet.X + x, surface);
         if (!support || !BlocksCharacter(support->Type))
             throw std::logic_error("generated spawn has no solid support");
@@ -104,7 +104,7 @@ void GameSession::InitializeScene() {
     wind.Kind = WindKind;
     GameWorld.ConfigureWindDomain(generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88), wind);
     if (CreateGardenOnReset) debug::InitializeForceGarden(GameWorld, Formulas, Garden, *GetPlayer());
-    const auto target = FormulaWorldAdapter::Offset(GetPlayer()->GetWorldPosition(), {12, 0});
+    const auto target = FormulaWorldAdapter::OffsetCells(GetPlayer()->GetWorldPosition(), {12, 0});
     if (!Characters.Spawn(ActorKind::TrainingDummy, target))
         throw std::logic_error("no capacity for the default training dummy");
 }
@@ -138,7 +138,7 @@ void GameSession::Reset() {
         auto stream = StreamConfiguration;
         stream.Directory = Store->CreateWorkingDirectory(candidate);
         const auto surface = CreateWorldGenerator(NextGeneration)->SurfaceHeight(512);
-        const auto position = WorldPosition::FromAbsolute(511, double(surface - int64_t(Body::Height)));
+        const auto position = WorldPosition::FromCells(511, double(surface - int64_t(Body::HeightCells)));
         ReplacingWorld();
         GameWorld.EnableStreaming(stream, InitialWindow(position, stream.WindowEdge));
         InitializeScene();
@@ -171,7 +171,7 @@ void GameSession::ResetTemporary() {
     stream.SurfaceY = NextGeneration.SurfaceY;
     stream.Directory = candidate.Path();
     const auto surface = CreateWorldGenerator(NextGeneration)->SurfaceHeight(512);
-    const auto position = WorldPosition::FromAbsolute(511, double(surface - int64_t(Body::Height)));
+    const auto position = WorldPosition::FromCells(511, double(surface - int64_t(Body::HeightCells)));
     Ready = false;
     ReplacingWorld();
     // Do not flush the discarded world when replacing its streamer.
@@ -415,24 +415,24 @@ api::Reason GameSession::ActivateAt(WorldPosition target, api::RequestKey reques
         return api::Reason::SessionUnavailable;
     }
     auto centre = GetPlayer()->GetWorldPosition();
-    centre.Local[0] += Body::Width / 2.0;
-    centre.Local[1] += Body::Height / 2.0;
+    centre.Local[0] += Body::Width / 2;
+    centre.Local[1] += Body::Height / 2;
     centre.Normalize();
     target.Normalize();
     const auto reference = centre.Cell();
-    const auto mouse = target.RelativeTo(reference);
-    const auto player = centre.RelativeTo(reference);
+    const auto mouse = target.RelativeCellsTo(reference);
+    const auto player = centre.RelativeCellsTo(reference);
     const double dx = mouse[0] - player[0], dy = mouse[1] - player[1];
     const double length = std::hypot(dx, dy);
     const auto aim = length > 1e-9 ? std::array<double, 2>{dx / length, dy / length} : LastAim;
 
     constexpr double radius = FormulaWorldAdapter::BoltRadius;
     const double horizontal = aim[0] == 0 ? std::numeric_limits<double>::infinity()
-        : (Body::Width / 2.0 + radius) / std::abs(aim[0]);
+        : (Body::WidthCells / 2.0 + radius) / std::abs(aim[0]);
     const double vertical = aim[1] == 0 ? std::numeric_limits<double>::infinity()
-        : (Body::Height / 2.0 + radius) / std::abs(aim[1]);
+        : (Body::HeightCells / 2.0 + radius) / std::abs(aim[1]);
     const double distance = std::min(horizontal, vertical) + .25;
-    const auto origin = FormulaWorldAdapter::Offset(centre, {aim[0] * distance, aim[1] * distance});
+    const auto origin = FormulaWorldAdapter::OffsetCells(centre, {aim[0] * distance, aim[1] * distance});
     if (FormulaWorldAdapter::Sweep(GameWorld, centre, origin).Kind != FormulaContactKind::None) {
         FormulaError = "Launch path is blocked";
         return api::Reason::LaunchBlocked;

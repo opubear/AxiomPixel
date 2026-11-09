@@ -1,8 +1,8 @@
 [[vk::binding(0, 0)]] Texture2D<float4> SceneColor;
 [[vk::binding(1, 0)]] Texture2D<uint> WindField;
 struct WindConstants {
-    int2 Origin;
-    uint2 CellSize;
+    float2 Origin;
+    float2 CellSize;
     uint2 Extent;
     uint Mode;
     float Time;

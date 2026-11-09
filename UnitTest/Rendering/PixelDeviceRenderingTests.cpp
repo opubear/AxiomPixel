@@ -16,7 +16,7 @@ void Check(bool value, const char *message) {
 }
 void DeviceProjection() {
     Camera2D camera;
-    camera.SetWorldPosition({{int64_t{1} << 46, -(int64_t{1} << 46)}, {8.125, 9.25}});
+    camera.SetWorldPosition(WorldPosition::FromChunkCells({int64_t{1} << 46, -(int64_t{1} << 46)}, {8.125, 9.25}));
     const auto reference = camera.GetWorldPosition().Cell();
     std::vector<DeviceSnapshot> devices(3);
     devices[0].Ref = {7, 1};
@@ -64,7 +64,7 @@ void PublisherIsolation() {
     const auto device = session.GetDevices().Snapshot().front();
     GameCamera camera;
     camera.SetFramebufferSize({160, 120});
-    camera.GetCamera().SetPosition({20, 20});
+    camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(20, 20));
     GamePresentation firstPresentation, secondPresentation;
     auto publishFirst = firstPresentation.CreateFramePublisher(session, camera);
     auto publishSecond = secondPresentation.CreateFramePublisher(session, camera);
@@ -153,9 +153,9 @@ void FieldDomainPublicationWithoutWind() {
         settings.WindowEdge = 256;
         settings.SurfaceY = 10000;
         world.EnableStreaming(settings, {0, 0, 256, 256});
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(130, 100));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(130, 100));
         world.DisableWind();
-        const auto installed = world.InstallFieldSource(999, {WorldPosition::FromAbsolute(130, 100), 8, {3600, 0}, 20});
+        const auto installed = world.InstallFieldSource(999, {WorldPosition::FromCells(130, 100), 8, {3600, 0}, 20});
         Check(installed.has_value(), "domain publication source failed");
         auto view = session.CreateReadView();
         session.RefreshReadView(*view, {112, 80, 40, 40});
@@ -169,7 +169,7 @@ void FieldDomainPublicationWithoutWind() {
         const auto fieldRevision = world.GetEnvironment().GetFieldSources().Revision();
         const auto windRevision = world.GetEnvironment().GetWindSimulation().GetRevision();
         // Same resident region and visible bounds; only the simulation domain moves.
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(260, 128));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(260, 128));
         session.RefreshReadView(*view, {112, 80, 40, 40});
         Check(world.GetSimulationBounds().X == 128 && world.GetForce(130, 100).X == 0 &&
               world.GetEnvironment().GetWindSimulation().GetRevision() == windRevision,
@@ -187,10 +187,10 @@ void FieldDomainPublicationWithoutWind() {
         settings.WindowEdge = 64;
         world.EnableStreaming(settings, {0, 0, 64, 64});
         world.DisableWind();
-        Check(world.InstallFieldSource(999, {WorldPosition::FromAbsolute(32, 32), 8, {3600, 0}, 20}).has_value(),
+        Check(world.InstallFieldSource(999, {WorldPosition::FromCells(32, 32), 8, {3600, 0}, 20}).has_value(),
               "small domain source failed");
         const auto stableRevision = world.GetEnvironment().GetFieldSources().Revision();
-        world.SetSimulationFocus(WorldPosition::FromAbsolute(48, 32));
+        world.SetSimulationFocus(WorldPosition::FromCells(48, 32));
         for (int i = 0; i < 3; ++i) world.UpdateStreaming();
         Check(world.GetSimulationBounds() == WorldRect{0, 0, 64, 64} &&
               world.GetEnvironment().GetFieldSources().Revision() == stableRevision,
@@ -210,7 +210,7 @@ void FieldResidencyPublicationWithoutWind() {
     testing::WorldAccess::SimulationBounds(world) = {edge - 24, 0, 64, 64};
     world.DisableWind();
     world.FillBaseForceRegion(world.GetSimulationBounds(), {});
-    Check(world.InstallFieldSource(999, {WorldPosition::FromAbsolute(double(edge) - .5, 20.5), 4, {3600, 0}, 10}).has_value(),
+    Check(world.InstallFieldSource(999, {WorldPosition::FromCells(double(edge) - .5, 20.5), 4, {3600, 0}, 10}).has_value(),
           "residency publication source failed");
     auto view = session.CreateReadView();
     session.RefreshReadView(*view, {edge, 0, 32, 32});

@@ -10,8 +10,8 @@ constexpr std::array WindBindings{
     DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLED_IMAGE, 1},
 };
 struct WindConstants {
-    std::array<int32_t, 2> Origin;
-    std::array<uint32_t, 2> CellSize;
+    std::array<float, 2> Origin;
+    std::array<float, 2> CellSize;
     std::array<uint32_t, 2> Extent;
     uint32_t Mode;
     float Time;

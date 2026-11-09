@@ -37,14 +37,12 @@ inline process::Position ReadPosition(Reader &in) {
 inline void Write(Writer &out, WorldPosition value) {
     value.Normalize();
     const auto cell = value.Cell();
-    const auto offset = value.RelativeTo(cell);
+    const auto offset = value.RelativeCellsTo(cell);
     Write(out, process::Position{cell.X, cell.Y, offset[0], offset[1]});
 }
 inline WorldPosition ReadWorldPosition(Reader &in) {
     const auto value = ReadPosition(in);
-    const auto chunk = ChunkOf({value.CellX, value.CellY});
-    return {chunk, {double(value.CellX - chunk.X * storage::ChunkEdge) + value.OffsetX,
-                    double(value.CellY - chunk.Y * storage::ChunkEdge) + value.OffsetY}};
+    return WorldPosition::FromCell({value.CellX, value.CellY}, {value.OffsetX, value.OffsetY});
 }
 inline void Write(Writer &out, const process::ProgramIdentity &value) {
     out.String(value.Resource); out.String(value.ContentSha256);

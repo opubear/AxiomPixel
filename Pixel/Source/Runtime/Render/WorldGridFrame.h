@@ -180,6 +180,6 @@ struct GridTextureCatalog {
     uint32_t CellsPerTile = 1; // one complete body texture per N world cells, in [1,4096]
 };
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog);
-std::array<int32_t, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame);
+std::array<float, 2> LocalGridPixelOrigin(const WorldGridFrameView &frame);
 void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t textureLayers,
                             uint32_t framebufferWidth, uint32_t framebufferHeight);

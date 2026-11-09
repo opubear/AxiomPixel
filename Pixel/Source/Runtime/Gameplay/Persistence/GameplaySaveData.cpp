@@ -26,13 +26,15 @@ size_t Count(std::istream &in, size_t maximum) {
     return size;
 }
 void WritePosition(std::ostream &out, WorldPosition p) {
-    out << p.Chunk.X << ' ' << p.Chunk.Y << ' ' << p.Local[0] << ' ' << p.Local[1] << ' ';
+    // Versions 1-3 store cells. Keep the wire format stable across the cm migration.
+    out << p.Chunk.X << ' ' << p.Chunk.Y << ' ' << double(p.Local[0]) / CentimetersPerCell
+        << ' ' << double(p.Local[1]) / CentimetersPerCell << ' ';
 }
 WorldPosition ReadPosition(std::istream &in) {
-    WorldPosition p;
-    ReadAll(in, p.Chunk.X, p.Chunk.Y, p.Local[0], p.Local[1]);
-    p.Normalize();
-    return p;
+    CellCoord chunk;
+    std::array<double, 2> cells;
+    ReadAll(in, chunk.X, chunk.Y, cells[0], cells[1]);
+    return WorldPosition::FromChunkCells(chunk, cells);
 }
 }
 
@@ -46,7 +48,7 @@ std::string EncodeGameplayState(const GameplaySaveData &state) {
         const auto body = actor.Body.CaptureState();
         out << actor.Id.Value << ' ' << uint32_t(actor.Kind) << ' ';
         WritePosition(out, body.Position);
-        out << body.VerticalSpeed << ' ' << body.Grounded << '\n';
+        out << double(body.VerticalSpeed) / CentimetersPerCell << ' ' << body.Grounded << '\n';
     }
     out << state.Inventory.NextContainer << ' ' << state.Inventory.NextReservation << ' '
         << state.Inventory.Containers.size() << '\n';
@@ -114,7 +116,9 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
         actor.Kind = ActorKind(kind);
         BodyState body;
         body.Position = ReadPosition(in);
-        ReadAll(in, body.VerticalSpeed, body.Grounded);
+        double speedCells;
+        ReadAll(in, speedCells, body.Grounded);
+        body.VerticalSpeed = float(speedCells * CentimetersPerCell);
         actor.Body.RestoreState(body);
     }
     ReadAll(in, state.Inventory.NextContainer, state.Inventory.NextReservation);

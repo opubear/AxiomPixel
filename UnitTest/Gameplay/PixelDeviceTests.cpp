@@ -173,11 +173,11 @@ void EffectCapacityAndSuspension() {
     ProcessCarrier carrier;
     carrier.Kind = ProcessCarrierKind::FixedFixture;
     carrier.Subject = id; // Same numeric identity must remain an independent owner.
-    carrier.Origin = WorldPosition::FromAbsolute(200, 100);
+    carrier.Origin = WorldPosition::FromCells(200, 100);
     carrier.Scope = world.GetSimulationBounds();
     Check(session.StartProcessFixture(NativeCaller::Driver, carrier).Succeeded(), "fixture failed");
     for (size_t i = 0; i < FieldSources::Capacity; ++i)
-        Check(world.InstallFieldSource(90000, {WorldPosition::FromAbsolute(200, 100), 1, {0, 0}, 3600}).has_value(),
+        Check(world.InstallFieldSource(90000, {WorldPosition::FromCells(200, 100), 1, {0, 0}, 3600}).has_value(),
               "capacity fixture failed");
     const auto fuel = session.GetDevices().Find(id)->FuelContainer;
     const auto stock = session.GetInventory().Inspect(fuel);

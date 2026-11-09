@@ -2,6 +2,7 @@
 #include "InventoryPainter.h"
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace pixel::ui {
 bool Rect::Contains(float x, float y) const {
@@ -12,14 +13,25 @@ Rect InventoryLayout::QuickSlot(size_t index) { return {12.f + float(index) * 54
 Rect InventoryLayout::BagSlot(size_t index) {
     return {12.f + float(index % Columns) * 54, 162.f + float(index / Columns) * 54, 48, 48};
 }
-Rect InventoryLayout::Placement(std::array<int, 2> framebuffer) {
+Rect InventoryLayout::Placement(std::array<int, 2> framebuffer, float uiScale) {
+    if (!IsValidUIScale(uiScale))
+        throw std::invalid_argument("UIScale must be finite and between 0.25 and 4");
     if (framebuffer[0] <= 0 || framebuffer[1] <= 0)
         return {};
-    const float scale = std::min({2.f, float(framebuffer[0]) / 1280, float(framebuffer[1]) / 720});
+    const float base = std::min({2.f, float(framebuffer[0]) / 1280, float(framebuffer[1]) / 720});
+    // Keep the complete expanded inventory reachable, even in a small window.
+    const float scale = std::min({base * uiScale, float(framebuffer[0]) / (Width + 32),
+                                 float(framebuffer[1]) / (Height + 32)});
     return {16 * scale, 16 * scale, Width * scale, Height * scale};
 }
 
 InventoryUI::InventoryUI() { ResetBindings(); }
+
+void InventoryUI::SetUIScale(float scale) {
+    if (!IsValidUIScale(scale))
+        throw std::invalid_argument("UIScale must be finite and between 0.25 and 4");
+    Image.UIScale = scale;
+}
 
 void InventoryUI::ResetBindings() {
     Bindings.fill(std::nullopt);
@@ -52,7 +64,7 @@ void InventoryUI::RefreshQuickSlots() {
 }
 
 bool InventoryUI::PointerPress(float x, float y, std::array<int, 2> framebuffer, bool primary) {
-    const auto placement = InventoryLayout::Placement(framebuffer);
+    const auto placement = InventoryLayout::Placement(framebuffer, GetUIScale());
     if (!placement.Width || !std::isfinite(x) || !std::isfinite(y))
         return false;
     x = (x - placement.X) * InventoryLayout::Width / placement.Width;

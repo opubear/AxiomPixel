@@ -18,7 +18,7 @@ process::ProgramArtifact Program(std::string_view source) {
     if (const auto *error = std::get_if<process::Diagnostic>(&result)) throw std::runtime_error(error->Message);
     return std::get<process::ProgramArtifact>(result);
 }
-WorldPosition At(double x, double y) { return WorldPosition::FromAbsolute(x, y); }
+WorldPosition At(double x, double y) { return WorldPosition::FromCells(x, y); }
 ProcessCarrier Carrier(ProcessCarrierKind kind = ProcessCarrierKind::Player) {
     ProcessCarrier result;
     result.Kind = kind;
@@ -218,14 +218,14 @@ void WindAndFarCoordinates() {
         // here verify exact bridge conversion within a distant simulation window.
         testing::WorldAccess::SimulationBounds(sparse) = {far, 0, 64, 64};
         auto distant = Carrier();
-        distant.Origin = {ChunkOf({far, 0}), {10.25, 10.5}};
+        distant.Origin = WorldPosition::FromChunkCells(ChunkOf({far, 0}), {10.25, 10.5});
         distant.Scope = {far, 0, 64, 64};
         bridge.BeginFrame();
         bridge.ApplyProcess(Program("process 1; emit bolt(10, speed(60), ticks(5)); await hit within ticks(8);"));
         Check(bridge.CastCarrier(sparse, distant), "far activation refused");
         bridge.Step(sparse);
         Check(bridge.Projectiles().front().Position.Cell().X == far + 11
-            && std::abs(bridge.Projectiles().front().Position.RelativeTo({far + 11, 10})[0] - .25) < 1e-10,
+            && std::abs(bridge.Projectiles().front().Position.RelativeCellsTo({far + 11, 10})[0] - .25) < 1e-10,
             "far position lost cell/fraction separation");
         const auto beforeFreeze = bridge.InspectProcesses()[0].State;
         auto unloaded = testing::WorldAccess::Map(sparse).Remove(ChunkOf({far, 0}));

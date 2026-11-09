@@ -116,7 +116,7 @@ void SessionControlsAndBinding() {
 
     const auto first = runtime.Projectiles().front().Position;
     auto moved = session.GetPlayer()->GetWorldPosition();
-    moved.Local[0] += 5;
+    moved.Local[0] += 250;
     testing::SessionAccess::Actors(session).SetPlayerPosition(moved);
     runtime.SynchronizeActivity(world);
     Check(runtime.Projectiles().front().Position.Cell() == first.Cell(), "actor movement moved an emitted beacon");

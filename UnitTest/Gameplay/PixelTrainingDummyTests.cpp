@@ -9,7 +9,7 @@ namespace {
 using namespace pixel;
 namespace process = formula::process;
 void Check(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
-WorldPosition At(double x, double y) { return WorldPosition::FromAbsolute(x, y); }
+WorldPosition At(double x, double y) { return WorldPosition::FromCells(x, y); }
 ActorSnapshot Dummy(const Actors &actors) {
     std::optional<ActorSnapshot> result;
     for (const auto &actor : actors.Snapshot()) {
@@ -30,7 +30,7 @@ void DefaultSpawnAndPublication() {
     GameSession session(false);
     const auto target = Dummy(session.GetActors());
     const auto player = session.GetPlayer()->GetWorldPosition();
-    Check(target.Position.RelativeTo(player.Cell()) == std::array<double, 2>{12, 0}, "dummy is not beside spawn");
+    Check(target.Position.RelativeCellsTo(player.Cell()) == std::array<double, 2>{12, 0}, "dummy is not beside spawn");
     auto view = session.CreateReadView();
     session.RefreshReadView(*view, {480, 480, 64, 64});
     Check(view->GetActors().size() == 2, "complete commit omitted non-player actors");
@@ -67,11 +67,11 @@ void NaturalAndFlatSpawn() {
         GameSession session(SessionMode::Temporary, generation);
         const auto target = Dummy(session.GetActors());
         const auto cell = target.Position.Cell();
-        for (int y = 0; y < int(Body::Height); ++y)
-            for (int x = 0; x < int(Body::Width); ++x)
+        for (int y = 0; y < int(Body::HeightCells); ++y)
+            for (int x = 0; x < int(Body::WidthCells); ++x)
                 Check(session.GetWorld().GetCell(cell.X + x, cell.Y + y).Type == CellTypeId::Air,
                       "default target spawned inside terrain or water");
-        for (int x = 0; x < int(Body::Width); ++x)
+        for (int x = 0; x < int(Body::WidthCells); ++x)
             Check(BlocksCharacter(session.GetWorld().GetCell(cell.X + x, cell.Y + 4).Type), "target has no spawn support");
         Check(session.Control(NativeCaller::Driver, api::CreateForceGarden{}).Succeeded(), "garden creation failed");
         Dummy(session.GetActors());

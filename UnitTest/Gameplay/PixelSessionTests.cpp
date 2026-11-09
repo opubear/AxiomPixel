@@ -55,10 +55,10 @@ void SessionAndPublicationContracts() {
     pixel::GameCamera camera;
     camera.SetFramebufferSize({800, 600});
     camera.Reset(world.GetSimulationBounds(), session.GetPlayer());
-    const auto centre = camera.GetCamera().GetPosition();
+    const auto centre = camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
     camera.Zoom(true);
     camera.SetFramebufferSize({1600, 1200});
-    Require(camera.GetCamera().GetPosition() == centre, "zoom and resize must preserve world centre");
+    Require(camera.GetCamera().GetWorldPosition().RelativeCellsTo({}) == centre, "zoom and resize must preserve world centre");
     // The old viewport centre must still select the camera's world centre after resize.
     const MousePointerState pointer{{400, 300}, {800, 600}, {800, 600}};
     const auto picked = camera.PickCell(pointer);
@@ -66,7 +66,7 @@ void SessionAndPublicationContracts() {
             "queued click must use its captured dimensions");
 
     pixel::GamePresentation presentation;
-    camera.GetCamera().SetPosition({32, 11});
+    camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(32, 11));
     presentation.WindVisual.Mode = WindVisualMode::Off;
     auto publish = presentation.CreateFramePublisher(session, camera);
     auto otherPublish = presentation.CreateFramePublisher(session, camera);

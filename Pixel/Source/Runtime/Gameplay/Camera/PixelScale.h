@@ -16,10 +16,16 @@ static_assert(PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL >= 1 &&
 inline constexpr uint32_t DefaultRenderPixelsPerLogicalPixel = PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL;
 static_assert(DefaultRenderPixelsPerLogicalPixel == PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL,
               "PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL must be an integer");
-inline constexpr std::array<uint32_t, 2> DefaultLogicalPixelSize{
-    DefaultRenderPixelsPerLogicalPixel, DefaultRenderPixelsPerLogicalPixel};
+inline constexpr std::array<float, 2> DefaultLogicalPixelSize{
+    float(DefaultRenderPixelsPerLogicalPixel), float(DefaultRenderPixelsPerLogicalPixel)};
+inline constexpr float MinimumSceneScale = 1.f / DefaultRenderPixelsPerLogicalPixel;
+inline constexpr float MaximumSceneScale = float(MaximumRenderPixelsPerLogicalPixel) / DefaultRenderPixelsPerLogicalPixel;
 
-constexpr bool IsValidLogicalPixelSize(std::array<uint32_t, 2> size) {
+constexpr bool IsValidLogicalPixelSize(std::array<float, 2> size) {
     return size[0] >= 1 && size[0] <= MaximumRenderPixelsPerLogicalPixel && size[0] == size[1];
+}
+
+constexpr bool IsValidSceneScale(float scale) {
+    return scale >= MinimumSceneScale && scale <= MaximumSceneScale;
 }
 } // namespace pixel

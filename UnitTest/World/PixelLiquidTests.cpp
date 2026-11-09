@@ -69,11 +69,11 @@ void CharacterInWater() {
     world.FillRegion({0, 10, 64, 54}, {CellTypeId::Water});
     world.SpawnPlayer(20, 20);
     for (int i = 0; i < 120; ++i) world.Tick(1.f / 60);
-    const auto floating = world.GetPlayer()->GetWorldPosition().RelativeTo({0, 0});
+    const auto floating = world.GetPlayer()->GetWorldPosition().RelativeCellsTo({0, 0});
     Require(floating[1] < 20 && !world.GetPlayer()->Grounded, "water blocks the player or buoyancy is absent");
     world.SetPlayerInput(1, true);
     world.Tick(1.f / 60);
-    const auto swimming = world.GetPlayer()->GetWorldPosition().RelativeTo({0, 0});
+    const auto swimming = world.GetPlayer()->GetWorldPosition().RelativeCellsTo({0, 0});
     Require(swimming[0] > floating[0] && swimming[1] < floating[1], "player cannot move/swim upward");
 }
 

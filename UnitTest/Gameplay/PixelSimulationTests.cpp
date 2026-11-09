@@ -46,7 +46,7 @@ void CommitStampsAndPausedActions() {
     session.Control(NativeCaller::Driver, api::StepSimulation{});
     session.Tick(.1f, {});
     Require(view->Stamp().Tick == 1 && view->Stamp().Revision == 5
-                && std::abs(view->Projectiles().front().Position.Local[0] - x - 1) < 1e-8,
+                && std::abs(view->Projectiles().front().Position.Local[0] - x - 50) < 1e-8,
             "single step did not publish the complete formula stage");
     const auto stepped = session.CurrentCommit();
     Require(session.Submit(caller, request).ResolvedAt == mined.ResolvedAt,
@@ -78,7 +78,7 @@ void PendingStepRetainsCompleteProjection() {
     settings.SurfaceY = 10000;
     settings.BudgetBytes = 50ull * 1024 * 1024;
     world.EnableStreaming(settings);
-    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(191.9, 128));
+    testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
     world.ConfigureWindDomain(256, wind);
@@ -91,7 +91,7 @@ void PendingStepRetainsCompleteProjection() {
         api::ActivateProgram{session.AppliedProgram(), {{240, 130}, {0, 0}}}).Applied(), "pending fixture cast failed");
     GameCamera camera;
     camera.SetFramebufferSize({256, 256});
-    camera.GetCamera().SetPosition({100, 100});
+    camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(100, 100));
     GamePresentation presentation;
     presentation.DisplayMode = GridDisplayMode::ForceField;
     auto publish = presentation.CreateFramePublisher(session, camera);
@@ -141,7 +141,7 @@ void PendingStepRetainsCompleteProjection() {
     Require(!unavailable->IsValid(), "new consumer sampled a prepared solver");
     GameCamera distantCamera;
     distantCamera.SetFramebufferSize({256, 256});
-    distantCamera.GetCamera().SetWorldPosition({{int64_t{1} << 40, -(int64_t{1} << 40)}, {.5, .5}});
+    distantCamera.GetCamera().SetWorldPosition(WorldPosition::FromChunkCells({int64_t{1} << 40, -(int64_t{1} << 40)}, {.5, .5}));
     auto missingPublisher = presentation.CreateFramePublisher(session, distantCamera);
     WorldGridFrame missingFrame;
     missingPublisher(missingFrame);
@@ -163,11 +163,11 @@ void PendingStepRetainsCompleteProjection() {
             "budget recovery did not commit exactly one complete step with retained backlog");
     // The frozen input moves x=191.9 across a 64-cell chunk boundary.
     // Compare in one coordinate frame rather than comparing wrapped locals.
-    const auto beforePosition = player.RelativeTo(player.Cell());
-    const auto afterPosition = session.GetPlayer()->GetWorldPosition().RelativeTo(player.Cell());
+    const auto beforePosition = player.RelativeCellsTo(player.Cell());
+    const auto afterPosition = session.GetPlayer()->GetWorldPosition().RelativeCellsTo(player.Cell());
     Require(afterPosition[0] > beforePosition[0] && afterPosition[1] >= beforePosition[1],
             "input or clear during waiting replaced frozen movement/jump intent");
-    Require(std::abs(view->Projectiles().front().Position.Local[0] - bolt.Local[0] - 1) < 1e-8,
+    Require(std::abs(view->Projectiles().front().Position.Local[0] - bolt.Local[0] - 50) < 1e-8,
             "formula did not advance exactly once after budget recovery");
 }
 } // namespace

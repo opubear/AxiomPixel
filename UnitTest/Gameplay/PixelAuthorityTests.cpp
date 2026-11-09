@@ -263,7 +263,7 @@ void OwnershipIsolation() {
     ProcessCarrier natural;
     natural.Kind = ProcessCarrierKind::NaturalSource;
     natural.Subject = 77;
-    natural.Origin = WorldPosition::FromAbsolute(100, 100);
+    natural.Origin = WorldPosition::FromCells(100, 100);
     natural.Scope = {92, 92, 32, 32};
     Check(session.StartProcessFixture(NativeCaller::Driver, natural).Succeeded(), "natural source start");
     Check(session.Submit(session.WorldWillSession(), Request(session)).Applied()

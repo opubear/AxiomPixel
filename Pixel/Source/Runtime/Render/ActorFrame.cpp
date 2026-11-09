@@ -7,14 +7,14 @@ void BuildActorFrame(std::span<const ActorSnapshot> actors, const Camera2D &came
     if (output.DisplayMode != GridDisplayMode::Materials || framebufferSize[0] <= 0 || framebufferSize[1] <= 0) return;
     output.ActorDraws.reserve(actors.size() * TrainingDummyDrawParts);
     const auto reference = camera.GetWorldPosition().Cell();
-    const auto centre = camera.RelativeTo(reference);
+    const auto centre = camera.RelativeCellsTo(reference);
     const double scaleX = output.View.CellSizePixels[0], scaleY = output.View.CellSizePixels[1];
     for (const auto &actor : actors) {
         if (actor.Kind != ActorKind::TrainingDummy) continue;
-        const auto position = actor.Position.RelativeTo(reference);
+        const auto position = actor.Position.RelativeCellsTo(reference);
         const double left = (position[0] - centre[0]) * scaleX + framebufferSize[0] / 2.0;
         const double top = (position[1] - centre[1]) * scaleY + framebufferSize[1] / 2.0;
-        if (left + Body::Width * scaleX < 0 || top + Body::Height * scaleY < 0
+        if (left + Body::WidthCells * scaleX < 0 || top + Body::HeightCells * scaleY < 0
             || left > framebufferSize[0] || top > framebufferSize[1]) continue;
         const auto part = [&](double x, double y, double width, double height, std::array<float, 4> color) {
             output.ActorDraws.push_back({{float(left + (x + width * .5) * scaleX),

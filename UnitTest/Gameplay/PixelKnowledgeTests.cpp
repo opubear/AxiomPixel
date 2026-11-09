@@ -376,7 +376,7 @@ void GameSessionKnowledgeFlow() {
     Check(!missing.Applied() && missing.Rejection == api::Reason::NotReady,
         "measurement of a nonresident cell was accepted");
 
-    const auto surface = player.Y + int64_t(Body::Height);
+    const auto surface = player.Y + int64_t(Body::HeightCells);
     for (int64_t x = 516; x <= 521; ++x) {
         const auto material = x < 520 ? CellTypeId::Stone : CellTypeId::CopperOre;
         const auto mined = session.Execute(NativeCaller::Input,

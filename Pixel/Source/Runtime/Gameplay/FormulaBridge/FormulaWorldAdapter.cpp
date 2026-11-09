@@ -71,9 +71,9 @@ bool Earlier(const FormulaContact &candidate, const FormulaContact &current) {
 }
 } // namespace
 
-WorldPosition FormulaWorldAdapter::Offset(WorldPosition anchor, FormulaVector displacement) {
-    anchor.Local[0] += displacement.X;
-    anchor.Local[1] += displacement.Y;
+WorldPosition FormulaWorldAdapter::OffsetCells(WorldPosition anchor, FormulaVector displacement) {
+    anchor.Local[0] += CellsToCentimeters(float(displacement.X));
+    anchor.Local[1] += CellsToCentimeters(float(displacement.Y));
     anchor.Normalize();
     return anchor;
 }
@@ -85,7 +85,7 @@ FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from
     if (!std::isfinite(radius) || radius < 0 || radius > 16)
         throw std::invalid_argument("invalid formula collision radius");
     const auto origin = from.Cell();
-    const auto start = from.RelativeTo(origin), end = to.RelativeTo(origin);
+    const auto start = from.RelativeCellsTo(origin), end = to.RelativeCellsTo(origin);
     const double dx = end[0] - start[0], dy = end[1] - start[1];
     // The runtime guarantees <=10 cells per fixed step. Keep this public entry
     // bounded too, so a malformed caller cannot scan an arbitrary world region.
@@ -123,22 +123,25 @@ FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from
     }
     for (const auto &actor : actors) {
         if (actor.Kind != ActorKind::TrainingDummy) continue;
-        const auto position = actor.Position.RelativeTo(origin);
-        const auto last = Offset(actor.Position, {Body::Width - ContactEpsilon, Body::Height - ContactEpsilon}).Cell();
+        const auto position = actor.Position.RelativeCellsTo(origin);
+        const auto actorCell = actor.Position.Cell();
+        const auto offset = actor.Position.RelativeCellsTo(actorCell);
+        const CellCoord last{actorCell.X + int64_t(std::ceil(offset[0] + Body::WidthCells)) - 1,
+                             actorCell.Y + int64_t(std::ceil(offset[1] + Body::HeightCells)) - 1};
         if (!bounds.Contains(actor.Position.Cell()) || !bounds.Contains(last)) continue;
         // Broad phase also keeps distant actors out of the quadratic calculation.
         if (position[0] > std::max(start[0], end[0]) + radius + ContactEpsilon
-            || position[0] + Body::Width < std::min(start[0], end[0]) - radius - ContactEpsilon
+            || position[0] + Body::WidthCells < std::min(start[0], end[0]) - radius - ContactEpsilon
             || position[1] > std::max(start[1], end[1]) + radius + ContactEpsilon
-            || position[1] + Body::Height < std::min(start[1], end[1]) - radius - ContactEpsilon) continue;
+            || position[1] + Body::HeightCells < std::min(start[1], end[1]) - radius - ContactEpsilon) continue;
         const auto contact = CircleRectangle(start[0], start[1], dx, dy, position[0], position[1],
-                                              Body::Width, Body::Height, radius);
+                                              Body::WidthCells, Body::HeightCells, radius);
         // Terrain and unavailable regions win ties. Targets never bypass a wall
         // or mutate health/lifetime; repeated hits keep the same actor identity.
         if (contact && (first.Kind == FormulaContactKind::None || *contact < first.Fraction - ContactEpsilon))
             first = {FormulaContactKind::Actor, *contact, {}, actor.Position.Cell(), actor.Id};
     }
-    first.Position = Offset(from, {dx * first.Fraction, dy * first.Fraction});
+    first.Position = OffsetCells(from, {dx * first.Fraction, dy * first.Fraction});
     return first;
 }
 
@@ -148,7 +151,7 @@ FormulaDigResult FormulaWorldAdapter::Dig(World &world, WorldPosition position, 
     if (!std::isfinite(radius) || radius < 0 || radius > 16)
         throw std::invalid_argument("invalid formula dig radius");
     const CellCoord origin = position.Cell();
-    const auto local = position.RelativeTo(origin);
+    const auto local = position.RelativeCellsTo(origin);
     // Match the closed-circle tolerance when selecting candidate cell centers;
     // otherwise decimal radius subtraction can round a boundary center out.
     const int64_t left = radius == 0 ? 0 : int64_t(std::ceil(local[0] - radius - .5 - ContactEpsilon));
@@ -208,7 +211,7 @@ FormulaWindResult FormulaWorldAdapter::WindAvailability(const World &world, Worl
         return FormulaWindResult::Unavailable;
 
     position.Normalize();
-    const auto local = position.RelativeTo(domain.Origin);
+    const auto local = position.RelativeCellsTo(domain.Origin);
     if (local[0] < 0 || local[1] < 0 || local[0] >= domain.Width || local[1] >= domain.Height)
         return FormulaWindResult::Unavailable;
     return FormulaWindResult::Applied;

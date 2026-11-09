@@ -85,7 +85,7 @@ void FormulaCollectors() {
         bridge.ApplyProcess(DigProgram());
         for (int i = 0; i < 2; ++i) {
             world.SetCell(20, 20, {CellTypeId::CopperOre});
-            Check(bridge.Cast(world, WorldPosition::FromAbsolute(20.5, 20.5), 0), "dig activation failed");
+            Check(bridge.Cast(world, WorldPosition::FromCells(20.5, 20.5), 0), "dig activation failed");
             Check(world.GetCell(20, 20).Type == (i == 0 ? CellTypeId::Air : CellTypeId::CopperOre),
                   "formula lost ore at inventory capacity");
         }
@@ -100,7 +100,7 @@ void FormulaCollectors() {
     bridge.ApplyProcess(DigProgram());
     ProcessCarrier carrier;
     carrier.Kind = ProcessCarrierKind::NaturalSource;
-    carrier.Origin = WorldPosition::FromAbsolute(20.5, 20.5);
+    carrier.Origin = WorldPosition::FromCells(20.5, 20.5);
     carrier.Scope = world.GetSimulationBounds();
     world.SetCell(20, 20, {CellTypeId::Stone});
     Check(bridge.CastCarrier(world, carrier) && world.GetCell(20, 20).Type == CellTypeId::Air && inventory.Inspect(bag).Quantity == 0,
@@ -112,7 +112,7 @@ void PartialDiskOrder() {
     const auto bag = inventory.Create(1);
     world.SetCell(20, 19, {CellTypeId::Stone});
     world.SetCell(19, 20, {CellTypeId::CopperOre});
-    const auto result = FormulaWorldAdapter::Dig(world, WorldPosition::FromAbsolute(20.5, 20.5), 1,
+    const auto result = FormulaWorldAdapter::Dig(world, WorldPosition::FromCells(20.5, 20.5), 1,
                                                 MiningCollector{inventory, bag});
     Check(result.Applied == 1 && result.InventoryFull == 1 && world.GetCell(20, 19).Type == CellTypeId::Air &&
           world.GetCell(19, 20).Type == CellTypeId::CopperOre, "disk capacity must commit cells in y/x order");

@@ -21,7 +21,8 @@ struct FormulaDigResult {
 };
 enum class FormulaWindResult { Applied, ZeroRadius, BelowResolution, ZeroImpulse, Unavailable, BackendUnsupported, GridUnsupported };
 
-// Geometry stays relative to an integer reference cell, including far from origin.
+// Compatibility boundary for the cell-valued formula/2 contract. Positions are
+// float centimetres; radii, vectors and solver geometry here are explicitly cells.
 class FormulaWorldAdapter {
   public:
     static constexpr double BoltRadius = .35;
@@ -32,6 +33,6 @@ class FormulaWorldAdapter {
     static FormulaWindResult Wind(World &world, WorldPosition position, double radius, FormulaVector velocity);
     static FormulaWindResult WindAvailability(const World &world, WorldPosition position);
     static const char *WindResultName(FormulaWindResult result);
-    static WorldPosition Offset(WorldPosition anchor, FormulaVector displacement);
+    static WorldPosition OffsetCells(WorldPosition anchor, FormulaVector displacement);
 };
 } // namespace pixel

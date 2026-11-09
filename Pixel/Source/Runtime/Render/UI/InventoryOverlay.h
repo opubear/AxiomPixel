@@ -22,6 +22,7 @@ class InventoryOverlay {
         std::unique_ptr<RHIUploadBuffer> Upload;
         std::unique_ptr<RHIDescriptorSet> Set;
         uint64_t Revision = 0;
+        float UIScale = 1;
     };
     Publisher Publish;
     std::unique_ptr<RHIPipeline> Pipeline;

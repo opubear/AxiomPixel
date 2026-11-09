@@ -76,12 +76,10 @@ api::ActionReceipt GameSession::InstallIntervention(const api::InstallInterventi
     }
     if (NextIntervention == UINT64_MAX || Simulation.Tick() > UINT64_MAX - 600)
         throw std::overflow_error("intervention identity or lease exhausted");
-    const auto chunk = ChunkOf({action.Origin.X, action.Origin.Y});
     ProcessCarrier carrier;
     carrier.Kind = ProcessCarrierKind::Intervention;
     carrier.Subject = NextIntervention++;
-    carrier.Origin = {chunk, {double(action.Origin.X - chunk.X * storage::ChunkEdge),
-                             double(action.Origin.Y - chunk.Y * storage::ChunkEdge)}};
+    carrier.Origin = WorldPosition::FromCell({action.Origin.X, action.Origin.Y});
     carrier.Scope = {action.Scope.Origin.X, action.Scope.Origin.Y, action.Scope.Width, action.Scope.Height};
     // All descendants share this host-owned carrier, credits, scope and lease.
     if (!GameWorld.GetSimulationBounds().Contains(carrier.Origin.Cell()) || !GameWorld.TryGetCell(action.Origin.X, action.Origin.Y)) {

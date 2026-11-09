@@ -13,8 +13,8 @@ constexpr std::array WorldBindings{
     DescriptorRequirement{0, 3, ShaderDescriptorType::SAMPLED_IMAGE, 1},
 };
 struct WorldConstants {
-    std::array<int32_t, 2> Origin;
-    std::array<uint32_t, 2> CellSize;
+    std::array<float, 2> Origin;
+    std::array<float, 2> CellSize;
     std::array<float, 4> Background;
     uint32_t LayerCount;
     uint32_t Width;
@@ -53,8 +53,7 @@ void WorldPass::Record(RHICommandList &commands, const RenderPassContext &contex
     commands.BindPipeline(*resources.WorldPipeline);
     commands.BindDescriptorSet(*resources.WorldPipeline, *frame.WorldSet, 0);
     auto view = input.View;
-    view.OriginPixels = LocalGridPixelOrigin(input);
-    WorldConstants constants{view.OriginPixels, view.CellSizePixels, view.Background, context.Catalog.Layers, input.Width, input.Height};
+    WorldConstants constants{LocalGridPixelOrigin(input), view.CellSizePixels, view.Background, context.Catalog.Layers, input.Width, input.Height};
     constants.DisplayMode = uint32_t(input.DisplayMode);
     constants.Reserved = input.MissingOutsideRegion ? 1u : 0u;
     const auto tilePhase = [&](int64_t coordinate) {

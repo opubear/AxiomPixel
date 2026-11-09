@@ -4,8 +4,8 @@
 [[vk::binding(3, 0)]] Texture2DArray<float4> BackgroundLayers;
 
 struct WorldConstants {
-    int2 Origin;
-    uint2 CellSize;
+    float2 Origin;
+    float2 CellSize;
     float4 Background;
     uint LayerCount;
     uint Width;
@@ -44,15 +44,15 @@ float4 backgroundColor(float2 position) {
 [shader("fragment")]
 float4 main(float4 position : SV_Position) : SV_Target
 {
-    int2 q = View.Origin + int2(position.xy);
-    int2 extent = int2(uint2(View.Width, View.Height) * View.CellSize);
+    float2 q = View.Origin + position.xy;
+    float2 extent = float2(View.Width, View.Height) * View.CellSize;
     if (any(q < 0) || any(q >= extent)) {
         if (View.MissingOutsideRegion == 0) return backgroundColor(position.xy);
-        uint2 tile = uint2(position.xy) / max(View.CellSize, uint2(1, 1)) / 4;
+        uint2 tile = uint2(position.xy / View.CellSize / 4);
         float shade = ((tile.x + tile.y) & 1u) != 0 ? .22 : .30;
         return float4(shade, shade, shade, 1);
     }
-    uint2 cell = uint2(q) / View.CellSize;
+    uint2 cell = uint2(floor(q / View.CellSize));
     uint id = GridData.Load(int3(cell, 0));
     if (id == 0xffffffffu) {
         float shade = ((cell.x / 4 + cell.y / 4) & 1u) != 0 ? .22 : .30;
@@ -68,7 +68,7 @@ float4 main(float4 position : SV_Position) : SV_Target
     if (id == 0) return backgroundColor(position.xy);
     if (id >= View.LayerCount) return float4(1, 0, 1, 1);
     uint period = max(View.CellsPerTile, 1u);
-    float2 withinCell = (float2(uint2(q) % View.CellSize) + 0.5) / float2(View.CellSize);
+    float2 withinCell = frac(q / View.CellSize);
     uint2 phase = uint2(View.TerrainPhaseX, View.TerrainPhaseY);
     float2 uv = (float2((cell % period + phase) % period) + withinCell) / float(period);
     // Select the configured green/foam strip in the exposed physical cell.

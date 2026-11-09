@@ -50,8 +50,8 @@ void SessionRoundTrip() {
     pixel::WindVelocity savedWind;
     double savedPhysicsTime = 0, savedRemainder = 0;
     const auto rowChunk = pixel::FloorDivide(507, pixel::storage::ChunkEdge);
-    const pixel::WorldPosition position{{-1, rowChunk},
-                                        {double(pixel::storage::ChunkEdge) - 23.875, 507.75 - double(rowChunk) * pixel::storage::ChunkEdge}};
+    const pixel::WorldPosition position = pixel::WorldPosition::FromChunkCells({-1, rowChunk},
+                                        {double(pixel::storage::ChunkEdge) - 23.875, 507.75 - double(rowChunk) * pixel::storage::ChunkEdge});
     {
         pixel::GameSession session(true);
         auto &world = pixel::testing::SessionAccess::World(session);
@@ -294,14 +294,14 @@ void SavePublishesAcceptedLoads() {
 
 void DistantCameraAndCollision() {
     pixel::Camera2D camera;
-    pixel::WorldPosition position{{int64_t{1} << 40, -(int64_t{1} << 40)}, {.125, .75}};
+    pixel::WorldPosition position = pixel::WorldPosition::FromChunkCells({int64_t{1} << 40, -(int64_t{1} << 40)}, {.125, .75});
     camera.SetWorldPosition(position);
-    camera.Translate({.25, -.125});
-    Require(camera.GetWorldPosition().Local == std::array<double, 2>{.375, .625}, "distant camera pan lost fractional precision");
+    camera.Translate({pixel::CellsToCentimeters(float(.25)), pixel::CellsToCentimeters(float(-.125))});
+    Require(camera.GetWorldPosition().Local == std::array<float, 2>{18.75f, 31.25f}, "distant camera pan lost fractional precision");
     auto target = camera.GetWorldPosition();
-    target.Local[0] += .25;
+    target.Local[0] += 12.5f;
     camera.FollowWorld(target, .1);
-    Require(camera.GetWorldPosition().Local[0] > .375 && camera.GetWorldPosition().Local[0] < .625,
+    Require(camera.GetWorldPosition().Local[0] > 18.75f && camera.GetWorldPosition().Local[0] < 31.25f,
             "distant camera follow lost fractional target");
     pixel::WorldMap missing;
     pixel::Body player;
@@ -321,7 +321,7 @@ void DeferredStepKeepsStreamingDomain() {
     settings.BudgetBytes = 50ull * 1024 * 1024;
     settings.Generation.SurfaceY = 10000;
     world.EnableStreaming(settings);
-    pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromAbsolute(191.9, 128));
+    pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromCells(191.9, 128));
     pixel::WindStrategySettings wind;
     wind.Kind = pixel::WindStrategyKind::Coarse;
     wind.Coarse.Columns = wind.Coarse.Rows = 32;

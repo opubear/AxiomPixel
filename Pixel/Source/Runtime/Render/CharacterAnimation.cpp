@@ -19,7 +19,7 @@ void CharacterAnimation::Update(const ActorSnapshot &actor, uint64_t worldIdenti
         return; // Paused or another drawable frame of the same commit.
 
     const auto reference = Position.Cell();
-    const auto previous = Position.RelativeTo(reference), current = actor.Position.RelativeTo(reference);
+    const auto previous = Position.RelativeCellsTo(reference), current = actor.Position.RelativeCellsTo(reference);
     const double dx = current[0] - previous[0], dy = current[1] - previous[1];
     if (std::abs(dx) > 1e-6)
         Left = dx < 0;

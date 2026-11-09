@@ -386,7 +386,7 @@ void VerifyPersistenceAndCrystalClear() {
             "crystal source disappeared before leaving the garden");
         const auto frozenLifetime = beforeAwaySource->Remaining;
         auto &world = testing::SessionAccess::World(session);
-        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromAbsolute(8192, 508));
+        testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(8192, 508));
         world.LoadSimulationNow();
         testing::SessionAccess::PublishFixtureChanges(session);
         session.Tick(0, {});
