@@ -296,9 +296,12 @@ Json InventoryJson(const api::InventoryObservation &inventory) {
                 {"ownerActor", std::to_string(inventory.OwnerActor)}, {"deviceId", std::to_string(inventory.DeviceId)},
                 {"location", PositionJson(inventory.Location)}, {"capacity", inventory.Capacity},
                 {"quantity", inventory.Quantity}, {"stacks", Json::array()}};
-    for (const auto &stack : inventory.Stacks)
-        result["stacks"].push_back({{"itemId", stack.ItemId}, {"definitionVersion", stack.DefinitionVersion},
-                                    {"quantity", stack.Quantity}, {"reserved", stack.Reserved}});
+    for (const auto &stack : inventory.Stacks) {
+        Json value{{"itemId", stack.ItemId}, {"definitionVersion", stack.DefinitionVersion},
+                   {"quantity", stack.Quantity}, {"reserved", stack.Reserved}};
+        if (stack.InstanceId) value["instanceId"] = std::to_string(stack.InstanceId);
+        result["stacks"].push_back(std::move(value));
+    }
     return result;
 }
 

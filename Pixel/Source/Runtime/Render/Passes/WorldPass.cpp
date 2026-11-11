@@ -3,6 +3,7 @@
 #include "RenderPasses.h"
 #include "Runtime/Render/BackgroundView.h"
 #include <cstddef>
+#include <algorithm>
 
 namespace pixel::render {
 namespace {
@@ -27,10 +28,12 @@ struct WorldConstants {
     std::array<float, 4> BackgroundPhases{};
     // displayed image width/height, framebuffer width, active layer count
     std::array<float, 4> BackgroundSize{};
+    std::array<float, 4> BiomeWeights{1, 0, 0, 0};
+    std::array<float, 4> BiomePhases{};
 };
 static_assert(offsetof(WorldConstants, Background) == 16 && offsetof(WorldConstants, LayerCount) == 32);
 static_assert(offsetof(WorldConstants, DisplayMode) == 48);
-static_assert(sizeof(WorldConstants) == 96 && sizeof(PostProcessParameters) == 64);
+static_assert(sizeof(WorldConstants) == 128 && sizeof(PostProcessParameters) == 64);
 
 } // namespace
 std::unique_ptr<RHIPipeline> WorldPass::CreatePipeline(DynamicRHI &rhi, RHITexture &target) const {
@@ -66,6 +69,11 @@ void WorldPass::Record(RHICommandList &commands, const RenderPassContext &contex
         const auto &image = *context.Background->Layers.front().Image;
         const float height = resources.Extent.Height * context.Background->HeightFraction;
         constants.BackgroundSize = {height * image.Width / image.Height, height, float(resources.Extent.Width), float(context.Background->Layers.size())};
+        if (context.Background->HasBiomeImages()) {
+            std::copy(input.BiomeWeights.begin(), input.BiomeWeights.end(), constants.BiomeWeights.begin());
+            for (size_t i = 0; i < 2; ++i)
+                constants.BiomePhases[i] = BackgroundPhase(context.Background->BiomeImages[i], input.View, resources.Extent.Width);
+        }
     }
     commands.PushConstants(*resources.WorldPipeline, RHIShaderStage::Fragment, 0, sizeof(constants), &constants);
     commands.DrawIndexed(6);

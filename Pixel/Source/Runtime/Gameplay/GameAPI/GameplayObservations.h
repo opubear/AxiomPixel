@@ -11,6 +11,7 @@ namespace pixel::api {
 // instruction pointer or mutable domain references enter this contract.
 struct ItemStackObservation {
     uint32_t ItemId = 0, DefinitionVersion = 0, Quantity = 0, Reserved = 0;
+    uint64_t InstanceId = 0;
 };
 struct InventoryObservation {
     uint64_t ContainerId = 0, Version = 0, OwnerActor = 0, DeviceId = 0;
@@ -54,6 +55,11 @@ struct FieldSourceObservation {
     bool Contributing = false;
 };
 
+struct DroppedItemObservation {
+    items::ItemRef Item;
+    Position Location;
+};
+
 struct GameplayObservation {
     // Includes the full prayer archive plus maximum devices, containers,
     // processes and fields, including retained vector/string capacity.
@@ -61,6 +67,7 @@ struct GameplayObservation {
     CommitStamp Stamp;
     std::vector<InventoryObservation> Inventories;
     std::vector<DeviceObservation> Devices;
+    std::vector<DroppedItemObservation> DroppedItems;
     std::vector<ProcessObservation> Processes;
     std::vector<FieldSourceObservation> FieldSources;
     std::optional<ForceGardenObservation> Garden;

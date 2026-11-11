@@ -93,15 +93,12 @@ void GameInput::OnMouseButtonEvent(MouseButton button, ButtonAction action, int 
             return;
         }
     }
-    if (button == MouseButton::MOUSE_BUTTON_RIGHT && !(mods & int(Mod::MOD_SHIFT))) {
+    if (button == MouseButton::MOUSE_BUTTON_LEFT) {
         if (const auto target = Camera.PickWorldPosition(pointer))
-            Session.Execute(NativeCaller::Input, api::ActivateProgram{Session.AppliedProgram(), ActionPosition(*target)});
-        return;
-    }
-    if (button == MouseButton::MOUSE_BUTTON_LEFT)
-        Session.Execute(NativeCaller::Input, api::PlaceMaterial{{(*cell)[0], (*cell)[1]}});
-    else
+            Session.Execute(NativeCaller::Input, api::UseHeldItem{UI.HeldItem(), ActionPosition(*target)});
+    } else {
         Session.Execute(NativeCaller::Input, api::MineRegion{{(*cell)[0], (*cell)[1]}, {}});
+    }
 }
 void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod mods) {
     const std::array keys{Key::KEY_W, Key::KEY_A, Key::KEY_S, Key::KEY_D};
@@ -149,6 +146,6 @@ void GameInput::OnKeyEvent(Key key, int, ButtonAction action, Mod mods) {
     }
 }
 const char *GameInput::ControlsDescription() {
-    return "Pixel: Tab inventory; 1-7 select quick slot; click inventory item to bind selected quick slot; Shift+1 normal tool, Shift+2 water, Shift+3 steam, Shift+4 fire; element brush left click spawns a disk; normal left click place dirt; B toggle device placement (4 stone + 2 copper ore); right click device enable/disable, otherwise activate formula; Shift+right click device recycle, otherwise mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
+    return "Pixel: Tab inventory; 1-7 select quick slot; click inventory item to bind selected quick slot; Shift+1 normal tool, Shift+2 water, Shift+3 steam, Shift+4 fire; element brush left click spawns a disk; left click use held item (stick casts, blocks place in front); F2 Drop wooden stick, approach to pick up; B toggle device placement (4 stone + 2 copper ore); right click device enable/disable, otherwise mine; Shift+right click device recycle, otherwise mine; A/D move; Space jump/swim up; F3 debug camera (WASD pan); +/- zoom; F1 force-field view; F2 Debug UI; F4 Formula Editor; T tint; PageDown next region; R new world with selected generator; Escape quit";
 }
 } // namespace pixel

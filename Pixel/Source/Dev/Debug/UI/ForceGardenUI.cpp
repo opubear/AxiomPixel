@@ -216,11 +216,11 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
         ImGui::TextWrapped("Growth needs air, solid support below, and rightward acceleration +1800..+5400 cells/s^2 for 180 successful steps (3 active seconds). Progress is retained when conditions fail.");
 
         ImGui::Separator();
-        ImGui::TextWrapped("2. Copy the crystal's exact program. Walk within 8 cells of the home bed (%lld, %lld), then right-click toward it. The temporary field starts in front of the player; the click only aims it.",
+        ImGui::TextWrapped("2. Copy the crystal's exact program. Walk within 8 cells of the home bed (%lld, %lld), then left-click toward it. The temporary field starts in front of the player; the click only aims it.",
             static_cast<long long>(GardenHomeX), static_cast<long long>(y - 1));
         if (ImGui::Button("Apply crystal program")) {
             const auto result = session.ApplyProcess(NativeCaller::Debug, ForceGardenProgram());
-            receipt = result ? "Apply crystal program: Applied. Stand near the home bed and right-click toward it; existing instances keep their program."
+            receipt = result ? "Apply crystal program: Applied. Stand near the home bed and left-click toward it; existing instances keep their program."
                              : "Apply crystal program: Rejected. " + result.Message;
         }
         if (ImGui::TreeNode("Crystal program source")) {

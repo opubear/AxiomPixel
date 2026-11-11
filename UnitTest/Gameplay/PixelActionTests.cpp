@@ -94,7 +94,7 @@ void ProgramAndControls() {
     const auto invalid = formula::process::Compile("invalid", "process 1; wait ticks(false);");
     Require(std::holds_alternative<formula::process::Diagnostic>(invalid) && session.AppliedProgram() == oldProgram,
             "invalid user program must return diagnostics and preserve the applied version");
-    const auto cast = session.Execute(NativeCaller::Input, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}});
+    const auto cast = session.Execute(NativeCaller::Driver, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}});
     Require(cast.Applied() && std::get<ActivationResult>(cast.Result).ActivationId != 0, "activation identity missing");
     const auto original = session.GetFormulaRuntime().Projectiles().front();
     const auto position = original.Position.RelativeCellsTo({513, 510});
@@ -105,7 +105,7 @@ void ProgramAndControls() {
     session.Control(NativeCaller::Driver, SetPaused{false});
     const auto applied = session.ApplyProcess(NativeCaller::Debug, Program("process 1;"));
     Require(bool(applied) && applied.Program != oldProgram, "apply did not publish a new version");
-    Require(session.Execute(NativeCaller::Input, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}}).Rejection == Reason::StaleProgram,
+    Require(session.Execute(NativeCaller::Driver, ActivateProgram{oldProgram, {{600, 510}, {0, 0}}}).Rejection == Reason::StaleProgram,
             "old program version accepted");
     Require(session.Execute(NativeCaller::Debug, ActivateProgram{*applied.Program, {{600, 510}, {0, 0}}}).Applied(),
             "Empty activation must succeed without a ball");

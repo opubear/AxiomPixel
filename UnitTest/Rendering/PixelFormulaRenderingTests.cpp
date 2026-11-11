@@ -135,7 +135,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check(sets == 33 && images == 54 && samplers == 15, "descriptor pool is not sized from actual slots");
+        Check(sets == 39 && images == 72 && samplers == 15, "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -228,7 +228,7 @@ void FormulaPassLifecycle() {
         policy.Draw();
         Check(rhi.Commands.Targets.size() == 4, "expected world, wind, formula and character colour passes");
         Check(rhi.Commands.Constants.size() == 7, "circle pass must copy scene once, then draw each ball once");
-        Check(rhi.Commands.Constants[2].size() == 48 && rhi.Commands.Constants[3].size() == 48 && rhi.Commands.Constants[4].size() == 48,
+        Check(rhi.Commands.Constants[2].size() == 64 && rhi.Commands.Constants[3].size() == 64 && rhi.Commands.Constants[4].size() == 64,
               "formula constants layout changed");
         uint32_t copyMode = 9, drawMode = 9;
         std::memcpy(&copyMode, rhi.Commands.Constants[2].data() + 32, sizeof(copyMode));

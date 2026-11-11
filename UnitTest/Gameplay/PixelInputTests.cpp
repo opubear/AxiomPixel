@@ -3,6 +3,7 @@
 #include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "Runtime/System/IO/Input/GameInput.h"
 #include "Runtime/Render/GamePresentation.h"
+#include "Runtime/Gameplay/FormulaBridge/DefaultProcess.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -25,6 +26,20 @@ struct Fixture {
     Fixture() {
         pixel::testing::SessionAccess::World(Session).DisableWind();
         Input.ResetView();
+    }
+    void PublishUI() {
+        WorldGridFrame frame;
+        Presentation.CreateFramePublisher(Session, Camera)(frame);
+        const auto &snapshot = Presentation.PublishedGameplay();
+        UI.Publish(snapshot ? &*snapshot : nullptr, Session.PlayerInventory());
+    }
+    void HoldStick() {
+        auto &inventory = pixel::testing::SessionAccess::Inventory(Session);
+        pixel::items::ItemRef item;
+        Require(inventory.CreateStick(inventory.Reference(Session.PlayerInventory()), pixel::DefaultPlayerProcess(), item)
+            == pixel::items::Result::Applied, "stick fixture failed");
+        pixel::testing::SessionAccess::CommitFixtureChanges(Session);
+        PublishUI();
     }
     void KeyEvent(Key key, ButtonAction action = ButtonAction::ACTION_PRESS, Mod mods = Mod{}) {
         Input.OnKeyEvent(key, 0, action, mods);
@@ -176,17 +191,20 @@ void MouseEditing() {
     f.Camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(100, 100));
     f.Camera.SetFramebufferSize({1600, 1200});
     const MousePointerState oldEvent{{400, 300}, {800, 600}, {800, 600}};
-    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, oldEvent);
-    Require(world.GetCell(100, 100).Type == pixel::CellTypes::Dirt && world.GetCell(75, 81).Type == pixel::CellTypes::Empty,
-            "old-size click must edit the cell under its own viewport centre");
+    f.PublishUI();
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), oldEvent);
+    Require(world.GetCell(510, 510).Type == pixel::CellTypes::Dirt && world.GetCell(100, 100).Type == pixel::CellTypes::Empty,
+            "block use must place in front toward the event aim, not at the distant cursor");
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_RELEASE, 0, oldEvent);
-    Require(world.GetCell(100, 100).Type == pixel::CellTypes::Dirt, "mouse release must not edit world");
+    Require(world.GetCell(510, 510).Type == pixel::CellTypes::Dirt, "mouse release must not edit world");
+    f.PublishUI();
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, oldEvent);
+    Require(f.Session.GetFormulaRuntime().Projectiles().empty()
+                && f.Session.LastAction(pixel::NativeCaller::Input)->Rejection == pixel::api::Reason::InsufficientItems,
+            "empty hand activated a formula");
+    f.Camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(510, 510));
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, oldEvent);
-    Require(world.GetCell(100, 100).Type == pixel::CellTypes::Dirt &&
-                f.Session.GetFormulaRuntime().Projectiles().size() == 1,
-            "right press must activate a formula without mining the target");
-    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), oldEvent);
-    Require(world.GetCell(100, 100).Type == pixel::CellTypes::Empty, "right press must remove dirt");
+    Require(world.GetCell(510, 510).Type == pixel::CellTypes::Empty, "right press must remove dirt");
     auto invalid = oldEvent;
     invalid.FramebufferSize = {0, 0};
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, invalid);
@@ -198,15 +216,16 @@ void MouseEditing() {
 
 void FormulaInputAndContinuousAim() {
     Fixture f;
+    f.HoldStick();
     auto &runtime = f.Session.GetFormulaRuntime();
-    const MousePointerState centre{{400, 300}, {800, 600}, {800, 600}};
-    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, centre);
-    Require(runtime.Projectiles().size() == 1, "paused right press must create the final bolt");
+    const MousePointerState centre{{400 + 10. * pixel::DefaultRenderPixelsPerLogicalPixel, 300}, {800, 600}, {800, 600}};
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, centre);
+    Require(runtime.Projectiles().size() == 1, "left press must create the final bolt");
     const auto ball = runtime.Projectiles().front();
     const auto relative = ball.Position.RelativeCellsTo({512, 510});
     Require(std::abs(relative[0] - 1.6) < 1e-9 && std::abs(relative[1]) < 1e-9,
-            "zero-distance aim must use right-facing muzzle outside the player");
-    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_RELEASE, 0, centre);
+            "rightward aim must use a muzzle outside the player");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_RELEASE, 0, centre);
     f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
     f.Session.Tick(.2f, {});
     Require(runtime.Projectiles().size() == 1 && runtime.Projectiles().front().Position.Local == ball.Position.Local,
@@ -221,14 +240,50 @@ void FormulaInputAndContinuousAim() {
     f.Camera.GetCamera().SetWorldPosition(distant);
     f.Camera.SetFramebufferSize({1600, 1200});
     const auto target = f.Camera.PickWorldPosition({{400.25, 300.5}, {800, 600}, {800, 600}});
+    // Compare stored centimetres: non-power-of-two pixel scales need not have
+    // an exactly representable float when converted back into cell fractions.
+    const float expectedX = pixel::CellsToCentimeters(float(.125 + .25 / pixel::DefaultRenderPixelsPerLogicalPixel));
+    const float expectedY = pixel::CellsToCentimeters(float(.75 + .5 / pixel::DefaultRenderPixelsPerLogicalPixel));
     Require(target && target->Chunk == distant.Chunk &&
-                std::abs(target->Local[0] / pixel::CentimetersPerCell - (.125 + .25 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12 && std::abs(target->Local[1] / pixel::CentimetersPerCell - (.75 + .5 / pixel::DefaultRenderPixelsPerLogicalPixel)) < 1e-12,
+                std::abs(target->Local[0] - expectedX) < 1e-5f && std::abs(target->Local[1] - expectedY) < 1e-5f,
             "continuous old-size event lost distant fractional aim");
     Require(!f.Camera.PickWorldPosition({{800, 300}, {800, 600}, {800, 600}}), "outside continuous aim accepted");
 }
 
+void FormulaInputWithSimulationThread() {
+    Fixture f;
+    f.HoldStick();
+    f.Session.EnableSimulationThread();
+    const auto player = f.Session.GetActors().PlayerSnapshot()->Id;
+    Require(!f.Session.GetActors().Find(player)->Formula && f.UI.HeldItem()->Instance != 0,
+        "threaded formula must belong to the held stick");
+    const MousePointerState pointer{{600, 280}, {800, 600}, {800, 600}};
+    const auto target = *f.Camera.PickWorldPosition(pointer);
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+    const auto queued = *f.Session.LastAction(pixel::NativeCaller::Input);
+    Require(queued.Queued() && f.Session.GetFormulaRuntime().Projectiles().empty(),
+        "threaded click ran before its simulation commit");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_RELEASE, 0, pointer);
+    f.Session.Tick(1.f / 60, {});
+    Require(f.Session.FindAction(queued.Key)->Applied() && f.Session.GetFormulaRuntime().Projectiles().size() == 1,
+        "threaded click was lost or repeated on release");
+    const auto process = f.Session.GetFormulaRuntime().InspectProcesses().front();
+    const auto reference = process.Configuration.Origin.Cell();
+    const auto mouse = target.RelativeCellsTo(reference), origin = process.Configuration.Origin.RelativeCellsTo(reference);
+    const auto &velocity = f.Session.GetFormulaRuntime().Projectiles().front().Velocity;
+    const double dx = mouse[0] - origin[0], dy = mouse[1] - origin[1];
+    Require(std::abs(velocity.X * dy - velocity.Y * dx) < 1e-4
+        && velocity.X * dx + velocity.Y * dy > 0 && process.Subject == player.Value,
+        "threaded cast missed the mouse direction or actor ownership");
+    f.Session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+    Require(f.Session.LastAction(pixel::NativeCaller::Input)->Rejection == pixel::api::Reason::GamePaused,
+        "paused input cast a formula");
+}
+
 void DeviceInput() {
     Fixture f;
+    f.HoldStick();
     auto &inventory = pixel::testing::SessionAccess::Inventory(f.Session);
     const std::array resources{pixel::items::ItemAmount{pixel::items::ItemId::Stone, 4},
                                pixel::items::ItemAmount{pixel::items::ItemId::CopperOre, 2},
@@ -254,8 +309,9 @@ void DeviceInput() {
     Require(f.Session.GetDevices().Count() == 0, "Shift+right click did not recycle device");
     f.KeyEvent(Key::KEY_B);
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, target);
-    Require(!f.Input.IsDevicePlacementEnabled() && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Dirt,
-            "leaving build mode did not restore material placement");
+    Require(!f.Input.IsDevicePlacementEnabled() && f.Session.GetWorld().GetCell(100, 100).Type == pixel::CellTypeId::Air
+                && f.Session.GetFormulaRuntime().Projectiles().size() == 1,
+            "leaving build mode did not restore formula activation");
 }
 void InventoryInput() {
     Fixture f;
@@ -317,6 +373,7 @@ int main() {
         PendingResetKeepsView();
         MouseEditing();
         FormulaInputAndContinuousAim();
+        FormulaInputWithSimulationThread();
         DeviceInput();
         InventoryInput();
         ElementBrushInput();

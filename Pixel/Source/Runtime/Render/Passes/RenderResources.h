@@ -11,7 +11,7 @@ namespace pixel::render {
 struct FrameResources {
     std::unique_ptr<RHITexture> Data;
     std::unique_ptr<RHIUploadBuffer> Upload;
-    std::unique_ptr<RHITexture> Color, WindColor, FormulaColor, CharacterColor, WindData;
+    std::unique_ptr<RHITexture> Color, WindColor, FormulaColor, CharacterColor, MonsterColor, WindData;
     std::unique_ptr<RHIUploadBuffer> WindUpload;
     bool HasWind = false;
     bool HasCharacter = false;
@@ -20,6 +20,7 @@ struct FrameResources {
     std::unique_ptr<RHIDescriptorSet> PostSet, CharacterSet, CharacterPostSet;
     std::unique_ptr<RHIDescriptorSet> WindSet, WindPostSet, WindCharacterSet;
     std::unique_ptr<RHIDescriptorSet> FormulaSet, WindFormulaSet, FormulaPostSet, FormulaCharacterSet;
+    std::unique_ptr<RHIDescriptorSet> FormulaToMonsterSet, MonsterToFormulaSet;
     std::array<int64_t, 2> CellOrigin{};
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
     std::vector<uint64_t> RegionVersions, WindRegionVersions;
@@ -36,6 +37,8 @@ struct RenderResources {
     std::unique_ptr<RHIUploadBuffer> BackgroundUpload;
     std::unique_ptr<RHITexture> CharacterTexture;
     std::unique_ptr<RHIUploadBuffer> CharacterUpload;
+    std::unique_ptr<RHITexture> MonsterTexture;
+    std::unique_ptr<RHIUploadBuffer> MonsterUpload;
     std::unique_ptr<RHIPipeline> WorldPipeline, WindPipeline, FormulaPipeline, CharacterPipeline, PostPipeline;
     std::unique_ptr<RHIDescriptorPool> Pool;
     std::vector<FrameResources> Frames;

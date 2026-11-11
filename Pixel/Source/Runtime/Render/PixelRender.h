@@ -19,7 +19,8 @@ class PixelRender final : public RenderPolicyInterface {
                 std::string postShader = "Pixel2DPostProcess.fs",
                 std::shared_ptr<const pixel::BackgroundAssets> background = {},
                 std::shared_ptr<const pixel::CharacterAssets> character = {},
-                pixel::render::InventoryOverlay::Publisher ui = {});
+                pixel::render::InventoryOverlay::Publisher ui = {},
+                std::shared_ptr<const pixel::MonsterAssets> monsters = {});
     ~PixelRender() override;
     void Initialize() override;
     void FrameBegin() override;
@@ -34,7 +35,7 @@ class PixelRender final : public RenderPolicyInterface {
     pixel::performance::MemoryUsage DevicePresentationMemory() const {
         return Published ? Published->GetDeviceMemoryUsage() : pixel::performance::MemoryUsage{};
     }
-    uint64_t FormulaTargetBytes() const { return uint64_t(Resources.Extent.Width) * Resources.Extent.Height * 4 * Resources.Frames.size(); }
+    uint64_t FormulaTargetBytes() const { return uint64_t(Resources.Extent.Width) * Resources.Extent.Height * 4 * Resources.Frames.size() * (MonsterArt ? 2 : 1); }
     const RHITexture &SceneColor(uint32_t slot) const;
     const RHITexture &WorldColor(uint32_t slot) const;
     // Borrowed until the next FrameBegin or Clear, including after Draw.
@@ -49,6 +50,7 @@ class PixelRender final : public RenderPolicyInterface {
     std::string PostShader;
     std::shared_ptr<const pixel::BackgroundAssets> Background;
     std::shared_ptr<const pixel::CharacterAssets> CharacterArt;
+    std::shared_ptr<const pixel::MonsterAssets> MonsterArt;
     pixel::render::RenderResources Resources;
     pixel::render::UploadPass Upload;
     pixel::render::WorldPass World;

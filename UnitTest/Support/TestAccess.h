@@ -1,13 +1,22 @@
 #pragma once
 #include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "WorldAccess.h"
+#include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
 
 namespace pixel::testing {
 // Only test/benchmark sources include this header. Fixture mutation is kept out
 // of Session and World's public gameplay interfaces.
 struct SessionAccess {
+    static GameplaySaveData CaptureGameplay(const GameSession &session) { return session.CaptureGameplayData(); }
+    static void RestoreGameplay(GameSession &session, const GameplaySaveData &data, const std::string &worldId) {
+        session.SaveDirectory = worldId;
+        session.Simulation.RestoreCheckpoint(data.Tick, data.Revision, 0);
+        session.RestoreGameplayData(data, worldId);
+        session.CommitChange();
+    }
     static pixel::World &World(GameSession &session) { return session.GameWorld; }
     static pixel::Actors &Actors(GameSession &session) { return session.Characters; }
+    static RegionalPopulation &Population(GameSession &session) { return session.Population; }
     static pixel::Devices &Devices(GameSession &session) { return session.Machines; }
     static items::Inventory &Inventory(GameSession &session) { return session.Inventory; }
     static void SetPlayerPosition(GameSession &session, WorldPosition position) {

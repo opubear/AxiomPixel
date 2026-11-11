@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <span>
 #include <string>
 #include <string_view>
@@ -25,6 +26,14 @@ struct BackgroundLayer {
 struct BackgroundAssets {
     std::vector<BackgroundLayer> Layers; // back to front, at most four
     float HeightFraction = 1;
+    // Optional opaque desert and snow panoramas, uploaded after forest layers.
+    // Keep resource paths and GPU layer indices out of Simulation.
+    std::array<BackgroundLayer, 2> BiomeImages;
+    bool HasBiomeImages() const { return bool(BiomeImages[0].Image); }
+    size_t LayerCount() const { return Layers.size() + (HasBiomeImages() ? 2 : 0); }
+    const BackgroundLayer &Layer(size_t index) const {
+        return index < Layers.size() ? Layers.at(index) : BiomeImages.at(index - Layers.size());
+    }
 };
 
 // Shared contract for manifests and render consumers, including test fixtures.
@@ -66,6 +75,26 @@ struct CharacterAssets {
 };
 void ValidateCharacterAssets(const CharacterAssets &assets);
 
+struct MonsterClip {
+    std::vector<std::array<uint32_t, 4>> Frames; // atlas x/y/width/height
+    float FramesPerSecond = 10;
+    bool Loop = false;
+};
+struct MonsterVisual {
+    std::string Id;
+    std::array<uint32_t, 2> FrameSize{};
+    std::array<float, 2> FootAnchor{};
+    float PixelsPerCell = 10.5f;
+    std::map<std::string, std::string> States;
+    std::map<std::string, MonsterClip> Clips;
+};
+struct MonsterAssets {
+    std::shared_ptr<const ArtImage> Atlas;
+    std::vector<MonsterVisual> Monsters;
+    const MonsterVisual &Require(std::string_view id) const;
+};
+void ValidateMonsterAssets(const MonsterAssets &assets);
+
 // Owned by the game. All successful reads/decodes are retained for
 // its lifetime. The reader resolves Content-relative paths (Axiom at runtime).
 // Loading is synchronous on the application thread, before frame publication.
@@ -77,6 +106,7 @@ class ArtAssetStore {
     std::shared_ptr<const BackgroundAssets> LoadBackground(std::string_view manifest);
     std::shared_ptr<const TerrainAssets> LoadTerrain(std::string_view manifest, std::span<const uint32_t> requiredTypes = {});
     std::shared_ptr<const CharacterAssets> LoadCharacter(std::string_view manifest = "CharacterAssets.json");
+    std::shared_ptr<const MonsterAssets> LoadMonsters(std::string_view manifest = "Monsters.json");
     size_t CachedImageCount() const { return Images.size(); }
 
   private:
@@ -86,6 +116,7 @@ class ArtAssetStore {
     std::unordered_map<std::string, std::shared_ptr<const BackgroundAssets>> Backgrounds;
     std::unordered_map<std::string, std::shared_ptr<const TerrainAssets>> Terrains;
     std::unordered_map<std::string, std::shared_ptr<const CharacterAssets>> Characters;
+    std::unordered_map<std::string, std::shared_ptr<const MonsterAssets>> Monsters;
     std::unordered_map<std::string, std::shared_ptr<const Manifest>> Manifests;
     std::shared_ptr<const ArtImage> LoadImage(const std::string &path);
     std::shared_ptr<const Manifest> LoadManifest(const std::string &path);

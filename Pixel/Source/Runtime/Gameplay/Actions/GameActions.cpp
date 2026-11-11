@@ -35,7 +35,8 @@ api::Reason Validate(const api::Action &action) {
         } else if constexpr (std::is_same_v<T, api::PlaceMaterial>) {
             if (!ValidCell(value.Target))
                 return api::Reason::InvalidArgument;
-            if (value.MaterialId != uint32_t(CellTypeId::Dirt))
+            if (std::none_of(items::Definitions().begin(), items::Definitions().end(),
+                    [&](const auto &item) { return item.BlockMaterial && item.BlockMaterial == value.MaterialId; }))
                 return api::Reason::Unsupported;
         } else if constexpr (std::is_same_v<T, api::SpawnElement>) {
             if (!ValidCell(value.Target) || value.Radius > 8)
@@ -43,7 +44,11 @@ api::Reason Validate(const api::Action &action) {
             const auto type = CellTypeId(value.MaterialId);
             if (type != CellTypeId::Water && type != CellTypeId::Steam && type != CellTypeId::Fire)
                 return api::Reason::Unsupported;
-        } else if constexpr (std::is_same_v<T, api::ActivateProgram>) {
+        } else if constexpr (std::is_same_v<T, api::ActivateProgram> || std::is_same_v<T, api::UseHeldItem>) {
+            if constexpr (std::is_same_v<T, api::UseHeldItem>)
+                if (value.Item && (!items::IsKnown(value.Item->Item)
+                    || (value.Item->Instance != 0) != (value.Item->Item == items::ItemId::WoodenStick)))
+                    return api::Reason::InvalidArgument;
             if (!ValidPosition(value.Target))
                 return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::SelectWindStrategy>) {
@@ -273,14 +278,16 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                         } else if (!GameWorld.TryPrepareMaterialWrite({value.Target.X, value.Target.Y, 1, 1})) {
                             receipt.Rejection = api::Reason::WaitingForBudget;
                         } else {
-                            const std::array cost{items::ItemAmount{items::ItemId::Soil, 1}};
+                            const auto material = std::find_if(items::Definitions().begin(), items::Definitions().end(),
+                                [&](const auto &item) { return item.BlockMaterial == value.MaterialId; });
+                            const std::array cost{items::ItemAmount{material->Id, 1}};
                             const auto reserved = Inventory.Reserve(Inventory.Reference(PlayerBag), cost);
                             if (reserved.Status == items::Result::InsufficientItems)
                                 receipt.Rejection = api::Reason::InsufficientItems;
                             else if (reserved.Status == items::Result::ReservationLimit)
                                 receipt.Rejection = api::Reason::LimitExceeded;
                             else {
-                                if (reserved.Status != items::Result::Applied || GameWorld.TryPlaceDirt(value.Target.X, value.Target.Y) != CellEditResult::Applied || Inventory.Consume(reserved.Id) != items::Result::Applied)
+                                if (reserved.Status != items::Result::Applied || GameWorld.TryPlaceMaterial({value.Target.X, value.Target.Y}, CellTypeId(value.MaterialId)) != CellEditResult::Applied || Inventory.Consume(reserved.Id) != items::Result::Applied)
                                     throw std::logic_error("preflighted material placement failed");
                                 result.Consumed = cost.front();
                             }
@@ -324,8 +331,12 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
             if (!result.Changed)
                 receipt.Rejection = resident ? api::Reason::Blocked : api::Reason::NotReady;
             receipt.Result = result;
+        } else if constexpr (std::is_same_v<T, api::UseHeldItem>) {
+            receipt = UseHeldItem(value, request);
         } else if constexpr (std::is_same_v<T, api::ActivateProgram>) {
-            if (value.Program != AppliedProgram()) {
+            if (request.Caller == CallerSession(NativeCaller::Input)) {
+                receipt.Rejection = api::Reason::PermissionDenied;
+            } else if (value.Program != AppliedProgram()) {
                 receipt.Rejection = api::Reason::StaleProgram;
             } else {
                 receipt.Rejection = ActivateAt(WorldPoint(value.Target), request);
@@ -460,7 +471,20 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
         } else {
             if (!Ready)
                 return {api::ControlStatus::Rejected, api::Reason::SessionUnavailable, "SessionUnavailable"};
-            if constexpr (std::is_same_v<T, api::SetPaused>) {
+            if constexpr (std::is_same_v<T, api::SetWorldCalendar>) {
+                if (Simulation.HasPendingStep())
+                    return {api::ControlStatus::Rejected, api::Reason::WaitingForBudget, "WaitingForBudget"};
+                if (!PendingActions.empty() || DeferredPublication)
+                    return {api::ControlStatus::Deferred, api::Reason::NotReady, "Calendar change deferred until world changes commit."};
+                try { WorldCalendar::Validate(value.State); }
+                catch (const std::invalid_argument &error) {
+                    return {api::ControlStatus::Rejected, api::Reason::InvalidArgument, error.what()};
+                }
+                if (value.State != Calendar.State()) {
+                    Calendar.Restore(value.State);
+                    CommitChange();
+                }
+            } else if constexpr (std::is_same_v<T, api::SetPaused>) {
                 if (value.Paused != Paused) {
                     if (Simulation.HasPendingStep())
                         return {api::ControlStatus::Rejected, api::Reason::WaitingForBudget, "WaitingForBudget"};

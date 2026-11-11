@@ -2,6 +2,7 @@
 #include "Runtime/Simulation/World/WorldStorageError.h"
 #include "KnowledgeCodec.h"
 #include "WorldWillCodec.h"
+#include "Runtime/Gameplay/FormulaBridge/CheckpointCodec.h"
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -36,20 +37,73 @@ WorldPosition ReadPosition(std::istream &in) {
     ReadAll(in, chunk.X, chunk.Y, cells[0], cells[1]);
     return WorldPosition::FromChunkCells(chunk, cells);
 }
+void WriteActor(std::ostream &out, const ActorRecord &actor) {
+    const auto body = actor.Body.CaptureState();
+    out << actor.Id.Value << ' ' << uint32_t(actor.Kind) << ' ';
+    WritePosition(out, body.Position);
+    out << double(body.VerticalSpeed) / CentimetersPerCell << ' ' << body.Grounded << '\n';
+    out << actor.Monster.has_value() << ' ';
+    if (actor.Monster) {
+        const auto &monster = *actor.Monster;
+        out << std::quoted(monster.Definition) << ' ';
+        WritePosition(out, monster.Home);
+        out << uint32_t(monster.Action) << ' ' << monster.ActionTicks << ' ' << monster.CooldownTicks << ' ' << monster.FacingLeft << ' ';
+    }
+    out << actor.Health.has_value() << ' ';
+    if (actor.Health) {
+        const auto &health = *actor.Health;
+        out << health.Current << ' ' << health.Maximum << ' ' << health.InvulnerableTicks << ' ';
+        WritePosition(out, health.Respawn);
+    }
+    out << '\n';
+}
+ActorRecord ReadActor(std::istream &in, unsigned version) {
+    ActorRecord actor;
+    unsigned kind;
+    ReadAll(in, actor.Id.Value, kind);
+    if (kind > uint32_t(version < 4 ? ActorKind::TrainingDummy : ActorKind::Monster))
+        throw WorldStorageError("unknown saved actor kind");
+    actor.Kind = ActorKind(kind);
+    BodyState body;
+    body.Position = ReadPosition(in);
+    double speedCells;
+    ReadAll(in, speedCells, body.Grounded);
+    body.VerticalSpeed = float(speedCells * CentimetersPerCell);
+    actor.Body.RestoreState(body);
+    if (version >= 4) {
+        bool hasMonster = false, hasHealth = false;
+        Read(in, hasMonster);
+        if (hasMonster) {
+            MonsterState monster;
+            if (!(in >> std::quoted(monster.Definition)) || monster.Definition.size() > 32)
+                throw WorldStorageError("invalid saved monster definition");
+            monster.Home = ReadPosition(in);
+            unsigned action;
+            ReadAll(in, action, monster.ActionTicks, monster.CooldownTicks, monster.FacingLeft);
+            if (action > uint32_t(MonsterAction::Death) || monster.ActionTicks > 3600 || monster.CooldownTicks > 3600)
+                throw WorldStorageError("invalid saved monster behavior");
+            monster.Action = MonsterAction(action);
+            actor.Monster = std::move(monster);
+        }
+        Read(in, hasHealth);
+        if (hasHealth) {
+            HealthState health;
+            ReadAll(in, health.Current, health.Maximum, health.InvulnerableTicks);
+            health.Respawn = ReadPosition(in);
+            actor.Health = health;
+        }
+    }
+    return actor;
+}
 }
 
 std::string EncodeGameplayState(const GameplaySaveData &state) {
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<double>::max_digits10);
-    out << "PixelGameplay 3\n" << state.Tick << ' ' << state.Revision << ' ' << state.PlayerBag.Value
+    out << "PixelGameplay 6\n" << state.Tick << ' ' << state.Revision << ' ' << state.PlayerBag.Value
         << ' ' << state.LastAim[0] << ' ' << state.LastAim[1] << '\n';
     out << state.Actors.NextId << ' ' << state.Actors.Records.size() << '\n';
-    for (const auto &actor : state.Actors.Records) {
-        const auto body = actor.Body.CaptureState();
-        out << actor.Id.Value << ' ' << uint32_t(actor.Kind) << ' ';
-        WritePosition(out, body.Position);
-        out << double(body.VerticalSpeed) / CentimetersPerCell << ' ' << body.Grounded << '\n';
-    }
+    for (const auto &actor : state.Actors.Records) WriteActor(out, actor);
     out << state.Inventory.NextContainer << ' ' << state.Inventory.NextReservation << ' '
         << state.Inventory.Containers.size() << '\n';
     for (const auto &container : state.Inventory.Containers) {
@@ -93,7 +147,33 @@ std::string EncodeGameplayState(const GameplaySaveData &state) {
     }
     out << std::quoted(EncodeKnowledgeState(state.Knowledge)) << '\n'
         << std::quoted(EncodeWorldWillState(state.WorldWill)) << '\n';
-    return out.str();
+    const auto &population = state.Population;
+    if (population.Version > 1 || (population.Version == 0 && (!population.Decisions.empty() || !population.Dormant.empty())))
+        throw WorldStorageError("invalid regional population version");
+    out << population.Version << ' ' << population.Decisions.size() << ' ' << population.Dormant.size() << '\n';
+    for (const auto &entry : population.Decisions)
+        out << entry.Site.AnchorX << ' ' << uint32_t(entry.Site.Kind) << ' ' << std::quoted(entry.Site.Species)
+            << ' ' << entry.Actor.Value << '\n';
+    for (const auto &actor : population.Dormant) WriteActor(out, actor);
+    out << state.Inventory.NextInstance << ' ' << state.GroundBag.Value << ' ' << state.DroppedItems.size() << '\n';
+    for (const auto &drop : state.DroppedItems) {
+        out << uint32_t(drop.Item.Item) << ' ' << drop.Item.Instance << ' ';
+        WritePosition(out, drop.Position);
+        out << '\n';
+    }
+    for (const auto &container : state.Inventory.Containers) {
+        out << container.Instances.size() << '\n';
+        for (const auto &item : container.Instances) {
+            if (!item.Formula) throw std::logic_error("tool is missing its formula");
+            checkpoint::Writer encoded;
+            checkpoint::Write(encoded, *item.Formula);
+            out << uint32_t(item.Ref.Item) << ' ' << item.Ref.Instance << ' ' << item.FormulaVersion << ' '
+                << std::quoted(encoded.Finish()) << '\n';
+        }
+    }
+    auto payload = out.str();
+    if (payload.size() > 8 * 1024 * 1024) throw WorldStorageError("oversized gameplay checkpoint");
+    return payload;
 }
 
 GameplaySaveData DecodeGameplayState(std::string_view payload) {
@@ -102,7 +182,7 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
     std::string magic;
     unsigned version = 0;
     ReadAll(in, magic, version);
-    if (magic != "PixelGameplay" || version < 1 || version > 3) throw WorldStorageError("unsupported gameplay checkpoint");
+    if (magic != "PixelGameplay" || version < 1 || version > 6) throw WorldStorageError("unsupported gameplay checkpoint");
     GameplaySaveData state;
     ReadAll(in, state.Tick, state.Revision, state.PlayerBag.Value, state.LastAim[0], state.LastAim[1]);
     if (!state.Revision || state.Revision == UINT64_MAX || state.Tick == UINT64_MAX
@@ -110,17 +190,7 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
         throw WorldStorageError("invalid saved commit or aiming state");
     Read(in, state.Actors.NextId);
     state.Actors.Records.resize(Count(in, Actors::MaximumCount));
-    for (auto &actor : state.Actors.Records) {
-        unsigned kind;
-        ReadAll(in, actor.Id.Value, kind);
-        actor.Kind = ActorKind(kind);
-        BodyState body;
-        body.Position = ReadPosition(in);
-        double speedCells;
-        ReadAll(in, speedCells, body.Grounded);
-        body.VerticalSpeed = float(speedCells * CentimetersPerCell);
-        actor.Body.RestoreState(body);
-    }
+    for (auto &actor : state.Actors.Records) actor = ReadActor(in, version);
     ReadAll(in, state.Inventory.NextContainer, state.Inventory.NextReservation);
     state.Inventory.Containers.resize(Count(in, items::Inventory::MaximumContainers));
     for (auto &container : state.Inventory.Containers) {
@@ -177,6 +247,58 @@ GameplaySaveData DecodeGameplayState(std::string_view payload) {
         if (!(in >> std::quoted(knowledge) >> std::quoted(will))) throw WorldStorageError("missing social checkpoint");
         state.Knowledge = DecodeKnowledgeState(knowledge);
         state.WorldWill = DecodeWorldWillState(will);
+    }
+    if (version >= 5) {
+        auto &population = state.Population;
+        Read(in, population.Version);
+        if (population.Version > 1) throw WorldStorageError("unsupported regional population version");
+        population.Decisions.resize(Count(in, RegionalPopulation::MaximumSites));
+        population.Dormant.resize(Count(in, RegionalPopulation::MaximumSites));
+        // Pure codec round-trips of old saves retain the pending migration
+        // marker until GameSession can bind the fixed legacy scene candidates.
+        if (population.Version == 0 && (!population.Decisions.empty() || !population.Dormant.empty()))
+            throw WorldStorageError("legacy population marker contains new records");
+        for (auto &entry : population.Decisions) {
+            unsigned kind;
+            ReadAll(in, entry.Site.AnchorX, kind);
+            if (kind != uint32_t(ActorKind::Resident) && kind != uint32_t(ActorKind::Monster))
+                throw WorldStorageError("invalid regional population kind");
+            entry.Site.Kind = ActorKind(kind);
+            if (!(in >> std::quoted(entry.Site.Species)) || entry.Site.Species.size() > 32)
+                throw WorldStorageError("invalid population species");
+            Read(in, entry.Actor.Value);
+        }
+        for (auto &actor : population.Dormant) actor = ReadActor(in, version);
+    } else {
+        state.Population.Version = 0;
+    }
+    if (version >= 6) {
+        ReadAll(in, state.Inventory.NextInstance, state.GroundBag.Value);
+        state.DroppedItems.resize(Count(in, items::Inventory::MaximumInstancesPerContainer));
+        for (auto &drop : state.DroppedItems) {
+            uint32_t kind;
+            ReadAll(in, kind, drop.Item.Instance);
+            drop.Item.Item = items::ItemId(kind);
+            drop.Position = ReadPosition(in);
+        }
+        for (auto &container : state.Inventory.Containers) {
+            container.Instances.resize(Count(in, items::Inventory::MaximumInstancesPerContainer));
+            for (auto &item : container.Instances) {
+                uint32_t kind;
+                std::string encoded;
+                ReadAll(in, kind, item.Ref.Instance, item.FormulaVersion);
+                item.Ref.Item = items::ItemId(kind);
+                if (!(in >> std::quoted(encoded)) || encoded.size() > 32768)
+                    throw WorldStorageError("invalid saved item formula");
+                try {
+                    checkpoint::Reader reader(encoded);
+                    item.Formula = checkpoint::ReadProgram(reader);
+                    reader.End();
+                } catch (const std::invalid_argument &error) {
+                    throw WorldStorageError(error.what());
+                }
+            }
+        }
     }
     in >> std::ws;
     if (!in.eof()) throw WorldStorageError("unexpected gameplay checkpoint data");

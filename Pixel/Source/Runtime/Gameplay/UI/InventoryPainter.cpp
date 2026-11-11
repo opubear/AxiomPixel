@@ -66,6 +66,14 @@ class Painter {
     }
 
     void Icon(int x, int y, items::ItemId item) {
+        if (item == items::ItemId::WoodenStick) {
+            for (int i = 0; i < 22; ++i) {
+                Fill(x + 3 + i / 2, y + 24 - i, 5, 2, {91, 53, 26, 255});
+                Fill(x + 4 + i / 2, y + 24 - i, 2, 1, {192, 139, 73, 255});
+            }
+            Fill(x + 12, y + 7, 7, 2, {229, 185, 106, 255});
+            return;
+        }
         Color base{115, 124, 127, 255}, light{179, 186, 177, 255};
         switch (item) {
         case items::ItemId::Soil: base = {113,77,49,255}; light = {177,124,73,255}; break;
@@ -130,10 +138,10 @@ void PaintInventory(const InventoryView &view, std::vector<std::byte> &pixels) {
     Painter paint(pixels);
     paint.Box(0, 0, InventoryLayout::Width, InventoryLayout::HotbarHeight, Border, Panel);
     paint.Fill(0, 0, 3, InventoryLayout::HotbarHeight, Gold);
-    paint.Text(12, 11, "QUICK SLOTS", TextColor);
+    paint.Text(12, 11, view.CalendarLabel.empty() ? "QUICK SLOTS" : view.CalendarLabel, TextColor);
     paint.Text(276, 11, view.Expanded ? "TAB CLOSE" : "TAB INVENTORY", Gold);
     for (size_t i = 0; i < view.QuickSlots.size(); ++i)
-        paint.SlotBox(InventoryLayout::QuickSlot(i), view.QuickSlots[i], view.Selected == i, std::to_string(i + 1));
+        paint.SlotBox(InventoryLayout::QuickSlot(i), view.QuickSlots[i], view.Selected == i && view.QuickSlots[i].Reference().has_value(), std::to_string(i + 1));
     const auto &selected = view.QuickSlots[view.Selected];
     paint.Text(12, 90, ItemName(selected), selected.Item ? TextColor : Muted);
     if (selected.Item)
@@ -147,7 +155,7 @@ void PaintInventory(const InventoryView &view, std::vector<std::byte> &pixels) {
     paint.Fill(12, 153, 372, 1, Border);
     for (size_t i = 0; i < view.BagSlots.size(); ++i)
         paint.SlotBox(InventoryLayout::BagSlot(i), view.BagSlots[i],
-            view.BagSlots[i].Item && view.BagSlots[i].Item == selected.Item);
+            selected.Reference() && view.BagSlots[i].Reference() == selected.Reference());
     paint.Text(12, 440, "CLICK ITEM TO BIND / 1-7 SELECT", Muted);
     paint.Text(12, 453, "TAB OR ESC CLOSE", Gold);
 }

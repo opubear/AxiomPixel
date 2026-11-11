@@ -10,7 +10,7 @@ void BuildActorFrame(std::span<const ActorSnapshot> actors, const Camera2D &came
     const auto centre = camera.RelativeCellsTo(reference);
     const double scaleX = output.View.CellSizePixels[0], scaleY = output.View.CellSizePixels[1];
     for (const auto &actor : actors) {
-        if (actor.Kind != ActorKind::TrainingDummy) continue;
+        if (actor.Kind != ActorKind::TrainingDummy && actor.Kind != ActorKind::Resident) continue;
         const auto position = actor.Position.RelativeCellsTo(reference);
         const double left = (position[0] - centre[0]) * scaleX + framebufferSize[0] / 2.0;
         const double top = (position[1] - centre[1]) * scaleY + framebufferSize[1] / 2.0;
@@ -21,6 +21,13 @@ void BuildActorFrame(std::span<const ActorSnapshot> actors, const Camera2D &came
                 float(top + (y + height * .5) * scaleY), float(width * .5 * scaleX), float(height * .5 * scaleY)},
                 color, actor.Id.Value});
         };
+        if (actor.Kind == ActorKind::Resident) {
+            part(.4, 0, 1.2, 1, {.76f, .48f, .29f, 1});
+            part(.2, 1, 1.6, 2, {.18f, .34f, .42f, 1});
+            part(.3, 3, .5, 1, {.12f, .15f, .20f, 1});
+            part(1.2, 3, .5, 1, {.12f, .15f, .20f, 1});
+            continue;
+        }
         // Wooden head, crossbar, torso, stake and foot stay inside the 2x4 hitbox.
         part(.5, 0, 1, 1, {.65f, .36f, .13f, 1});
         part(0, 1.25, 2, .5, {.38f, .17f, .055f, 1});

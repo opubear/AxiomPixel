@@ -6,9 +6,9 @@ PixelRender::PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,
                          std::function<void(WorldGridFrame &)> input, std::string postShader,
                          std::shared_ptr<const pixel::BackgroundAssets> background,
                          std::shared_ptr<const pixel::CharacterAssets> character,
-                         pixel::render::InventoryOverlay::Publisher ui)
+                         pixel::render::InventoryOverlay::Publisher ui, std::shared_ptr<const pixel::MonsterAssets> monsters)
     : RHI(rhi), Catalog(std::move(catalog)), Input(std::move(input)), PostShader(std::move(postShader)),
-      Background(std::move(background)), CharacterArt(std::move(character)), UIPublisher(std::move(ui)) {
+      Background(std::move(background)), CharacterArt(std::move(character)), MonsterArt(std::move(monsters)), UIPublisher(std::move(ui)) {
     ValidateGridTextureCatalog(Catalog);
     if (!Input)
         throw std::invalid_argument("2D rendering requires an input provider");
@@ -16,6 +16,7 @@ PixelRender::PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,
         pixel::ValidateBackgroundAssets(*Background);
     if (CharacterArt)
         pixel::ValidateCharacterAssets(*CharacterArt);
+    if (MonsterArt) pixel::ValidateMonsterAssets(*MonsterArt);
 }
 PixelRender::~PixelRender() { Clear(); }
 void PixelRender::Initialize() {
@@ -26,7 +27,7 @@ void PixelRender::Initialize() {
     if (!RHI.IsPresentationSRGB())
         throw std::runtime_error("2D rendering requires an sRGB presentation target");
     const uint32_t slots = RHI.GetFrameSlotCount();
-    if (!slots || slots > UINT32_MAX / 18)
+    if (!slots || slots > UINT32_MAX / 24)
         throw std::runtime_error("invalid RHI frame slot count");
     constexpr std::array<float, 8> vertices{-1, -1, 1, -1, 1, 1, -1, 1};
     constexpr std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
@@ -39,10 +40,10 @@ void PixelRender::Initialize() {
     if (Background) {
         const auto &image = *Background->Layers.front().Image;
         const size_t layerBytes = image.Pixels.size();
-        Resources.BackgroundTexture = RHI.CreateTexture({image.Width, image.Height, uint32_t(Background->Layers.size()), RHITextureFormat::RGBA8SRGB, true, false});
-        Resources.BackgroundUpload = RHI.CreateUploadBuffer(layerBytes * Background->Layers.size());
-        for (size_t index = 0; index < Background->Layers.size(); ++index)
-            Resources.BackgroundUpload->WriteRegion(Background->Layers[index].Image->Pixels, index * layerBytes);
+        Resources.BackgroundTexture = RHI.CreateTexture({image.Width, image.Height, uint32_t(Background->LayerCount()), RHITextureFormat::RGBA8SRGB, true, false});
+        Resources.BackgroundUpload = RHI.CreateUploadBuffer(layerBytes * Background->LayerCount());
+        for (size_t index = 0; index < Background->LayerCount(); ++index)
+            Resources.BackgroundUpload->WriteRegion(Background->Layer(index).Image->Pixels, index * layerBytes);
     }
     if (CharacterArt) {
         const auto &image = *CharacterArt->Layers.front();
@@ -51,7 +52,13 @@ void PixelRender::Initialize() {
         for (size_t index = 0; index < CharacterArt->Layers.size(); ++index)
             Resources.CharacterUpload->WriteRegion(CharacterArt->Layers[index]->Pixels, index * image.Pixels.size());
     }
-    Resources.Pool = RHI.CreateImageDescriptorPool(11 * slots, 18 * slots, 5 * slots);
+    if (MonsterArt) {
+        const auto &image = *MonsterArt->Atlas;
+        Resources.MonsterTexture = RHI.CreateTexture({image.Width, image.Height, 1, RHITextureFormat::RGBA8SRGB, true, false});
+        Resources.MonsterUpload = RHI.CreateUploadBuffer(image.Pixels.size());
+        Resources.MonsterUpload->Write(image.Pixels);
+    }
+    Resources.Pool = RHI.CreateImageDescriptorPool(13 * slots, 24 * slots, 5 * slots);
     Resources.Frames.resize(slots);
     for (auto &frame : Resources.Frames) {
         constexpr uint64_t initialBytes = uint64_t(Grid2D::RegionSize) * Grid2D::RegionSize * sizeof(uint32_t);
@@ -84,6 +91,12 @@ void PixelRender::FrameBegin() {
             draw.FrameTexels[1] + draw.FrameTexels[3] > CharacterArt->Layers.front()->Height)
             throw std::invalid_argument("character frame exceeds loaded art");
     }
+    for (const auto &draw : Published->MonsterDraws) {
+        const auto &f = draw.FrameTexels;
+        if (!MonsterArt || !f[2] || !f[3] || f[2] > MonsterArt->Atlas->Width || f[3] > MonsterArt->Atlas->Height
+            || f[0] > MonsterArt->Atlas->Width - f[2] || f[1] > MonsterArt->Atlas->Height - f[3])
+            throw std::invalid_argument("monster frame exceeds loaded atlas");
+    }
     InventoryUI.Prepare(RHI.GetActiveFrameToken().Slot);
     FrameReady = true;
 }
@@ -101,6 +114,8 @@ void PixelRender::CreateColorTargets() {
         frame.WindSet.reset();
         frame.WindPostSet.reset();
         frame.WindCharacterSet.reset();
+        frame.FormulaToMonsterSet.reset();
+        frame.MonsterToFormulaSet.reset();
         frame.FormulaSet.reset();
         frame.WindFormulaSet.reset();
         frame.FormulaPostSet.reset();
@@ -116,6 +131,7 @@ void PixelRender::CreateColorTargets() {
         frame.Color = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.WindColor = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.FormulaColor = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
+        if (MonsterArt) frame.MonsterColor = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.CharacterColor = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
     }
     if (!Resources.WorldPipeline)
@@ -143,8 +159,17 @@ void PixelRender::CreateColorTargets() {
         const std::array windCharacterBindings{RHIImageBinding{0, frame.WindColor.get()}};
         const std::array windCharacterArtBindings{RHIImageBinding{0, frame.WindColor.get()}, RHIImageBinding{1, characterTexture}};
         frame.WindCharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, windCharacterArtBindings);
-        frame.FormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, characterBindings);
-        frame.WindFormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, windCharacterBindings);
+        auto *monsterTexture = Resources.MonsterTexture ? Resources.MonsterTexture.get() : Resources.Materials.get();
+        const std::array sceneBindings{RHIImageBinding{0, frame.Color.get()}, RHIImageBinding{1, monsterTexture}};
+        const std::array windSceneBindings{RHIImageBinding{0, frame.WindColor.get()}, RHIImageBinding{1, monsterTexture}};
+        frame.FormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, sceneBindings);
+        frame.WindFormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, windSceneBindings);
+        if (MonsterArt) {
+            const std::array formulaToMonster{RHIImageBinding{0, frame.FormulaColor.get()}, RHIImageBinding{1, monsterTexture}};
+            const std::array monsterToFormula{RHIImageBinding{0, frame.MonsterColor.get()}, RHIImageBinding{1, monsterTexture}};
+            frame.FormulaToMonsterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, formulaToMonster);
+            frame.MonsterToFormulaSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.FormulaPipeline, monsterToFormula);
+        }
         const std::array formulaBindings{RHIImageBinding{0, frame.FormulaColor.get()}, RHIImageBinding{1, characterTexture}};
         frame.FormulaCharacterSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.CharacterPipeline, formulaBindings);
         const std::array formulaPostBindings{RHIImageBinding{0, frame.FormulaColor.get()}, RHIImageBinding{1, nullptr, Resources.Sampler.get()}};
@@ -221,6 +246,9 @@ void PixelRender::Clear() {
     Resources.BackgroundTexture.reset();
     Resources.CharacterUpload.reset();
     Resources.CharacterTexture.reset();
+    Resources.MonsterUpload.reset();
+    Resources.MonsterTexture.reset();
+    MonsterArt.reset();
     CharacterArt.reset();
     Background.reset();
     Resources.Sampler.reset();

@@ -26,6 +26,8 @@ api::InventoryObservation ObserveContainer(const items::Inventory &inventory, it
         const auto &definition = items::Definition(stack.Item);
         result.Stacks.push_back({uint32_t(stack.Item), definition.Version, stack.Quantity, stack.Reserved});
     }
+    for (const auto &item : source.Instances)
+        result.Stacks.push_back({uint32_t(item.Ref.Item), items::Definition(item.Ref.Item).Version, 1, 0, item.Ref.Instance});
     return result;
 }
 } // namespace
@@ -33,6 +35,8 @@ api::InventoryObservation ObserveContainer(const items::Inventory &inventory, it
 void GameSession::PublishGameplayObservation() {
     api::GameplayObservation result;
     result.Stamp = CurrentCommit();
+    for (const auto &item : DroppedItems)
+        result.DroppedItems.push_back({item.Item, ActionPosition(item.Position)});
     result.WorldWill = WillMemory;
     result.Protections = Authority.Regions();
     result.AuthorityVersion = Authority.Version();

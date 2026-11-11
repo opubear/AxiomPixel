@@ -35,9 +35,10 @@ void InventoryUI::SetUIScale(float scale) {
 
 void InventoryUI::ResetBindings() {
     Bindings.fill(std::nullopt);
+    KnownInstances.clear();
     const auto definitions = items::Definitions();
     for (size_t i = 0; i < std::min(Bindings.size(), definitions.size()); ++i)
-        Bindings[i] = definitions[i].Id;
+        Bindings[i] = items::ItemRef{definitions[i].Id};
     View.Selected = 0;
 }
 
@@ -57,7 +58,7 @@ void InventoryUI::RefreshQuickSlots() {
     View.QuickSlots.fill({});
     for (size_t i = 0; i < Bindings.size(); ++i)
         for (const auto &slot : View.BagSlots)
-            if (Bindings[i] && slot.Item == Bindings[i]) {
+            if (Bindings[i] && slot.Item && *slot.Item == Bindings[i]->Item && slot.Instance == Bindings[i]->Instance) {
                 View.QuickSlots[i] = slot;
                 break;
             }
@@ -81,13 +82,20 @@ bool InventoryUI::PointerPress(float x, float y, std::array<int, 2> framebuffer,
     if (inBag)
         for (size_t i = 0; i < View.BagSlots.size(); ++i)
             if (InventoryLayout::BagSlot(i).Contains(x, y) && View.BagSlots[i].Item) {
-                Bindings[View.Selected] = View.BagSlots[i].Item;
+                Bindings[View.Selected] = View.BagSlots[i].Reference();
                 RefreshQuickSlots();
             }
     return true;
 }
 
-void InventoryUI::Publish(const api::GameplayObservation *gameplay, items::ContainerId playerBag) {
+void InventoryUI::Publish(const api::GameplayObservation *gameplay, items::ContainerId playerBag,
+                          const WorldCalendarSnapshot *calendar) {
+    View.CalendarLabel.clear();
+    if (calendar) {
+        const auto twoDigits = [](uint32_t value) { return (value < 10 ? "0" : "") + std::to_string(value); };
+        View.CalendarLabel = std::string(SeasonName(calendar->CurrentSeason)) + " " + std::to_string(calendar->DayOfSeason)
+            + " / " + twoDigits(calendar->Hour) + ":" + twoDigits(calendar->Minute);
+    }
     // A missing publication never reads mutable live inventory as a substitute.
     if (gameplay && (gameplay->Stamp.WorldEpoch != WorldEpoch || gameplay->Stamp.WorldId != WorldId || Container != playerBag)) {
         WorldEpoch = gameplay->Stamp.WorldEpoch;
@@ -109,8 +117,31 @@ void InventoryUI::Publish(const api::GameplayObservation *gameplay, items::Conta
             const auto definitions = items::Definitions();
             for (size_t i = 0; i < std::min(definitions.size(), View.BagSlots.size()); ++i)
                 for (const auto &stack : bag->Stacks)
-                    if (stack.ItemId == uint32_t(definitions[i].Id) && stack.Quantity)
+                    if (!stack.InstanceId && stack.ItemId == uint32_t(definitions[i].Id) && stack.Quantity)
                         View.BagSlots[i] = {definitions[i].Id, stack.Quantity, stack.Reserved};
+            size_t slot = std::count_if(definitions.begin(), definitions.end(),
+                [](const auto &definition) { return definition.BlockMaterial != 0; });
+            for (const auto &stack : bag->Stacks) {
+                if (!stack.InstanceId) continue;
+                if (slot == View.BagSlots.size()) throw std::logic_error("inventory tools exceed visible bag capacity");
+                View.BagSlots[slot++] = {items::ItemId(stack.ItemId), stack.Quantity, stack.Reserved, stack.InstanceId};
+            }
+            RefreshQuickSlots();
+            for (const auto &entry : View.BagSlots) {
+                if (!entry.Instance || std::find(KnownInstances.begin(), KnownInstances.end(), entry.Instance) != KnownInstances.end()) continue;
+                KnownInstances.push_back(entry.Instance);
+                // Newly picked-up tools become reachable immediately. Preserve
+                // the occupied held slot whenever an empty quick slot exists.
+                auto target = View.Selected;
+                if (HeldItem()) {
+                    const auto empty = std::find_if(View.QuickSlots.begin(), View.QuickSlots.end(),
+                        [](const auto &value) { return !value.Reference(); });
+                    if (empty != View.QuickSlots.end()) target = size_t(empty - View.QuickSlots.begin());
+                }
+                Bindings[target] = entry.Reference();
+                View.Selected = target;
+                RefreshQuickSlots();
+            }
         }
     }
     RefreshQuickSlots();

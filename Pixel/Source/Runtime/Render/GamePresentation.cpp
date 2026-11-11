@@ -1,9 +1,13 @@
 #include "GamePresentation.h"
+#include "ItemFrame.h"
 #include "FormulaFrame.h"
 #include "DeviceFrame.h"
 #include "ActorFrame.h"
 #include "CharacterAnimation.h"
+#include "MonsterFrame.h"
 #include "ForceGardenFrame.h"
+#include "BiomeFrame.h"
+#include "CalendarLighting.h"
 #include "Runtime/Render/Assets/ArtAssets.h"
 #include <algorithm>
 #include <cmath>
@@ -40,7 +44,9 @@ uint64_t PublicationCapacity(WorldRect region) {
     const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
     return CommittedWorldView::CapacityFor(region) + memory::PageBuffer<uint32_t>::AllocationBytes(cells) * 2 + regions * 512 + 2048
         + 2 * api::GameplayObservation::MaximumRetainedBytes
-        + Actors::MaximumCount * TrainingDummyDrawParts * sizeof(ActorDraw);
+        + items::Inventory::MaximumInstancesPerContainer * DroppedItemDrawParts * sizeof(ItemDraw)
+        + MaximumBiomeDecorationParts * sizeof(DecorationDraw)
+        + Actors::MaximumCount * ((TrainingDummyDrawParts + 2) * sizeof(ActorDraw) + sizeof(MonsterDraw));
 }
 
 WorldRect LimitPublication(WorldRect region, uint64_t budget) {
@@ -65,9 +71,9 @@ void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
 }
 std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera,
-    std::shared_ptr<const CharacterAssets> characterArt, const PlayerPresentation *player) {
+    std::shared_ptr<const CharacterAssets> characterArt, const PlayerPresentation *player, std::shared_ptr<const MonsterAssets> monsterArt) {
     auto snapshot = session.CreateReadView();
-    return [this, &session, &camera, player, snapshot = std::move(snapshot), characterArt = std::move(characterArt),
+    return [this, &session, &camera, player, snapshot = std::move(snapshot), characterArt = std::move(characterArt), monsterArt = std::move(monsterArt),
             animation = CharacterAnimation{}](WorldGridFrame &frame) mutable {
         auto &world = session.GameWorld;
         const auto lifetime = world.PublicationLifetime();
@@ -92,17 +98,24 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             frame.DeviceDraws.clear();
             frame.GardenDraws.clear();
             frame.ActorDraws.clear();
+            frame.ItemDraws.clear();
+            frame.MonsterDraws.clear();
+            frame.DecorationDraws.clear();
+            frame.BiomeWeights = {1, 0, 0};
             frame.HasWind = false;
             frame.MissingOutsideRegion = true;
             GameplayFrame.reset();
+            CalendarFrame.reset();
             return;
         }
         const auto region = snapshot->Bounds();
         const uint64_t cells = uint64_t(region.Width) * region.Height;
         const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
         const uint64_t capacity = cells * 8 + regions * 512 + 2048
-            + Actors::MaximumCount * TrainingDummyDrawParts * sizeof(ActorDraw)
-            + snapshot->Gameplay().RetainedBytes() + (GameplayFrame ? GameplayFrame->RetainedBytes() : 0);
+            + Actors::MaximumCount * ((TrainingDummyDrawParts + 2) * sizeof(ActorDraw) + sizeof(MonsterDraw))
+            + snapshot->Gameplay().RetainedBytes() + (GameplayFrame ? GameplayFrame->RetainedBytes() : 0)
+            + items::Inventory::MaximumInstancesPerContainer * DroppedItemDrawParts * sizeof(ItemDraw)
+            + MaximumBiomeDecorationParts * sizeof(DecorationDraw);
         const bool resizing = frame.GetWidth() != region.Width || frame.GetHeight() != region.Height;
         const auto previous = world.PublicationBytesFor(&frame);
         if (!world.ReservePublicationBytes(&frame, capacity + (resizing ? previous : 0))) return;
@@ -112,18 +125,25 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         frame.DeviceDraws.clear();
         frame.GardenDraws.clear();
         frame.ActorDraws.clear();
+        frame.ItemDraws.clear();
+        frame.MonsterDraws.clear();
+        frame.DecorationDraws.clear();
+        frame.BiomeWeights = {1, 0, 0};
         frame.Character.reset();
         frame.SetRegion({region.X, region.Y}, region.Width, region.Height);
-        frame.Post = Post;
+        frame.Post = DisplayMode == GridDisplayMode::Materials ? CalendarLighting(snapshot->Calendar(), Post) : Post;
         frame.MissingOutsideRegion = !snapshot->IsFinite();
         if (DisplayMode == GridDisplayMode::ForceField)
             BuildForceFieldFrame(*snapshot, frame);
         else {
             BuildWorldGridFrame(snapshot->ReadState(), Appearances, frame);
+            BuildBiomeFrame(*snapshot, camera.GetCamera(), camera.GetFramebufferSize(), frame);
             BuildFormulaFrame(snapshot->Projectiles(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
             BuildDeviceFrame(snapshot->GetDevices(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
             BuildForceGardenFrame(snapshot->Gameplay().Garden, camera.GetCamera(), camera.GetFramebufferSize(), frame);
             BuildActorFrame(snapshot->GetActors(), camera.GetCamera(), camera.GetFramebufferSize(), frame);
+            BuildItemFrame(snapshot->Gameplay().DroppedItems, camera.GetCamera(), camera.GetFramebufferSize(), frame);
+            if (monsterArt) BuildMonsterFrame(snapshot->GetActors(), *monsterArt, camera.GetCamera(), camera.GetFramebufferSize(), frame);
         }
         BuildWindVisualFrame(*snapshot, WindVisual, float(std::fmod(snapshot->SimulationTime(), 2.0)), frame);
         const bool usePlayer = player && player->Base.WorldEpoch == snapshot->Stamp().WorldEpoch
@@ -140,6 +160,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         // bounded; UI reads these same commit values even if an action follows.
         auto gameplay = snapshot->Gameplay();
         GameplayFrame = std::move(gameplay);
+        CalendarFrame = snapshot->Calendar();
         world.SetPublicationBytes(&frame, frame.GetMemoryUsage().ReservedBytes() + GameplayFrame->RetainedBytes());
     };
 }

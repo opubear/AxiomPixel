@@ -1,4 +1,6 @@
 #include "Dev/Debug/Formula/FormulaPresets.h"
+#include "Runtime/Gameplay/Items/HandheldItem.h"
+#include "Runtime/Gameplay/FormulaBridge/DefaultProcess.h"
 #include "ProcessFakeHost.h"
 #include "../Support/TestAccess.h"
 #include <algorithm>
@@ -82,62 +84,71 @@ void DescriptorBehavior() {
         "launcher timeout fired or retained a waiting instance");
 }
 
-void SessionControlsAndBinding() {
+void SessionEquipmentAndActivation() {
     GameSession session;
     auto &runtime = testing::SessionAccess::Runtime(session);
     auto &world = testing::SessionAccess::World(session);
-    const auto initial = session.AppliedProgram();
+    auto &inventory = testing::SessionAccess::Inventory(session);
+    items::ItemRef stick;
+    Check(inventory.CreateStick(inventory.Reference(session.PlayerInventory()), DefaultPlayerProcess(), stick)
+        == items::Result::Applied, "stick fixture failed");
+    const auto equipped = [&]() { return items::ItemProgram(*inventory.FindInstance(session.PlayerInventory(), stick)); };
+    const auto equip = [&](size_t index) { return session.ApplyHeldProcess(NativeCaller::Debug, stick, FormulaPresetProgram(index)); };
+    for (const auto &actor : session.GetActors().CaptureState().Records)
+        Check(!actor.Formula, "actor was automatically equipped");
+    const auto initial = equipped();
     session.Control(NativeCaller::Debug, api::SetPaused{true});
-    Check(RunFormulaPreset(session, 0, 35).Rejection == api::Reason::GamePaused
-        && session.AppliedProgram() == initial && runtime.InspectProcesses().empty(), "paused preset mutated the session");
+    Check(equip(0).Rejection == api::Reason::GamePaused
+        && equipped() == initial && runtime.InspectProcesses().empty(), "paused equip mutated the session");
     session.Control(NativeCaller::Debug, api::SetPaused{false});
+    const auto activate = [&] {
+        Check(session.Execute(NativeCaller::Input,
+            api::UseHeldItem{stick, {{530, 508}, {.25, .5}}}).Applied(), "equipped cast failed");
+    };
     for (size_t index = 0; index < FormulaPresets().size(); ++index) {
-        Check(RunFormulaPreset(session, index, FormulaPresets()[index].AngleDegrees).Succeeded(), "preset failed to start in the game");
-        Check(runtime.ActiveProcess().Identity() == FormulaPresetProgram(index).Identity(), "run did not publish the selected program");
-        if (index == 0) {
-            for (int step = 0; step < 150; ++step) runtime.Step(world);
-            const auto &receipts = runtime.ProcessReceipts();
-            Check(std::count_if(receipts.begin(), receipts.end(), [](const auto &receipt) {
-                return receipt.Subject == FormulaPresetSubject(0) && receipt.ChangedCells > 0;
-            }) == 3, "default mining volley did not hit and mine real terrain three times");
+        Check(bool(equip(index)), "preset failed to equip");
+        Check(inventory.FindInstance(session.PlayerInventory(), stick)->Formula->Identity() == FormulaPresetProgram(index).Identity(), "equip lost the program identity");
+        for (int step = 0; step < 5; ++step) runtime.Step(world);
+        Check(runtime.Stats().Roots == 0 && runtime.Projectiles().empty()
+            && world.GetEnvironment().GetFieldSources().Sources().empty(), "equipping automatically ran the preset");
+        activate();
+        const auto instances = runtime.InspectProcesses();
+        Check(instances.size() == 1 && instances[0].Carrier == ProcessCarrierKind::Player
+            && instances[0].Subject == session.GetActors().PlayerSnapshot()->Id.Value,
+            "activation did not belong to the equipped actor");
+        if (FormulaPresets()[index].WaitsForWake) {
+            Check(runtime.Projectiles().empty(), "launcher fired before wake");
+            Check(WakePlayerFormulas(session).Succeeded(), "wake failed");
+            runtime.Step(world);
+            Check(runtime.Projectiles().size() == 1, "wake did not fire the equipped launcher");
         }
-        Check(StopFormulaPreset(session, index).Succeeded(), "preset stop was refused");
-        Check(runtime.Stats().Roots == 0 && runtime.Projectiles().empty() && world.GetEnvironment().GetFieldSources().Sources().empty(),
-            "stopping a preset leaked owned work");
+        Check(StopPlayerFormulas(session).Succeeded(), "stop failed");
+        Check(runtime.Stats().Roots == 0 && runtime.Projectiles().empty()
+            && world.GetEnvironment().GetFieldSources().Sources().empty(), "stop leaked owned effects");
     }
-
-    Check(RunFormulaPreset(session, 3, 0).Succeeded(), "beacon start failed");
-    const auto oldId = runtime.InspectProcesses().front().State.Id;
-    Check(RunFormulaPreset(session, 4, 35).Succeeded() && RunFormulaPreset(session, 3, 0).Succeeded(), "preset coexistence failed");
-    const auto instances = runtime.InspectProcesses();
-    Check(instances.size() == 2 && std::none_of(instances.begin(), instances.end(), [oldId](const auto &value) {
-        return value.State.Id == oldId;
-    }), "restart duplicated this preset or stopped another preset");
-
-    const auto first = runtime.Projectiles().front().Position;
-    auto moved = session.GetPlayer()->GetWorldPosition();
-    moved.Local[0] += 250;
-    testing::SessionAccess::Actors(session).SetPlayerPosition(moved);
-    runtime.SynchronizeActivity(world);
-    Check(runtime.Projectiles().front().Position.Cell() == first.Cell(), "actor movement moved an emitted beacon");
-    for (int step = 0; step < 62; ++step) runtime.Step(world);
-    Check(runtime.Projectiles().size() == 1 && runtime.Projectiles().front().Position.Cell().X == moved.Cell().X + 1,
-        "next beacon did not follow the actor");
-    Check(WakeFormulaPreset(session, 4).Succeeded(), "wake control was refused");
-    runtime.Step(world);
-    Check(runtime.Projectiles().size() == 2, "wake control did not launch the waiting shot");
-    StopFormulaPreset(session, 4);
-    Check(runtime.InspectProcesses().size() == 1, "stopping launcher also stopped the beacon");
-    StopFormulaPreset(session, 3);
-    Check(runtime.Stats().Roots == 0 && runtime.Projectiles().empty(), "preset cleanup retained effects");
+    Check(bool(equip(3)), "beacon equip failed");
+    activate();
+    const auto old = runtime.InspectProcesses().front();
+    Check(bool(equip(4)), "launcher equip failed");
+    Check(runtime.InspectProcesses().size() == 1
+        && runtime.InspectProcesses().front().State.Id == old.State.Id
+        && runtime.InspectProcesses().front().Version == old.Version, "equipping altered an existing cast");
+    activate();
+    Check(runtime.InspectProcesses().size() == 2, "explicit activation replaced an old cast");
+    StopPlayerFormulas(session);
+    const auto oldPlayer = session.GetActors().PlayerSnapshot()->Id;
+    Check(session.Control(NativeCaller::Debug, api::ResetWorld{}).Succeeded(), "reset failed");
+    Check(session.GetActors().PlayerSnapshot()->Id != oldPlayer && !inventory.FindInstance(session.PlayerInventory(), stick)
+        && runtime.InspectProcesses().empty(), "reset retained a stick or replayed a cast");
 }
+
 } // namespace
 
 int main() {
     try {
         DescriptorBehavior();
-        SessionControlsAndBinding();
-        std::cout << "Formula presets passed: five descriptors, timing, effects, wake/timeout, restart isolation and Actor following\n";
+        SessionEquipmentAndActivation();
+        std::cout << "Formula presets passed: five descriptors, timing, effects, wake/timeout, player equipment, explicit activation, version retention and reset\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
         return 1;

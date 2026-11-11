@@ -17,28 +17,38 @@ struct WorldConstants {
     uint TerrainPhaseY;
     float4 BackgroundPhases;
     float4 BackgroundSize;
+    float4 BiomeWeights;
+    float4 BiomePhases;
 };
 [vk::push_constant] WorldConstants View;
 
-float4 backgroundColor(float2 position) {
-    float4 color = View.Background;
+float4 sampleBackground(float2 position, uint layer, float phase) {
     uint width, height, count;
     BackgroundLayers.GetDimensions(width, height, count);
     float2 halfTexel = 0.5 / float2(width, height);
-    for (uint layer = 0; layer < uint(View.BackgroundSize.w); ++layer) {
-        float u = (position.x - View.BackgroundSize.z * 0.5) / View.BackgroundSize.x
-                  + 0.5 + View.BackgroundPhases[layer];
-        // Mirrored pairs hide the non-seamless source edges. Clamp Y so the
-        // transparent layers never repeat vertically into the sky.
-        u = 1.0 - abs(frac(u * 0.5) * 2.0 - 1.0);
-        float2 uv = float2(u, saturate(position.y / View.BackgroundSize.y));
-        // The shared terrain sampler repeats. Keep both edge coordinates
-        // inside the image so v/u == 1 cannot wrap to the opposite edge.
-        uv = clamp(uv, halfTexel, 1.0 - halfTexel);
-        float4 sample = BackgroundLayers.SampleLevel(NearestSampler, float3(uv, float(layer)), 0.0);
-        color.rgb = sample.rgb * sample.a + color.rgb * (1.0 - sample.a);
+    float u = (position.x - View.BackgroundSize.z * 0.5) / View.BackgroundSize.x + 0.5 + phase;
+    // Mirrored pairs hide source edges; keep UV inside the repeating sampler.
+    u = 1.0 - abs(frac(u * 0.5) * 2.0 - 1.0);
+    float2 uv = clamp(float2(u, saturate(position.y / View.BackgroundSize.y)), halfTexel, 1.0 - halfTexel);
+    return BackgroundLayers.SampleLevel(NearestSampler, float3(uv, float(layer)), 0.0);
+}
+
+float4 backgroundColor(float2 position) {
+    if (View.BackgroundSize.w == 0) return View.Background;
+    float3 forest = View.Background.rgb;
+    if (View.BiomeWeights.x > 0) {
+        for (uint layer = 0; layer < uint(View.BackgroundSize.w); ++layer) {
+            float4 sample = sampleBackground(position, layer, View.BackgroundPhases[layer]);
+            forest = lerp(forest, sample.rgb, sample.a);
+        }
     }
-    return color;
+    float3 color = forest * View.BiomeWeights.x;
+    for (uint biome = 0; biome < 2; ++biome) {
+        if (View.BiomeWeights[biome + 1] <= 0) continue;
+        float4 sample = sampleBackground(position, uint(View.BackgroundSize.w) + biome, View.BiomePhases[biome]);
+        color += lerp(View.Background.rgb, sample.rgb, sample.a) * View.BiomeWeights[biome + 1];
+    }
+    return float4(color, 1);
 }
 
 [shader("fragment")]

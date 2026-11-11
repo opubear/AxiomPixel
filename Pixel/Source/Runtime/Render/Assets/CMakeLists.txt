@@ -1,4 +1,4 @@
-add_library(PixelAssets STATIC ArtAssets.cpp)
+add_library(PixelAssets STATIC ArtAssets.cpp MonsterAssets.cpp)
 target_link_libraries(PixelAssets PUBLIC Axiom::Core)
 # Use the engine's locked header dependencies in CPU and runtime builds alike.
 target_include_directories(PixelAssets PRIVATE

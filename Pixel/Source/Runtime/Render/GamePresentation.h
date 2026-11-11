@@ -10,6 +10,7 @@
 namespace pixel {
 class ArtAssetStore;
 struct CharacterAssets;
+struct MonsterAssets;
 class GamePresentation : public PresentationControl {
   public:
     GamePresentation();
@@ -24,14 +25,17 @@ class GamePresentation : public PresentationControl {
     // alive when invoked at the joined frame boundary; releasing the callback
     // never accesses them. Never call from Draw or concurrently with game Tick.
     std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera,
-        std::shared_ptr<const CharacterAssets> characterArt = {}, const PlayerPresentation *player = nullptr);
+        std::shared_ptr<const CharacterAssets> characterArt = {}, const PlayerPresentation *player = nullptr,
+        std::shared_ptr<const MonsterAssets> monsterArt = {});
     // Updated with terrain/device publication, never by UI actions or Draw.
     // Each presentation consumer owns its values until its next published frame.
     const std::optional<api::GameplayObservation> &PublishedGameplay() const { return GameplayFrame; }
+    const std::optional<WorldCalendarSnapshot> &PublishedCalendar() const { return CalendarFrame; }
     static GridTextureCatalog MakeTextures();
     // Loads Content textures and atomically replaces the corresponding material mapping.
     GridTextureCatalog LoadTextures(ArtAssetStore &assets, std::string_view manifest = "ArtAssets.json");
   private:
     std::optional<api::GameplayObservation> GameplayFrame;
+    std::optional<WorldCalendarSnapshot> CalendarFrame;
 };
 } // namespace pixel

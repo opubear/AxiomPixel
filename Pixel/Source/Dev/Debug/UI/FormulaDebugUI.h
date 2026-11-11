@@ -1,23 +1,25 @@
 #pragma once
 #include "Formula/Process/Editing.h"
+#include "Runtime/Gameplay/Items/Item.h"
 #include <array>
+#include <optional>
 #include <string>
 
 namespace pixel {
 class GameSession;
-// Owns the temporary process source draft; published programs live in FormulaBridge.
+// Owns the temporary process source draft; applied player programs live on the selected wooden stick.
 class FormulaDebugUI {
   public:
     bool Visible = true;
-    void Draw(GameSession &session);
+    void Draw(GameSession &session, std::optional<items::ItemRef> held = {});
     void ShowPresets() { Visible = true; RevealPresets = true; }
 
   private:
     std::string Status;
+    std::optional<items::ItemRef> Held;
     bool Initialized = false;
     bool RevealPresets = false;
     size_t SelectedPreset = 0;
-    float PresetAngle = 35;
     formula::process::editing::Draft ProcessDraft{"editor.process"};
     std::array<char, 16385> ProcessText{};
     void LoadSource(std::string_view source);

@@ -36,8 +36,9 @@ class PixelGame final : public IGameInterface {
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
     bool IsDevicePlacementEnabled() const { return Input.IsDevicePlacementEnabled(); }
-    std::function<void(WorldGridFrame &)> CreateFramePublisher(std::shared_ptr<const pixel::CharacterAssets> characterArt = {}) {
-        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt), &PlayerFrame);
+    std::function<void(WorldGridFrame &)> CreateFramePublisher(std::shared_ptr<const pixel::CharacterAssets> characterArt = {},
+        std::shared_ptr<const pixel::MonsterAssets> monsterArt = {}) {
+        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt), &PlayerFrame, std::move(monsterArt));
     }
     const pixel::World &GetWorld() const { return Session.GetWorld(); }
     pixel::GamePresentation &GetPresentation() { return Presentation; }

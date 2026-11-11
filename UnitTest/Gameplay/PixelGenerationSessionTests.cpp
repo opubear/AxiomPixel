@@ -46,7 +46,8 @@ void ConvertToLegacyMetadata(const std::filesystem::path &metadata, unsigned ver
     std::ostringstream rest;
     rest << input.rdbuf();
     input.close();
-    header.replace(header.find("World 6"), 7, "World " + std::to_string(version));
+    const auto versionStart = header.find(' ') + 1;
+    header.replace(versionStart, header.find(' ', versionStart) - versionStart, std::to_string(version));
     double committedTime, remainder;
     std::istringstream clockInput(clock);
     clockInput >> committedTime >> remainder;

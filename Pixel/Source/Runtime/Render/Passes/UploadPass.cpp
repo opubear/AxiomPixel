@@ -89,6 +89,11 @@ void UploadPass::Record(RHICommandList &commands, const RenderPassContext &conte
         commands.CopyBufferToTexture(*resources.CharacterUpload, *resources.CharacterTexture);
         commands.TransitionTexture(*resources.CharacterTexture, RHITextureState::FragmentSampledRead);
     }
+    if (resources.MonsterTexture) {
+        commands.TransitionTexture(*resources.MonsterTexture, RHITextureState::TransferDestination);
+        commands.CopyBufferToTexture(*resources.MonsterUpload, *resources.MonsterTexture);
+        commands.TransitionTexture(*resources.MonsterTexture, RHITextureState::FragmentSampledRead);
+    }
 }
 uint64_t UploadPass::Commit(FrameResources &frame, const WorldGridFrameView &input) {
     AssetsUploaded = true;

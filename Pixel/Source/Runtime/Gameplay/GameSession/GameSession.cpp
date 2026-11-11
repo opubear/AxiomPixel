@@ -1,5 +1,7 @@
 #include "Dev/Debug/Garden/GardenScenario.h"
 #include "GameSession.h"
+#include "Runtime/Gameplay/Actors/FormulaComponent.h"
+#include "Runtime/Gameplay/Items/HandheldItem.h"
 #include "Runtime/Gameplay/Construction/DeviceCosts.h"
 #include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
 #include "Runtime/Simulation/World/WorldStorageError.h"
@@ -9,7 +11,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
-#include <limits>
 #include <random>
 #include <stdexcept>
 
@@ -56,8 +57,8 @@ WorldGenerationSettings GameSession::DefaultGeneration() {
 GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
     : GameSession(persistent ? SessionMode::Persistent : SessionMode::Finite, generation) {}
 
-GameSession::GameSession(SessionMode mode, WorldGenerationSettings generation)
-    : Mode(mode), NextGeneration(generation) {
+GameSession::GameSession(SessionMode mode, WorldGenerationSettings generation, std::shared_ptr<const MonsterCatalog> monsters)
+    : Mode(mode), Monsters(std::move(monsters)), Characters(Monsters), NextGeneration(generation) {
     Formulas.BindActors(Characters);
     ValidateGenerationSettings(generation);
     items::ValidateCost(ForceEmitterCost());
@@ -107,6 +108,7 @@ void GameSession::InitializeScene() {
     const auto target = FormulaWorldAdapter::OffsetCells(GetPlayer()->GetWorldPosition(), {12, 0});
     if (!Characters.Spawn(ActorKind::TrainingDummy, target))
         throw std::logic_error("no capacity for the default training dummy");
+    SpawnSceneActors();
 }
 
 void GameSession::Reset() {
@@ -256,6 +258,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
         GameWorld.LoadSimulationNow();
         GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
         Simulation.Restore(data.CommittedTime, data.TimeRemainder);
+        Calendar.Restore(data.Calendar);
         if (gameplay) {
             if (data.CommittedTime != gameplay->Tick * SimulationCoordinator::StepSeconds)
                 throw WorldStorageError("checkpoint metadata and gameplay clocks disagree");
@@ -265,6 +268,8 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
                 || GetPlayer()->GetWorldPosition().Local != data.Player.Local)
                 throw WorldStorageError("checkpoint metadata and player position disagree");
         }
+        if (!gameplay && GameWorld.SampleBiome(data.Player.Cell()).Regional)
+            Population.ImportLegacyScene(Characters, Monsters.get());
         GameWorld.RestorePendingEnvironmentStep(Simulation.Time(), false);
     } catch (const std::invalid_argument &error) {
         throw WorldStorageError(error.what());
@@ -291,6 +296,7 @@ SessionSaveData GameSession::CaptureSaveData() const {
     data.WindBoundary = GameWorld.GetWindBoundary();
     data.WindEnabled = GameWorld.IsWindEnabled();
     data.Paused = Paused;
+    data.Calendar = Calendar.State();
     data.Wind = GameWorld.GetWindSettings();
     return data;
 }
@@ -331,6 +337,7 @@ bool GameSession::TrySave() {
 }
 
 void GameSession::TickSimulation(float duration, PlayerInput input) {
+    static_assert(SimulationCoordinator::StepSeconds == 1.0 / WorldCalendar::TicksPerSecond);
     if (!Ready) return;
     if (Paused && !Simulation.HasStepRequest()) {
         Simulation.ClearInput();
@@ -346,12 +353,15 @@ void GameSession::TickSimulation(float duration, PlayerInput input) {
         if (!GameWorld.StepEnvironment(Simulation.Time())) break;
         // Intent belongs to this successful step; pending retries never touch actors.
         Characters.Step(GameWorld.ReadState(), stepInput);
+        PickUpNearbyItems();
         if (GetPlayer()) GameWorld.SetSimulationFocus(GetPlayer()->GetWorldPosition());
         Formulas.Step(GameWorld);
         std::vector<FormulaEffectRecord> effects(Formulas.LastEffects().begin(), Formulas.LastEffects().end());
         std::vector<api::DeviceChanged> changes;
         StepDevices(effects, changes);
         debug::StepForceGarden(GameWorld, Formulas, Garden, effects);
+        ActivateRegionalPopulation();
+        Calendar.Advance();
         const bool singleStep = Simulation.CommitStep();
         CompletePendingActions();
         RecordFormulaFacts(effects);
@@ -392,6 +402,7 @@ void GameSession::ReplacingWorld() {
     Knowledge.BeginRuntime(Epoch);
     WillMemory = {};
     Simulation = {};
+    Calendar = {};
     Paused = false;
     PublishedMapVersion = PublishedWindVersion = PublishedActorVersion = PublishedDeviceVersion = 0;
     PublishedFieldSourceVersion = 0;
@@ -402,47 +413,41 @@ void GameSession::ReplacingWorld() {
     Garden = {};
     Inventory.Clear();
     PlayerBag = Inventory.Create(4096);
+    GroundBag = Inventory.Create(items::Inventory::MaximumInstancesPerContainer);
+    DroppedItems.clear();
     Formulas.BindPlayerInventory(Inventory, PlayerBag);
     LastAim = {1, 0};
     FormulaError.clear();
     Characters.Clear();
+    Population.Clear();
 }
 
-api::Reason GameSession::ActivateAt(WorldPosition target, api::RequestKey request) {
+api::Reason GameSession::ActivateAt(WorldPosition target, api::RequestKey request, const items::ItemInstance *item) {
     FormulaError.clear();
     if (!CanEditWorld() || !GetPlayer()) {
         FormulaError = "World unavailable or waiting for storage budget";
         return api::Reason::SessionUnavailable;
     }
-    auto centre = GetPlayer()->GetWorldPosition();
-    centre.Local[0] += Body::Width / 2;
-    centre.Local[1] += Body::Height / 2;
-    centre.Normalize();
-    target.Normalize();
-    const auto reference = centre.Cell();
-    const auto mouse = target.RelativeCellsTo(reference);
-    const auto player = centre.RelativeCellsTo(reference);
-    const double dx = mouse[0] - player[0], dy = mouse[1] - player[1];
-    const double length = std::hypot(dx, dy);
-    const auto aim = length > 1e-9 ? std::array<double, 2>{dx / length, dy / length} : LastAim;
-
-    constexpr double radius = FormulaWorldAdapter::BoltRadius;
-    const double horizontal = aim[0] == 0 ? std::numeric_limits<double>::infinity()
-        : (Body::WidthCells / 2.0 + radius) / std::abs(aim[0]);
-    const double vertical = aim[1] == 0 ? std::numeric_limits<double>::infinity()
-        : (Body::HeightCells / 2.0 + radius) / std::abs(aim[1]);
-    const double distance = std::min(horizontal, vertical) + .25;
-    const auto origin = FormulaWorldAdapter::OffsetCells(centre, {aim[0] * distance, aim[1] * distance});
-    if (FormulaWorldAdapter::Sweep(GameWorld, centre, origin).Kind != FormulaContactKind::None) {
+    const auto &actor = *Characters.PlayerActor();
+    const auto launch = FormulaComponent::AimFromBody(*GetPlayer(), target,
+        CellsToCentimeters(float(FormulaWorldAdapter::BoltRadius)), LastAim);
+    if (FormulaWorldAdapter::Sweep(GameWorld, launch.Center, launch.Origin).Kind != FormulaContactKind::None) {
         FormulaError = "Launch path is blocked";
         return api::Reason::LaunchBlocked;
     }
-    const double angle = std::atan2(aim[1], aim[0]) * 180 / std::acos(-1.0);
-    if (!Formulas.Cast(GameWorld, origin, angle, request)) {
+    ProcessCarrier carrier;
+    carrier.Subject = actor.GetId().Value;
+    carrier.Origin = launch.Origin;
+    carrier.Scope = GameWorld.GetSimulationBounds();
+    carrier.AngleDegrees = launch.AngleDegrees;
+    const bool activated = item
+        ? Formulas.CastProcess(GameWorld, *item->Formula, items::ItemProgram(*item), carrier, request)
+        : Formulas.CastCarrier(GameWorld, carrier, request);
+    if (!activated) {
         FormulaError = Formulas.LastError();
         return api::Reason::LimitExceeded;
     }
-    LastAim = aim;
+    LastAim = launch.Direction;
     return api::Reason::None;
 }
 } // namespace pixel

@@ -243,7 +243,7 @@ void WindAndFarCoordinates() {
 void SessionIntegration() {
     GameSession session;
     Check(bool(session.ApplyProcess(NativeCaller::Driver, CarrierExample())), "session process apply failed");
-    const auto activation = session.Execute(NativeCaller::Input, api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {.5, .5}}});
+    const auto activation = session.Execute(NativeCaller::Driver, api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {.5, .5}}});
     Check(activation.Applied() && session.GetFormulaRuntime().Projectiles().size() == 1, "player action did not route process");
     const auto initial = session.GetFormulaRuntime().Projectiles().front().Position;
     session.Control(NativeCaller::Driver, api::SetPaused{true});
@@ -257,7 +257,7 @@ void SessionIntegration() {
     const auto before = session.GetFormulaRuntime().Projectiles().front().Position;
     testing::SessionAccess::RestoreClock(session, session.GetSimulationTime(), .02, true);
     Check(!session.ApplyProcess(NativeCaller::Driver, CarrierExample())
-        && !session.Execute(NativeCaller::Input, api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {.5, .5}}}).Applied(),
+        && !session.Execute(NativeCaller::Driver, api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {.5, .5}}}).Applied(),
         "pending step accepted process mutation");
     Check(session.GetFormulaRuntime().Projectiles().front().Position.Cell() == before.Cell(), "refused activation aged process");
     testing::SessionAccess::RestoreClock(session, session.GetSimulationTime(), 0, false);

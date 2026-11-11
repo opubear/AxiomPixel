@@ -18,6 +18,7 @@ std::string_view DeviceStateReason(DeviceState state) {
 uint64_t GameplayObservation::RetainedBytes() const {
     uint64_t bytes = sizeof(*this) + Stamp.WorldId.capacity() + 1
         + Inventories.capacity() * sizeof(InventoryObservation) + Devices.capacity() * sizeof(DeviceObservation)
+        + DroppedItems.capacity() * sizeof(DroppedItemObservation)
         + Processes.capacity() * sizeof(ProcessObservation) + FieldSources.capacity() * sizeof(FieldSourceObservation)
         + Protections.capacity() * sizeof(authority::Protection) + WorldWill.RetainedBytes() - sizeof(WorldWillMemory);
     for (const auto &inventory : Inventories) bytes += inventory.RetainedBytes() - sizeof(InventoryObservation);

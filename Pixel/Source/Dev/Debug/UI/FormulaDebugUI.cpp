@@ -21,7 +21,6 @@ void FormulaDebugUI::DrawPresets(GameSession &session) {
         for (size_t i = 0; i < presets.size(); ++i) {
             if (ImGui::Selectable(presets[i].Name, SelectedPreset == i)) {
                 SelectedPreset = i;
-                PresetAngle = presets[i].AngleDegrees;
             }
         }
         ImGui::EndCombo();
@@ -29,50 +28,50 @@ void FormulaDebugUI::DrawPresets(GameSession &session) {
     const auto &preset = presets[SelectedPreset];
     ImGui::TextWrapped("%s", preset.Description);
     ImGui::TextWrapped("%s", preset.Hint);
-    ImGui::TextDisabled("%s | offset (%.0f, %.0f) from player | 60 active ticks = 1 second",
-        preset.Binding == ProcessBindingKind::Actor ? "Actor attachment" : "Fixed world origin",
-        preset.Offset[0], preset.Offset[1]);
-    ImGui::SliderFloat("Preset angle", &PresetAngle, -180, 180, "%.0f degrees", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::TextDisabled("Pick up and hold a wooden stick, equip its formula, then left-click to use it.");
     if (ImGui::Button("Load preset source")) {
         LoadSource(preset.Source);
         ImGui::GetStateStorage()->SetInt(ImGui::GetID("Process source"), 1);
         Status = "Preset loaded into the editor. Compile and Apply after editing.";
     }
     ImGui::SameLine();
-    ImGui::BeginDisabled(!session.CanEditWorld() || !session.GetPlayer());
-    if (ImGui::Button("Apply & run preset")) {
-        const auto result = RunFormulaPreset(session, SelectedPreset, PresetAngle);
-        Status = result.Succeeded() ? "Preset running. Right-click now uses this program too." : result.Message;
+    const auto *stick = Held ? session.GetInventory().FindInstance(session.PlayerInventory(), *Held) : nullptr;
+    ImGui::BeginDisabled(!session.CanEditWorld() || !stick);
+    if (ImGui::Button("Equip preset")) {
+        const auto result = session.ApplyHeldProcess(NativeCaller::Debug, *Held, FormulaPresetProgram(SelectedPreset));
+        Status = result ? "Preset equipped on this wooden stick. Left-click in the world to use it." : result.Message;
     }
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!session.CanEditWorld());
     const auto instances = session.GetFormulaRuntime().InspectProcesses();
-    const auto subject = FormulaPresetSubject(SelectedPreset);
-    const auto matches = [subject](const auto &instance) {
-        return instance.Carrier == ProcessCarrierKind::FixedFixture && instance.Subject == subject;
+    const auto player = session.GetActors().PlayerSnapshot();
+    const auto matches = [player](const auto &instance) {
+        return player && instance.Carrier == ProcessCarrierKind::Player && instance.Subject == player->Id.Value;
     };
     const auto count = std::count_if(instances.begin(), instances.end(), matches);
     const bool waiting = std::any_of(instances.begin(), instances.end(), [&](const auto &instance) {
         return matches(instance) && !instance.Suspended && instance.State.WakeSubscription.has_value();
     });
-    if (preset.WaitsForWake) {
+    if (preset.WaitsForWake || waiting) {
         ImGui::BeginDisabled(!waiting);
-        if (ImGui::Button("Wake preset")) {
-            const auto result = WakeFormulaPreset(session, SelectedPreset);
+        if (ImGui::Button("Wake player formulas")) {
+            const auto result = WakePlayerFormulas(session);
             Status = result.Succeeded() ? "Wake sent; the launcher fires on the next active tick." : result.Message;
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
     }
     ImGui::BeginDisabled(count == 0);
-    if (ImGui::Button("Stop preset")) {
-        const auto result = StopFormulaPreset(session, SelectedPreset);
-        Status = result.Succeeded() ? "Stopped this preset and its owned effects." : result.Message;
+    if (ImGui::Button("Stop player formulas")) {
+        const auto result = StopPlayerFormulas(session);
+        Status = result.Succeeded() ? "Stopped player formulas and their owned effects." : result.Message;
     }
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::Text("Running: %d%s", int(count), waiting ? " | waiting for Wake" : "");
-    if (!session.CanEditWorld()) ImGui::TextDisabled("Resume the game and finish world loading to run a preset.");
-    ImGui::TextWrapped("Run restarts this preset at the player. Other presets keep running; Clear running stops all. Mining changes terrain.");
+    if (!session.CanEditWorld()) ImGui::TextDisabled("Resume the game and finish world loading to equip a preset.");
+    ImGui::TextWrapped("Equipping does not fire. Each left-click uses the held stick and aims its formula toward the cursor. Existing casts retain their program. Mining changes terrain.");
 }
 
 void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
@@ -80,30 +79,36 @@ void FormulaDebugUI::DrawProcessEditor(GameSession &session) {
     ImGui::TextWrapped("formula 2: immutable functions and action composition. Legacy process 1 sources remain readable.");
     if (ImGui::Button("Load three-pulse draft")) LoadSource(CarrierExample().Source());
     ImGui::SameLine();
-    const auto &active = session.GetFormulaRuntime().ActiveProcess();
+    const auto *stick = Held ? session.GetInventory().FindInstance(session.PlayerInventory(), *Held) : nullptr;
+    const auto &active = stick ? *stick->Formula : session.GetFormulaRuntime().ActiveProcess();
+    ImGui::BeginDisabled(!stick);
     if (ImGui::Button("Load applied process")) LoadSource(active.Source());
+    ImGui::EndDisabled();
     if (ImGui::InputTextMultiline("Process text", ProcessText.data(), ProcessText.size(), {-1, 160}))
         ProcessDraft.SetSource(ProcessText.data());
     if (ImGui::Button("Compile process")) ProcessDraft.Build();
     ImGui::SameLine();
-    ImGui::BeginDisabled(!ProcessDraft.Program());
+    ImGui::BeginDisabled(!ProcessDraft.Program() || !stick || !session.CanEditWorld());
     if (ImGui::Button("Apply process")) {
-        const auto result = session.ApplyProcess(NativeCaller::Debug, *ProcessDraft.Program());
-        Status = result ? "Process published. Existing instances retain their version; right-click starts the new version." : result.Message;
+        const auto result = session.ApplyHeldProcess(NativeCaller::Debug, *Held, *ProcessDraft.Program());
+        Status = result ? "Process equipped on this stick. Other sticks and running instances retain their formulas." : result.Message;
     }
     ImGui::EndDisabled();
     if (const auto &error = ProcessDraft.Error())
         ImGui::TextWrapped("%s:%zu:%zu: %s", error->Resource.c_str(), error->Source.Line, error->Source.Column, error->Message.c_str());
     if (const auto &program = ProcessDraft.Program())
         ImGui::Text("Compiled %.12s | %zu instructions", program->Identity().ContentSha256.c_str(), program->InstructionCount());
-    ImGui::Text("Applied v%llu | language %u | %.12s", static_cast<unsigned long long>(session.AppliedProgram().Version),
-        active.Identity().SemanticsVersion, active.Identity().ContentSha256.c_str());
+    if (stick)
+        ImGui::Text("Applied v%llu | language %u | %.12s", static_cast<unsigned long long>(stick->FormulaVersion),
+            active.Identity().SemanticsVersion, active.Identity().ContentSha256.c_str());
+    else
+        ImGui::TextDisabled("No wooden stick selected. Hold a stick to load or apply its formula.");
     ImGui::TextDisabled("Compile then Apply. Applied programs and running instances are saved; editor drafts are temporary.");
 }
 
 void FormulaDebugUI::DrawProcessExample(GameSession &session) {
     if (!ImGui::CollapsingHeader("Process: three carriers")) return;
-    ImGui::TextWrapped("Each pulse launches a ball and digs on hit. Natural source, fixed fixture and right-click use the same program. Unpause or Step to advance.");
+    ImGui::TextWrapped("Each pulse launches a ball and digs on hit. Natural sources and fixed fixtures below use this example. Left-click uses your held item. Unpause or Step to advance.");
     const auto *player = session.GetPlayer();
     ImGui::BeginDisabled(!player || !session.CanEditWorld());
     for (const auto kind : {ProcessCarrierKind::NaturalSource, ProcessCarrierKind::FixedFixture}) {
@@ -184,7 +189,8 @@ void FormulaDebugUI::DrawDiagnostics(GameSession &session) {
     ImGui::EndChild();
 }
 
-void FormulaDebugUI::Draw(GameSession &session) {
+void FormulaDebugUI::Draw(GameSession &session, std::optional<items::ItemRef> held) {
+    Held = held;
     if (!Visible) return;
     if (!Initialized) {
         LoadSource(session.GetFormulaRuntime().ActiveProcess().Source());
@@ -200,7 +206,10 @@ void FormulaDebugUI::Draw(GameSession &session) {
         ImGui::SetNextWindowFocus();
     }
     if (ImGui::Begin("Formula Editor", &Visible, ImGuiWindowFlags_NoSavedSettings)) {
-        ImGui::Text("Applied process v%llu", static_cast<unsigned long long>(session.AppliedProgram().Version));
+        if (Held && Held->Instance)
+            ImGui::Text("Held wooden stick #%llu", static_cast<unsigned long long>(Held->Instance));
+        else
+            ImGui::TextWrapped("F2: Drop wooden stick, walk near it to pick it up, then select it in the quick slots to edit its formula.");
         if (ImGui::Button("Clear running")) {
             const auto result = session.Control(NativeCaller::Debug, api::ClearRunning{});
             Status = result.Succeeded() ? "Cleared running instances." : result.Message;

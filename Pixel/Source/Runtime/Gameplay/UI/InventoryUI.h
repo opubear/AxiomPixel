@@ -3,9 +3,11 @@
 #include "Runtime/Gameplay/GameAPI/GameplayObservations.h"
 #include "Runtime/Gameplay/Items/Inventory.h"
 #include "UIScale.h"
+#include "Runtime/Simulation/World/Environment/WorldCalendar.h"
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace pixel::ui {
@@ -27,6 +29,10 @@ struct InventoryLayout {
 struct Slot {
     std::optional<items::ItemId> Item;
     uint32_t Quantity = 0, Reserved = 0;
+    uint64_t Instance = 0;
+    std::optional<items::ItemRef> Reference() const {
+        return Item && Quantity > Reserved ? std::optional(items::ItemRef{*Item, Instance}) : std::nullopt;
+    }
     bool operator==(const Slot &) const = default;
 };
 
@@ -34,6 +40,7 @@ struct InventoryView {
     bool Expanded = false;
     size_t Selected = 0;
     uint32_t Quantity = 0, Capacity = 0;
+    std::string CalendarLabel;
     std::array<Slot, InventoryLayout::Columns> QuickSlots{};
     std::array<Slot, InventoryLayout::SlotCount> BagSlots{};
     bool operator==(const InventoryView &) const = default;
@@ -59,13 +66,16 @@ class InventoryUI {
     // Coordinates already converted to framebuffer pixels by the input adapter.
     // Every button is consumed over a panel, only left presses change selection.
     bool PointerPress(float x, float y, std::array<int, 2> framebuffer, bool primary);
-    void Publish(const api::GameplayObservation *gameplay, items::ContainerId playerBag);
+    void Publish(const api::GameplayObservation *gameplay, items::ContainerId playerBag,
+                 const WorldCalendarSnapshot *calendar = nullptr);
+    std::optional<items::ItemRef> HeldItem() const { return View.QuickSlots[View.Selected].Reference(); }
     const InventoryView &Read() const { return View; }
     const Canvas &Paint();
 
   private:
     InventoryView View;
-    std::array<std::optional<items::ItemId>, InventoryLayout::Columns> Bindings;
+    std::array<std::optional<items::ItemRef>, InventoryLayout::Columns> Bindings;
+    std::vector<uint64_t> KnownInstances;
     uint64_t WorldEpoch = 0;
     items::ContainerId Container;
     std::string WorldId;

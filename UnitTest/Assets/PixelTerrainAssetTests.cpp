@@ -108,7 +108,7 @@ void CatalogAndCache() {
     Check(visibleWaterEdge, "water surface strip selected the source image's transparent sky");
 
     const auto background = assets.LoadBackground("ArtAssets.json");
-    Check(background->Layers.size() == 4 && reads["ArtAssets.json"] == 1 && assets.CachedImageCount() == 24,
+    Check(background->Layers.size() == 4 && background->HasBiomeImages() && reads["ArtAssets.json"] == 1 && assets.CachedImageCount() == 26,
           "background and terrain did not share manifest ownership");
     const auto json = nlohmann::json::parse(ReadContent("ArtAssets.json"));
     replacements["alias.json"] = json.dump();

@@ -26,32 +26,32 @@ run plant(staged_cut(cells(4)));
 )"},
     FormulaPreset{"debug/formula/alternating-force/1", "Alternating force",
         "Two right/left force cycles, composed from finite-duration fields.",
-        "Press F1 to see the field. At angle 0, it pushes right for 90 ticks, then left for 90.",
+        "Press F1 to see the field. It pushes along your aim for 90 ticks, then in the opposite direction for 90.",
         R"(formula 2;
 fn push(strength: acceleration) -> action =
     field(cells(8), strength, acceleration(0), ticks(90));
 fn cycle() -> action =
     sequence(push(acceleration(3600)), push(acceleration(-3600)));
 run repeat(2, ticks(30), cycle());
-)", ProcessBindingKind::World, {0, 2}, 0},
-    FormulaPreset{"debug/formula/walking-beacon/1", "Walking beacon",
-        "Six stationary yellow beacons, emitted above the moving player.",
-        "Walk with A/D: each new beacon follows you; an emitted beacon stays where it appeared.",
+)"},
+    FormulaPreset{"debug/formula/walking-beacon/1", "Beacon pulses",
+        "Six stationary yellow beacons, emitted at the launch point.",
+        "Left-click to start the pulses. The launch point stays fixed while you move.",
         R"(formula 2;
 fn beacon(lifetime: ticks) -> action = bolt(0, speed(0), lifetime);
 fn blink(count: number, light: action) -> action =
     repeat(count, ticks(15), light);
 run blink(6, beacon(ticks(45)));
-)", ProcessBindingKind::Actor, {1, -2}, 0},
+)"},
     FormulaPreset{"debug/formula/wake-launcher/1", "Wake launcher",
-        "An event-driven launcher: it waits for Wake preset before firing.",
-        "Run, then press Wake preset within 600 active ticks. Timeout ends without firing.",
+        "An event-driven launcher: it waits for Wake player formulas before firing.",
+        "Left-click, then press Wake player formulas within 600 active ticks. Timeout ends without firing.",
         R"(formula 2;
 fn mining_shot(radius: cells) -> action =
     on_hit(bolt(10, speed(40), ticks(90)), dig(radius));
 fn armed(payload: action) -> action = on_wake(ticks(600), payload);
 run armed(mining_shot(cells(3)));
-)", ProcessBindingKind::World, {4, 3}, 35, true}
+)", true}
 };
 } // namespace
 
@@ -69,42 +69,23 @@ const formula::process::ProgramArtifact &FormulaPresetProgram(size_t index) {
     return programs.at(index);
 }
 
-uint64_t FormulaPresetSubject(size_t index) {
-    return 9100 + index;
-}
-
-api::ControlReceipt RunFormulaPreset(GameSession &session, size_t index, double angleDegrees) {
-    const auto &preset = Presets.at(index);
-    const auto player = session.GetActors().PlayerSnapshot();
-    if (!player)
-        return {api::ControlStatus::Rejected, api::Reason::NotReady, "A player is required to place the preset."};
-
-    ProcessCarrier carrier;
-    carrier.Kind = ProcessCarrierKind::FixedFixture;
-    carrier.Subject = FormulaPresetSubject(index);
-    carrier.Binding = preset.Binding;
-    carrier.Origin = FormulaWorldAdapter::OffsetCells(player->Position, {preset.Offset[0], preset.Offset[1]});
-    if (preset.Binding == ProcessBindingKind::Actor) {
-        carrier.AttachedActor = player->Id;
-        carrier.LocalOffset = preset.Offset;
-    }
-    carrier.Scope = session.GetWorld().GetSimulationBounds();
-    carrier.AngleDegrees = angleDegrees;
-
+api::ControlReceipt LoadFormulaPreset(GameSession &session, size_t index) {
+    if (!session.GetActors().PlayerSnapshot())
+        return {api::ControlStatus::Rejected, api::Reason::NotReady, "A player is required to equip a formula."};
     const auto applied = session.ApplyProcess(NativeCaller::Debug, FormulaPresetProgram(index));
     if (!applied) return {api::ControlStatus::Rejected, applied.Rejection, applied.Message};
-    const auto stopped = StopFormulaPreset(session, index);
-    if (!stopped.Succeeded()) return stopped;
-    auto started = session.StartProcessFixture(NativeCaller::Debug, carrier);
-    if (!started.Succeeded()) started.Message = "Preset applied; activation refused: " + started.Message;
-    return started;
+    return {api::ControlStatus::Applied};
 }
 
-api::ControlReceipt StopFormulaPreset(GameSession &session, size_t index) {
-    return session.CancelProcessCarrier(NativeCaller::Debug, ProcessCarrierKind::FixedFixture, FormulaPresetSubject(index));
+api::ControlReceipt StopPlayerFormulas(GameSession &session) {
+    const auto player = session.GetActors().PlayerSnapshot();
+    if (!player) return {api::ControlStatus::Rejected, api::Reason::NotReady, "Player unavailable"};
+    return session.CancelProcessCarrier(NativeCaller::Debug, ProcessCarrierKind::Player, player->Id.Value);
 }
 
-api::ControlReceipt WakeFormulaPreset(GameSession &session, size_t index) {
-    return session.WakeProcessCarrier(NativeCaller::Debug, ProcessCarrierKind::FixedFixture, FormulaPresetSubject(index));
+api::ControlReceipt WakePlayerFormulas(GameSession &session) {
+    const auto player = session.GetActors().PlayerSnapshot();
+    if (!player) return {api::ControlStatus::Rejected, api::Reason::NotReady, "Player unavailable"};
+    return session.WakeProcessCarrier(NativeCaller::Debug, ProcessCarrierKind::Player, player->Id.Value);
 }
 } // namespace pixel

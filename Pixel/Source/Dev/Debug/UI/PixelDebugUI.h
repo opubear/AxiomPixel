@@ -22,6 +22,7 @@ class PixelDebugUI {
                                     GamePresentation &presentation, GameInput &input,
                                     performance::GameProfiler &performance, will::WorldWill &worldWill, ui::InventoryUI &ui);
   private:
+    std::string ItemStatus;
     bool Visible = true;
     FormulaDebugUI FormulaEditor;
     std::array<int64_t, 2> ActionCell{520, 512};

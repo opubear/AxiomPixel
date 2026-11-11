@@ -6,6 +6,7 @@
 #include "Runtime/Gameplay/Application/PixelGame.h"
 #include "Dev/Debug/Garden/ForceGardenProgram.h"
 #include "Dev/Debug/Formula/FormulaPresets.h"
+#include "Runtime/Gameplay/Items/HandheldItem.h"
 #include "Dev/Debug/LLM/FakeModel.h"
 #include "Render/RenderGlobalContext.h"
 #include "SystemEnum.h"
@@ -544,6 +545,58 @@ void RunPixelDebugUISmoke() {
     std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
 }
 
+void RunPixelCalendarUISmoke() {
+    auto game = std::make_unique<PixelGame>(false);
+    auto *pixel = game.get();
+    auto &session = pixel->GetSession();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
+    PixelSmokeApplication app(std::move(game), {true});
+    app.Initialize(); app.Begin(); Draw(app, 3);
+    Click(app, ControlPoint(app, "Midnight"));
+    Require(session.GetCalendar().Snapshot().Hour == 0, "midnight button did not set calendar");
+    Click(app, ControlPoint(app, "Noon"));
+    Require(session.GetCalendar().Snapshot().Hour == 12, "noon button did not set calendar");
+    Click(app, ControlPoint(app, "Season"));
+    const auto &popups = ImGui::GetCurrentContext()->OpenPopupStack;
+    Require(!popups.empty() && popups.back().Window, "season combo did not open");
+    const auto *popup = popups.back().Window;
+    const auto &style = ImGui::GetStyle();
+    const float text = ImGui::GetFontSize();
+    Click(app, {popup->Pos.x + style.WindowPadding.x + 30,
+                popup->Pos.y + style.WindowPadding.y + 3 * (text + style.ItemSpacing.y) + text * .5f});
+    Require(session.GetCalendar().Snapshot().CurrentSeason == pixel::Season::Winter, "season selection did not reach winter");
+    EnterScalar(app, "Seconds per day", "600");
+    Require(session.GetCalendar().State().SecondsPerDay == 600 && session.GetCalendar().Snapshot().Hour == 12,
+            "day length edit changed time of day");
+    EnterScalar(app, "Calendar speed", "60", nullptr, true);
+    Require(session.GetCalendar().State().TimeScale == 60 && session.IsPaused(), "calendar speed changed global pause");
+    EnterScalar(app, "Time of day", "30", nullptr, true);
+    Require(session.GetCalendar().Snapshot().Hour == 23, "time input did not clamp to valid day");
+    Click(app, ControlPoint(app, "Reset calendar"));
+    Require(session.GetCalendar().State() == pixel::WorldCalendarState{}, "calendar reset did not restore defaults");
+    struct HorizonCase { pixel::WorldCalendarState State; pixel::DayPhase Phase; const char *Button; };
+    constexpr std::array horizonCases{
+        HorizonCase{{6, 0, 1200, 7, 1}, pixel::DayPhase::Dusk, "Dusk"},
+        HorizonCase{{1, 71999, 1200, 1, 1}, pixel::DayPhase::Dawn, "Dawn"},
+        HorizonCase{{3, 71999, 1200, 1, 1}, pixel::DayPhase::Dawn, "Dawn"}};
+    for (const auto &sample : horizonCases) {
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetWorldCalendar{sample.State}).Succeeded(),
+                "season-end calendar fixture failed");
+        Draw(app, 2);
+        Click(app, ControlPoint(app, sample.Button));
+        const auto target = session.GetCalendar().State();
+        const auto snapshot = session.GetCalendar().Snapshot();
+        Require(snapshot.Phase == sample.Phase && snapshot.Daylight > .49f && snapshot.Daylight < .51f,
+                "native horizon button missed season-end dawn/dusk");
+        Require(target.Day == sample.State.Day && target.DaysPerSeason == sample.State.DaysPerSeason,
+                "native horizon button changed the calendar date");
+        Click(app, ControlPoint(app, sample.Button));
+        Require(session.GetCalendar().State() == target, "native horizon button drifted on repeat");
+    }
+    app.Shutdown();
+    std::cout << "Calendar UI passed: native time buttons, season combo, day length, speed, bounds, reset and season-end dawn/dusk\n";
+}
+
 void RunPixelGamePauseUISmoke() {
     auto game = std::make_unique<PixelGame>(false);
     auto *pixel = game.get();
@@ -653,10 +706,10 @@ void RunPixelGardenUISmoke() {
     view.CellSizePixels = {8, 8};
     pixel->SetView(view);
     // Keep the intended world target away from the screen-space inventory UI.
-    ClickButton(app, {ww / 2.f, wh / 2.f}, GLFW_MOUSE_BUTTON_RIGHT);
+    ClickButton(app, {ww / 2.f, wh / 2.f}, GLFW_MOUSE_BUTTON_LEFT);
     const auto *activation = session.LastAction(pixel::NativeCaller::Input);
     Require(activation && activation->Applied() && std::holds_alternative<pixel::api::ActivationResult>(activation->Result),
-            "real garden right click did not activate the applied crystal program");
+            "real garden left click did not activate the applied crystal program");
     session.BeginFrame();
     session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});
     pixel->Tick(1.f / 60);
@@ -827,13 +880,15 @@ void ExerciseFormulaPresets(PixelSmokeApplication &app, PixelGame &game) {
     Require(editor->Active && !editor->Collapsed, "debug menu did not reveal the preset panel");
     editor->StateStorage.SetInt(editor->GetID("Process: three carriers"), 0);
     Draw(app, 2);
-    const auto beforeLoad = session.AppliedProgram();
+    const auto held = *game.GetUI().HeldItem();
+    const auto stick = [&]() -> const pixel::items::ItemInstance & { return *session.GetInventory().FindInstance(session.PlayerInventory(), held); };
+    const auto beforeLoad = stick().FormulaVersion;
     Click(app, ControlPoint(app, "Load preset source", "Formula Editor"));
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
-    Require(session.AppliedProgram() == beforeLoad && runtime.Stats().Roots == 0,
+    Require(stick().FormulaVersion == beforeLoad && runtime.Stats().Roots == 0,
         "loading/compiling a preset started a world effect");
     Click(app, ControlPoint(app, "Apply process", "Formula Editor"));
-    Require(runtime.ActiveProcess().Source() == pixel::FormulaPresets()[0].Source,
+    Require(stick().Formula->Source() == pixel::FormulaPresets()[0].Source,
         "preset source was not loaded into the real editor");
     editor->StateStorage.SetInt(editor->GetID("Process source"), 0);
     Draw(app, 2);
@@ -847,27 +902,35 @@ void ExerciseFormulaPresets(PixelSmokeApplication &app, PixelGame &game) {
         const float text = ImGui::GetFontSize();
         Click(app, {popup->Pos.x + style.WindowPadding.x + 30,
             popup->Pos.y + style.WindowPadding.y + index * (text + style.ItemSpacing.y) + text * .5f});
-        Click(app, ControlPoint(app, "Apply & run preset", "Formula Editor"));
+        Click(app, ControlPoint(app, "Equip preset", "Formula Editor"));
         const auto &preset = pixel::FormulaPresets()[index];
+        const auto player = session.GetActors().PlayerSnapshot()->Id;
+        const auto &equipment = stick();
+        Require(runtime.InspectProcesses().empty() && runtime.Projectiles().empty()
+            && equipment.Ref == held && !session.GetActors().Find(player)->Formula
+            && equipment.Formula->Source() == preset.Source, "preset equip ran automatically or lost equipment");
+        // Hide both panels, fire through the real mouse path, then restore them.
+        SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
+        SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
+        int width = 0, height = 0;
+        glfwGetWindowSize(app.Engine->GetPlatform()->GetWindows(), &width, &height);
+        ClickButton(app, {float(width / 2 + 140), float(height / 2 - 20)}, GLFW_MOUSE_BUTTON_LEFT);
+        SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
+        SendKey(app, GLFW_KEY_F2, true); SendKey(app, GLFW_KEY_F2, false);
         const auto instances = runtime.InspectProcesses();
-        Require(instances.size() == 1 && instances[0].Subject == pixel::FormulaPresetSubject(index)
-            && instances[0].Configuration.Binding == preset.Binding
-            && runtime.ActiveProcess().Source() == preset.Source, "preset selection ran the wrong program or binding");
+        Require(instances.size() == 1 && instances[0].Carrier == pixel::ProcessCarrierKind::Player
+            && instances[0].Subject == player.Value, "left click did not activate the equipped preset");
         if (index == 2)
             Require(session.GetWorld().GetEnvironment().GetFieldSources().Sources().size() == 1,
                 "force preset did not install a real field");
-        if (preset.Binding == pixel::ProcessBindingKind::Actor)
-            Require(runtime.Projectiles().size() == 1
-                && runtime.Projectiles()[0].Position.Cell().Y == session.GetPlayer()->GetWorldPosition().Cell().Y - 2,
-                "beacon was not emitted above the actor");
         if (preset.WaitsForWake) {
             Require(runtime.Projectiles().empty(), "wake preset fired before pressing Wake");
-            Click(app, ControlPoint(app, "Wake preset", "Formula Editor"));
+            Click(app, ControlPoint(app, "Wake player formulas", "Formula Editor"));
             game.Tick(1.f / 60);
             Draw(app, 2);
-            Require(runtime.Projectiles().size() == 1, "Wake preset button did not fire the launcher");
+            Require(runtime.Projectiles().size() == 1, "Wake player formulas button did not fire the launcher");
         }
-        Click(app, ControlPoint(app, "Stop preset", "Formula Editor"));
+        Click(app, ControlPoint(app, "Stop player formulas", "Formula Editor"));
         Require(runtime.Stats().Roots == 0 && runtime.Projectiles().empty()
             && session.GetWorld().GetEnvironment().GetFieldSources().Sources().empty(), "preset stop leaked effects");
     }
@@ -901,15 +964,28 @@ void RunPixelFormulaUISmoke() {
     SendKey(app, GLFW_KEY_F4, false);
     Require(!editor->Active && ImGui::FindWindowByName("Pixel Debug")->Active,
             "F4 must hide only Formula Editor");
+    Click(app, ControlPoint(app, "Drop wooden stick"));
+    auto &session = pixel->GetSession();
+    Require(session.GetDroppedItems().size() == 1 && session.GetInventory().Inspect(session.PlayerInventory()).Quantity == 0,
+            "F2 did not drop a real wooden stick into the world");
     SendKey(app, GLFW_KEY_F2, true);
     SendKey(app, GLFW_KEY_F2, false);
     Require(!editor->Active && !ImGui::FindWindowByName("Pixel Debug")->Active,
             "F2 must not reopen a hidden Formula Editor");
+    SendKey(app, GLFW_KEY_D, true);
+    for (int i = 0; i < 12; ++i) pixel->Tick(1.f / 60);
+    SendKey(app, GLFW_KEY_D, false);
+    Draw(app, 3);
+    Require(session.GetDroppedItems().empty() && pixel->GetUI().HeldItem().has_value(),
+            "walking to the dropped stick did not pick it up and select its quick slot");
+    const auto held = *pixel->GetUI().HeldItem();
+    const auto heldSlot = pixel->GetUI().Read().Selected;
+    const auto stick = [&]() -> const pixel::items::ItemInstance & { return *session.GetInventory().FindInstance(session.PlayerInventory(), held); };
     auto *platform = app.Engine->GetPlatform();
     int width = 0, height = 0;
     glfwGetWindowSize(platform->GetWindows(), &width, &height);
-    ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_RIGHT);
-    Require(runtime.Projectiles().size() == 1, "real outside right click did not activate default process");
+    ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_LEFT);
+    Require(runtime.Projectiles().size() == 1, "real outside left click did not activate default process");
     SendKey(app, GLFW_KEY_F4, true);
     SendKey(app, GLFW_KEY_F4, false);
     Require(editor->Active && !ImGui::FindWindowByName("Pixel Debug")->Active,
@@ -933,26 +1009,26 @@ void RunPixelFormulaUISmoke() {
         Draw(app, 2);
     };
     enterProcess("formula 2; fn shot(damage: number) -> action = bolt(damage, speed(0), ticks(100)); run shot(3);");
-    const auto previousVersion = runtime.Version();
+    const auto previousVersion = stick().FormulaVersion;
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
-    Require(runtime.Version() == previousVersion, "Compile published a draft before Apply");
+    Require(stick().FormulaVersion == previousVersion, "Compile published a draft before Apply");
     Click(app, ControlPoint(app, "Apply process", "Formula Editor"));
-    Require(runtime.AppliedProgram().ResourceId == 2 && runtime.Version() == previousVersion + 1,
+    Require(pixel::items::ItemProgram(stick()).ResourceId != 2 && stick().FormulaVersion == previousVersion + 1,
         "process editor did not publish its compiled source");
     const auto activateProcess = [&] {
         // Hide the editor before the world click: its window covers this target.
         SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
         Require(!editor->Active, "F4 did not release the world click target");
-        ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_RIGHT);
+        ClickButton(app, {float(width / 2 + 140), float(height / 2)}, GLFW_MOUSE_BUTTON_LEFT);
         SendKey(app, GLFW_KEY_F4, true); SendKey(app, GLFW_KEY_F4, false);
         Require(editor->Active, "F4 did not restore the process editor");
     };
     activateProcess();
-    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 3, "right-click did not use edited process");
+    Require(runtime.Projectiles().size() == 1 && runtime.Projectiles()[0].Damage == 3, "left-click did not use edited process");
     const auto oldProcessVersion = runtime.Projectiles()[0].Version;
     enterProcess("formula 2; run delay(cells(1), nothing());");
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
-    Require(runtime.Version() == oldProcessVersion && runtime.ActiveProcess().Source().find("shot(3)") != std::string_view::npos,
+    Require(stick().FormulaVersion == oldProcessVersion && stick().Formula->Source().find("shot(3)") != std::string_view::npos,
         "invalid draft changed the published process");
     enterProcess("formula 2; fn shot(damage: number) -> action = bolt(damage, speed(0), ticks(100)); run shot(9);");
     Click(app, ControlPoint(app, "Compile process", "Formula Editor"));
@@ -962,7 +1038,13 @@ void RunPixelFormulaUISmoke() {
     activateProcess();
     Require(runtime.Projectiles().size() == 2 && runtime.Projectiles()[0].Damage == 3 && runtime.Projectiles()[1].Damage == 9,
         "process Apply did not isolate old and new activations");
-    Click(app, ControlPoint(app, "Clear running", "Formula Editor"));
+    pixel->GetUI().SelectQuickSlot(6);
+    Draw(app, 2);
+    Require(!pixel->GetUI().HeldItem(), "empty-hand stop fixture still holds a stick");
+    Click(app, ControlPoint(app, "Stop player formulas", "Formula Editor"));
+    Require(runtime.Projectiles().empty(), "switching to empty hand disabled stopping earlier casts");
+    pixel->GetUI().SelectQuickSlot(heldSlot);
+    Draw(app, 2);
     editor = ImGui::FindWindowByName("Formula Editor");
     editor->StateStorage.SetInt(editor->GetID("Process: three carriers"), 1);
     Draw(app, 2);
@@ -987,5 +1069,5 @@ void RunPixelFormulaUISmoke() {
     Require(CopyWorldCells(pixel::testing::SessionAccess::World(pixel->GetSession())) == worldBefore, "Formula UI source editing changed world cells");
     ExerciseFormulaPresets(app, *pixel);
     app.Shutdown();
-    std::cout << "Formula ImGui passed: formula/2 functions, compile/Apply, invalid draft, version isolation, Actor attachment/follow/clear, five presets/load/run/stop/wake, right capture and F2/F4\n";
+    std::cout << "Formula ImGui passed: F2 stick drop/pickup/left use, per-item compile/Apply, invalid draft, version isolation, Actor attachment/follow/clear, five presets/load/run/stop/wake, right capture and F2/F4\n";
 }

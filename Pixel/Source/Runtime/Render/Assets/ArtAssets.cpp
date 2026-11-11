@@ -67,7 +67,10 @@ void ValidateBackgroundAssets(const BackgroundAssets &assets) {
     ValidateBackgroundLayout(assets.HeightFraction, assets.Layers.size());
 
     const auto &first = assets.Layers.front().Image;
-    for (const auto &layer : assets.Layers) {
+    if (bool(assets.BiomeImages[0].Image) != bool(assets.BiomeImages[1].Image))
+        throw std::invalid_argument("background requires both desert and snow images");
+    for (size_t index = 0; index < assets.LayerCount(); ++index) {
+        const auto &layer = assets.Layer(index);
         if (!first || !layer.Image || !layer.RepeatCells || layer.RepeatCells > MaximumRepeatCells ||
             !layer.Image->Width || !layer.Image->Height || layer.Image->Width > MaximumImageEdge || layer.Image->Height > MaximumImageEdge ||
             layer.Image->Width != first->Width || layer.Image->Height != first->Height ||
@@ -179,6 +182,17 @@ std::shared_ptr<const BackgroundAssets> ArtAssetStore::LoadBackground(std::strin
                 auto image = LoadImage(path);
                 background->Layers.push_back({std::move(image), repeat});
             }
+            if (settings.contains("Biomes")) {
+                const auto &biomes = settings.at("Biomes");
+                if (!biomes.is_object() || biomes.size() != 2)
+                    throw std::invalid_argument("Background.Biomes requires desert and snow_mountain");
+                size_t index = 0;
+                for (const auto *name : {"desert", "snow_mountain"}) {
+                    const auto &entry = biomes.at(name);
+                    background->BiomeImages[index++] = {LoadImage(PngPath(entry.at("Path"))),
+                        PositiveInteger(entry.at("RepeatCells"), MaximumRepeatCells, "RepeatCells")};
+                }
+            }
         }
 
         ValidateBackgroundAssets(*background);
@@ -281,6 +295,72 @@ std::shared_ptr<const CharacterAssets> ArtAssetStore::LoadCharacter(std::string_
         return character;
     } catch (const std::exception &error) {
         Manifests.erase(key); // A corrected character configuration can be retried.
+        throw std::runtime_error("art manifest " + key + ": " + error.what());
+    }
+}
+std::shared_ptr<const MonsterAssets> ArtAssetStore::LoadMonsters(std::string_view manifest) {
+    const auto key = ContentPath(manifest);
+    if (const auto found = Monsters.find(key); found != Monsters.end()) return found->second;
+    try {
+        auto assets = std::make_shared<MonsterAssets>();
+        struct Sheet { std::shared_ptr<const ArtImage> Image; size_t Monster; std::string Clip; uint32_t Count; };
+        std::vector<Sheet> sheets;
+        uint32_t frameWidth = 0, frameHeight = 0, count = 0;
+        const auto document = LoadManifest(key);
+        const auto &entries = document->Document.at("Monsters");
+        if (!entries.is_array() || entries.empty() || entries.size() > 32)
+            throw std::invalid_argument("Monsters requires 1..32 definitions");
+        for (const auto &entry : entries) {
+            MonsterVisual visual;
+            visual.Id = entry.at("Id").get<std::string>();
+            const auto &v = entry.at("Visual");
+            const auto &size = v.at("FrameSize");
+            if (!size.is_array() || size.size() != 2) throw std::invalid_argument("monster FrameSize requires two integers");
+            for (size_t axis = 0; axis < 2; ++axis) visual.FrameSize[axis] = PositiveInteger(size[axis], 256, "monster frame");
+            visual.FootAnchor = v.at("FootAnchor").get<std::array<float, 2>>();
+            visual.PixelsPerCell = v.at("PixelsPerCell").get<float>();
+            visual.States = v.at("States").get<std::map<std::string, std::string>>();
+            frameWidth = std::max(frameWidth, visual.FrameSize[0]);
+            frameHeight = std::max(frameHeight, visual.FrameSize[1]);
+            const auto &clips = v.at("Clips");
+            if (!clips.is_object() || clips.empty() || clips.size() > 32) throw std::invalid_argument("invalid monster clips");
+            for (const auto &[name, c] : clips.items()) {
+                auto image = LoadImage(PngPath(c.at("Path")));
+                const auto frames = PositiveInteger(c.at("FrameCount"), 64, "monster FrameCount");
+                if (image->Width != frames * visual.FrameSize[0] || image->Height != visual.FrameSize[1])
+                    throw std::invalid_argument("monster sheet must be one complete horizontal frame strip");
+                count += frames;
+                if (count > 512) throw std::invalid_argument("monster atlas exceeds 512 frames");
+                visual.Clips.emplace(name, MonsterClip{{}, c.at("FramesPerSecond").get<float>(), c.at("Loop").get<bool>()});
+                sheets.push_back({std::move(image), assets->Monsters.size(), name, frames});
+            }
+            assets->Monsters.push_back(std::move(visual));
+        }
+        const uint32_t columns = std::min(count, MaximumImageEdge / frameWidth);
+        auto atlas = std::make_shared<ArtImage>();
+        atlas->Width = columns * frameWidth;
+        atlas->Height = ((count + columns - 1) / columns) * frameHeight;
+        if (atlas->Height > MaximumImageEdge) throw std::invalid_argument("monster atlas exceeds image limits");
+        atlas->Pixels.resize(size_t(atlas->Width) * atlas->Height * 4);
+        uint32_t frameIndex = 0;
+        for (const auto &sheet : sheets) {
+            auto &visual = assets->Monsters[sheet.Monster];
+            auto &clip = visual.Clips.at(sheet.Clip);
+            const auto width = visual.FrameSize[0], height = visual.FrameSize[1];
+            for (uint32_t frame = 0; frame < sheet.Count; ++frame, ++frameIndex) {
+                const uint32_t x = frameIndex % columns * frameWidth, y = frameIndex / columns * frameHeight;
+                clip.Frames.push_back({x, y, width, height});
+                for (uint32_t row = 0; row < height; ++row)
+                    std::copy_n(sheet.Image->Pixels.begin() + (size_t(row) * sheet.Image->Width + frame * width) * 4,
+                        size_t(width) * 4, atlas->Pixels.begin() + (size_t(y + row) * atlas->Width + x) * 4);
+            }
+        }
+        assets->Atlas = std::move(atlas);
+        ValidateMonsterAssets(*assets);
+        Monsters.emplace(key, assets);
+        return assets;
+    } catch (const std::exception &error) {
+        Manifests.erase(key);
         throw std::runtime_error("art manifest " + key + ": " + error.what());
     }
 }

@@ -105,6 +105,8 @@ void PendingStepRetainsCompleteProjection() {
             testing::WorldAccess::Map(world).Remove(coordinate);
     testing::SessionAccess::PublishFixtureChanges(session);
     const auto stamp = session.CurrentCommit();
+    const auto calendar = session.GetCalendar().State();
+    const auto calendarProgress = view->Calendar().DayProgress;
     const auto sample = view->SampleWind({100, 100});
     const auto player = view->GetPlayer()->GetWorldPosition();
     const auto bolt = view->Projectiles().front().Position;
@@ -112,6 +114,10 @@ void PendingStepRetainsCompleteProjection() {
     testing::WorldAccess::SaturateBudget(world);
     session.Tick(.1f, {1, false});
     Require(world.GetEnvironment().IsWaitingForBudget(), "fixture did not exhaust scratch budget");
+    Require(session.GetCalendar().State() == calendar && view->Calendar().DayProgress == calendarProgress,
+            "pending environment step advanced the calendar");
+    Require(!session.Control(NativeCaller::Driver, api::SetWorldCalendar{calendar}).Succeeded(),
+            "pending environment step accepted a calendar edit");
     Require(world.GetCell(32, 9).Type == CellTypeId::Fire && world.GetCell(30, 10).Type == CellTypeId::Steam,
             "failed material step partially committed decay or motion");
     Require(session.CurrentCommit() == stamp && view->Stamp() == stamp && view->SampleWind({100, 100}) == sample,

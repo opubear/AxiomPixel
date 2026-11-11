@@ -212,7 +212,8 @@ void LegacyPendingImportsAtCommittedTime() {
         std::string header, generation, player, clock;
         std::getline(input, header); std::getline(input, generation);
         std::getline(input, player); std::getline(input, clock);
-        header.replace(header.find(" 6 "), 3, " " + std::to_string(version) + " ");
+        const auto versionStart = header.find(' ') + 1;
+        header.replace(versionStart, header.find(' ', versionStart) - versionStart, std::to_string(version));
         double time, remainder;
         std::istringstream clockInput(clock);
         clockInput >> time >> remainder;
@@ -250,7 +251,7 @@ void LegacyPendingImportsAtCommittedTime() {
         restored.Tick(.2f, {});
         Require(restored.CurrentCommit().Tick == 9, "paused legacy backlog replayed without a request");
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded()
-                    && ReadText(pixel::testing::CheckpointDirectory(directory) / "world.meta").starts_with("AxiomPixelWorld 6 "), "legacy import did not upgrade to v6");
+                    && ReadText(pixel::testing::CheckpointDirectory(directory) / "world.meta").starts_with("AxiomPixelWorld 7 "), "legacy import did not upgrade to v7");
     }
 }
 

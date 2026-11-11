@@ -1,6 +1,7 @@
 #pragma once
 #include "Facts.h"
 #include "Runtime/Gameplay/Items/Item.h"
+#include "Runtime/Simulation/World/Environment/WorldCalendar.h"
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -14,6 +15,7 @@ struct PlaceMaterial { Cell Target; uint32_t MaterialId = 10; };
 // Native debug brush; fills only resident air inside the active window.
 struct SpawnElement { Cell Target; uint32_t MaterialId = 50; uint32_t Radius = 4; };
 struct ActivateProgram { ProgramRef Program; Position Target; };
+struct UseHeldItem { std::optional<items::ItemRef> Item; Position Target; };
 struct SelectWindStrategy { WindKind Kind; };
 struct SetWindBoundary { int64_t Y; };
 struct PlaceDevice { Cell Target; };
@@ -39,7 +41,7 @@ struct InterveneAtDevice {
 };
 using Action = std::variant<MineRegion, PlaceMaterial, SpawnElement, ActivateProgram, SelectWindStrategy, SetWindBoundary,
                             PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection,
-                            InstallIntervention, InterveneAtDevice>;
+                            InstallIntervention, InterveneAtDevice, UseHeldItem>;
 struct ActionRequest {
     uint64_t WorldEpoch = 0, Sequence = 0;
     Action Payload;
@@ -89,11 +91,12 @@ struct RetryStreaming {};
 struct RecoverWorld {};
 struct SetNextGenerator { GeneratorKind Kind; };
 struct SetNextSeed { uint64_t Seed; };
+struct SetWorldCalendar { WorldCalendarState State; };
 struct ClearRunning {};
 // Saves the current world, then creates a separate playable scene.
 struct CreateForceGarden {};
 using SessionControl = std::variant<SetPaused, StepSimulation, SaveWorld, ResetWorld, RetryStreaming,
-                                    RecoverWorld, SetNextGenerator, SetNextSeed, ClearRunning, CreateForceGarden>;
+                                    RecoverWorld, SetNextGenerator, SetNextSeed, ClearRunning, CreateForceGarden, SetWorldCalendar>;
 enum class ControlStatus { Applied, Saved, Replaced, Deferred, Failed, Rejected };
 struct ControlReceipt {
     ControlStatus Status = ControlStatus::Rejected;

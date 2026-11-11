@@ -217,7 +217,7 @@ void DrawActions(GameSession &session, std::array<int64_t, 2> &cell) {
     ImGui::SameLine();
     if (ImGui::Button("Place dirt"))
         session.Execute(NativeCaller::Debug, api::PlaceMaterial{target});
-    if (ImGui::Button("Activate at cell centre"))
+    if (ImGui::Button("Test workbench formula at cell centre"))
         session.Execute(NativeCaller::Debug, api::ActivateProgram{session.AppliedProgram(), {target, {.5, .5}}});
     for (const auto caller : {NativeCaller::Input, NativeCaller::Debug}) {
         if (const auto *receipt = session.LastAction(caller))
@@ -246,6 +246,61 @@ void DrawGeneration(GameSession &session) {
         if (ImGui::Button("Retry world recovery"))
             session.Control(NativeCaller::Debug, api::RecoverWorld{});
     }
+}
+
+void DrawCalendar(GameSession &session) {
+    if (!ImGui::CollapsingHeader("Day / night and seasons", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    const auto calendar = session.GetCalendar().Snapshot();
+    auto state = session.GetCalendar().State();
+    ImGui::Text("Year %llu / %s %u / %02u:%02u (%s)", static_cast<unsigned long long>(calendar.Year),
+        SeasonName(calendar.CurrentSeason), calendar.DayOfSeason, calendar.Hour, calendar.Minute, DayPhaseName(calendar.Phase));
+    ImGui::Text("Sunrise %.1f h / sunset %.1f h", calendar.SunriseHour, calendar.SunsetHour);
+    ImGui::BeginDisabled(!session.IsReady() || session.GetWorld().GetEnvironment().IsWaitingForBudget());
+    bool changed = false;
+    float hour = float(calendar.DayProgress * 24);
+    if (ImGui::SliderFloat("Time of day", &hour, 0, 23.99f, "%.2f h", ImGuiSliderFlags_AlwaysClamp)) {
+        state.TickOfDay = uint32_t(double(hour) / 24 * state.SecondsPerDay * WorldCalendar::TicksPerSecond);
+        changed = true;
+    }
+    constexpr std::array phases{DayPhase::Dawn, DayPhase::Day, DayPhase::Dusk, DayPhase::Night};
+    constexpr std::array labels{"Dawn", "Noon", "Dusk", "Midnight"};
+    for (size_t index = 0; index < phases.size(); ++index) {
+        if (index) ImGui::SameLine();
+        if (ImGui::Button(labels[index])) {
+            state.TickOfDay = session.GetCalendar().TickAtPhase(phases[index]);
+            changed = true;
+        }
+    }
+    int season = int(calendar.CurrentSeason);
+    if (ImGui::Combo("Season", &season, "Spring\0Summer\0Autumn\0Winter\0")) {
+        const auto yearStart = state.Day - state.Day % (state.DaysPerSeason * 4);
+        const auto offset = uint64_t(season) * state.DaysPerSeason;
+        if (offset < UINT64_MAX - yearStart) {
+            state.Day = yearStart + offset; // preview the beginning of the selected season
+            changed = true;
+        }
+    }
+    int seconds = int(state.SecondsPerDay), days = int(state.DaysPerSeason), speed = int(state.TimeScale);
+    if (ImGui::InputInt("Seconds per day", &seconds, 60, 600)) {
+        state.SecondsPerDay = uint32_t(std::clamp(seconds, 1, 86400));
+        state.TickOfDay = uint32_t(calendar.DayProgress * state.SecondsPerDay * WorldCalendar::TicksPerSecond);
+        changed = true;
+    }
+    if (ImGui::SliderInt("Days per season", &days, 1, 365, "%d", ImGuiSliderFlags_AlwaysClamp)) {
+        state.DaysPerSeason = uint32_t(days);
+        changed = true;
+    }
+    if (ImGui::SliderInt("Calendar speed", &speed, 1, 3600, "%dx", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) {
+        state.TimeScale = uint32_t(speed);
+        changed = true;
+    }
+    if (ImGui::Button("Reset calendar")) { state = {}; changed = true; }
+    if (changed) {
+        const auto result = session.Control(NativeCaller::Debug, api::SetWorldCalendar{state});
+        if (!result.Succeeded()) ImGui::TextWrapped("%s", result.Message.c_str());
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Calendar speed changes light and seasons only. Game pause freezes time.");
 }
 
 void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
@@ -388,6 +443,13 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
             }
             ImGui::EndDisabled();
             DrawGeneration(session);
+            ImGui::BeginDisabled(!session.CanEditWorld());
+            if (ImGui::Button("Drop wooden stick")) {
+                const auto dropped = session.DropWoodenStick(NativeCaller::Debug);
+                ItemStatus = dropped.Succeeded() ? "Wooden stick dropped to your right. Walk near it to pick it up." : dropped.Message;
+            }
+            ImGui::EndDisabled();
+            if (!ItemStatus.empty()) ImGui::TextWrapped("%s", ItemStatus.c_str());
             if (ImGui::Button("Formula presets")) FormulaEditor.ShowPresets();
             DrawForceGardenUI(session, presentation, worldWill, GardenUI);
             int brush = int(input.GetElementBrush());
@@ -399,6 +461,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
             DrawInventory(presentation);
             DrawDevices(session, presentation, input, DeviceCell, SelectedDevice, PendingDevicePlacement);
             DrawProgramsAndFields(presentation);
+            DrawCalendar(session);
             DrawEnvironment(session, presentation);
             DrawWindAppearance(presentation);
             ImGui::Checkbox("Formula editor (F4)", &FormulaEditor.Visible);
@@ -414,7 +477,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
         }
         ImGui::End();
     }
-    FormulaEditor.Draw(session);
+    FormulaEditor.Draw(session, ui.HeldItem());
     DrawDevicePlacement(session, input);
     return requestedMode;
 }

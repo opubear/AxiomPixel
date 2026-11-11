@@ -75,7 +75,7 @@ bool WorldGridFrame::PrepareWindRegionVersions(uint64_t revision) {
 }
 
 pixel::performance::MemoryUsage WorldGridFrame::GetMemoryUsage() const {
-    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive, GardenDraws, ActorDraws);
+    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive, GardenDraws, ActorDraws, MonsterDraws, DecorationDraws, ItemDraws);
 }
 
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
@@ -117,6 +117,9 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     }
     if (frame.View.Background[3] != 1 || std::any_of(frame.View.Background.begin(), frame.View.Background.end(), [](float v) { return !std::isfinite(v) || v < 0 || v > 1; }) || std::any_of(frame.Post.Values.begin(), frame.Post.Values.end(), [](float v) { return !std::isfinite(v); }))
         throw std::invalid_argument("grid background must be opaque and rendering parameters finite");
+    if (std::any_of(frame.BiomeWeights.begin(), frame.BiomeWeights.end(), [](float v) { return !std::isfinite(v) || v < 0 || v > 1; })
+        || std::abs(frame.BiomeWeights[0] + frame.BiomeWeights[1] + frame.BiomeWeights[2] - 1) > .0001f)
+        throw std::invalid_argument("background biome weights must form a normalized blend");
     if (uint32_t(frame.Wind.Mode) > uint32_t(WindVisualMode::AirRefraction) || !std::isfinite(frame.Wind.Opacity) || frame.Wind.Opacity < 0 || frame.Wind.Opacity > 1 || !std::isfinite(frame.Wind.RefractionPixels) || frame.Wind.RefractionPixels < 0 || frame.Wind.RefractionPixels > 12 || !std::isfinite(frame.Wind.MotionScale) || frame.Wind.MotionScale < 0 || frame.Wind.MotionScale > 2 || !std::isfinite(frame.WindTimeSeconds) || frame.WindTimeSeconds < 0 || frame.WindTimeSeconds >= 4096 || (frame.HasWind && frame.WindCells.size() != frame.Cells.size()))
         throw std::invalid_argument("invalid wind visual snapshot or parameters");
     if (frame.Character) {
@@ -162,6 +165,17 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
         validateShape(draw.CenterRadius, draw.Color);
     for (const auto &draw : frame.ActorDraws)
         validateShape(draw.CenterRadius, draw.Color);
+    if (frame.ItemDraws.size() > 63) throw std::invalid_argument("too many item draws");
+    for (const auto &draw : frame.ItemDraws)
+        validateShape(draw.CenterRadius, draw.Color);
+    if (frame.DecorationDraws.size() > 256) throw std::invalid_argument("too many biome decoration draws");
+    for (const auto &draw : frame.DecorationDraws)
+        validateShape(draw.CenterRadius, draw.Color);
+    if (frame.MonsterDraws.size() > 256) throw std::invalid_argument("too many monster draws");
+    for (const auto &draw : frame.MonsterDraws) {
+        const auto &b = draw.Bounds;
+        validateShape(std::array{b[0] + b[2] * .5f, b[1] + b[3] * .5f, b[2] * .5f, b[3] * .5f}, std::array{1.f, 1.f, 1.f, 1.f});
+    }
     switch (frame.DisplayMode) {
     case GridDisplayMode::Materials:
         if (std::any_of(frame.Cells.begin(), frame.Cells.end(), [layers](uint32_t id) {

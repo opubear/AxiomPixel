@@ -154,7 +154,7 @@ void WorkAndLifecycle() {
     Step(session);
     Check(Current(session, device.Ref.Id).Cycles == 1, "cleared device restarted");
     Check(session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded() && session.GetDevices().Count() == 0 &&
-          session.GetInventory().Count() == 1, "world replacement retained device or port");
+          session.GetInventory().Count() == 2, "world replacement retained device or port");
 }
 
 void EffectCapacityAndSuspension() {

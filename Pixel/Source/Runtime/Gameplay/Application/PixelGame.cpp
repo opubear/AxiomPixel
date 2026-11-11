@@ -15,7 +15,8 @@ PixelGame::PixelGame(bool persistent, std::unique_ptr<pixel::llm::LLM> model)
     : PixelGame(persistent ? pixel::SessionMode::Persistent : pixel::SessionMode::Finite, std::move(model)) {}
 
 PixelGame::PixelGame(pixel::SessionMode mode, std::unique_ptr<pixel::llm::LLM> model)
-    : Session(mode, mode == pixel::SessionMode::Finite ? pixel::WorldGenerationSettings{} : pixel::GameSession::DefaultGeneration()),
+    : Session(mode, mode == pixel::SessionMode::Finite ? pixel::WorldGenerationSettings{} : pixel::GameSession::DefaultGeneration(),
+          mode == pixel::SessionMode::Finite ? nullptr : pixel::MonsterCatalog::Parse(AssetLoader::LoadContentFile("Monsters.json"))),
       Model(model ? std::move(model) : std::make_unique<pixel::llm::PseudoLLM>()),
       ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, UI, {[] { GAxiom->RequestClose(); }, [this] { DebugUI.Toggle(); }, [this] { DebugUI.ToggleFormulaEditor(); }, [] {
               std::array<int, 2> size{};

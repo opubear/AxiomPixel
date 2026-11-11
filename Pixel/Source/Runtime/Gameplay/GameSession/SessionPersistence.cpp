@@ -15,11 +15,21 @@ GameplaySaveData GameSession::CaptureGameplayData() const {
     data.Authority.Interventions = Interventions;
     data.Knowledge = Knowledge.Export();
     data.WorldWill = WillMemory;
+    data.Population = Population.CaptureState();
+    data.GroundBag = GroundBag;
+    data.DroppedItems = DroppedItems;
     return data;
 }
 
 void GameSession::RestoreGameplayData(const GameplaySaveData &data, const std::string &worldId) {
     Characters.RestoreState(data.Actors);
+    if (!Characters.Player()) throw WorldStorageError("checkpoint missing player");
+    if (data.Population.Version == 0) {
+        if (GameWorld.SampleBiome(Characters.Player()->GetWorldPosition().Cell()).Regional)
+            Population.ImportLegacyScene(Characters, Monsters.get());
+    } else {
+        Population.RestoreState(data.Population, Characters, Monsters);
+    }
     Inventory.RestoreState(data.Inventory);
     Machines.RestoreState(data.Devices);
     Garden = data.Garden;
@@ -29,15 +39,40 @@ void GameSession::RestoreGameplayData(const GameplaySaveData &data, const std::s
     LastAim = data.LastAim;
     Formulas.BindPlayerInventory(Inventory, PlayerBag);
     Formulas.RestoreState(data.Programs);
+    GroundBag = data.GroundBag;
+    DroppedItems = data.DroppedItems;
+    if (!GroundBag.Value) {
+        // Legacy player programs become an owned stick instead of rebuilding
+        // the former actor component. A full bag keeps the stick at the player.
+        if (!DroppedItems.empty()) throw WorldStorageError("legacy inventory has dropped items");
+        GroundBag = Inventory.Create(items::Inventory::MaximumInstancesPerContainer);
+        if (!GroundBag.Value) throw WorldStorageError("no room for ground inventory");
+        items::ItemRef stick;
+        const auto bag = Inventory.Inspect(PlayerBag);
+        const auto destination = bag.Quantity < bag.Capacity ? PlayerBag : GroundBag;
+        if (Inventory.CreateStick(Inventory.Reference(destination), Formulas.ActiveProcess(), stick) != items::Result::Applied)
+            throw WorldStorageError("cannot migrate player formula to a stick");
+        if (destination == GroundBag) DroppedItems.push_back({stick, GetPlayer()->GetWorldPosition()});
+    }
+    if (GroundBag == PlayerBag || !Inventory.Contains(GroundBag))
+        throw WorldStorageError("invalid ground inventory");
+    const auto ground = Inventory.Inspect(GroundBag);
+    if (!ground.Stacks.empty() || ground.Capacity != items::Inventory::MaximumInstancesPerContainer
+        || ground.Instances.size() != DroppedItems.size())
+        throw WorldStorageError("ground inventory and dropped items disagree");
+    std::set<uint64_t> drops;
+    for (const auto &drop : DroppedItems)
+        if (!Inventory.FindInstance(GroundBag, drop.Item) || !drops.insert(drop.Item.Instance).second)
+            throw WorldStorageError("missing or duplicated dropped item");
     GameWorld.RestoreFieldSources(data.FieldSources);
     const auto processes = Formulas.InspectProcesses();
-    std::set<uint64_t> containers{PlayerBag.Value};
+    std::set<uint64_t> containers{PlayerBag.Value, GroundBag.Value};
     for (const auto &record : data.Devices.Records) {
         const auto &d = record.Value;
         if (!Inventory.Contains(record.FuelContainer) || !containers.insert(record.FuelContainer.Value).second)
             throw WorldStorageError("device inventory reference is missing or shared");
         const auto fuel = Inventory.Inspect(record.FuelContainer);
-        if (fuel.Quantity != d.Fuel || fuel.Capacity != 64 || fuel.Stacks.size() > 1
+        if (fuel.Quantity != d.Fuel || fuel.Capacity != 64 || fuel.Stacks.size() > 1 || !fuel.Instances.empty()
             || (!fuel.Stacks.empty() && fuel.Stacks.front().Item != items::ItemId::Coal))
             throw WorldStorageError("device fuel and inventory disagree");
         if (d.Enabled && !Characters.Find(ActorId{d.Owner}))

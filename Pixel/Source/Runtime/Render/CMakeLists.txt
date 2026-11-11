@@ -1,7 +1,8 @@
 add_subdirectory(Assets)
 # CPU presentation consumes gameplay camera policy and committed world state.
 add_library(PixelPresentation STATIC
-    WorldGridFrame.cpp WindVisualFrame.cpp FormulaFrame.cpp DeviceFrame.cpp ActorFrame.cpp ForceGardenFrame.cpp PixelWorldPresentation.cpp GamePresentation.cpp BackgroundView.cpp CharacterAnimation.cpp)
+    CalendarLighting.cpp
+    WorldGridFrame.cpp WindVisualFrame.cpp FormulaFrame.cpp DeviceFrame.cpp ActorFrame.cpp ItemFrame.cpp MonsterFrame.cpp ForceGardenFrame.cpp BiomeFrame.cpp PixelWorldPresentation.cpp GamePresentation.cpp BackgroundView.cpp CharacterAnimation.cpp)
 target_link_libraries(PixelPresentation PUBLIC PixelGameplay PixelCamera PixelAssets Axiom::Core)
 
 # Runtime supplies the real RHI backend; CPU tests supply mocks and shader lookup.

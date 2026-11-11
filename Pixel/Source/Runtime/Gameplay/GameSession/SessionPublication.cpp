@@ -44,7 +44,7 @@ void GameSession::RefreshReadView(CommittedWorldView &view, WorldRect bounds) {
     GameWorld.RequestVisibleRegion(bounds);
     SynchronizeReadViews();
     if (!GameWorld.ReadBuffers()) GameWorld.PublishBuffers();
-    view.Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
+    view.Update(GameWorld, Characters, Formulas, Machines, GameplayValues, Calendar.Snapshot(), CurrentCommit());
     GameWorld.SetPublicationBytes(&view, std::max(reserve, view.ReservedBytes()));
 }
 
@@ -56,7 +56,7 @@ void GameSession::PublishCommit() {
     Observations.Publish(GameWorld, Characters, Formulas, GameplayValues, Knowledge, CurrentCommit(), Paused, Facts.HighWatermark());
     for (auto it = ReadViews.begin(); it != ReadViews.end();) {
         if (auto view = it->lock()) {
-            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, GameplayValues, CurrentCommit());
+            if (!view->RequestedBounds.Empty()) view->Update(GameWorld, Characters, Formulas, Machines, GameplayValues, Calendar.Snapshot(), CurrentCommit());
             ++it;
         } else {
             it = ReadViews.erase(it);

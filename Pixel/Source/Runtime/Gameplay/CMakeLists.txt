@@ -14,7 +14,9 @@ target_link_libraries(PixelFormulaBridge PUBLIC PixelWorld PixelItems PixelActor
     PixelFormulaProcess PixelObservationValues PixelSerialization)
 
 add_library(PixelGameplay STATIC
-    GameSession/GameSession.cpp GameSession/SessionSimulation.cpp CommittedWorldView.cpp GameSession/SessionPublication.cpp Actions/GameActions.cpp
+    Items/ItemActions.cpp
+    Ecology/RegionalPopulation.cpp
+    GameSession/GameSession.cpp GameSession/MonsterSpawning.cpp GameSession/SessionSimulation.cpp CommittedWorldView.cpp GameSession/SessionPublication.cpp Actions/GameActions.cpp
     Construction/DeviceActions.cpp Construction/DeviceRuntime.cpp
     GameSession/SessionAuthority.cpp GameSession/SessionWorldWill.cpp
     GameSession/SessionObservation.cpp GameSession/SessionGameplayObservation.cpp GameSession/SessionPersistence.cpp

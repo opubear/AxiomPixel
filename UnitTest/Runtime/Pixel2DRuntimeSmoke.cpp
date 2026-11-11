@@ -14,6 +14,7 @@
 #include "Asset/Loaders/AssetLoader.h"
 #include "Runtime/Render/Assets/ArtAssets.h"
 #include "Runtime/Render/BackgroundView.h"
+#include "Runtime/Render/CalendarLighting.h"
 #include "Runtime/Render/PixelRender.h"
 #include "SystemEnum.h"
 #include <algorithm>
@@ -25,6 +26,8 @@
 #include <fstream>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
+#include <string>
 #include <thread>
 
 namespace {
@@ -33,6 +36,31 @@ void Require(bool value, const char *message) {
     if (!value)
         throw std::runtime_error(message);
 }
+
+class ScopedEnvironmentVariable {
+  public:
+    ScopedEnvironmentVariable(const char *name, const char *value) : Name(name) {
+        if (const auto *previous = std::getenv(name)) Previous = previous;
+        if (!Assign(value)) throw std::runtime_error("could not set fixture environment: " + Name);
+    }
+    ~ScopedEnvironmentVariable() {
+        if (!Assign(Previous ? Previous->c_str() : nullptr)) std::terminate();
+    }
+    ScopedEnvironmentVariable(const ScopedEnvironmentVariable &) = delete;
+    ScopedEnvironmentVariable &operator=(const ScopedEnvironmentVariable &) = delete;
+
+  private:
+    bool Assign(const char *value) const {
+#if defined(_WIN32)
+        return _putenv_s(Name.c_str(), value ? value : "") == 0;
+#else
+        return (value ? setenv(Name.c_str(), value, 1) : unsetenv(Name.c_str())) == 0;
+#endif
+    }
+    std::string Name;
+    std::optional<std::string> Previous;
+};
+
 GridTextureCatalog Textures() {
     GridTextureCatalog catalog{2, 2, 4, {}};
     constexpr std::array<uint8_t, 64> pixels{
@@ -854,7 +882,7 @@ void FormulaGameplayGpu() {
     Require(policy->PublishedFrame().FormulaDraws.empty(), "cleared GPU formula snapshot retained a sphere");
     auto &session = input->GetSession();
     Require(bool(session.ApplyProcess(pixel::NativeCaller::Driver, pixel::CarrierExample())), "process GPU apply failed");
-    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Input, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {0, 0}}}).Applied(),
+    Require(pixel::testing::SessionAccess::ExecuteAndStep(session, pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 500}, {0, 0}}}).Applied(),
             "process GPU player activation failed");
     for (const auto kind : {pixel::ProcessCarrierKind::NaturalSource, pixel::ProcessCarrierKind::FixedFixture}) {
         pixel::ProcessCarrier carrier;
@@ -1141,7 +1169,7 @@ void BasicWorldGameplay() {
             const double oldOrigin = std::round(centre[axis] * scale[axis] - pointer.FramebufferSize[axis] / 2.0);
             pointer.Position[axis] = (target[axis] * scale[axis] - oldOrigin) * pointer.WindowSize[axis] / pointer.FramebufferSize[axis];
         }
-        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), pointer);
         const auto placed = *input->GetSession().LastAction(pixel::NativeCaller::Input);
         Require(placed.Queued() && world.GetCell(512, 507).Type == pixel::CellTypes::Empty,
                 "queued click changed terrain before simulation");
@@ -1155,7 +1183,7 @@ void BasicWorldGameplay() {
                 "queued click used current viewport instead of event viewport after resize");
         Require(world.GetCell(512, 507).Type == pixel::CellTypes::Empty, "queued removal after resize missed original cell");
         pointer.FramebufferSize = {-1, 0};
-        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+        input->OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, int(Mod::MOD_SHIFT), pointer);
     }
     verify(); // No accidental edits at the displaced coordinates.
 
@@ -1295,11 +1323,30 @@ void BasicWorldGameplay() {
         const double px = (x + .5) * input->GetView().CellSizePixels[0] - input->GetView().OriginPixels[0];
         const double py = (y + .5) * input->GetView().CellSizePixels[1] - input->GetView().OriginPixels[1];
         Require(px >= 0 && py >= 0 && px < fw && py < fh, "test clicked a non-visible cell");
-        glfwSetCursorPos(platform->GetWindows(), px * ww / fw, py * wh / fh);
+        // GLFW ignores cursor warps on unfocused windows. The button callback
+        // snapshots the native position, so establish it before queuing clicks.
+        auto *window = platform->GetWindows();
+        if (!glfwGetWindowAttrib(window, GLFW_FOCUSED)) glfwFocusWindow(window);
+        platform->PollEvents();
+        const double targetX = px * ww / fw, targetY = py * wh / fh;
+        double actualX = 0, actualY = 0;
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            if (!glfwGetWindowAttrib(window, GLFW_FOCUSED)) glfwFocusWindow(window);
+            glfwSetCursorPos(window, targetX, targetY);
+            platform->PollEvents();
+            glfwGetCursorPos(window, &actualX, &actualY);
+            if (std::abs(actualX - targetX) < 1 && std::abs(actualY - targetY) < 1) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        if (std::abs(actualX - targetX) >= 1 || std::abs(actualY - targetY) >= 1)
+            throw std::runtime_error("native cursor did not reach the world fixture target: requested "
+                + std::to_string(targetX) + "," + std::to_string(targetY) + "; actual "
+                + std::to_string(actualX) + "," + std::to_string(actualY)
+                + "; focused=" + std::to_string(glfwGetWindowAttrib(window, GLFW_FOCUSED)));
     };
     auto queueClick = [&](uint32_t x, uint32_t y, int button) {
         moveCursorToCell(x, y);
-        platform->OnButtonCallback(button, GLFW_PRESS, button == GLFW_MOUSE_BUTTON_RIGHT ? GLFW_MOD_SHIFT : 0);
+        platform->OnButtonCallback(button, GLFW_PRESS, GLFW_MOD_SHIFT);
         platform->OnButtonCallback(button, GLFW_RELEASE, 0);
     };
     auto clickCell = [&](uint32_t x, uint32_t y, int button) {
@@ -1483,7 +1530,8 @@ void ForceFieldDebugGameplay() {
     press(Key::KEY_F1);
     const auto materialToken = Draw(app);
     engine.GetRHI()->WaitIdle();
-    Require(policy->PublishedFrame().DisplayMode == GridDisplayMode::Materials && policy->PublishedFrame().Post.Values == input->GetPresentation().Post.Values
+    Require(policy->PublishedFrame().DisplayMode == GridDisplayMode::Materials
+                && policy->PublishedFrame().Post.Values == pixel::CalendarLighting(*input->GetPresentation().PublishedCalendar(), input->GetPresentation().Post).Values
                 && input->GetPresentation().Post.Values[1] == 0.35f,
             "leaving debug view did not restore material mode and tint");
     for (size_t i = 0; i < expected.size(); ++i)
@@ -1799,8 +1847,172 @@ void CharacterAnimationGpu() {
     std::cout << "Character GPU passed: " << samples << " source PNG samples, all configured frames, layers, alpha, sRGB, mirroring, frame slots and F1\n";
 }
 
+void MonsterAnimationGpu() {
+    pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
+    const auto art = store.LoadMonsters();
+    std::vector<MonsterDraw> draws;
+    bool field = false;
+    GridView2D view;
+    view.Background = {.25f, .55f, .85f, 1};
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto result = std::make_unique<PixelRender>(rhi, pixel::GamePresentation::MakeTextures(), [&](WorldGridFrame &frame) {
+            const auto extent = rhi.GetPresentationExtent();
+            frame.SetRegion({0, 0}, uint32_t(std::ceil(extent.Width / view.CellSizePixels[0])),
+                uint32_t(std::ceil(extent.Height / view.CellSizePixels[1])));
+            frame.View = view;
+            frame.MonsterDraws = draws;
+            frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
+            std::fill(frame.Cells().begin(), frame.Cells().end(), field ? 0x8080FF : 0);
+        }, "Pixel2DPostProcess.fs", nullptr, nullptr, pixel::render::InventoryOverlay::Publisher{}, art);
+        policy = result.get();
+        return result;
+    };
+    PixelSmokeApplication app(std::make_unique<PixelGame>(false));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    auto &rhi = *app.Engine->GetRHI();
+    size_t samples = 0, partialSamples = 0;
+    std::string sampleLabel;
+    const auto verify = [&] {
+        const auto token = Draw(app); rhi.WaitIdle();
+        const auto pixels = ReadColor(policy->SceneColor(token.Slot));
+        const auto extent = rhi.GetPresentationExtent();
+        // Dense interior samples include transparent padding and fractional bounds.
+        for (uint32_t y = 0; y < std::min(400u, extent.Height); y += 2) {
+            for (uint32_t x = 0; x < std::min(440u, extent.Width); x += 2) {
+                std::array<float, 3> expected{.25f, .55f, .85f};
+                // Every offscreen target stores linear UNorm; model its rounding.
+                for (auto &c : expected) c = std::round(c * 255) / 255;
+                for (const auto &draw : draws) {
+                    const float u = (x + .5f - draw.Bounds[0]) / draw.Bounds[2];
+                    const float v = (y + .5f - draw.Bounds[1]) / draw.Bounds[3];
+                    if (u < 0 || u >= 1 || v < 0 || v >= 1) continue;
+                    auto tx = uint32_t(std::floor(u * draw.FrameTexels[2]));
+                    if (draw.FacingLeft) tx = draw.FrameTexels[2] - 1 - tx;
+                    tx += draw.FrameTexels[0];
+                    const auto ty = draw.FrameTexels[1] + uint32_t(std::floor(v * draw.FrameTexels[3]));
+                    const auto *rgba = reinterpret_cast<const uint8_t *>(art->Atlas->Pixels.data()) + (size_t(ty) * art->Atlas->Width + tx) * 4;
+                    partialSamples += rgba[3] != 0 && rgba[3] != 255;
+                    for (size_t c = 0; c < 3; ++c)
+                        expected[c] = std::round((expected[c] * (1 - rgba[3] / 255.f) + Linear(rgba[c]) * rgba[3] / 255.f) * 255) / 255;
+                }
+                const auto at = (size_t(y) * extent.Width + x) * 4;
+                for (size_t c = 0; c < 3; ++c)
+                    if (std::abs(int(pixels[at+c]) - int(std::lround(expected[c] * 255))) > 2)
+                        throw std::runtime_error("monster GPU " + sampleLabel + " pixel " + std::to_string(x) + "," + std::to_string(y)
+                            + " channel " + std::to_string(c) + " actual " + std::to_string(pixels[at+c])
+                            + " expected " + std::to_string(std::lround(expected[c] * 255)));
+                ++samples;
+            }
+        }
+        return pixels;
+    };
+    for (const auto &monster : art->Monsters) {
+        for (const auto &[name, clip] : monster.Clips) {
+            for (const auto frame : clip.Frames) {
+                for (const bool left : {false, true}) {
+                    sampleLabel = monster.Id + "/" + name + (left ? " left" : " right") + " texel " + std::to_string(frame[0]) + "," + std::to_string(frame[1]);
+                    draws = {{{20.25f, 30.25f, float(frame[2] * 2), float(frame[3] * 2)}, frame, left, 1}};
+                    verify();
+                }
+            }
+        }
+    }
+    // Exercise both ping-pong parities and overlapping sprites.
+    for (const auto *id : {"slime", "mushroom", "bat"}) {
+        const auto &v = art->Require(id);
+        const auto f = v.Clips.at(v.States.at("Hurt")).Frames.back();
+        draws.push_back({{25.75f, 34.25f, float(f[2] * 2), float(f[3] * 2)}, f, true, uint64_t(draws.size() + 1)});
+        verify();
+    }
+    Require(partialSamples > 0, "monster GPU checks missed translucent source pixels");
+    const auto frozen = verify();
+    Require(verify() == frozen, "monster atlas or scene changed between frame slots");
+    field = true;
+    const auto token = Draw(app); rhi.WaitIdle();
+    const auto diagnostic = ReadColor(policy->SceneColor(token.Slot));
+    for (size_t i = 0; i < diagnostic.size(); i += 4)
+        Require(diagnostic[i] == 255 && diagnostic[i+1] == 128 && diagnostic[i+2] == 128, "monster leaked into F1");
+    app.Shutdown();
+    std::cout << "Monster GPU passed: " << samples << " PNG samples, " << partialSamples
+        << " translucent samples, 54 clips, mirroring, overlap, frame slots and F1\n";
+}
+
+void MonsterGameplayGpu(bool regional = false) {
+    auto game = [regional] {
+        // Flat exercises all eight species. Natural exercises biome filtering.
+        // Restore environment before starting the simulation worker.
+        const ScopedEnvironmentVariable generator("PIXEL_WORLD_GENERATOR", regional ? "natural" : "flat");
+        const ScopedEnvironmentVariable seed("PIXEL_WORLD_SEED", "42");
+        const ScopedEnvironmentVariable window("PIXEL_SIMULATION_WINDOW", "512");
+        const ScopedEnvironmentVariable budget("PIXEL_WORLD_BUDGET_MIB", "512");
+        return std::make_unique<PixelGame>(pixel::SessionMode::Temporary);
+    }();
+    auto *input = game.get();
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    const auto initialActors = input->GetSession().GetActors().Snapshot();
+    const auto expectedMonsters = std::count_if(initialActors.begin(), initialActors.end(), [](const auto &actor) { return actor.Monster.has_value(); });
+    Require(expectedMonsters > 0 && (regional || expectedMonsters == 8), "runtime new world omitted eligible monsters");
+    PixelSmokeApplication app(std::move(game));
+    PixelRender *policy = nullptr;
+    auto setup = CreatePixelRenderSetup(*input);
+    auto create = setup.CreatePolicy;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *scene) {
+        auto result = create(rhi, scene); policy = dynamic_cast<PixelRender *>(result.get()); return result;
+    };
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    input->SetSceneScale(.4f);
+    const auto capture = [&] {
+        const auto token = Draw(app); app.Engine->GetRHI()->WaitIdle();
+        return ReadColor(policy->SceneColor(token.Slot));
+    };
+    capture();
+    Require(policy->PublishedFrame().MonsterDraws.size() == size_t(expectedMonsters), "runtime presentation omitted an eligible monster");
+    if (regional) {
+        const auto centre = input->GetCamera().GetWorldPosition().Cell();
+        const auto biome = pixel::SampleWorldBiome(input->GetSession().GetGenerationSettings(), centre);
+        const auto &weights = policy->PublishedFrame().BiomeWeights;
+        Require(weights == std::array{biome.ForestWeight / 65536.f, biome.DesertWeight / 65536.f, biome.SnowWeight / 65536.f},
+            "production frame selected a different biome from the camera region");
+    }
+    const auto initial = input->GetSession().GetActors().Snapshot();
+    for (int i = 0; i < 90; ++i) input->Tick(1.f / 60);
+    capture();
+    bool moved = false;
+    for (const auto &actor : input->GetSession().GetActors().Snapshot()) {
+        if (!actor.Monster) continue;
+        const auto previous = std::find_if(initial.begin(), initial.end(), [&](const auto &value) { return value.Id == actor.Id; });
+        moved |= previous != initial.end() && (actor.Position.Chunk != previous->Position.Chunk || actor.Position.Local != previous->Position.Local);
+    }
+    Require(moved, "runtime monsters never advanced from their spawn positions");
+    input->GetSession().Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
+    const auto frozen = capture();
+    input->Tick(.2f);
+    Require(capture() == frozen, "pause advanced live monster pixels");
+    if (const auto *path = std::getenv("PIXEL_MONSTER_CAPTURE")) {
+        const auto extent = app.Engine->GetRHI()->GetPresentationExtent();
+        std::ofstream file(path, std::ios::binary);
+        file << "P6\n" << extent.Width << ' ' << extent.Height << "\n255\n";
+        for (size_t i = 0; i < frozen.size(); i += 4)
+            for (size_t c = 0; c < 3; ++c) {
+                const float value = frozen[i+c] / 255.f;
+                file.put(char(std::lround(255 * (value <= .0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.f / 2.4f) - .055f))));
+            }
+    }
+    input->GetPresentation().ToggleFieldView(); capture();
+    Require(policy->PublishedFrame().MonsterDraws.empty(), "runtime monsters leaked into force-field view");
+    input->GetPresentation().ToggleFieldView(); capture();
+    Require(!policy->PublishedFrame().MonsterDraws.empty(), "runtime monsters did not return after F1");
+    app.Shutdown();
+    std::cout << "Monster gameplay GPU passed: " << expectedMonsters << " eligible monsters, regional=" << regional << ", movement, pause and F1\n";
+}
+
 void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const pixel::ui::Canvas &canvas,
-                              const char *captureName) {
+                              const char *captureName, PostProcessParameters tint = {{.35f, .35f, .35f, 1}}) {
     auto &rhi = *engine.GetRHI();
     const auto extent = rhi.GetPresentationExtent();
     const auto placement = pixel::ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)}, canvas.UIScale);
@@ -1828,8 +2040,6 @@ void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const
     std::unique_ptr<RHIBuffer> vb(rhi.CreateVertexBuffer(8, sizeof(vertices), vertices.data()));
     std::unique_ptr<RHIBuffer> ib(rhi.CreateIndexBuffer(4, sizeof(indices), indices.data()));
     const auto source = ReadColor(scene);
-    PostProcessParameters tint;
-    tint.Values = {.35f, .35f, .35f, 1};
     const auto begin = rhi.NewFrame();
     Require(begin.Ready, "inventory shader test frame unavailable");
     try {
@@ -1873,7 +2083,7 @@ void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const
             const bool opaque = inside && std::to_integer<uint8_t>(canvas.Pixels[texel + 3]) != 0;
             for (size_t c = 0; c < 3; ++c) {
                 const int expected = opaque ? int(std::lround(255 * Linear(std::to_integer<uint8_t>(canvas.Pixels[texel + c]))))
-                                            : int(std::lround(source[offset + c] * .35f));
+                                            : int(std::lround(source[offset + c] * tint.Values[c]));
                 if (std::abs(int(result[offset + c]) - expected) > 2)
                     throw std::runtime_error("inventory UI pixel mismatch x=" + std::to_string(x) + " y=" + std::to_string(y)
                         + " channel=" + std::to_string(c) + " expected=" + std::to_string(expected)
@@ -1892,6 +2102,50 @@ void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const
                 output.put(char(std::lround(srgb * 255)));
             }
     }
+}
+
+void CalendarGameplayGpu() {
+    ScopedEnvironmentVariable seed("PIXEL_WORLD_SEED", "42");
+    auto game = std::make_unique<PixelGame>(pixel::SessionMode::Temporary);
+    auto *input = game.get();
+    auto &session = input->GetSession();
+    session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
+    input->GetPresentation().WindVisual.Mode = WindVisualMode::Off;
+    PixelRender *policy = nullptr;
+    PixelSmokeApplication app(std::move(game));
+    auto setup = CreatePixelRenderSetup(*input);
+    auto create = setup.CreatePolicy;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *scene) {
+        auto result = create(rhi, scene);
+        policy = dynamic_cast<PixelRender *>(result.get());
+        return result;
+    };
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    struct Sample { uint64_t Day; uint32_t Hour; const char *File; };
+    constexpr std::array samples{
+        Sample{0, 6, "spring-dawn.ppm"}, Sample{0, 12, "spring-noon.ppm"},
+        Sample{0, 18, "spring-dusk.ppm"}, Sample{0, 0, "spring-night.ppm"},
+        Sample{7, 12, "summer-noon.ppm"}, Sample{14, 12, "autumn-noon.ppm"}, Sample{21, 12, "winter-noon.ppm"}};
+    for (const auto &sample : samples) {
+        const pixel::WorldCalendarState state{sample.Day, sample.Hour * 3000, 1200, 7, 1};
+        Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SetWorldCalendar{state}).Succeeded(), "runtime calendar edit failed");
+        auto token = Draw(app);
+        for (int i = 0; i < 3; ++i) token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        const auto &calendar = *input->GetPresentation().PublishedCalendar();
+        const auto post = pixel::CalendarLighting(calendar, input->GetPresentation().Post);
+        Require(calendar.Hour == sample.Hour && session.GetCalendar().State() == state
+            && policy->PublishedFrame().Post.Values == post.Values, "runtime calendar publication disagrees with scene");
+        Require(input->GetUI().Read().CalendarLabel.find(pixel::SeasonName(calendar.CurrentSeason)) == 0,
+                "runtime calendar HUD missing");
+        VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), sample.File, post);
+    }
+    input->GetPresentation().ToggleFieldView();
+    Draw(app);
+    Require(policy->PublishedFrame().Post.Values == input->GetPresentation().Post.Values, "calendar tinted F1");
+    app.Shutdown();
+    std::cout << "Calendar GPU passed: dawn/noon/dusk/night, four seasons, production frames, HUD and postprocessing isolation\n";
 }
 
 void InventoryUIGpu() {
@@ -1921,6 +2175,14 @@ void InventoryUIGpu() {
     app.Engine->GetRHI()->WaitIdle();
     Require(input->GetUI().Read().QuickSlots[0].Quantity == 137, "production UI lost committed stock");
     VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-closed.ppm");
+    pixel::items::ItemRef heldStick;
+    Require(inventory.CreateStick(inventory.Reference(session.PlayerInventory()), session.GetFormulaRuntime().ActiveProcess(), heldStick)
+        == pixel::items::Result::Applied, "UI fixture stick failed");
+    Require(session.DropWoodenStick(pixel::NativeCaller::Driver).Succeeded(), "UI fixture ground stick failed");
+    for (int i = 0; i < 4; ++i) token = Draw(app);
+    app.Engine->GetRHI()->WaitIdle();
+    Require(input->GetUI().HeldItem() == heldStick, "production UI did not select the owned stick");
+    VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-held-stick.ppm");
     input->OnKeyEvent(Key::KEY_TAB, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->OnKeyEvent(Key::KEY_TAB, 0, ButtonAction::ACTION_REPEAT, Mod{});
     for (int i = 0; i < 4; ++i) token = Draw(app);
@@ -1939,7 +2201,7 @@ void InventoryUIGpu() {
     Require(!input->GetUI().IsExpanded(), "Escape did not close production inventory");
     Draw(app);
     app.Shutdown();
-    std::cout << "Native inventory GPU passed: production publication, Tab/Escape, frame slots, pixel-exact canvas, transparency and post-tint isolation\n";
+    std::cout << "Native inventory GPU passed: held stick, production publication, Tab/Escape, frame slots, pixel-exact canvas, transparency and post-tint isolation\n";
 }
 
 void CharacterGameplayGpu() {
@@ -2011,7 +2273,7 @@ void CharacterGameplayGpu() {
     std::cout << "Character gameplay passed: production setup, movement, facing, jump/fall/landing, pause and F1\n";
 }
 
-void ArtBackgroundGpu(bool exactMirrorEdge = false) {
+void ArtBackgroundGpu(bool exactMirrorEdge = false, std::array<float, 3> biomeWeights = {1, 0, 0}) {
     pixel::ArtAssetStore store(AssetLoader::LoadContentFile);
     auto assets = std::make_shared<pixel::BackgroundAssets>(*store.LoadBackground("ArtAssets.json"));
     GridView2D view;
@@ -2029,6 +2291,7 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
             const auto height = uint32_t(std::ceil(extent.Height / scale));
             frame.SetRegion({0, 0}, width, height);
             frame.View = view;
+            frame.BiomeWeights = biomeWeights;
             frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
             const auto ground = uint32_t(extent.Height * .56f) / view.CellSizePixels[1];
             for (uint32_t y = 0; y < height; ++y)
@@ -2092,6 +2355,22 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
                 for (size_t c = 0; c < 3; ++c)
                     expected[c] = Linear(std::to_integer<uint8_t>(pixels[offset + c])) * alpha + expected[c] * (1 - alpha);
             }
+            for (auto &channel : expected) channel *= biomeWeights[0];
+            for (size_t biome = 0; biome < 2; ++biome) {
+                if (biomeWeights[biome + 1] == 0) continue;
+                const auto &layer = assets->BiomeImages[biome];
+                const float phase = pixel::BackgroundPhase(layer, view, extent.Width);
+                float u = (x + .5f - extent.Width * .5f) / width + .5f + phase;
+                u = 1 - std::abs((u * .5f - std::floor(u * .5f)) * 2 - 1);
+                const float sx = std::clamp(u * image.Width, .5f, image.Width - .5f);
+                const float sy = std::clamp((y + .5f) / height * image.Height, .5f, image.Height - .5f);
+                boundary |= std::abs(sx - std::round(sx)) < .01f || std::abs(sy - std::round(sy)) < .01f;
+                const size_t offset = (size_t(uint32_t(sy)) * image.Width + uint32_t(sx)) * 4;
+                const auto &pixels = layer.Image->Pixels;
+                const float alpha = std::to_integer<uint8_t>(pixels[offset + 3]) / 255.f;
+                for (size_t c = 0; c < 3; ++c)
+                    expected[c] += biomeWeights[biome + 1] * (Linear(std::to_integer<uint8_t>(pixels[offset + c])) * alpha + view.Background[c] * (1 - alpha));
+            }
             // The first capture contains only air; terrain is checked below.
             if (boundary) continue;
             for (size_t c = 0; c < 3; ++c)
@@ -2141,11 +2420,20 @@ void ArtBackgroundGpu(bool exactMirrorEdge = false) {
 } // namespace
 void RunPixelDebugUISmoke();
 void RunPixelGamePauseUISmoke();
+void RunPixelCalendarUISmoke();
 void RunPixelFormulaUISmoke();
 void RunPixelGardenUISmoke();
 void RunPixelGardenAidUISmoke();
 int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--calendar-only") {
+            CalendarGameplayGpu();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--calendar-ui-only") {
+            RunPixelCalendarUISmoke();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--parallel-only") {
             ParallelGameplayGpu();
             return 0;
@@ -2163,12 +2451,28 @@ int main(int argc, char **argv) {
             CharacterGameplayGpu();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--monsters-only") {
+            MonsterAnimationGpu();
+            MonsterGameplayGpu();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--monster-gameplay-only") {
+            MonsterGameplayGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--dummy-only") {
             TrainingDummyGpu();
             return 0;
         }
         if (argc == 2 && std::string_view(argv[1]) == "--pause-only") {
             RunPixelGamePauseUISmoke();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--biomes-only") {
+            ArtBackgroundGpu(false, {0, 1, 0});
+            ArtBackgroundGpu(false, {0, 0, 1});
+            ArtBackgroundGpu(true, {.25f, .35f, .40f});
+            MonsterGameplayGpu(true);
             return 0;
         }
         if (argc == 2 && std::string_view(argv[1]) == "--art-only") {
@@ -2191,6 +2495,10 @@ int main(int argc, char **argv) {
         }
         if (argc == 2 && std::string_view(argv[1]) == "--debug-ui-only") {
             RunPixelDebugUISmoke();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--formula-ui-only") {
+            RunPixelFormulaUISmoke();
             return 0;
         }
         if (argc == 2 && std::string_view(argv[1]) == "--formula-only") {
@@ -2216,6 +2524,8 @@ int main(int argc, char **argv) {
         ParallelGameplayGpu();
         InventoryUIGpu();
         CharacterAnimationGpu();
+        MonsterAnimationGpu();
+        MonsterGameplayGpu();
         CharacterGameplayGpu();
         TerrainMaterialsGpu();
         ElementMotionGpu();

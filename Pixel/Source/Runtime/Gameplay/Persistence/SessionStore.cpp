@@ -283,10 +283,31 @@ SessionSaveData SessionStore::ReadMetadata(const std::filesystem::path &director
     catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
     catch (const std::out_of_range &error) { throw WorldStorageError(error.what()); }
     data.Wind = ReadSettings(input);
+    if (version >= 7) {
+        auto &calendar = data.Calendar;
+        const auto read = [&](auto &value) {
+            input >> std::ws;
+            if (input.peek() == '-') throw WorldStorageError("negative world calendar value");
+            input >> value;
+        };
+        read(calendar.Day);
+        read(calendar.TickOfDay);
+        read(calendar.SecondsPerDay);
+        read(calendar.DaysPerSeason);
+        read(calendar.TimeScale);
+        try { WorldCalendar::Validate(calendar); }
+        catch (const std::invalid_argument &error) { throw WorldStorageError(error.what()); }
+        input.exceptions(std::ios::badbit);
+        input >> std::ws;
+        if (!input.eof()) throw WorldStorageError("unexpected world calendar data");
+    }
+    // Older worlds had no calendar; start in spring at 08:00 without altering
+    // their physics clock or retroactively simulating seasons.
     return data;
 }
 
 void SessionStore::WriteMetadata(const std::filesystem::path &directory, const SessionSaveData &data) const {
+    WorldCalendar::Validate(data.Calendar);
     if (std::filesystem::exists(directory / "chunks.index"))
         throw WorldStorageError("cannot rewrite immutable checkpoint metadata");
     CommitFile(directory / "world.meta", [&](auto &out) {
@@ -298,6 +319,9 @@ void SessionStore::WriteMetadata(const std::filesystem::path &directory, const S
             << data.CommittedTime << ' ' << data.TimeRemainder << ' '
             << data.WindBoundary << ' ' << data.WindEnabled << ' ' << data.Paused << '\n';
         WriteSettings(out, data.Wind);
+        const auto &calendar = data.Calendar;
+        out << calendar.Day << ' ' << calendar.TickOfDay << ' ' << calendar.SecondsPerDay
+            << ' ' << calendar.DaysPerSeason << ' ' << calendar.TimeScale << '\n';
     });
 }
 

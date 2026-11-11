@@ -1,5 +1,6 @@
 #pragma once
 #include "Runtime/Gameplay/Actors/Actors.h"
+#include "Runtime/Gameplay/Ecology/RegionalPopulation.h"
 #include "Runtime/Gameplay/Devices/Devices.h"
 #include "Runtime/Gameplay/SimulationCoordinator.h"
 #include "Runtime/Gameplay/CommittedWorldView.h"
@@ -15,6 +16,7 @@
 #include "Runtime/System/IO/FileIO.h"
 #include "Runtime/Gameplay/Actors/PlayerPresentation.h"
 #include "SimulationWorker.h"
+#include "Runtime/Gameplay/Items/DroppedItem.h"
 #include <optional>
 #include <string>
 
@@ -39,7 +41,7 @@ class GameSession : public api::WorldWillHost {
     static constexpr uint32_t DefaultWindStartHeight = 600;
     // Existing fixtures select finite or persistent storage explicitly.
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
-    explicit GameSession(SessionMode mode, WorldGenerationSettings generation = {});
+    explicit GameSession(SessionMode mode, WorldGenerationSettings generation = {}, std::shared_ptr<const MonsterCatalog> monsters = {});
     ~GameSession();
     // Runtime enables the persistent simulation worker; deterministic domain
     // fixtures may continue to call Tick synchronously without a worker.
@@ -71,6 +73,9 @@ class GameSession : public api::WorldWillHost {
         return Control(CallerSession(caller), control);
     }
     ApplyProgramResult ApplyProcess(NativeCaller caller, const formula::process::ProgramArtifact &program);
+    ApplyProgramResult ApplyHeldProcess(NativeCaller caller, items::ItemRef item, const formula::process::ProgramArtifact &program);
+    api::ControlReceipt DropWoodenStick(NativeCaller caller);
+    const std::vector<items::DroppedItem> &GetDroppedItems() const { return DroppedItems; }
     api::ControlReceipt StartProcessFixture(NativeCaller caller, const ProcessCarrier &carrier);
     api::ControlReceipt CancelProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
     api::ControlReceipt WakeProcessCarrier(NativeCaller caller, ProcessCarrierKind kind, uint64_t subject);
@@ -78,6 +83,7 @@ class GameSession : public api::WorldWillHost {
     void ClearPlayerInput();
     const World &GetWorld() const { return GameWorld; }
     const Actors &GetActors() const { return Characters; }
+    const MonsterCatalog *GetMonsterCatalog() const { return Monsters.get(); }
     const Devices &GetDevices() const { return Machines; }
     const items::Inventory &GetInventory() const { return Inventory; }
     items::ContainerId PlayerInventory() const { return PlayerBag; }
@@ -93,6 +99,8 @@ class GameSession : public api::WorldWillHost {
     const api::ControlReceipt &LastPersistenceResult() const { return PersistenceResult; }
     void Tick(float duration, PlayerInput input);
     bool IsPaused() const { return Paused; }
+    // Host reads at the joined frame boundary; renderers use CommittedWorldView.
+    const WorldCalendar &GetCalendar() const { return Calendar; }
     double GetSimulationTime() const { return Simulation.Time(); }
     double GetTimeRemainder() const { return Simulation.Remainder(); }
     api::CommitStamp CurrentCommit() const;
@@ -120,6 +128,8 @@ class GameSession : public api::WorldWillHost {
     friend class GamePresentation; // Snapshot ownership, residency and publication budgets only.
     friend struct testing::SessionAccess; // Fixture construction lives outside production targets.
     void Reset();
+    void SpawnSceneActors();
+    void ActivateRegionalPopulation();
     void ResetTemporary();
     bool TryReset();
     bool TryRecover();
@@ -139,7 +149,9 @@ class GameSession : public api::WorldWillHost {
     api::Reason WriteRejection() const;
     api::Reason PrepareWorldMutation();
     api::ActionReceipt Dispatch(const api::Action &action, api::RequestKey request);
-    api::Reason ActivateAt(WorldPosition target, api::RequestKey request);
+    api::Reason ActivateAt(WorldPosition target, api::RequestKey request, const items::ItemInstance *item = nullptr);
+    api::ActionReceipt UseHeldItem(const api::UseHeldItem &action, api::RequestKey request);
+    void PickUpNearbyItems();
     void RenewActionSessions();
     api::Reason AuthorizeAction(api::CallerSessionId caller, const api::Action &action) const;
     api::ActionReceipt InstallIntervention(const api::InstallIntervention &action, api::RequestKey request);
@@ -167,16 +179,21 @@ class GameSession : public api::WorldWillHost {
     // Declared before World so its I/O worker stops before scratch files go away.
     std::optional<io::TemporaryDirectory> TemporaryWorld;
     World GameWorld{WorldWidth, WorldHeight};
+    std::shared_ptr<const MonsterCatalog> Monsters;
     Actors Characters;
+    RegionalPopulation Population;
     Devices Machines;
     items::Inventory Inventory;
     items::ContainerId PlayerBag;
+    items::ContainerId GroundBag;
+    std::vector<items::DroppedItem> DroppedItems;
     FormulaBridge Formulas;
     std::array<double, 2> LastAim{1, 0};
     std::string FormulaError;
     std::optional<SessionStore> Store;
     SimulationCoordinator Simulation;
     bool Paused = false;
+    WorldCalendar Calendar;
     ObservationProjector Observations;
     api::GameplayObservation GameplayValues;
     void PublishGameplayObservation();

@@ -138,7 +138,7 @@ struct MockRHI : DynamicRHI {
     std::unique_ptr<RHIUploadBuffer> CreateUploadBuffer(uint64_t size) override { return std::make_unique<MockUpload>(size); }
     std::unique_ptr<RHIPipeline> CreateRasterPipeline(const RHIRasterPipelineDesc &) override { return std::make_unique<RHIPipeline>(); }
     std::unique_ptr<RHIDescriptorPool> CreateImageDescriptorPool(uint32_t sets, uint32_t images, uint32_t samplers) override {
-        Check((sets == 33 && images == 54 && samplers == 15) || (sets == 3 && images == 3 && samplers == 0), "descriptor pool is not sized from actual slots");
+        Check((sets == 39 && images == 72 && samplers == 15) || (sets == 3 && images == 3 && samplers == 0), "descriptor pool is not sized from actual slots");
         return std::make_unique<RHIDescriptorPool>();
     }
     std::unique_ptr<RHIDescriptorSet> CreateImageDescriptorSet(RHIDescriptorPool &, const RHIPipeline &, std::span<const RHIImageBinding>) override {
@@ -545,7 +545,7 @@ void DebugFrameIsolation() {
     Check(policy.PublishedFrame().Cells.front() == 0x80FF80, "Draw read an unpublished force direction");
     uint32_t uploaded = 0, shaderMode = 0;
     std::memcpy(&uploaded, rhi.Commands.Copies[1].second.data(), sizeof(uploaded));
-    Check(rhi.Commands.Constants.size() == 2 && rhi.Commands.Constants[0].size() == 96, "unexpected world/post constant layout");
+    Check(rhi.Commands.Constants.size() == 2 && rhi.Commands.Constants[0].size() == 128, "unexpected world/post constant layout");
     std::memcpy(&shaderMode, rhi.Commands.Constants[0].data() + 48, sizeof(shaderMode));
     Check(uploaded == 0x80FF80 && shaderMode == 1, "uploaded debug data and shader mode are inconsistent");
     policy.FrameBegin();
@@ -640,7 +640,7 @@ void TerrainTexturePhases() {
         policy.FrameBegin();
         policy.Draw();
         std::array<uint32_t, 3> tiling;
-        Check(rhi.Commands.Constants[0].size() == 96, "terrain tiling changed the shader layout");
+        Check(rhi.Commands.Constants[0].size() == 128, "terrain tiling changed the shader layout");
         std::memcpy(tiling.data(), rhi.Commands.Constants[0].data() + 52, sizeof(tiling));
         const auto phase = [](int64_t cell) { return uint32_t((cell % 64 + 64) % 64); };
         Check(tiling == std::array<uint32_t, 3>{64, phase(origin[0]), phase(origin[1])},

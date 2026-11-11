@@ -67,6 +67,7 @@ std::string MetadataFixture(uint32_t version, bool paused = false) {
             "0.0625 1024 16\n"
             "0 -13.5 14.25 15.5 16.75 0.0625 44\n"
             "0.03125\n";
+    if (version >= 7) text << "0 24000 1200 7 1\n";
     return text.str();
 }
 
@@ -75,7 +76,7 @@ void MetadataCompatibility() {
     SessionStore store(root.Path);
     const auto directory = store.CreateWorldDirectory(NaturalRecipe());
     const auto metadata = directory / "world.meta";
-    const auto fixture = MetadataFixture(6);
+    const auto fixture = MetadataFixture(7);
     WriteText(metadata, fixture);
     const auto data = store.ReadMetadata(directory);
     Require(data.WindowEdge == 256 && data.BudgetBytes == 123456789 && data.Generation == NaturalRecipe(),
@@ -92,18 +93,19 @@ void MetadataCompatibility() {
                 && wind.Adaptive.Flow.Seed == 33 && wind.Lbm.Ambient == WindVelocity{-13.5f, 14.25f}
                 && wind.Lbm.Seed == 44, "wind backend settings were mixed during decoding");
     store.WriteMetadata(directory, data);
-    Require(ReadText(metadata) == fixture, "v6 metadata wire format changed");
+    Require(ReadText(metadata) == fixture, "v7 metadata wire format changed");
     WriteText(metadata, MetadataFixture(6, true));
     Require(store.ReadMetadata(directory).Paused, "v6 lost the explicit global game pause");
 
-    for (const auto version : {2u, 3u, 4u, 5u}) {
+    for (const auto version : {2u, 3u, 4u, 5u, 6u}) {
         WriteText(metadata, MetadataFixture(version, true));
         const auto legacy = store.ReadMetadata(directory);
         Require(legacy.Generation == (version == 2 ? WorldGenerationSettings{} : NaturalRecipe())
-                    && legacy.CommittedTime == 12.25 && legacy.TimeRemainder == .125 && !legacy.Paused,
+                    && legacy.CommittedTime == 12.25 && legacy.TimeRemainder == .125 && legacy.Paused == (version >= 6)
+                    && legacy.Calendar == WorldCalendarState{},
                 "legacy metadata lost committed time or full owed backlog");
         store.WriteMetadata(directory, legacy);
-        Require(ReadText(metadata).starts_with("AxiomPixelWorld 6 "), "legacy metadata was not saved as v6");
+        Require(ReadText(metadata).starts_with("AxiomPixelWorld 7 "), "legacy metadata was not saved as v7");
     }
     auto corruptGeneration = fixture;
     const auto surface = corruptGeneration.find(" 768 0 ");
@@ -112,7 +114,7 @@ void MetadataCompatibility() {
     const auto corruption = storage::CaptureFailure([&] { store.ReadMetadata(directory); });
     Require(corruption && corruption->find("generation coordinate exceeds supported range") != std::string::npos,
             "corrupt generation range escaped the persistence failure boundary");
-    WriteText(metadata, MetadataFixture(7));
+    WriteText(metadata, MetadataFixture(8));
     RequireFailure([&] { store.ReadMetadata(directory); }, "future metadata version was accepted");
     WriteText(metadata, fixture.substr(0, fixture.size() / 2));
     RequireFailure([&] { store.ReadMetadata(directory); }, "truncated metadata was accepted");
@@ -207,7 +209,7 @@ void LegacySourceImports() {
         WriteText(working / "chunks" / "0_0.bin", "imported working change");
         const auto checkpoint = store.PublishCheckpoint(destination, working, store.ReadMetadata(source), "imported domains");
         Require(store.ResolveCheckpoint(destination) == checkpoint
-                    && ReadText(checkpoint / "world.meta").starts_with("AxiomPixelWorld 6 "),
+                    && ReadText(checkpoint / "world.meta").starts_with("AxiomPixelWorld 7 "),
                 "legacy import did not create a new v6-backed checkpoint");
         Require(ReadText(source / "world.meta") == fixture
                     && ReadText(source / "chunks" / "0_0.bin") == "legacy chunk"

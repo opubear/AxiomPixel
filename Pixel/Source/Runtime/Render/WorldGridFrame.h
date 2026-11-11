@@ -75,6 +75,21 @@ struct ActorDraw {
     std::array<float, 4> Color{};
     uint64_t ActorId = 0;
 };
+struct ItemDraw {
+    std::array<float, 4> CenterRadius{};
+    std::array<float, 4> Color{};
+    uint64_t InstanceId = 0;
+};
+struct MonsterDraw {
+    std::array<float, 4> Bounds{}; // framebuffer left/top/width/height
+    std::array<uint32_t, 4> FrameTexels{};
+    bool FacingLeft = false;
+    uint64_t ActorId = 0;
+};
+struct DecorationDraw {
+    std::array<float, 4> CenterRadius{};
+    std::array<float, 4> Color{};
+};
 struct WorldGridFrameView {
     // Material layer IDs plus surface/strip bits, or packed linear RGB8 in ForceField mode.
     std::span<const uint32_t> Cells;
@@ -95,6 +110,10 @@ struct WorldGridFrameView {
     std::span<const DeviceDraw> DeviceDraws;
     std::span<const GardenDraw> GardenDraws;
     std::span<const ActorDraw> ActorDraws;
+    std::span<const MonsterDraw> MonsterDraws;
+    std::array<float, 3> BiomeWeights{1, 0, 0};
+    std::span<const DecorationDraw> DecorationDraws;
+    std::span<const ItemDraw> ItemDraws;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
@@ -112,7 +131,7 @@ class WorldGridFrame {
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
     std::span<uint32_t> WindCells() { return WindStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws, ActorDraws}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws, ActorDraws, MonsterDraws, BiomeWeights, DecorationDraws, ItemDraws}; }
     void SetRegion(std::array<int64_t, 2> origin, uint32_t width, uint32_t height);
     uint32_t GetWidth() const { return Width; }
     uint32_t GetHeight() const { return Height; }
@@ -158,6 +177,10 @@ class WorldGridFrame {
     std::vector<DeviceDraw> DeviceDraws;
     std::vector<GardenDraw> GardenDraws;
     std::vector<ActorDraw> ActorDraws;
+    std::vector<MonsterDraw> MonsterDraws;
+    std::array<float, 3> BiomeWeights{1, 0, 0};
+    std::vector<DecorationDraw> DecorationDraws;
+    std::vector<ItemDraw> ItemDraws;
 
   private:
     pixel::memory::PageBuffer<uint32_t> CellStorage, WindStorage;

@@ -125,6 +125,8 @@ void ActiveDomainsResumeOnce() {
                   << " total_pause_us=" << metrics.TotalMicroseconds << " payload_bytes=" << metrics.PayloadBytes << '\n';
     }
     GameSession loaded(true);
+    const auto player = loaded.GetActors().PlayerSnapshot()->Id;
+    Check(!loaded.GetActors().Find(player)->Formula, "checkpoint re-equipped a formula on the player");
     Check(loaded.CurrentCommit().Tick == tick && Device(loaded, id).Instance == savedDevice.Instance
         && Device(loaded, id).Cycles == savedDevice.Cycles && Device(loaded, id).Fuel == savedDevice.Fuel
         && loaded.GetInventory().Inspect(loaded.PlayerInventory()) == savedBag, "checkpoint replayed device resources");
@@ -132,7 +134,7 @@ void ActiveDomainsResumeOnce() {
         && loaded.GetFormulaRuntime().Projectiles().size() == 1
         && loaded.GetWorld().GetCell(450, 450).Type == CellTypeId::CopperOre, "queued work lost or activation replayed");
     for (const auto &actor : savedActors.Records) {
-        const auto *restored = loaded.GetActors().Find(actor.Id);
+        const auto restored = loaded.GetActors().Find(actor.Id);
         const auto original = actor.Body.CaptureState();
         Check(restored && restored->Kind == actor.Kind && restored->Body.CaptureState().VerticalSpeed == original.VerticalSpeed
             && restored->Body.GetWorldPosition().Local == original.Position.Local, "actor momentum or identity lost");
@@ -151,7 +153,7 @@ void ActiveDomainsResumeOnce() {
     Check(newActor && actors.Require(*newActor).Id.Value == savedActors.NextId, "retired actor ID was reused");
     auto &inventory = testing::SessionAccess::Inventory(loaded);
     const auto newContainer = inventory.Create(64);
-    Check(newContainer.Value == 4, "retired container ID was reused");
+    Check(newContainer.Value == 5, "retired container ID was reused");
     const auto newDevice = testing::SessionAccess::Devices(loaded).Create(540, 470, actors.PlayerSnapshot()->Id.Value, newContainer);
     Check(newDevice.Id == 3, "retired device ID was reused");
     Step(loaded);
@@ -238,6 +240,19 @@ void InvalidDomainLinksFailExplicitly() {
     try { GameSession loaded(true); }
     catch (const WorldStorageError &) { rejected = true; }
     Check(rejected, "missing program carrier silently restarted");
+    invalid = original;
+    auto &device = invalid.Devices.Records[0];
+    auto fuel = std::find_if(invalid.Inventory.Containers.begin(), invalid.Inventory.Containers.end(),
+        [&](const auto &container) { return container.Ref.Id == device.FuelContainer; });
+    fuel->Stacks.clear();
+    fuel->Instances = {ItemInstance{{ItemId::WoodenStick, 1}, 1, Program("formula 2; run nothing();")}};
+    fuel->Quantity = device.Value.Fuel = 1;
+    invalid.Inventory.NextInstance = 2;
+    store.PublishCheckpoint(directory, checkpoint, store.ReadMetadata(checkpoint), EncodeGameplayState(invalid));
+    rejected = false;
+    try { GameSession loaded(true); }
+    catch (const WorldStorageError &) { rejected = true; }
+    Check(rejected, "wooden stick was accepted as device fuel");
     store.PublishCheckpoint(directory, checkpoint, store.ReadMetadata(checkpoint), EncodeGameplayState(original));
     GameSession repaired(true);
     Check(repaired.GetDevices().Count() == 1, "valid checkpoint could not load after explicit repair");

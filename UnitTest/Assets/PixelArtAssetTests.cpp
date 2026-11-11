@@ -41,7 +41,8 @@ void CacheAndValidation() {
         return ReadContent(name);
     });
     auto assets = store.LoadBackground("ArtAssets.json");
-    Check(assets->Layers.size() == 4 && store.CachedImageCount() == 4, "manifest did not preload all four layers");
+    Check(assets->Layers.size() == 4 && assets->HasBiomeImages() && store.CachedImageCount() == 6,
+          "manifest did not preload forest layers and regional panoramas");
     for (const auto &layer : assets->Layers)
         Check(layer.Image->Width == 2560 && layer.Image->Height == 1440 && layer.Image->Pixels.size() == 2560 * 1440 * 4,
               "PNG decode dimensions or RGBA byte count");
@@ -54,6 +55,13 @@ void CacheAndValidation() {
     mismatchedImage->Width = mismatchedImage->Height = 1;
     mismatchedImage->Pixels.assign(4, std::byte{255});
     invalidAssets.Layers.back().Image = mismatchedImage;
+    Reject([&] { pixel::ValidateBackgroundAssets(invalidAssets); });
+
+    invalidAssets = *assets;
+    invalidAssets.BiomeImages[1].Image.reset();
+    Reject([&] { pixel::ValidateBackgroundAssets(invalidAssets); });
+    invalidAssets = *assets;
+    invalidAssets.BiomeImages[0].Image = mismatchedImage;
     Reject([&] { pixel::ValidateBackgroundAssets(invalidAssets); });
 
     const auto initialReads = reads;
@@ -80,6 +88,8 @@ void CacheAndValidation() {
         reject([&](auto &j) { j["Background"]["Layers"][0]["Path"] = path; });
     reject([](auto &j) { j["Version"] = 2; });
     reject([](auto &j) { j["Version"] = 1.0; });
+    reject([](auto &j) { j["Background"]["Biomes"].erase("desert"); });
+    reject([](auto &j) { j["Background"]["Biomes"]["desert"]["Path"] = "../desert.png"; });
     reject([](auto &j) { j["Background"]["HeightFraction"] = 0; });
     reject([](auto &j) { j["Background"]["Layers"] = nlohmann::json::array(); });
     reject([](auto &j) { j["Background"]["Layers"][0]["RepeatCells"] = -1; });

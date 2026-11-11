@@ -5,6 +5,7 @@
 #include "Runtime/Gameplay/Actors/Actors.h"
 #include "Runtime/Gameplay/Devices/Devices.h"
 #include "Runtime/Gameplay/GameAPI/GameplayObservations.h"
+#include "Runtime/Simulation/World/Environment/WorldCalendar.h"
 
 namespace pixel {
 // A bounded view of the latest complete commit, sharing the world's read slot.
@@ -31,7 +32,10 @@ class CommittedWorldView {
     const std::vector<DeviceSnapshot> &GetDevices() const { return DeviceValues; }
     const api::GameplayObservation &Gameplay() const { return GameplayValues; }
     double SimulationTime() const { return CommittedAt.Tick / 60.0; }
+    const WorldCalendarSnapshot &Calendar() const { return CalendarValue; }
     bool IsFinite() const { return Finite; }
+    const WorldGenerationSettings &GenerationSettings() const { return Generation; }
+    BiomeSample SampleBiome(CellCoord point) const { return SampleWorldBiome(Generation, point); }
     uint64_t ReservedBytes() const;
     static uint64_t CapacityFor(WorldRect bounds);
 
@@ -47,7 +51,9 @@ class CommittedWorldView {
     api::CommitStamp CommittedAt;
     uint64_t WindVersion = 0, FieldSourceVersion = 0;
     bool Finite = false;
+    WorldGenerationSettings Generation;
+    WorldCalendarSnapshot CalendarValue;
     void Update(const World &world, const Actors &actors, const FormulaBridge &formulas, const Devices &devices,
-                const api::GameplayObservation &gameplay, api::CommitStamp stamp);
+                const api::GameplayObservation &gameplay, const WorldCalendarSnapshot &calendar, api::CommitStamp stamp);
 };
 } // namespace pixel
