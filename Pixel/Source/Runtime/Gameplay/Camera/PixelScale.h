@@ -5,7 +5,7 @@
 // One logical pixel is one simulation cell. This setting affects only its
 // projection into framebuffer pixels, never world storage or physics units.
 #ifndef PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL
-#define PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL 4
+#define PIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL 20
 #endif
 
 namespace pixel {

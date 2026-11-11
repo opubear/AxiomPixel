@@ -247,7 +247,7 @@ if(BUILD_TESTING)
     add_executable(PixelScaleTests Rendering/PixelScaleTests.cpp)
     target_link_libraries(PixelScaleTests PRIVATE PixelPresentation)
     add_test(NAME Pixel.PixelScale COMMAND PixelScaleTests)
-    foreach(scale IN ITEMS 1 2 4 8 16)
+    foreach(scale IN ITEMS 1 2 4 8 16 20)
         add_executable(PixelScaleConfig${scale}Tests Gameplay/PixelScaleConfigTests.cpp
             ../Pixel/Source/Runtime/Gameplay/Camera/Camera2D.cpp
             ../Pixel/Source/Runtime/Gameplay/Camera/GameCamera.cpp
