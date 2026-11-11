@@ -1,10 +1,12 @@
 # 异步 WorldWill 与离线模型（M5.3）
 
-WorldWill 通过 LLMView 取得授权观测副本，在固定步之外等待模型，再由主线程把提案转换成 GameAPI 动作。当前默认使用随机PseudoLLM，受控FakeModel仅用于测试，没有网络、供应商 SDK 或自动祈祷；M5.4增加[育圃祈祷UI与持久结果](PersistentInterventions.md)。已有过程语言负责实际持续效果。本模块属于 Pixel，未修改引擎。
+> 现行范围（2026-11-10核对）：模型默认是离线随机 PseudoLLM，无语义理解或网络调用。全局暂停不接受新祈祷、不发布模型结果并顺延期限；动作 Queued 与 Applied 分离，完整线程合同见[独立模拟线程](../../Docs/Architecture/SimulationThread.md)。
+
+WorldWill 通过 LLMView 取得授权观测副本，在固定步之外等待模型，再由宿主同步边界把提案转换成 GameAPI 动作；独立模拟线程模式先排队，完整提交后才成为 Applied。当前默认使用随机PseudoLLM，受控FakeModel仅用于测试，没有网络、供应商 SDK 或自动祈祷；M5.4增加[育圃祈祷UI与持久结果](PersistentInterventions.md)。已有过程语言负责实际持续效果。本模块属于 Pixel，未修改引擎。
 
 ## 所有权和运行时接线
 
-`PixelWorldWill` 链接LLMView和独立的PixelLLM，不链接Gameplay、World或Formula；线程测试适配器位于PixelFakeModel目标。`GameAPI::WorldWillHost` 提供当前提交、宿主分配的调用者、下一个动作序号、已批准程序、干预资源和可写阶段。`GameSession` 实现这个主线程端口；后台线程从不持有它。
+`PixelWorldWill` 链接LLMView和独立的PixelLLM，不链接Gameplay、World或Formula；线程测试适配器位于PixelFakeModel目标。`GameAPI::WorldWillHost` 提供当前提交、宿主分配的调用者、下一个动作序号、已批准程序、干预资源和可写阶段。`GameSession` 实现这个宿主端口；当前可变领域工作由模拟 worker 执行，主线程只在帧同步边界访问，模型工作线程从不持有它。
 
 `PixelGame` 持有 `GameSession → unique_ptr<LLM> → WorldWill`，按相反顺序销毁。模型所有权、随机兜底与共享API见[LLM与PseudoLLM](LLMAndPseudoLLM.md)。在 `FrameBegin` 的 `Session.BeginFrame()` 后推进 WorldWill 服务，固定步 `Tick` 不推理、不等待模型。`GameEnd` 在既有关闭协商接受后取消请求并加入工作线程；保存被拒绝时继续原会话。请求由宿主显式调用 `GetWorldWill().Request(goal)` 发起，当前不会自动循环请求；M5.4 的育圃面板提供离线祈祷入口。
 
@@ -14,17 +16,17 @@ WorldWill 通过 LLMView 取得授权观测副本，在固定步之外等待模�
 
 每个控制器最多 2 个在途请求，每次观测至多 64×64 材料格、64 设备、512 KiB 自有输入。提案说明至多 1024 字节；保留最近 32 条终态记录，每次服务最多取 8 条回复。私有 LLMView 沿用自身快照、分页和交付限制。
 
-状态为 Thinking、Ready 以及 Applied、Rejected、NoAction、TimedOut、StaleEpoch、ViewRevoked、ModelUnavailable、InvalidProposal、Closed；持久化恢复另有 Interrupted，M5.5接口工作增加显式Cancelled。Ready在安全暂停边界发布有效但未执行的提案，恢复后仍须重新核验游戏条件，见[模型交互](ModelServiceIntegration.md)。默认期限为单调墙钟 5 秒，构造可选 1ms–60s；暂停和预算等待不延长期限。Service 必须使用单调时间；测试可注入该时间。暂停、PendingStep 或主机未就绪时保留已返回提案，等安全边界再提交。PendingStep/未就绪期间到期仍及时取消 worker，终态档案等完整提交边界再写入；晚到回复不能恢复已到期的动作。
+状态为 Thinking、Ready 以及 Applied、Rejected、NoAction、TimedOut、StaleEpoch、ViewRevoked、ModelUnavailable、InvalidProposal、Closed；持久化恢复另有 Interrupted，M5.5接口工作增加显式Cancelled。Ready 保留在协议和旧存档兼容中，当前控制器不再于暂停时发布 Ready；内部已收到的提案不等于已提交动作，见[模型交互](ModelServiceIntegration.md)。默认期限为单调墙钟 5 秒，构造可选 1ms–60s；全局暂停会暂停轮询并顺延期限；预算等待仍消耗期限。Service 必须使用单调时间；测试可注入该时间。暂停时拒绝新请求并冻结已有请求交付；PendingStep 或主机未就绪时保留已返回提案，等安全边界再提交。PendingStep/未就绪期间到期仍及时取消 worker，终态档案等完整提交边界再写入；晚到回复不能恢复已到期的动作。
 
 世界替换或调用者改变后，旧请求在下一次服务时终止并取消后台工作；权限版本变化也会终止，即使能力先撤销后恢复。每个决策 ID 在进程内唯一，退休 ID 和重复回复不能产生新动作。Close 取消全部在途请求、释放观察者并关闭模型端口，幂等且不可重新开启；重新创建控制器使用新 ID。
 
-`LLM/Testing/FakeModel` 有真实工作线程，支持受控延迟、手动释放、重复回复和 unavailable。最多 2 份待执行输入、4 条完成回复、8 个测试计划；完成回复也参与新请求的准入。等待用条件变量，挂起第一条不阻止第二条先完成，关闭会唤醒等待。决定仅扫描已交付观测，找不到目标返回 NoAction。没有自动重试或吞掉内部异常的逻辑。
+`Dev/Debug/LLM/FakeModel` 有真实工作线程，支持受控延迟、手动释放、重复回复和 unavailable。最多 2 份待执行输入、4 条完成回复、8 个测试计划；完成回复也参与新请求的准入。等待用条件变量，挂起第一条不阻止第二条先完成，关闭会唤醒等待。决定仅扫描已交付观测，找不到目标返回 NoAction。没有自动重试或吞掉内部异常的逻辑。
 
 ## 提案与动作裁决
 
-模型只能返回 None、AtCell 或 AtDevice，带目标格或设备 ID；不能选择调用者、epoch、序号、程序源码、控制权、额度或删除前置条件。主线程把冻结的 ProgramRef、DeviceRef 和资源版本重新装配到动作中，并把目标限制在已观测范围内。
+模型只能返回 None、AtCell 或 AtDevice，带目标格或设备 ID；不能选择调用者、epoch、序号、程序源码、控制权、额度或删除前置条件。宿主在同步边界把冻结的 ProgramRef、DeviceRef 和资源版本重新装配到动作中，并把目标限制在已观测范围内。
 
-- `InstallIntervention{Program, Origin, Scope, ExpectedResourceVersion}`：使用宿主已批准的当前 process/1、当前区域权限、驻留/活动范围和明确资源版本。
+- `InstallIntervention{Program, Origin, Scope, ExpectedResourceVersion}`：使用宿主已批准的当前 formula/2（兼容 process/1）、当前区域权限、驻留/活动范围和明确资源版本。
 - `InterveneAtDevice{Program, DeviceRef, ExpectedResourceVersion}`：首先验证当前设备仍是原 ID/Version，再派生设备中心 `(x+1,y+1)` 和 34×34 范围，复用上述安装路径。模型不能用旧坐标替代设备身份；完整作用范围须在观测区域内。
 
 动作序号在实际提交时从主机取得，按提交顺序递增；不把模型请求编号当动作序号。回包乱序、其他可信调用及重复投递都不会重新使用旧序号。GameAPI 继续使用每调用者高水位及有限回执缓存去重。
@@ -37,7 +39,7 @@ Authority 维护独立于解释器 16 实例技术上限的 4 个并发干预槽
 
 M5.2 的能力、作用范围、64 次付费输出、600 个成功全局 tick 租约及全部后代归属规则继续有效。重置生成新 epoch/caller 并恢复 4 槽。M5.4将资源账本、干预租约、保护/能力及有来源的祈祷终态接入同提交存档；加载不重放未完成推理，详细合同见[持久援助](PersistentInterventions.md)。
 
-## 离线演示和验证入口
+## 离线演示入口与M5.3历史验证
 
 ```sh
 cmake -S . -B build-cpu -DAXIOM_BUILD_RUNTIME=OFF

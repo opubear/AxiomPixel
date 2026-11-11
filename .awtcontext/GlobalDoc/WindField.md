@@ -1,4 +1,6 @@
-# 简化 NS 风场
+# 简化 NS 风场（历史）
+
+> 历史模型说明（2026-10 初版），保留粗 NS 算法和当时诊断依据。下文固定整图、周期边界、默认开风、旧输入面板和四纹理发布均不再代表游戏现状。现行移动风域、开放边界、Empty 默认与区域发布见[世界表示](../../Docs/WorldRepresentation.md)；连续力单位见[空间单位](../../Docs/WorldUnits.md)。不要按本文旧接口搭建新功能。
 
 实现位于 `Pixel/Source/Runtime/Simulation/World/Environment/Wind/WindField.*`，由 Environment 持有；使用纯 CPU 标准库，不修改引擎或渲染层。完整参数和使用示例见工程根 README 的“简化风场”章节。
 

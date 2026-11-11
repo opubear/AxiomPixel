@@ -20,18 +20,19 @@ const auto result = session.Execute(pixel::NativeCaller::Driver,
 ## 领域动作
 
 - MineRegion 开采一格，提供可选期望材料，返回实际前后材料及 changed/blocked/notReady 计数与 Collected 物品。缺失格先返回 NotReady，再比较材料前置条件；水和空气不可开采。M4.2 在同一提交段将产物收入玩家背包，InventoryFull 保留材料且不增加提交版本。
-- PlaceMaterial 只支持 Dirt，检查空气、所有角色和设备占用，不覆盖水，不新增距离或模拟窗口限制。M4.2 消耗一份 soil；缺料返回 InsufficientItems，成功回执包含 Consumed。所有原生来源使用相同资源规则。库存合同与保存边界见[物品库存](../../.awtcontext/GlobalDoc/Items.md)。
-- ActivateProgram 核验当前 ProgramRef、连续目标、会话阶段、发射路径和既有额度；返回本次激活身份和当前运行数量。Empty/延迟程序成功时可以没有球。拒绝发射不会改变上次成功瞄准方向。
+- PlaceMaterial 支持十四类资源的规范放置材料，检查空气、所有角色和设备占用，不覆盖水，不新增距离或模拟窗口限制。消耗一份映射资源；缺料返回 InsufficientItems，成功回执包含 Consumed。所有原生来源使用相同资源规则。库存合同与保存边界见[物品库存](../../.awtcontext/GlobalDoc/Items.md)。
+- UseHeldItem 是玩家左键入口，携带点击时ItemRef和目标；执行时重新验证拥有／可用数量，再通过HandheldItem使用木棍或共享BlockItem。方块在身体前方一格放置。规则与独立构式身份见[手持物品合同](../../.awtcontext/GlobalDoc/HandheldItems.md)。
+- ActivateProgram 仅供Debug／Driver工作台夹具，Input拒绝此绕过手持物的入口；核验当前 ProgramRef、连续目标、会话阶段、发射路径和既有额度；返回本次激活身份和当前运行数量。Empty/延迟程序成功时可以没有球。拒绝发射不会改变上次成功瞄准方向。
 - InstallIntervention、InterveneAtDevice 仅由宿主世界意志身份提交，核验当前程序、资源版本、区域控制及目标设备版本。成功干预占用4个并发槽之一，结束归还；模型不消耗玩家库存。动作序号在安全提交边界分配，异步调度与离线演示见 [WorldWill](../../.awtcontext/GlobalDoc/WorldWill.md)。
 - SelectWindStrategy、SetWindBoundary 需要 Debug 能力。保留原有七策略；切换不自动改变GameSession全局暂停；没有通用属性写入接口。
 
-坐标使用 int64 cell 和 [0,1) double offset，转换先保留整数格再处理局部小数，不经过绝对 double。边界拒绝非有限值、非法offset、不受支持的材料/枚举及超出当前 WorldPosition 能力的坐标；极端chunk预留给内部邻域和发射偏移。动作入口没有通用JSON写接口；外围模型协议只解析受限提案，由WorldWill构造获准动作。
+GameAPI动作边界保留 int64 cell 和 [0,1) double offset；游戏内部连续位置为float厘米（见[单位合同](../WorldUnits.md)）。边界转换先保留整数格再处理局部小数，不经过绝对 double。边界拒绝非有限值、非法offset、不受支持的材料/枚举及超出当前 WorldPosition 能力的坐标；极端chunk预留给内部邻域和发射偏移。动作入口没有通用JSON写接口；外围模型协议只解析受限提案，由WorldWill构造获准动作。
 
 所有新世界动作都在 Ready 且没有预算延期步时执行；验证顺序为调用者/epoch、去重、payload合法性、可写阶段、能力、局部前置条件和实际领域操作。材料编辑由World执行，角色/设备占用与库存成本由Gameplay组合；玩家与构式开采共用Mining规则。构式效果经FormulaWorldAdapter接入领域，同批先碰撞查询再提交的顺序保持。
 
 ## 会话与界面
 
-`Control` 提供暂停、单步、保存、重置、流式重试、恢复、下一世界生成器/seed、育圃场景及ClearRunning，返回 Applied/Saved/Replaced/Deferred/Failed/Rejected 和原因。Save/Reset在PendingStep期间返回Deferred，不写盘或补步；当前checkpoint/1保存完整多领域状态并兼容导入旧v2–v5档，见[保存边界](SessionSaveBoundary.md)。Control不属于离散动作去重协议，调用者显式重复控制会重新执行；世界意志身份不能调用此端口。
+`Control` 提供暂停、单步、保存、重置、流式重试、恢复、下一世界生成器/seed、育圃场景及ClearRunning，返回 Applied/Saved/Replaced/Deferred/Failed/Rejected 和原因。显式Persistent会话的Save/Reset在PendingStep期间返回Deferred，不写盘或补步；默认Temporary会话不保存，Save返回Unsupported，Reset直接创建新世界。当前checkpoint/1保存完整多领域状态并兼容导入旧v2–v6世界元数据，见[保存边界](SessionSaveBoundary.md)。Control不属于离散动作去重协议，调用者显式重复控制会重新执行；世界意志身份不能调用此端口。
 
 `ApplyProgram` 是依赖Formula的游戏适配入口，返回新ProgramRef或分析诊断，不依赖编辑草稿。Apply/Clear在预算等待期间拒绝，保留当前运行状态；Clear不触发后代，也不退还本帧已退休风额度。现存实例及延迟/命中后代保留原程序版本。
 
@@ -43,7 +44,7 @@ M1.5已移除Session与PixelGame的可变World访问器、Session的可变Runtim
 
 process源码先在独立编译器完成语法、类型和静态额度检查，失败不发布产物；GameSession::ApplyProcess只接受ProgramArtifact。全局暂停、预算等待、激活/实例/效果/风额度不足仍是可预期拒绝。执行、碰撞解析、效果提交、快照生成中发生的内部异常直接传播；不再标记Failed、清掉该根后继续游戏。已经提交的早先效果不回滚，发生内部错误后宿主不能继续使用该会话。PendingStep期间非法调用FormulaBridge::Step、碰撞引用已退休弹体及身份耗尽使用发布构建仍生效的检查，不能依赖assert。
 
-保存、恢复与后台块I/O只处理文件系统错误、流I/O错误和明确的WorldStorageError（损坏存档或加载必需存储不足）。磁盘数据的非法配置在读取/恢复边界转换为存储诊断。生成器不变量、分配失败和运行器错误不再被宽泛std::exception捕获转换成StorageFailure；Reset中的清理与恢复保护仍会重新抛出原故障。应用生命周期通过Session::BeginFrame重置本帧额度；PixelApplication在关闭请求阶段保存并裁决是否退出，GameEnd关闭WorldWill/模型并清理输入，不再次保存。
+保存、恢复与后台块I/O只处理文件系统错误、流I/O错误和明确的WorldStorageError（损坏存档或加载必需存储不足）。磁盘数据的非法配置在读取/恢复边界转换为存储诊断。生成器不变量、分配失败和运行器错误不再被宽泛std::exception捕获转换成StorageFailure；Reset中的清理与恢复保护仍会重新抛出原故障。应用生命周期通过Session::BeginFrame重置本帧额度；PixelApplication仅在显式持久会话的关闭请求阶段保存并裁决是否退出，默认临时会话直接接受关闭；GameEnd关闭WorldWill/模型并清理输入，不再次保存。
 
 ## 验证入口
 

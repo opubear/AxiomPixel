@@ -1,5 +1,7 @@
 # LLM抽象与随机PseudoLLM（M5.6插入需求）
 
+> 现行范围（2026-11-10核对）：默认 PseudoLLM 是有界随机函数选择，不理解玩家原文；通用文本模型接口在 System/LLM，游戏提案与适配在 Gameplay/LLM。真实网络未接入，全局暂停规则以[WorldWill](WorldWill.md)为准。
+
 2026-10-24，用户要求独立LLM类、没有实际模型时的PseudoLLM兜底，并将决策表示为共用API的函数组合。真实服务仍未接入，不需要网络、凭据或提供方配置。
 
 ## 所有权与边界
@@ -8,7 +10,7 @@
 
 模型类型从 `pixel::will` 移至 `pixel::llm`；旧ModelPort接口已删除。`PixelLLM` 只链接观测值库；`PixelModelProtocol` 只链接PixelLLM，JSON头为私有依赖。两者均不链接WorldWill、Gameplay、World或引擎运行时。游戏语义仍在Pixel，不将祈祷/援助规则搬入引擎。
 
-`LLM/Testing/FakeModel` 保留可控worker、延迟、取消、重复和不可用回包，放入独立 `PixelFakeModel` 测试目标；它不再是游戏默认模型。已有异步测试继续使用它，避免把随机兜底和测试故障注入混在一起。
+`Dev/Debug/LLM/FakeModel` 保留可控worker、延迟、取消、重复和不可用回包，放入独立 `PixelFakeModel` 测试目标；它不再是游戏默认模型。已有异步测试继续使用它，避免把随机兜底和测试故障注入混在一起。
 
 ## 同一套可调用API
 

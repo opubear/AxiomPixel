@@ -1,5 +1,7 @@
 # 固定步协调与完整提交
 
+> 现行范围（2026-11-10核对）：本页定义跨领域提交与全局暂停。默认游戏不保存进度；“保存/恢复”指显式 Persistent 会话和底层能力，见[保存边界](SessionSaveBoundary.md)。
+
 运行时现通过[独立模拟线程](SimulationThread.md)调度以下领域步。开启 worker 后，世界动作排队、结果在完整模拟步后交付；下文帧间动作的即时 Revision/回执说明仍适用于未开启 worker 的同步领域夹具。游戏侧角色呈现使用只读世界进行预测，权威角色、观察与存档保持本文件的完整提交合同。
 
 M2.1 的实现入口为 `Gameplay/SimulationCoordinator.h`、`Gameplay/GameSession/GameSession.cpp`、`Gameplay/GameSession/SessionPublication.cpp` 和 `Gameplay/CommittedWorldView.*`。它接替 Environment 的累加器和 World 的跨领域回调链。World 继续仅依赖 Core/Performance；60 Hz、单步和会话提交策略属于 Pixel Gameplay；全局暂停状态由GameSession持有，引擎没有新增游戏调度规则。
@@ -44,7 +46,7 @@ ObservationProjector 在提交时只替换只读世界租约和小型领域元�
 
 ## 存储与验证边界
 
-时钟由协调器导出/恢复，旧档成功tick从保存的已提交秒数转换；checkpoint/1恢复精确Tick/Revision并核对元数据时钟。M2.3将旧v2–v4 deferred转换为完整欠步；Save/Reset在Pending时返回Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。M4已持久化process/1运行实例及归属效果；旧树运行时已移除，默认程序和全部活动process实例支持保存；动态风扰动仍按配置重建，详见[检查点](../../.awtcontext/GlobalDoc/Checkpoints.md)。
+时钟由协调器导出/恢复，旧档成功tick从保存的已提交秒数转换；checkpoint/1恢复精确Tick/Revision并核对元数据时钟。M2.3将旧v2–v4 deferred转换为完整欠步；Save/Reset在Pending时返回Deferred，见[保存边界](SessionSaveBoundary.md)。正常退出通过[关闭请求](CloseRequests.md)协商。当前已支持formula/2及兼容process/1运行实例与归属效果的检查点；旧树运行时已移除，默认程序及活动/冻结实例支持保存；动态风扰动仍按配置重建，详见[检查点](../../.awtcontext/GlobalDoc/Checkpoints.md)。
 
 正常保存可以等待并接纳已完成的加载，因此无论随后块写入成功还是存储失败，返回前都同步已接纳状态的服务 Revision。延期保存仍不接纳加载，不发布准备中的风。
 

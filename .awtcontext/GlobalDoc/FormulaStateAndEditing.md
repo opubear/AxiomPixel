@@ -1,16 +1,16 @@
-# 构式程序状态与编辑合同
+# 构式过程状态兼容合同与编辑演进
 
 > 2026-10-26 更新：默认程序与编辑器已支持 formula/2 函数组合和 World/Actor 绑定；process/1 仍保持原语义。新函数、事件作用域、状态格式3及宿主格式2兼容策略以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。下文保留过程执行核心和历史验证记录，不代表最新功能范围。
 
-2026-10-22，M3.4。独立语言仍只有标准库依赖，游戏接入见 [FormulaBridge](FormulaBridge.md)。本阶段完成程序与运行状态 DTO、fake host 挂起/恢复验证及游戏源码编辑入口。M4.5已接[游戏区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)，保存已应用程序、实例和设备。未应用草稿与配方库不在当前保存范围。
+2026-10-22，M3.4。独立语言仍只有标准库依赖，游戏接入见 [FormulaBridge](FormulaBridge.md)。本阶段完成程序与运行状态 DTO、fake host 挂起/恢复验证及游戏源码编辑入口。M4.5已接[游戏区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)，保存已应用程序、实例和设备。未应用草稿与配方库不在当前保存范围。正常应用为 Temporary 会话，以下磁盘能力只用于显式 Persistent 会话。
 
 ## 程序资源与版本
 
 `ProgramArtifact::Export()` 返回 `ProgramRecord`：格式版本 1、完整 `ProgramIdentity` 和源码。身份包含资源名称、源码 SHA-256、语言语义版本与宿主合同版本。`ImportProgram` 先拒绝不支持的版本，再按编译器容量限制重新编译并核对内容身份。DTO 不保存 C++ 指针、编译器容器或原生字节码；磁盘编码由M4.6游戏Persistence/FormulaBridge适配，独立语言不依赖文件系统。
 
-`Instance::Restore` 必须使用与快照完全相同的程序身份，不自动迁移、重新开始或改绑当前资源。编辑同一资源生成新的不可变产物，旧实例及挂起胶囊继续保留原源码与身份。游戏 `ProgramRef` 的 ResourceId=2 和递增会话 Version 是激活选择器；完整语言身份由产物及调试视图提供，两种版本不可互相替代。
+`Instance::Restore` 必须使用与快照完全相同的程序身份，不自动迁移、重新开始或改绑当前资源。编辑同一资源生成新的不可变产物，旧实例及挂起胶囊继续保留原源码与身份。调试工作台 `ProgramRef` 的ResourceId=2；木棍使用高位标记的独立实例ID及自身FormulaVersion（见[手持物品](HandheldItems.md)），两者都是激活选择器；完整语言身份由产物及调试视图提供，两种版本不可互相替代。
 
-运行状态的 `SchemaVersion=2`（M4.4加入EffectHandle） 同时固定当前 continuation 布局（指令编号、局部变量类型和挂起点）。以后即使不改语言语义，只要编译器改变该布局，也必须升级状态格式或提供显式迁移。当前不支持旧格式迁移。
+process/1 运行状态的 `SchemaVersion=2`（M4.4加入EffectHandle）；formula/2 使用格式3保存命中上下文。两个版本同时固定对应 continuation 布局（指令编号、局部变量类型和挂起点）。以后即使不改语言语义，只要编译器改变该布局，也必须升级状态格式或提供显式迁移。旧状态不可任意改绑新产物；明确支持的导入与宿主迁移见 formula/2 实现合同。
 
 ## 安全挂起点与状态
 
@@ -53,7 +53,7 @@ fake host 的 `ReleaseCarrier` 显式把测试载体转交世界列表，之后�
 
 F4 的 Formula Editor 展开 **Process source**：载入三脉冲草稿或当前过程源码，编辑 **Process text**，点击 **Compile process**，再点击 **Apply process**。编译不发布；编辑文本会撤销旧编译结果，编译错误显示资源、行列和说明，Apply 在无有效产物时禁用。此最小编辑器固定使用 `editor.process` 资源，载入其他程序相当于把源码复制到此草稿。
 
-Apply 经 GameSession 安全边界发布新版本，只影响后续玩家/承载者激活；原实例不重启、不补跑、不改绑。旧树编辑器已删除，当前只保留process源码入口。**Process: three carriers** 继续提供天然来源与固定夹具启动按钮，并按实例显示版本、内容 hash、PC、等待阶段、ActiveSteps、Remaining 和剩余 credits。只读 InspectProcesses 返回值副本，不泄漏执行器可变句柄，也不导出完整存档。
+Apply 经 GameSession 安全边界发布新版本，只影响后续玩家/承载者激活；原实例不重启、不补跑、不改绑。旧树编辑器已删除；现行源码入口同时接受 formula/2 和 process/1，F4另有五套预设与当前手持木棍装载，普通左键瞄准施放。**Process: three carriers** 继续提供天然来源与固定夹具启动按钮，并按实例显示版本、内容 hash、PC、等待阶段、ActiveSteps、Remaining 和剩余 credits。只读 InspectProcesses 返回值副本，不泄漏执行器可变句柄，也不导出完整存档。
 
 ## 验证入口
 

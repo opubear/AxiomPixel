@@ -1,87 +1,43 @@
 # AxiomPixel
 
-## 游戏设计总纲
+## 项目定位与阅读顺序
 
 > 在一个会回应你的世界里，理解规律、创造构式，把陌生之地逐渐变成自己愿意生活的地方。
 
-Pixel 的高层设计以探索、构式创造、环境改造与家园生活为核心，轻量自动化支持长期积累，世界意志参与祈祷回应、环境干预及后期自主权的争取。后续玩法与系统设计参照[游戏设计总纲](../Docs/GameDesign/GameDesignVision.md)中的体验目标、隐性流程和取舍原则；具体实现状态见下文及各实现文档。
+项目是以探索、构式创造、环境改造和家园生活为目标的像素沙盒原型。世界意志与轻量自动化服务于这些体验。设计愿景不等于功能交付；当前实现以当前工作区、系统合同和对应任务证据为准。
 
-游戏设计与策划资料统一维护在 [Docs/GameDesign](../Docs/GameDesign/README.md)，AWT 索引通过 `workspace:` 地址引用正文。
+1. [游戏文档总入口](../Docs/GameDesign/README.md)：从总纲进入六个系统。
+2. [产品现状与待办](GlobalDoc/ProductStatus.md)：当前试玩闭环、未交付能力与建议决策顺序。
+3. [全量文档索引](GlobalDoc/DocIndex.md)：按总览、系统、工程、资源、证据、历史检索。
+4. [工程README](../README.md)：源码归属、构建、操作与验证命令。
+5. [文档维护规则](GlobalDoc/DocumentationGovernance.md)：功能变更如何同步文档，过时资料如何退出现行入口。
 
-构式根据世界上下文组织何时、以什么参数调用游戏 API，全部作用限于游戏世界。当前已实现 `formula 2;` 的类型化函数、动作组合与参数封装，并由 Gameplay metadata 表达固定世界位置或 Actor 附着。定位与远期方向见[构式系统](../Docs/GameDesign/FormulaSystem.md)，当前语法、绑定和生命周期合同见[函数组合与世界绑定](../Docs/Architecture/FormulaComposition.md)。旧 process/1 源码和检查点保留显式兼容路径。
+## 当前产品基线
 
-## 工程现状
+核对日期：2026-11-10；包含本次开始前工作区中已有的 Actor、怪物与生态群落改动，不等同于最近一次 Git 提交。
 
-源码已归入 `Pixel/Source/Runtime/{Gameplay,Simulation,Render,System}` 和 `Pixel/Source/Dev/Debug`。输入处理位于System/IO/Input，玩家运动意图PlayerInput保留Gameplay/Actors。独立构式语言在 System/Formula，通用文件I/O与文本序列化在System，领域存档在Gameplay/Persistence。通用模型接口为System/LLM/ModelService，Gameplay/LLM/Services/ServiceLLM负责观测/提案协议；LLMView和世界意志行为留在Gameplay。Garden、性能和调试编辑器位于Dev/Debug。完整归属与依赖见[工程README](../README.md)。下文的短模块路径按这些领域定位，历史设计图不覆盖当前目录。
+- 默认 Natural v2 新世界并运行；普通游戏不保存进度，R 和重启创建新世界。显式持久会话保留检查点与旧档迁移。
+- 地形、材料、风/力场与地区生态分开组织；探索生成当地生物，离区休眠，死亡后不补生。
+- 玩家、居民、木头人、怪物沿用 Actor 身份与组件；居民已有简易几何呈现，暂无专用动画、AI、对话和生活行为。
+- formula/2 是现行构式入口，process/1 是兼容层；手持木棍承载构式，左键统一使用物品。旧cast和树形编辑器已移除。
+- 库存支持14类资源，4096总量容量；7快捷格与35展示格支持手持高亮；木棍掉落拾取已实现，通用格子堆叠与装备仍未交付。
+- 推力设备与力场育圃构成最小家园实验；WorldWill 默认离线 PseudoLLM，真实网络模型未接入。
+- 暂停冻结完整游戏逻辑并拒绝世界修改/新祈祷；自由相机、界面与显式单步仍可使用。
 
-AxiomPixel 是从 Axiom `2DRender` 分支拆出的早期像素游戏，源码位于 `Pixel/Source`。
-`PixelWorld` 管理纯 CPU 世界，WorldMap 持有分块材料/基础力，Environment 负责合成受力与风模拟；`PixelGameplay` 的 GameSession 持有世界和默认场景，其头文件和按职责拆分的 Session 实现集中在 `Gameplay/GameSession/`。GameSession管理全局暂停，SimulationCoordinator只管理固定步时钟、单步与提交版本，CommittedWorldView为呈现保留完整提交副本。
-M2.4已在完整提交边界加入独立的 `ObservationProjector`：三个原生缓存槽及M2.5增加的一个临时外部捕获槽、拥有值的冻结材料/风/玩家/构式DTO、明确驻留覆盖，以及带因果来源和缺口报告的有限事实环。查询不加载世界、不借用渲染缓冲；M2.5已接入独立LLMView的权限、租约、冻结分页和JSON查询。接口与容量/验证见 [有界领域观测与提交事实](GlobalDoc/ObservationProjection.md)。
-`System/IO/Input` 构建 `PixelInput`，其中 GameInput 接收经过引擎UI/焦点过滤的键鼠事件，将玩法修改转换为游戏会话的类型化动作和控制请求，直接调用表现和相机功能，统一管理输入清理、模式切换、鼠标编辑与重置；角色运动通过Gameplay的PlayerInput传递，平台退出、面板切换和framebuffer查询通过GameInputHost回调注入。
-`PixelCamera` 管理Gameplay相机、投影与选格；`PixelPresentation` 管理外观与帧首快照转换；`PixelRender` 消费快照完成上传、世界与角色及风效合成、后处理。PixelInput只链接Gameplay/Camera，通过System/IO/Input的PresentationControl调用显示功能，不链接Render或ImGui；Gameplay核心、Simulation和其余System服务不反向依赖Input；输入目录单独构建PixelInput，不进入通用文件服务PixelIO的链接依赖。
-`Application/PixelGame` 直接实现 `IGameInterface`，只装配对象、编排生命周期并将输入接口转发给GameInput；`PixelRuntime` 通过 `RenderSetup` 创建策略，`PixelApplication` 创建游戏，应用所有的 DebugUI 通过引擎 overlay 回调叠加。`Debug/PixelDebugUI` 编辑各模块公开状态，模式切换统一进入GameInput；Performance 的采样核心和运行时策略分别构建。
-目录、构建依赖和维护入口见工程 README 与 [模块化系统设计](../Docs/Architecture/PixelModularDesign.docx)。测试按领域归入 `UnitTest` 子目录，离线测量位于 `UnitTest/Benchmarks`，各模块拥有自己的 CMakeLists。
+具体规则与限制只在相应系统文档维护，不在本入口重复复制长篇实现说明。
 
-## 构式系统（Formula）
+## 工程边界
 
-当前默认采用 `formula 2;`：System/Formula 提供类型化纯函数与不可变动作描述，在编译阶段展开为有界过程指令；运行时保留独立实例、等待/回执、额度和状态快照。支持 sequence、delay、repeat、on_hit、if_credits、on_wake 以及开采、风、弹体和持续场 API。process/1 的身份和 continuation 语义保持兼容；旧 cast 树原型仍仅为历史资料。
+本目录是 AWT Project 根，真实工程是父目录；工具入口为 `../AIWorkTask/awt`（相对真实工程）。本工程当前为 solo 项目，任务状态通过 CLI 维护。
 
-Gameplay/FormulaBridge 编排 ProcessHost；玩家默认弹体、天然晶体、设备和援助程序已迁移 formula/2。Actor 绑定以稳定 ID 跟随位置，命中子构式固定在命中点，已发出的效果保持世界位置；离开活动区冻结，Actor 消失或越出授权范围则取消并清理归属效果。宿主 v2 检查点保存绑定与作用域，同时读取旧 v1；恢复不重发请求。Apply 仅影响后续激活。F4 提供源码 Compile/Apply、绑定与回执观察和 Actor 附着测试入口，草稿不保存。
+游戏源码只放 `Pixel/Source/Runtime/{Gameplay,Simulation,Render,System}` 与 `Pixel/Source/Dev/Debug`。Gameplay主动查询/影响Simulation；Simulation不依赖Gameplay/Render。通用System服务不含游戏领域类型，`System/IO/Input`单独作为Gameplay输入适配；Application是组合根。
 
-当前入口见[函数组合合同](../Docs/Architecture/FormulaComposition.md)、[升级验证](../Docs/Architecture/FormulaCompositionVerification.md)和[工程README](../README.md)。[过程运行时](GlobalDoc/FormulaProcessRuntime.md)、[FormulaBridge](GlobalDoc/FormulaBridge.md)与[状态和编辑](GlobalDoc/FormulaStateAndEditing.md)保留基础层历史合同；新版本差异以函数组合合同为准。
+引擎位于本地 `Axiom/` 子模块、分支 `PixelMain`，由父仓库gitlink与AxiomVersion.json锁定。相邻 `../Axiom` 只读。引擎修改前读取其AGENTS；游戏专用渲染与测试留在Pixel。
 
-M4.2 已加入 Session 所有的 `PixelItems`：七种稳定物品定义、数量容量、版本化转移及显式预留/释放/消费。玩家直接开采和构式开采收进同一背包，满包保留地形；放土消耗 soil。首个设备成本已用开采所得验证，放置由 M4.3 实现。M4.6已保存库存，R建新世界仍为空；M4.7已接库存/设备/程序/场源的授权观测与同帧UI，详见[物品库存合同](GlobalDoc/Items.md)。
+运行时采用主线程呈现、游戏worker与独立模拟线程；世界修改通过队列在完整提交边界生效，Draw只消费自持有快照。合同见 [模拟线程](../Docs/Architecture/SimulationThread.md)、[游戏动作](../Docs/Architecture/GameActions.md) 和 README。
 
-## 世界与现有玩法
+## 状态与证据
 
-世界现支持策略化Natural与Superflat：游戏新建默认自然土岩、洞穴、五矿种、湖泊/地下积水和干燥草皮；调试Flat保留y<512空气、其他泥土。旧v2存档映射到Flat，当前checkpoint/1持久化多领域一致状态，内部v5元数据保存生成器/种子/版本与完整固定步余量（可导入v2–v5），不重涂已有块。WorldMap以1024²独立64 KiB对齐Axiom载荷存储材料/方向/基础力，稀疏四叉树细分到64²活动与版本区域；玩家模拟窗口默认1024²，远处冻结并卸载保存，默认世界CPU预算512 MiB（含索引、scratch、CPU快照及I/O余量，风求解器/GPU另计）。自然生成额外scratch单独预留。
+共享文档维护使用 `context project`、`doc add`、`doc index`；不为共享文档整理创建或重开已完成的功能任务。持续开发按 `task list`、`feedback list --pending`、`context build` 选择任务，完成时同步文档与真实验证证据。
 
-F2的World generation选择下一世界生成器与seed，R保存旧世界后创建；应用也支持PIXEL_WORLD_GENERATOR/PIXEL_WORLD_SEED。固定地层可开采而不坍塌，旧Dirt保持动态；Water下落与铺展并保持格数，Steam上升扩散，Fire上窜摆动，两者按可复现概率消退，水接触火时灭火。所有材料共用世界格与60Hz同步提交，不模拟压力、氧气或热量；2/3/4选择元素调试笔刷，1恢复普通工具，详见GlobalDoc/CellularMaterials.md。角色可入水与上浮，风将水视为边界。ArtRaw所需材质原样复制到Content，由ArtAssets.json的Terrain配置路径、映射与表面条带。生成合同见GlobalDoc/WorldGenerationImplementation.md及源码Generation/Version1.md。
-
-材料采用同步60 Hz：只申请步首空气，按源(y,x)裁决后批量提交，长链空位逐步传递；空间力不随材料移动。无风静止区域休眠，编辑、力变化、加载和移动唤醒邻域。未驻留区域阻挡角色/材料并显示占位，编辑返回NotReady。存档为Saves/<world-id>，R保存后创建新世界且保留旧文件。
-
-风域跟随玩家并截取世界水平Y边界（Flat默认424，Natural默认360），最高可能地表上方保留88格无风带，不贴合山坡。七后端迁移重叠状态，游戏使用环境流入/流出开放边界；周期模式仅显式数值测试使用。默认Empty且运行，可全局暂停/单步或切换策略。材料、F1和风效使用可见区域快照，frame slot独立缓存并只上传变化区域，Draw不读取实时World。
-
-现行接口、算法、预算与失败处理见 [世界表示约定](../Docs/WorldRepresentation.md)，实测、验证和审查证据见 [验证报告](../Docs/WorldRepresentationValidation.md)。早期世界/风场文档中整图数组、移动链、四张纹理与周期游戏边界已被替代。
-
-`Axiom/` 通过 Git 子模块引入，当前跟踪远端 `PixelMain` 并由父仓库 gitlink 锁定，准确提交见 `AxiomVersion.json`。锁定版本包含通用纹理区域上传、鼠标事件快照、可接受/拒绝的应用关闭请求、嵌入测试路径及数学/交换链修复；Pixel 已适配带事件参数的呈现变化回调及按 const 引用传递的 RecordFrame 测试接口，回归覆盖基类分派后的渲染资源重建。当前验证范围与 Linux GPU smoke 运行方式见工程 README，历史接入设计见 `GlobalDoc/DevmainAdaptation-2026-10-16.md`。
-通用 RHI、Forward 渲染和 AET 留在引擎；相邻 `../Axiom` 仅供只读历史参考。
-Core的标准兼容Allocator与模板容器后端已包含在当前锁定引擎中；Pixel默认Array/Map保持标准库算法与Axiom池资源。区块独立64 KiB对齐分配、scratch换资源释放旧池，以及后端选择的接口/寿命限制见[Core接入合同](GlobalDoc/CoreAllocatorAndContainers.md)。历史Allocator任务按当前代码与消费路径验收，不改变默认后端，也不批量迁移游戏容器。
-本目录为 AWT Project 根，真实工程为其父目录。
-构建入口是工程根 CMakeLists.txt，运行命令见 `../README.md`，迁移事实见 `GlobalDoc/PixelMigration.md`。
-
-Pixel默认显示ImGui Pixel Debug面板，Environment使用世界坐标Wind boundary Y（默认424），F2显隐；Formula Editor由F4独立显隐；可查看驻留/排队、预算、I/O重试与手动保存。F1切换合成方向视图，GameSession暂停冻结全部世界逻辑、角色和世界意志交付；DebugCamera及存储管理仍可使用；UI输入经ImGui捕获过滤。
-
-玩家默认标准模式：A/D移动、Space跳跃、相机跟随；F3切换自由调试相机（WASD平移、PageDown切区域），切换清空输入。角色使用纯色2×4格头身矩形，以连续屏幕坐标独立快照在世界Pass之后合成，不写地图材料或地图数据纹理；F1仍是纯力场诊断。碰撞和限制见README的角色操作说明。
-
-Camera2D以块坐标和块内双精度保存连续中心；标准模式速度为目标距离乘跟随系数（默认8/s），指数积分平滑追近角色，F3返回不瞬移。视口由相机中心、缩放和framebuffer生成；尺寸变化保留世界中心。调试面板可调Camera follow rate。
-
-角色合成使用未取整Camera中心与世界位置差，解析矩形的屏幕像素覆盖以支持亚像素移动；每个frame slot独立RGBA8合成目标，F1或无角色跳过该Pass，角色合成后再后处理和UI。
-
-风场可视化在世界与角色之间增加独立Pass，默认空气折光，可切短轨迹或关闭。Pixel表现层发布纯风速R32UInt快照，不包含重力；GPU通过局部回溯流纹表达方向和相对强度。固体与场外屏蔽，人物后绘制。参数与试用入口见README“风场可视化”章节，设计文档见GlobalDoc/DocIndex。
-
-M4.5已实现[区域活动与冻结恢复](GlobalDoc/RegionActivity.md)：设备、两类程序及归属弹体/场源保留同一身份和剩余活动时间，离域不补算、不重扣煤，返回前重新核验设备承载者。视觉加载和LLM查询不激活模拟，冻结仍占用有界容量；M4.6已接[不可变检查点](GlobalDoc/Checkpoints.md)，保存库存、设备、角色动力、process/1状态及归属效果。
-
-M4.8新增[力场育圃](GlobalDoc/ForceGarden.md)贯穿场景：F2保存旧世界并创建独立试验区，观察天然晶体、应用同一构式、开采真实矿脉、建造供煤设备，使植物按实际水平加速度和地形条件成长。两个固定花床随成功步累计，离域冻结；PixelGameplay 2保存场景开关与成长并继续读取无育圃的版本1。原生界面和世界几何来自同一已提交快照，LLMView尚无植物topic；本轮生态收益为可保存的开花，不产生额外物品。
-
-M4已完成[阶段验收](GlobalDoc/M4Acceptance.md)：在当前代码核对八项子任务的组合合同，运行默认CPU、64格区块专项和真实GPU育圃/UI/关闭保存验证，修正一处测试坐标假设并完成独立review。生产代码与引擎未改动；保存失败注入与磁盘重建证据不包含断电耐久保证。
-
-M5.1新增[发现知识与重要历史](GlobalDoc/KnowledgeAndHistory.md)：显式近距力场观察与真实开采/设备事实进入独立有界档案；玩家知识与模型派生摘要分开，源码/控制权不随发现解锁。LLMView提供授权Knowledge/History主题、冻结分页、缺口和来源引用；M5.4已接知识/历史磁盘检查点。
-
-M5.2新增[区域控制与干预撤销](GlobalDoc/Authority.md)：世界意志独立宿主身份、观察与干预能力、设备34×34保护模块、64格内受限过程和600成功tick租约；保护或撤权同时撤销旧view/pending及所有关联场源/后续作用。M5.4已接权限与干预磁盘检查点及育圃保护按钮。
-
-M5.3新增[异步WorldWill与离线模型闭环](GlobalDoc/WorldWill.md)：固定步外取得授权观测副本，真实有界worker生成提案，主线程重新核验设备/程序/资源/权限。最多2个在途决策、4个并发干预槽；超时、旧epoch和重复回包不会重放。应用接入服务帧与关闭，CPU demo可离线演示；没有自动祈祷或模型网络。
-
-M5.4新增[持久援助、祈祷档案与自主权](GlobalDoc/PersistentInterventions.md)：育圃离线祈祷产生真实持续场，设备保护可拒绝/撤销。PixelGameplay 3保存知识、重要历史、权限/资源槽、活跃或冻结干预及有来源的祈祷档案；加载续接程序/场源而不重放，旧推理标为Interrupted。原生UI区分模型文本和实际结果，关系首版仅记录援助次数与自主选择。
-
-M5.5增加[可替换模型接口与祈祷交互](GlobalDoc/ModelServiceIntegration.md)：组合根可注入LLM实现，外围JSON协议严格限制提案；玩家原文、Ready与Cancelled进入v2祈祷存档，旧界面取消绑定原始世界提交。用户本轮明确只定义接口，不接实际服务或凭据。
-
-M5.6按用户追加需求建立[LLM与PseudoLLM](GlobalDoc/LLMAndPseudoLLM.md)：独立LLM生命周期抽象与共用DecisionAPI，运行默认随机选择援助/等待函数组合；FakeModel仅在测试目标保留。模型仍只生成提案，WorldWill按当前权限和游戏状态执行。
-
-M5整合合同及验证见[阶段验收](GlobalDoc/M5Acceptance.md)：默认与64格区块专项各14项、真实worker等待期间的模拟推进，以及实际GPU祈祷/Ready/取消/保护撤销。模型说明、原始事实和实际权限仍分别归属；当前阶段不包含真实模型服务或知识历史自动输入。
-
-M6.1增加[BehaviorDSL必要性实验](../Docs/Architecture/BehaviorDecisionExperiment.md)：同一育圃场景比较原生函数组合与有限决策图，验证权限、版本、容量与实际成长，记录Release成本。当前暂缓独立持久BehaviorDSL；植物条件等新需求首先需要明确观测与动作合同。候选仅在测试目标构建，生产继续使用DecisionAPI与Formula。
-
-M6[阶段验收](GlobalDoc/M6Acceptance.md)核对暂缓决定、模块所有权和实验边界，记录16项CPU专项、Release实验与三轮成本复测。该阶段结论只覆盖已实现的育圃援助/等待场景，未交付持久BehaviorDSL。
-
-六阶段及29个叶子任务的组合合同见[模块化架构总验收](GlobalDoc/GameplayArchitectureAcceptance.md)：当前重新运行CPU全量94项、Formula独立7项、64格区块专项32项，以及完整Pixel GPU/关闭与AET验证；独立review核对实际边界与证据。总验收覆盖观测、构式、设备家园和世界意志切片，不表示远期生态、真实模型网络或持久BehaviorDSL已经交付。
+M1–M6架构阶段已完成，但只覆盖当时定义的切片。历史通过记录不表示当前工作区自动通过，也不意味着远期生态、居民生活、装备或真实网络服务已经交付。

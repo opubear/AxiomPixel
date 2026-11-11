@@ -1,12 +1,14 @@
 # 有界领域观测与提交事实
 
-M2.4 实现入口为 `Pixel/Source/Runtime/Gameplay/Observation/`、`GameAPI/Observations.*`、`GameAPI/Facts.h` 和 `Gameplay/GameSession/SessionObservation.cpp`。这是单写者 Session 的内部观测基座；外部主体权限、view 租约、分页游标与 JSON 适配属于后续 M2.5。
+> 现行范围（2026-11-10核对）：当前投影基于已提交 WorldBuffers 租约按需导出，模拟 worker 不发布半步数据；早期逐提交采样描述与成本表需按历史范围阅读。实时服务等待与领域事实保持分离。
+
+M2.4 实现入口为 `Pixel/Source/Runtime/Gameplay/Observation/`、`GameAPI/Observations.*`、`GameAPI/Facts.h` 和 `Gameplay/GameSession/SessionObservation.cpp`。这是单写者 Session 的内部观测基座；外部主体权限、view 租约、分页游标与 JSON 适配已由[LLMView](LLMView.md)实现。
 
 ## 发布与所有权
 
-`GameSession::Observe(NativeCaller, Rect)` 返回拥有自身内存的冻结 DTO。每个原生调用者占一个宿主缓存槽，共三个；新范围替换旧范围，`CloseObservation` 释放槽。首次观察只在完整边界采样，之后每次成功提交更新已登记范围。不会请求加载、触发流式服务、激活模拟或制造新 revision，也不持有渲染 frame slot、WorldMapView 或领域指针。
+`GameSession::Observe(NativeCaller, Rect)` 返回拥有自身内存的冻结 DTO。每个原生调用者占一个宿主缓存槽，共三个；新范围替换旧范围，`CloseObservation` 释放槽。首次观察只在完整边界采样；之后每次成功提交更新已登记范围的只读世界租约与领域元数据，实际格数据在 Capture 时按需导出。不会请求加载、触发流式服务、激活模拟或制造新 revision，也不持有渲染 frame slot、WorldMapView 或领域指针。
 
-暂停编辑、构式 Apply/Clear、成功模拟步和接纳加载均沿 Session 原有提交边界发布。材料按 64 格区域版本增量更新；风版本变化时重采样范围内空气格，材料变化也失效对应区域。移除块会覆盖为未知，重新驻留必须重新采样。当前各主题精确对应同一提交，字段保留实际采样 revision，未变化值可来自较早的采样点。
+允许执行的构式 Apply/Clear、成功模拟步和接纳加载均沿 Session 完整提交边界发布；全局暂停拒绝世界编辑。导出时材料按 64 格区域版本增量更新；风版本变化时重采样范围内空气格，材料变化也失效对应区域。移除块会覆盖为未知，重新驻留必须重新采样。当前各主题精确对应同一提交，字段保留实际采样 revision，未变化值可来自较早的采样点。
 
 PendingStep 中，同槽同范围只能复制最后完整投影；未登记或更换范围返回 `NotSampled`。`ObservationService()` 单独返回实时 Ready/WaitingForBudget 与最后提交版本，不把服务等待混入冻结领域 DTO。替换世界清空投影与事实环；旧 DTO 仍是旧 epoch 的自有数据，不能用于推断新世界。
 
@@ -18,7 +20,7 @@ Snapshot 携带 schema、WorldId/epoch/tick/revision、范围、分辨率、事�
 
 `SummarizeWind` 是只依赖标准库的纯值聚合。16×16 分箱以世界零点对齐、负坐标向下取整，只统计与范围交集；返回 requested/resident/air/nonAir/unknown 数量。覆盖分母是 requested，风均值分母仅为 air，X/Y 分别等权平均。没有空气但有未知时为 Partial 且无均值；全部已知非空气为 NotApplicable。返回最早/最新实际采样 revision。
 
-玩家矩形与范围相交时返回世界内 ActorId、位置、尺寸与着地状态；弹体中心在范围内时返回会话 epoch 下不重用的激活 ID、弹体 ID、程序版本、位置、速度和半径。程序摘要含当前应用版本及会话级运行根/弹体/排队数量，不包含 AST 或源码。所有对象值在提交时复制。M4.7已增加库存、设备、过程实例与场源投影，具体内容及授权见[GameplayObservation](GameplayObservation.md)；温度、生态与知识仍为Unsupported，不能用零值代替。Unknown 是以后“系统存在但尚未发现”的独立语义。
+玩家矩形与范围相交时返回世界内 ActorId、位置、尺寸与着地状态；弹体中心在范围内时返回会话 epoch 下不重用的激活 ID、弹体 ID、程序版本、位置、速度和半径。程序摘要含当前应用版本及会话级运行根/弹体/排队数量，不包含 AST 或源码。所有对象值在提交时复制。M4.7已增加库存、设备、过程实例与场源投影，具体内容及授权见[GameplayObservation](GameplayObservation.md)；Knowledge/History 已通过独立授权实现；温度、生态查询主题仍为Unsupported，不能用零值代替（世界已有群落生成不等于已开放这些查询主题）。Unknown 是以后“系统存在但尚未发现”的独立语义。
 
 ## 事实与因果
 

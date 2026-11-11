@@ -1,5 +1,30 @@
 # 美术资源接入与缓存
 
+现行范围核对：2026-11-10。运行时只读取 `Pixel/Content`，`ArtRaw` 和 `RawData` 是来源、制品与恢复资料，不由游戏加载。以下“2026-10-20”“2026-10-27”章节保留当次接入合同与验证记录；其中资源数量、角色范围和未接入项只适用于对应阶段。
+
+## 当前资源入口
+
+| 内容 | 当前配置与来源 | 已接入范围 |
+|---|---|---|
+| 地形／元素 | `ArtAssets.json/Terrain`；NaturalBlocks、Elements、Biomes | 自然地层、矿物、水、蒸汽、火和 Natural v2 新材料；21 个纹理层含透明空气层 |
+| 群落背景 | `ArtAssets.json/Background`；NaturalParallax 与 BiomeBackgrounds | 森林四层、沙漠与雪山各一层，共六层，按相机地区连续混合 |
+| 玩家动画 | `CharacterAssets.json`；Characters/Gandalf | 五层身体／衣物，Idle、Run、Jump、Fall；没有游戏内换装 |
+| 怪物动画 | `Monsters.json`；Art/Monsters | 八种怪物的行为与动画映射，见[怪物合同](Monsters.md) |
+| 居民与装饰 | `BiomeFrame` 与已提交 Actor | 居民简易人物呈现，群落装饰是无碰撞、无资源的几何 |
+| 构式／设备／原生UI | 各自呈现帧与 Pass | 已有构式弹体、设备与背包呈现；不表示候选攻击特效包已全部接入 |
+
+背景仍使用共享不可变图片、一次 GPU 上传及线性颜色混合。六张 2560×1440 RGBA 解码图片约84.375 MiB，上传缓冲与未计驱动额外开销的纹理数组各约84.375 MiB；下文56.25 MiB是旧四图阶段的值，不是当前背景总量。群落背景与装饰合同见[世界生态群落](../.awtcontext/GlobalDoc/WorldBiomes.md)。
+
+## 来源、分发与恢复
+
+- `ArtRaw/` 是被 Git 忽略的本地素材库，保留原包、许可和旧生成素材；索引存在不代表干净 checkout 自动拥有对应资源。
+- `RawData/Materials/Biomes`、`RawData/Environment/Biomes` 与 `RawData/Monsters` 保留新增来源、制品、提示词或许可、SHA-256及恢复工具。生成图片记录生成来源，不虚构第三方授权。
+- `Pixel/Content/Art/**/SOURCE.json` 保留运行时映射与校验；Content PNG 及许可复制件按现有规则被忽略，发布构建须携带真实文件。
+- 新群落材质可运行 `python3 RawData/Materials/Biomes/install_runtime.py` 恢复；群落背景可运行 `python3 RawData/Environment/Biomes/install_runtime.py` 恢复；怪物恢复流程见[素材说明](../RawData/Monsters/README.md)。旧背景／人物仍依赖本地 ArtRaw 原件与各包记录，没有统一全量恢复命令。
+- 改资源时同步配置、来源记录及对应 CPU/GPU 检查；不得用新增预览、下载成功或概念图代替游戏实际接入验收。
+
+## 2026-10-20 背景接入基线
+
 2026-10-20。本轮选用 ArtRaw 中 NaturalParallax2K 的一组四层山林背景，复制整理后的四张 2560×1440 RGBA PNG 到 `Pixel/Content/Art/NaturalParallax/`。原件不改动，复制件的 SHA-256 与 `Layers2K/` 一致。运行时没有 ArtRaw 路径依赖。本轮替换背景，泥土与角色沿用现有外观；构式效果尚未接入真实游戏，不在本次资源组范围内。
 
 ## 自定义 JSON

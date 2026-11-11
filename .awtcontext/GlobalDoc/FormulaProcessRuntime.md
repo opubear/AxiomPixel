@@ -1,8 +1,8 @@
-# 构式过程语言 v1 与有界运行时
+# process/1 兼容语义与运行时演进
 
 > 2026-10-26 更新：默认程序与编辑器已支持 formula/2 函数组合和 World/Actor 绑定；process/1 仍保持原语义。新函数、事件作用域、状态格式3及宿主格式2兼容策略以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。下文保留过程执行核心和历史验证记录，不代表最新功能范围。
 
-日期：2026-10-22。对应 M3.2「建立独立程序产物与有界执行运行时」。这是 [M3.1 语义对照](FormulaSemanticsExperiment.md) 选定的纯值与显式过程方案的独立实现；M3.3 已通过 [FormulaBridge](FormulaBridge.md) 接入游戏，旧 `cast` 编辑器短期并存。本文描述独立语言合同，游戏范围与额度以桥接文档为准。
+日期：2026-10-22。对应 M3.2「建立独立程序产物与有界执行运行时」。这是 [M3.1 语义对照](FormulaSemanticsExperiment.md) 选定的纯值与显式过程方案的实现记录；M3.3 已通过 [FormulaBridge](FormulaBridge.md) 接入游戏，后来旧 `cast` 与树形编辑器已删除。本文描述独立语言合同，游戏范围与额度以桥接文档为准。
 
 ## 产物、状态和模块
 
@@ -16,13 +16,13 @@
 
 `PixelFormulaProcess` 只依赖 C++20 标准库。`PixelFormulaFakeHost` 链接它，`PixelFormulaProcessDemo` 和 `PixelFormulaProcessTests` 使用 fake host；语言和运行时不依赖 Axiom、World、ImGui、旧 Formula 或文件系统。游戏专用效果不进入引擎。
 
-`Compile(resource, source, availableCapabilities)` 返回不可变 `ProgramArtifact` 或带资源名、字节 offset/length、1-based 行列的 `Diagnostic`。身份由资源标识、源文本 SHA-256、语义版本 1、宿主合同版本 1 组成。空白/注释改变也形成新内容版本。哈希用于内容识别，不用于授权。产物保留源码，运行阶段只读编译好的指令/表达式，不解析、哈希或按资源名查找新版本。
+`Compile(resource, source, availableCapabilities)` 返回不可变 `ProgramArtifact` 或带资源名、字节 offset/length、1-based 行列的 `Diagnostic`。身份由资源标识、源文本 SHA-256、process/1 语义版本 1、宿主合同版本 2（M4.4持续场扩展；原始M3版本为1） 组成。空白/注释改变也形成新内容版本。哈希用于内容识别，不用于授权。产物保留源码，运行阶段只读编译好的指令/表达式，不解析、哈希或按资源名查找新版本。
 
-`Instance::Start(artifact, id, grants, limits, origin)` 返回实例或能力拒绝。实例持有自己的产物引用；同名资源重新编译不会改变旧实例及其 continuation。`InstanceState` 只通过 const 视图检查。M3.4 已增加程序记录与运行状态 DTO、严格按原产物恢复、fake host 挂起及源码编辑入口，见[状态与编辑合同](FormulaStateAndEditing.md)；尚无磁盘编码或跨版本迁移。
+`Instance::Start(artifact, id, grants, limits, origin)` 返回实例或能力拒绝。实例持有自己的产物引用；同名资源重新编译不会改变旧实例及其 continuation。`InstanceState` 只通过 const 视图检查。M3.4 已增加程序记录与运行状态 DTO、严格按原产物恢复、fake host 挂起及源码编辑入口，见[状态与编辑合同](FormulaStateAndEditing.md)；游戏已由M4.6加入磁盘检查点；独立语言本身不依赖磁盘，版本兼容以 formula/2 实现合同为准。
 
 ## 文本与值
 
-文件以 `process 1;` 开始。项目仅保留这个入口；旧cast语言及其运行时已删除，旧源码编译失败，不提供转换。
+本节描述兼容文本 `process 1;`。当前默认入口为 `formula 2;`，两者共用执行核心；旧cast语言及其运行时已删除，旧源码编译失败，不提供转换。
 
 ```text
 process 1;
@@ -90,7 +90,7 @@ if outcome() == applied {
 2. 移除该实例拥有的载体、持续效果、订阅和待办工作；已提交的一次性世界事实保留。
 3. 释放实例；后续 Step/Cancel 不重复输出清理通知。外部移除运行中的实例必须显式调用 `Cancel` 并消费其结果，C++ 析构不能代替宿主清理。
 
-因此 `emit bolt(...);` 立即 EOF 会提交后立刻清理该 bolt。要保持载体存活，程序必须继续 wait/await；v1 无脱离实例的持久化所有权。当前语言只实现 dig/wind 一次性事实和 bolt 载体，持续场效果尚未实现；未来效果也必须遵守此清理合同。
+因此 `emit bolt(...);` 立即 EOF 会提交后立刻清理该 bolt。要保持载体存活，程序必须继续 wait/await；v1 无脱离实例的持久化所有权。M3初版只实现 dig/wind 一次性事实和 bolt 载体；M4.4 已加入 field/update_field/stop_field 与EffectHandle，持续场同样遵守此清理合同，见[持续FieldSource](FieldSources.md)。
 
 编译与运行领域错误用具体结果返回；不捕获内部 `std::exception` 来假装继续运行。非法宿主 ID、限制、非规范位置、倒退边界或同边界事件等编程错误直接抛异常。内存分配失败也直接传播。额度不构成对进程总内存或多实例调度的完整安全沙箱，实例数量、全局公平调度和宿主操作代价仍由宿主控制。
 
@@ -115,7 +115,7 @@ CLI 默认执行 12 个活动边界；`--steps` 最多 100000，`--hit-at`/`--wa
 
 | 主题 | 旧 `PixelFormula` / `cast` | 新 `PixelFormulaProcess` / `process 1` |
 |---|---|---|
-| 游戏使用 | 当前游戏和编辑器继续使用 | M3.3经FormulaBridge接入，三承载者示例 |
+| 游戏使用 | 当时使用，现已删除 | M3.3经FormulaBridge接入；当前作为兼容语义保留，默认使用formula/2 |
 | 值组合 | `seq/fan/repeat/delay/on_hit` 描述树与管道 | 显式 emit、变量、条件、循环、wait/await，无自动转换 |
 | 修改器 | 参数先于效果；不适用保持效果并诊断；负伤害钳到0 | 效果先于数值；不适用或负伤害终止片段；不钳制 |
 | 时间 | 可零延迟/零重复间隔，预展开计划任务 | 正时长等待，有限 continuation，每片额度 |
@@ -123,7 +123,7 @@ CLI 默认执行 12 个活动边界；`--steps` 最多 100000，`--hit-at`/`--wa
 | 所有权 | 已排队子构式可独立继续 | 所有载体/待办从属于实例，结束统一清理 |
 | 错误 | 原型异常可能已有部分效果 | 新运行时片段输出原子丢弃，宿主已经完成的事实保留 |
 
-语言本体暂不迁移 fan、混合描述闭包、任意方向、编辑器节点和存档；M3.3游戏适配将前向速度按承载者朝向旋转，并接入领域效果。新文本错误位置来自新文本，不复用 M3.1 实验的 C++ source_location。M3.1 实验保留作历史证据，可选构建；新测试为独立行为合同，不把旧实验通过当作当前实现验证。
+语言本体暂不迁移 fan、混合描述闭包、任意方向、编辑器节点和存档；M3.3游戏适配将前向速度按承载者朝向旋转，并接入领域效果。新文本错误位置来自新文本，不复用 M3.1 实验的 C++ source_location。M3.1 实验文档保留作历史证据，实验代码和构建目标已移除；新测试为独立行为合同，不把旧实验通过当作当前实现验证。
 
 ## 本轮验证与审查记录
 

@@ -1,6 +1,6 @@
 # 分块、四叉树与流式世界
 
-2026-10-29 更新存储合同。本文件是当前 World、风域、存档和发布接口的约定；早期设计文档中的整图数组、移动链、四张固定纹理与游戏周期边界已由本文替代。原算法及成本调查保留在 [MaterialUpdatePerformance.md](MaterialUpdatePerformance.md)，不能用于判断新材料规则的正确性。
+2026-11-10 核对现行接口；2026-10-29 更新存储合同。本文件是当前 World、风域、存档和发布接口的约定；早期设计文档中的整图数组、移动链、四张固定纹理与游戏周期边界已由本文替代。原算法及成本调查保留在 [MaterialUpdatePerformance.md](MaterialUpdatePerformance.md)，不能用于判断新材料规则的正确性。
 
 ## 配置与所有权
 
@@ -11,7 +11,7 @@
 | 场载荷起始对齐 | 系统内存页 | `memory::PageBuffer`；tile 至少 128 字节，元素满足类型对齐 |
 | 玩家模拟窗口 | 1024×1024 | `WorldStreamSettings::WindowEdge`；游戏环境变量 `PIXEL_SIMULATION_WINDOW` |
 | 世界 CPU 预算 | 512 MiB | `WorldStreamSettings::BudgetBytes`；游戏环境变量 `PIXEL_WORLD_BUDGET_MIB` |
-| 保存目录 | `Saves/<world-id>/` | `PIXEL_SAVE_ROOT` 或 `WorldStreamSettings::Directory` |
+| 持久会话保存目录 | `Saves/<world-id>/` | `PIXEL_SAVE_ROOT` 或 `WorldStreamSettings::Directory`；默认游戏使用临时目录 |
 | 地表 / 风边界 | Flat为512/424；Natural为起伏地表/360 | 版本化生成设置 / Environment 面板 `Wind boundary Y` |
 
 块边长和区域边长须为二次幂且整除；游戏窗口为64的倍数，最大2048。预算至少容纳两个物理块及其工作余量；窗口跨块或复杂运动可能需要更多容量。运行时覆盖配置优先于存档设置。不同块尺寸的存档互不兼容。
@@ -57,25 +57,25 @@ Session 提供玩家所在的活动中心，World 的模拟窗口对齐64格；�
 
 ## 流式加载、预算与失败
 
-后台单线程只执行生成和块文件读写，主线程在安全边界接纳结果、修改树和释放载荷。玩家窗口优先，其次可见范围，最后一圈块的预取；最多两个并行排队请求。预算不足先取消可取消的预取，再淘汰非必要干净缓存；脏缓存进入保存队列，写出完成后由主线程释放。
+后台 I/O worker 只执行生成和块文件读写，拥有可变 World 的会话执行线程在安全边界接纳结果、修改树和释放载荷；生产游戏由独立模拟 worker 执行，同步测试由调用线程执行，见[模拟线程](Architecture/SimulationThread.md)。玩家窗口优先，其次可见范围，最后一圈块的预取；最多两个并行排队请求。预算不足先取消可取消的预取，再淘汰非必要干净缓存；脏缓存进入保存队列，写出完成后由 World 所属执行线程释放。
 
 预算核算包含块的对齐容量、索引/容器、材料临时数组、双缓冲及仍被读者持有的材料/基础力历史版本、CPU显示plane和I/O工作余量；共享载荷去重，数值风求解器与GPU资源沿用单独计量。每个驻留/排队块保留128 KiB工作余量，避免转入保存队列时临时增加预算；Natural加载请求另预留生成器WorkingBytes（默认256 KiB），直到结果接纳或取消后释放，Flat无额外scratch。材料数组扩容以独立allocator替换，旧池及时释放。发布前预留新旧缓冲共存的峰值，视口过大时缩小发布范围，其他位置显示加载占位；帧和只读版本的生命周期分别计量。
 
 材料扩容若等待缓存写出，只收集保存结果，不能中途接纳新地图数据。真正无法容纳时保留尚未提交的固定步、冻结角色和时钟，并在Environment面板报告等待预算；下一帧重试不重复推进本步风。等待期间流式服务只处理保存完成，不接纳新地图；呈现使用最后完整提交的有界只读视图，见[固定步与提交](Architecture/SimulationCommits.md)。存在延期步时保存、正常退出和重置返回Deferred，不写检查点、不补步；完成该步后需重新发起操作，见[保存边界](Architecture/SessionSaveBoundary.md)。需要更多空间时可减少显示范围/窗口，或用运行时设置增加预算。
 
-加载失败记为Failed，不每帧反复请求；面板 `Retry world I/O` 可重试。保存失败保留脏块与错误，不能淘汰其数据。显式Save失败向调用方报告异常；面板通过TrySave保留并显示错误，允许修复I/O后重试，不终止游戏。正常退出和R重置先保存，R创建新世界且保留旧目录。
+加载失败记为Failed，不每帧反复请求；面板 `Retry world I/O` 可重试。保存失败保留脏块与错误，不能淘汰其数据。显式Save失败向调用方报告异常；面板通过TrySave保留并显示错误，允许修复I/O后重试，不终止游戏。上述保存与失败恢复适用于显式 `SessionMode::Persistent` 会话。默认游戏使用 `SessionMode::Temporary`：启动、R 或创建育圃均使用新临时世界，关闭不保存进度；R 丢弃当前进度。不要把底层保存能力当作默认游戏已经提供的续玩入口。
 
 ## 文件约定
 
-`current.txt` 指向当前world-id，其 `checkpoint.current` 发布完整的不可变世代。每代包含v5 `world.meta`、`gameplay.state`、全部块及校验清单；世界元数据保存生成配置、玩家位置、完整时钟余量和风设置，各游戏域及程序continuation由独立载荷保存。旧v2–v5文件可导入，旧v2映射到Flat/version1。格式解析、工作目录、完整世代校验和指针发布由 [SessionStore](../Pixel/Source/Runtime/Gameplay/Persistence/SessionStore.h) 处理，GameSession在完整提交点捕获各域，全部文件写好后才发布指针，见[多领域一致检查点](../.awtcontext/GlobalDoc/Checkpoints.md)。`chunks/<chunk-x>_<chunk-y>.bin` 仍为版本1小端二进制，后接材料/方向/基础力三列；尺寸、长度、注册材料ID、方向和非有限基础力均校验。
+`current.txt` 指向当前world-id，其 `checkpoint.current` 发布完整的不可变世代。每代包含 v6 `world.meta`、v6 `gameplay.state`、全部块及校验清单；世界元数据保存生成配置、玩家位置、完整时钟余量和风设置，各游戏域及程序continuation由独立载荷保存。旧 v2–v6 世界元数据及 v1–v6 游戏载荷可读取，旧v2映射到Flat/version1。格式解析、工作目录、完整世代校验和指针发布由 [SessionStore](../Pixel/Source/Runtime/Gameplay/Persistence/SessionStore.h) 处理，GameSession在完整提交点捕获各域，全部文件写好后才发布指针，见[多领域一致检查点](../.awtcontext/GlobalDoc/Checkpoints.md)。`chunks/<chunk-x>_<chunk-y>.bin` 仍为版本1小端二进制，后接材料/方向/基础力三列；尺寸、长度、注册材料ID、方向和非有限基础力均校验。
 
-未存在块由世界描述指定的IWorldGenerator生成：Superflat保留y<512空气、其余Dirt；Natural生成土岩、洞穴、矿物、有限水体与干燥草皮。基础力均向下。已有块直接恢复文件，不补水、补矿或重新覆草。卸载、手动保存和正常退出写文件；远处不补算时间。动态风不写盘，重建为所选背景状态；程序风使用世界坐标和持久物理时钟保持相位。生成器、材料纹理与液体接入的现行细节见 [世界生成与自然材质](../.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
+未存在块由世界描述指定的IWorldGenerator生成：Superflat保留y<512空气、其余Dirt；Natural v2 按森林／沙漠／雪山群落生成地层、洞穴、矿物、有限水体、草皮和树木；Natural v1 保留旧生成结果。基础力均向下。已有块直接恢复文件，不补水、补矿或重新覆草。显式持久会话在卸载、手动保存和正常退出时写文件；临时会话的流式文件只服务本次运行，远处不补算时间。动态风不写盘，重建为所选背景状态；程序风使用世界坐标和持久物理时钟保持相位。现行生成与生态见[分层群落生成](BiomeWorldGeneration.md)和[世界生态群落](../.awtcontext/GlobalDoc/WorldBiomes.md)；v1 兼容依据见[世界生成与自然材质](../.awtcontext/GlobalDoc/WorldGenerationImplementation.md)。
 
 流式写入只修改私有工作目录，检查点全量复制块，因此进程中断或写入失败保留上一完整代；未发布的候选代不参与加载。当前没有fsync，不保证系统断电后的持久性；也未自动回收旧代或工作目录。版本不符、已发布数据缺失或损坏均拒绝读取，不静默重置或回退旧存档。
 
 ## 移动风域
 
-`WindDomain` 保存世界原点与尺寸，等于玩家窗口与世界y<boundary的交集。默认boundary=424，地表512之间保留88格无风带。七策略统一接收区域地图视图、背景风和边界模式；数值网格由后端持有。
+`WindDomain` 保存世界原点与尺寸，等于玩家窗口与世界y<boundary的交集。Flat 默认 boundary=424，地表512之间保留88格无风带；Natural 默认边界为360，起伏地表不保证恒定无风带。游戏默认选择 Empty（无风），可在 F2 显式切换求解策略。七策略统一接收区域地图视图、背景风和边界模式；数值网格由后端持有。
 
 MAC迁移重叠面速度并投影，自适应网格按覆盖体积迁移，LBM迁移分布函数及lattice时间余量，程序风按整数世界坐标周期及物理时间连续采样；新区域用背景风初始化。离开窗口的动态扰动丢弃，切策略会重建后端而不保存各策略历史。地图缺失区域视为固体。
 

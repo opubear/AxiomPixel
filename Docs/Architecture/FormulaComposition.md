@@ -1,6 +1,6 @@
 # 构式函数组合与世界绑定（formula/2）
 
-2026-10-26。这里描述已实现的构式合同；设计动机见[构式系统](../GameDesign/FormulaSystem.md)，验证记录见[独立验证](FormulaCompositionVerification.md)。函数与不可变描述位于 System/Formula，世界绑定和领域 API 位于 Gameplay/FormulaBridge。Simulation、Axiom 不依赖构式。本次没有需要放入引擎的通用能力变更。
+初版：2026-10-26；现状核对：2026-11-10。这里描述已实现的构式合同；设计动机见[构式系统](../GameDesign/FormulaSystem.md)，验证记录见[独立验证](FormulaCompositionVerification.md)。函数与不可变描述位于 System/Formula，世界绑定和领域 API 位于 Gameplay/FormulaBridge。Simulation、Axiom 不依赖构式。本次没有需要放入引擎的通用能力变更。
 
 ## 使用
 
@@ -30,7 +30,7 @@ run burst(3, impact_shot(speed(60), mining));
 | `add(number, number) -> number`、`multiply(number, number) -> number` | 编译阶段的纯数值计算 |
 | `dig(cells) -> action` | 在当前起点开采圆域；半径0选所在格，遵从材料和库存规则 |
 | `wind(cells, speed, speed) -> action` | 向当前起点请求风脉冲；两分量按实例方向旋转，宿主仍要求可用 Coarse 风后端 |
-| `bolt(number, speed, ticks) -> action` | 伤害元数据、前向速度、寿命；等待一次命中或到期后结束该描述 |
+| `bolt(number, speed, ticks) -> action` | 伤害、前向速度、寿命；等待一次命中或到期后结束该描述，游戏宿主对活怪物结算伤害 |
 | `field(cells, acceleration, acceleration, ticks) -> action` | 安装有限寿命场源；方向同 wind，等待该寿命结束；场源仍由世界拥有实际模拟状态 |
 | `sequence(action, action, ...) -> action` | 2..8项，左到右；前项完成后才执行后项 |
 | `delay(ticks, action) -> action` | 先等待，再执行描述 |
@@ -69,6 +69,8 @@ run burst(3, impact_shot(speed(60), mining));
 | 授权与条件 | 固定 Scope、Grants、MaximumRadius、ActivityRadius、Credits、片段 Limits |
 | 执行状态 | PC、局部计数器、剩余等待、事件水位、命中上下文栈；不保存在描述中 |
 
+2026-11-10 怪物接入后，bolt 对活怪物结算 damage，木头人只触发命中事件，Player/Resident 不接受构式友伤。弹体出生重叠与高速扫掠采用相同结算规则，详见[怪物合同](../Monsters.md)。
+
 Actor 当前只有平移，没有旋转姿态，因此局部轴与世界轴平行，偏移不自动旋转，AngleDegrees 仍显式指定。FormulaBridge 只读取 Actors，不修改其生命周期；GameSession 在装配时绑定同一 Actor 注册表。Actor 绑定仅允许 formula/2；process/1 继续保持原来的世界起点语义。
 
 在安全边界解析 Actor 位置，后续请求从新位置产生。弹体发射后按其世界位置/速度运动；已安装场源停留在安装的世界位置，不随 Actor 移动。Actor 销毁立即取消根并清理归属效果，发出 ActorBindingLost 诊断；移动出授权 Scope 则取消并记录 ActorBindingScope，不扩大权限。世界载体仍执行原有请求范围校验。
@@ -88,29 +90,29 @@ F4 的 Formula Editor 保留既有 `Process source`、`Process text`、`Compile 
 | Pixel.ProcessHost | 写格式2，读取1/2；格式1承载者明确迁移为 World 定位，历史回执缺失的追踪字段为空 |
 | Pixel.FormulaBridge | 外层格式仍为2，内部宿主有独立版本；程序、活动/冻结实例、事件和弹体一起恢复 |
 
+以下保存能力用于显式 Persistent 会话；默认游戏为 Temporary 模式，退出后不保留进度。
+
 保存恢复从原挂起点继续，不重新激活，不重发请求，不重新扣 credit/燃料。持续场状态与 Actor 状态由同一 Gameplay 检查点保存。Actor 引用按稳定 ID 解析，缺失引用明确拒绝恢复；未知版本、错误身份、异常上下文栈或非法额度同样拒绝，不清空存档。编辑后的产物不能恢复旧实例。编译器未来若改变 continuation 布局，必须升级状态/语义版本或提供明确迁移。
 
 ## Debug函数预设
 
-2026-10-27新增五套内置示例，源码与启动配置集中于 `Pixel/Source/Dev/Debug/Formula/FormulaPresets.cpp`。它们使用现有formula/2函数，按需编译并共享不可变产物；没有引入新的语言特例或引擎能力。
+2026-10-27新增五套内置示例，源码与装载入口集中于 `Pixel/Source/Dev/Debug/Formula/FormulaPresets.cpp`。它们使用现有formula/2函数，按需编译并共享不可变产物；没有引入新的语言特例或引擎能力。
 
-F2的Pixel Debug菜单点击 `Formula presets` 会打开并定位预设面板；也可直接按F4。在 `Preset` 选择示例后，面板显示能力说明、观察方法、默认位置与可调方向：0度向右，正角度朝屏幕下方。时间均为活动步，运行60步约一秒，暂停或冻结时不累计。
+F2点击 `Drop wooden stick`，玩家走近拾取后通过快捷格手持。F2的 `Formula presets` 或F4打开编辑器，`Equip preset`／`Apply process`只修改当前木棍，不创建运行实例；没有木棍时禁用。`Load preset source`仅替换草稿，编译不发射。
 
-| 预设 | 展示内容 | 直接运行时的配置与观察 |
+普通左键经UseHeldItem动作队列使用当前持有物。木棍施放起点在身体朝鼠标一侧的外缘，留出弹体半径与12.5 cm间隙，方向从真实起点指向鼠标；路径被地形挡住时拒绝。运行实例保留发射时的位置、方向和该木棍的程序版本。方块则在面前放置；Shift＋左键同样使用持有物，右键开采，UI、元素笔刷和设备布置优先处理输入。
+
+| 预设 | 展示内容 | 左键施放后的观察 |
 |---|---|---|
-| Mining volley | `mining_shot`封装命中开采，再作为action参数交给`volley`重复三次 | 固定在玩家右侧(4,3)，35度向下，速度40；命中开采半径2，射击完成后间隔20步；附近需有可开采地形 |
-| Delayed excavation | `plant`接收`staged_cut`；命中后延时与顺序组合 | 同样从右侧朝下发射；命中后等30步，开采半径1，结果返回后再等45步扩至半径4；移动玩家不改变命中点 |
-| Alternating force | 参数化`push`组成`cycle`，再重复两次 | 固定在玩家(0,2)附近，半径8；向右3600格/秒²持续90步，再向左90步，两轮间隔30步；F1观察方向与场域 |
-| Walking beacon | `beacon`作为action参数交给`blink`重复六次 | 附着玩家，偏移(1,-2)，黄色静止弹体位于头顶；每个存活45步，结束后隔15步再发；A/D移动后下一次发光跟随玩家，已发出的球不跟随 |
-| Wake launcher | `armed`用`on_wake`包裹命中开采弹 | 固定在玩家右侧，先等待600步；`Wake preset`触发后下一活动边界发射，超时无效果 |
+| Mining volley | 命中开采函数与三次重复 | 速度40格/秒，命中开采半径2，射击完成后间隔20步 |
+| Delayed excavation | 命中后的延时与顺序组合 | 等30步开采半径1，再等45步扩至半径4，命中点不随玩家移动 |
+| Alternating force | 两轮交替力场 | 在发射点沿瞄准方向施力90步，再反向90步，两轮间隔30步；F1观察 |
+| Beacon pulses | 六次静止信标 | 发射点固定，每个存活45步，结束后隔15步再发；Actor附着仍可在three carriers手动示例验证 |
+| Wake launcher | `on_wake`包裹命中开采 | 左键先启动等待，600活动步内按`Wake player formulas`发射，超时不发射 |
 
-`Load preset source`仅替换临时编辑草稿，不启动、不应用；可修改后Compile/Apply。`Apply & run preset`应用所选内置源码并重新启动该预设，保留正在编辑的草稿；后续右键使用已应用程序，右键仍采用普通玩家施放方式，不继承预设的Actor附着配置。
+`Stop player formulas`停止以玩家为来源的运行实例及归属效果，`Clear running`清理所有承载者；两者均保留木棍上的程序。场景初始化／重置不再给人物装载构式；人物继续提供身体和施法来源。木棍拥有独立ProgramArtifact／版本，PixelGameplay 6保存每根木棍，v1–v5的当前人物程序迁移到木棍。方块适配、物品身份、事务和保存兼容的唯一合同见[手持物品](../../.awtcontext/GlobalDoc/HandheldItems.md)。显式Actor组件测试仍支持可选FormulaComponent，生产玩家不装配它；独立语言和Simulation不依赖物品接口。
 
-每套演示使用独立FixedFixture来源（9100—9104），与玩家、设备及旧示例隔离。重复运行会先取消同一预设的旧实例，其他预设继续；`Stop preset`清理所选演示及其弹体、场源和订阅，`Clear running`清理全部构式。开采已经造成的地形改变保留。Actor信标离域冻结，Actor失效或越出授权范围取消。暂停、世界未就绪或预算等待时禁止启动；唤醒按钮仅在该预设拥有活动订阅时启用。宿主拒绝显示在状态与回执中。
-
-演示控制仅调用既有 `ApplyProcess`、`StartProcessFixture`、`CancelProcessCarrier`、`WakeProcessCarrier`，由GameSession维护提交与观测；Gameplay与System不依赖预设目录。
-
-本轮验证：`PixelFormulaPresetTests`覆盖全部源码的实际调用轨迹、延时、命中点、力场方向、唤醒/超时、暂停拒绝、重启隔离与Actor跟随，并验证默认三连弹确实三次开采游戏地形。构式、动作、会话及模块边界专项7/7通过。Pixel和PixelRuntimeSmoke编译成功，`PixelRuntimeSmoke --formula-only`的GPU与真实ImGui测试通过，包含从F2入口打开、载入源码、逐套选择/运行/停止及唤醒按钮；Vulkan validation layer不可用，本轮未重跑全量CPU、完整GPU生命周期或AET。
+专项测试覆盖装载零副作用、人物归属、旧实例版本保留、唤醒/停止、重置/读档、左右上下与近距离瞄准、跨块远坐标、左键按下/释放、暂停以及独立模拟线程提交。2026-11-09验证：15项不同CPU专项全部通过（Checkpoint新增断言后复测通过），Pixel和PixelRuntimeSmoke编译成功；原生`--formula-only`通过GPU读回与真实ImGui装载/左键施放/停止/唤醒。沙箱窗口服务不可用，原生复测使用允许访问窗口服务的执行环境；本机无Vulkan validation layer，本轮未跑全量CPU/GPU或AET。
 
 ## 边界与成本
 

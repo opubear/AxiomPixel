@@ -1,4 +1,6 @@
-# 设备放置、端口与最小工作状态（M4.5更新）
+# 设备放置、端口与推力发生器
+
+> 现行范围（2026-11-10核对）：当前运行时使用独立模拟线程，设备动作先排队，在完整提交后生效。检查点能力保留，但默认 Temporary 游戏不保存进度；持久模式见[检查点](Checkpoints.md)。下方历史测试数据保持原日期。
 
 设备属于 Pixel，不编码进 CellType，也不进入 Axiom。M4.3 建立建造和供煤路径，M4.4 将唯一设备更新为局部推力发生器（类型3001），以持续FieldSource验证程序承载。M4.5已接[区域冻结恢复](RegionActivity.md)，M4.6已接[跨领域检查点](Checkpoints.md)保存设备/燃料/程序/来源，M4.7已接[库存/设备/程序/场源的观测与表现](GameplayObservation.md)。
 
@@ -19,18 +21,14 @@
 
 ## 运行合同
 
-每台设备安装独立不可变的 `device/force-emitter/2` 程序（ProgramRef资源3、版本2）：
+每台设备安装独立不可变的 `device/force-emitter/3` 程序（ProgramRef资源3、版本3），采用 formula/2：
 
 ```text
-process 1;
-emit field(cells(16), acceleration(3600), acceleration(0), ticks(31));
-await result within ticks(1);
-let source = effect_handle();
-wait ticks(29);
-emit stop_field(source);
+formula 2;
+run field(cells(16), acceleration(3600), acceleration(0), ticks(30));
 ```
 
-输出圆心为设备格框中心，圆盘内均匀向右加速度3600格/秒²；与BaseForce和风响应合成，不写回BaseForce。一份煤支付30个成功环境步，首个下一步接收安装回执，再等29步通过句柄停止。来源31步寿命提供独立上限；正常设备在到期前停止。随后若仍启用且有煤，同一提交中启动新周期。授予Field能力、一次付费效果额度和16格半径限制，stop不收费；同设备最多一个实例。玩家Apply不更换设备程序。
+输出圆心为设备格框中心，圆盘内均匀向右加速度3600格/秒²；与BaseForce和风响应合成，不写回BaseForce。一份煤支付30个成功环境步；有限寿命 field 完成后结束本周期，不再使用旧 process/1 的31步来源加 stop_field 程序。随后若仍启用且有煤，同一提交中启动新周期。授予Field能力、一次付费效果额度和16格半径限制；同设备最多一个实例。玩家Apply不更换设备程序。
 
 设备范围需要驻留空气，完整圆盘必须位于当前模拟窗口。无需Coarse或任何风后端。状态为Stopped、Running、NeedsFuel、WaitingForEnvironment、OutsideActiveArea、WaitingForCapacity；旧OutputUnresolved状态删除。来源容量256、会话运行根16、每帧激活8。启动前检查来源容量，再预留燃料；程序拒绝时释放预留，不能扣煤或留下实例。暂停/预算等待不推进。
 
@@ -44,7 +42,7 @@ emit stop_field(source);
 
 B切换设备布置工具，左键放置；设备范围内右键启停、Shift+右键回收。F2 Devices可输入坐标放置、选择设备、补1煤、Enable/Disable、Recycle，显示建造成本、燃料、状态及操作拒绝。布置模式有常驻操作提示。测试夹具可直接给库存注入资源；正常游戏仍需开采。
 
-默认暂停只允许配置和建造。放置、补煤、启用后单步或取消暂停；F1可看到局部方向变化，Dirt按合成力逐步移动。设备不改变Water或Actor的既有运动规则。
+普通新世界默认运行；全局暂停时建造、补煤、启停和回收等世界动作返回 GamePaused，需恢复后操作。暂停后的显式单步只推进已经配置好的设备；F1可看到局部方向变化，Dirt按合成力逐步移动。设备不改变Water或Actor的既有运动规则。
 
 ## 验证入口
 

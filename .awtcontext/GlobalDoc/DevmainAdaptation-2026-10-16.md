@@ -1,5 +1,7 @@
 # Pixel 适配重构后的 devmain（2026-10-16）
 
+> 历史引擎适配记录（2026-10-16）。锁定提交、运行接口和当前模块以[工程README](../../README.md)及AxiomVersion.json为准；本页保留迁移依据。
+
 适配前 Pixel 基线为 `bcb4cd2`（默认暂停与空风场性能记录），引擎上游基线为 `devmain` 的 `0671a0eeca6d563f32bee91bc12aa31a515fefee`。后续按用户要求提交通用修复并切换到已 rebase 的 `PixelMain`，当前引擎为 `bf88a6ec235b6931fbdedb81db986dca74d5653a`，由 `AxiomVersion.json` 锁定。相邻 `../Axiom` 未修改或构建。
 
 ## 新引擎设计与游戏接入

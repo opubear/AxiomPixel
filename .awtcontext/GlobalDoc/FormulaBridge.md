@@ -1,14 +1,14 @@
-# FormulaBridge 与三种程序承载者
+# FormulaBridge 宿主基础合同与兼容参考
 
 > 2026-10-26 更新：默认程序与编辑器已支持 formula/2 函数组合和 World/Actor 绑定；process/1 仍保持原语义。新函数、事件作用域、状态格式3及宿主格式2兼容策略以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。下文保留过程执行核心和历史验证记录，不代表最新功能范围。
 
-2026-10-25。游戏适配位于`Runtime/Gameplay/FormulaBridge`，仅编排process/1实例。`ProcessHost`处理承载者与效果，`FormulaWorldAdapter`负责扫掠、开采和Coarse风脉冲。System的`PixelFormulaProcess`只依赖标准库，World不依赖构式、RHI或UI。旧cast语言、Simulator、树形编辑器、FormulaValidation及实验代码已删除。
+2026-11-10 核对：游戏适配位于`Runtime/Gameplay/FormulaBridge`，同时承载 formula/2 与兼容 process/1。`ProcessHost`处理承载者与效果，`FormulaWorldAdapter`负责扫掠、开采和Coarse风脉冲。System的`PixelFormulaProcess`只依赖标准库，World不依赖构式、RHI或UI。旧cast语言、Simulator、树形编辑器、FormulaValidation及实验代码已删除。
 
 ## 使用与范围
 
-F4 的 Formula Editor 展开 **Process source**，点击 **Load three-pulse draft → Compile process → Apply process**。随后右键由玩家发射；展开 **Process: three carriers**，**Start natural source / Start fixed fixture** 在玩家附近装配另外两种承载者。三者使用同一个不可变产物：发球、等待命中、命中后挖掘、等待30活动步，重复三次。取消暂停或单步推进，Clear running 统一清理。两种固定承载者仅为 M3 CPU 夹具与调试样例，没有实体外观、放置占用、设备网络或真实物品库存。
+F4 的 Formula Editor 展开 **Process source**，点击 **Load three-pulse draft → Compile process → Apply process**。装载后普通左键由玩家朝鼠标施放（右键现在用于开采）；展开 **Process: three carriers**，**Start natural source / Start fixed fixture** 在玩家附近装配另外两种承载者。三者使用同一个不可变产物：发球、等待命中、命中后挖掘、等待30活动步，重复三次。取消暂停或单步推进，Clear running 统一清理。两种固定承载者仅为 M3 CPU 夹具与调试样例，没有实体外观、放置占用、设备网络或真实物品库存。
 
-默认玩家程序也使用process/1：emit黄色球后await hit，命中或到期后结束。F4仅保留源码Compile/Apply，Load applied process恢复当前源码；已有实例保留原程序版本。源码编辑与状态DTO见[合同](FormulaStateAndEditing.md)。真实Device与Intervention沿用同一ProcessHost。
+默认玩家、推力设备、育圃晶体和援助程序已采用 formula/2；F4 保留源码 Compile/Apply，另有五套预设的 Equip preset 装载入口。Load applied process 恢复当前源码；已有实例保留原程序版本。源码编辑与状态DTO见[合同](FormulaStateAndEditing.md)。真实Device与Intervention沿用同一ProcessHost。
 
 `GameSession::ApplyProcess` 安装独立编译产物；已有 `ActivateProgram` 动作负责玩家激活、请求去重、发射起点和来源事实。`StartProcessFixture`、`CancelProcessCarrier`、`WakeProcessCarrier` 是仅供原生 Debug/Driver 装配使用的安全边界入口；玩家输入和外部语言不能提交自报的权限、主体或资源配置。全局暂停或预算等待期间以上修改均被拒绝。过程资源编号为2，会话版本递增，投影、弹体和事实使用同一身份。完整源码身份仍由实例保留的 ProgramArtifact 管理，LLMView 不开放配方源码。
 
@@ -22,7 +22,7 @@ Credits是每次激活独有的效果额度：成功的dig、wind、bolt、field
 
 - 开采调用与原生开采相同的 `TryRemoveMaterial` 材料规则；radius=0选择所在格，其他半径按格中心圆域扫描。实际移除至少一格才 Applied；有部分结果时发布 Changed/Blocked/NotReady，全部无变化为 Blocked/NotReady。
 - 风为世界坐标格/秒的增量，只适配启用且至多1024 cells的 Coarse 后端。零半径、低于解析度、零脉冲及其他后端返回 WindUnavailable，不自动改变策略。
-- bolt 的语言 VelocityX 是承载者局部前向速度，游戏按激活时瞄准角旋转；不改变独立语言的坐标类型。半径0.35格，伤害仍为元数据，无重力/风漂移。速度绝对值至多600格/秒、寿命至多3600活动步、伤害至多1e6；挖掘/风半径至多16格且受承载者更小上限约束，风速模长至多600。
+- bolt 的语言 VelocityX 是承载者局部前向速度，游戏按激活时瞄准角旋转；不改变独立语言的坐标类型。半径0.35格，对活怪物结算伤害，木头人仅触发命中，Player/Resident 不接受构式友伤；无重力/风漂移。速度绝对值至多600格/秒、寿命至多3600活动步、伤害至多1e6；挖掘/风半径至多16格且受承载者更小上限约束，风速模长至多600。
 - 新请求的整个作用圆必须在承载者Scope和当前模拟域内；不扩张授权范围、不强制加载。飞行载体离开Scope/模拟域或遇缺失块返回 Cancelled，不能以越界命中恢复载荷。
 - 程序语义/片段额度错误返回有源码位置的终止诊断；非法原生装配与内部阶段错误直接抛出。没有 catch-all 恢复半提交会话。
 
@@ -34,7 +34,7 @@ Credits是每次激活独有的效果额度：成功的dig、wind、bolt、field
 
 桥接边界编号只用于通知因果，不等于游戏Tick。GameSession全局暂停拒绝新激活并冻结程序，预算等待和Skip不调用Step；显式单步推进完整世界。Wake只通知当前订阅，重复Wake合并，不唤醒未来订阅。仅最近request保留可观察回执，旧载体仍按正常寿命存在，直到实例结束。
 
-stop/EOF先提交最后片段输出，再移除所属载体、通知及订阅；fault丢弃当前片段输出，之前已提交的世界事实保留。Clear、来源撤销和世界替换调用Cancel并清理所有归属。M4.5已实现[区域冻结恢复](RegionActivity.md)：承载者原点、当前作用原点或归属效果离开活动域/失去必要驻留时冻结，返回后按剩余活动时间接续；不补算冻结期间的事件或效果。M4.6已将程序产物、实例、宿主事件和弹体接入[跨领域磁盘检查点](Checkpoints.md)，恢复不会重新激活；默认球和其他活跃过程均支持保存与正常关闭。桥接编码版本2仅保存process状态，不导入旧桥接格式；项目本地旧存档已按用户要求删除。
+stop/EOF先提交最后片段输出，再移除所属载体、通知及订阅；fault丢弃当前片段输出，之前已提交的世界事实保留。Clear、来源撤销和世界替换调用Cancel并清理所有归属。M4.5已实现[区域冻结恢复](RegionActivity.md)：承载者原点、当前作用原点或归属效果离开活动域/失去必要驻留时冻结，返回后按剩余活动时间接续；不补算冻结期间的事件或效果。M4.6已将程序产物、实例、宿主事件和弹体接入[跨领域磁盘检查点](Checkpoints.md)，恢复不会重新激活；默认球和其他活跃过程可在显式 Persistent 会话中保存与正常关闭；正常游戏采用 Temporary 模式，不保存进度。外层桥接格式2与内部宿主格式、formula/2状态版本的对应关系以[当前实现合同](../../Docs/Architecture/FormulaComposition.md)为准。
 
 ## 上限和观测
 

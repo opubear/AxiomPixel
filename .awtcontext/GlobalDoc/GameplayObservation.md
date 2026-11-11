@@ -1,5 +1,7 @@
 # 设备、库存与持续程序观测（M4.7）
 
+> 现行范围（2026-11-10核对）：本页为当前设备/库存/程序观测合同；当前原生背包另见[原生背包UI](NativeInventoryUI.md)。生态已有地区生成，但LLMView生态topic尚未开放；历史测试数据未在本次重跑。
+
 2026-10-23。在M4.6检查点之后补齐可观察性；不增加生产链、设备类型或微气候生态规则。`GameAPI/GameplayObservations.h` 提供拥有值的设备、容器、程序运行和场源合同，既不包含领域指针，也不包含程序源码、locals或指令位置。引擎和独立Formula语言未改动。
 
 ## 同一提交与两种发布
@@ -20,7 +22,7 @@ CommittedWorldView与领域查询从同一份GameplayObservation取值。GamePre
 
 Policy.Topics只是主题可用性。读取精确库存或设备煤数量还需宿主显式授予当前epoch下的OwnerActor库存权限，或AllInventories。授予Items主题本身不会暴露任何容器、数量或隐藏容器总数；无库存授权的设备仍能显示外部工作状态和停机原因，但Fuel缺省。新epoch不会继承旧OwnerActor授权。FullAccess是显式完整宿主权限。
 
-完整Facts含设备煤数等私有事实，因此Facts要求AllInventories；仅某个Owner的授权不足以开放全会话事实。带Region的策略仍不能授予全会话Programs摘要、Runtime或Facts。SetPolicy撤销旧view、游标和未交付结果；每次交付重新核验。已经交付的值不能追溯收回。
+完整Facts含设备煤数及玩家发现等私有事实，因此Facts要求AllInventories与AllKnowledge；仅某个Owner的授权不足以开放全会话事实。带Region的策略仍不能授予全会话Programs摘要、Runtime或Facts。SetPolicy撤销旧view、游标和未交付结果；每次交付重新核验。已经交付的值不能追溯收回。
 
 公开程序数据不提供配方读取、复制、编辑能力。温度、生态仍为Unsupported；M5.1已加入独立授权的Knowledge/History主题，见[发现知识与重要历史](KnowledgeAndHistory.md)。JSON保持64位身份/坐标/tick/数量水位以十进制字符串编码；设备Fuel、物品Quantity等uint32仍是整数。能力目录声明分页单位、已实现主题和实际库存权限，接口不接模型SDK或网络。
 
@@ -28,9 +30,9 @@ Policy.Topics只是主题可用性。读取精确库存或设备煤数量还需�
 
 设备仍是2×2格推力发生器，独立颜色区分停止、工作、缺煤、环境阻塞、活动域外和容量等待，右侧输出端口标出方向。F2 Devices给出状态原因、煤槽容量、当前周期、程序等待和对应场源；Inventory显示背包与煤槽各物品数量；Programs and fields列出持续过程和来源。F1继续查看实际合成力方向。
 
-暂停时可以配置，成功单步才消费活动时间。等待原因区分delay/result/hit/wake；暂停和挂起不被误写成进度继续。外部状态可见不意味着有查看私有库存或程序内容的权限。此步保留既有设备操作，不提供新的合成或网络连接功能。
+全局暂停时可查看状态，世界配置/建造动作被拒绝；成功单步才消费已配置设备的活动时间。等待原因区分delay/result/hit/wake；暂停和挂起不被误写成进度继续。外部状态可见不意味着有查看私有库存或程序内容的权限。此步保留既有设备操作，不提供新的合成或网络连接功能。
 
-## 验证
+## M4.7历史验证
 
 2026-10-23最终实现验证：
 

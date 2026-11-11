@@ -1,5 +1,7 @@
 # 世界与力场内存统计（2026-10-15）
 
+> 历史内存测量（2026-10-15）。旧整图数组与移动链容量已被分块存储替代，不代表当前开销；现行工具见[性能模块](../Pixel/Source/Dev/Debug/Performance/README.md)，存储见[空间场](SpatialFieldStorage.md)。
+
 内存功能已接入现有 Performance 工具。打开 **Pixel Debug → Performance**，在内存表查看最近采样的 used、reserved 和保留窗口内的 reserved 峰值；开关、清空和导出与 CPU 计时共用。汇总报告另含均值，CSV 保存逐帧精确字节。
 
 ## 实测结果

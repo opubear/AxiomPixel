@@ -11,3 +11,4 @@
 - 输入处理归 `System/IO/Input`，`PlayerInput` 保留在 `Gameplay/Actors`；输入适配调用 Gameplay，Gameplay 核心、Simulation 和其余 System 服务不反向依赖 Input。
 - Application 是装配 Input、Render 与 DebugUI 的组合根；Input通过接口表达显示意图，不依赖Render实现。Garden 与 Performance 保留显式开发接点，新增依赖需满足 `Pixel.ModuleBoundaries`。
 - 构建、运行及验证命令见 `README.md`，历史依据和限制见迁移记录。
+- 文档从 `Docs/GameDesign/README.md` 按总纲与系统进入；功能变更同时更新对应系统说明、唯一实现合同及 AWT 索引，规则见 `.awtcontext/GlobalDoc/DocumentationGovernance.md`。区分现行、设计提案、兼容和历史，不以旧验收表示当前测试通过。

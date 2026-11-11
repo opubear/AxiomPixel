@@ -1,10 +1,12 @@
 # 区域控制与干预撤销（M5.2）
 
+> 现行范围（2026-11-10核对）：下述权限与租约是已实现的游戏限制；不构成联网安全边界。动作提交受全局暂停与模拟队列约束，历史M5.2验证保留原范围。
+
 Authority 是 Pixel 的玩法领域，拥有世界意志的观察/干预能力、设备保护模块和授权版本。Session 在安全提交边界使用它裁决动作、查询和持续实例；World 与独立 Formula 语言均不依赖 Authority。没有新增引擎能力或修改相邻 Axiom。
 
 ## 身份与能力
 
-`GameSession::WorldWillSession()` 返回宿主装配凭据，和 Input、Debug、Driver 分开，世界替换后全部失效。请求仍只有 epoch、sequence、类型化 payload，没有 owner/admin/grants 字段。世界意志凭据仅可提交 `InstallIntervention` 和 M5.3 增加的 `InterveneAtDevice`，不能调用普通玩家动作、程序编辑、调试设置或 SessionControl。原生可信代码负责注册观察者及向 WorldWill 主线程端口绑定凭据，模型线程不持有凭据。
+`GameSession::WorldWillSession()` 返回宿主装配凭据，和 Input、Debug、Driver 分开，世界替换后全部失效。请求仍只有 epoch、sequence、类型化 payload，没有 owner/admin/grants 字段。世界意志凭据仅可提交 `InstallIntervention` 和 M5.3 增加的 `InterveneAtDevice`，不能调用普通玩家动作、程序编辑、调试设置或 SessionControl。原生可信代码负责注册观察者及在同步边界向 WorldWill 宿主端口绑定凭据，模型线程不持有凭据。
 
 `SetWorldWillCapabilities(Debug/Driver, {Observe, Intervene})` 修改当前能力，Input 无权调用。初始两项均开启；观察与执行独立。发现知识不授予这些能力，也不授予程序源码。外部协议不能自行选择 NativeCaller；原生 C++ 装配接口不是网络安全边界。
 
@@ -18,9 +20,9 @@ Authority 是 Pixel 的玩法领域，拥有世界意志的观察/干预能力�
 
 ## 持续干预
 
-`InstallIntervention{ProgramRef, Origin, Scope, ExpectedResourceVersion}` 只能引用宿主已 ApplyProcess 的当前 process/1 程序。旧版本返回 StaleProgram，legacy tree 不支持。Scope 为 1–64 格边长的矩形，坐标范围 ±2^54 内，Origin 必须在其中且驻留于活动世界。宿主分配非重用承载 ID、最多64次付费输出额度、600个成功全局 tick 的租约；语言已有单步预算、最多16实例/128弹体/半径16限制继续生效。
+`InstallIntervention{ProgramRef, Origin, Scope, ExpectedResourceVersion}` 只能引用宿主已 ApplyProcess 的当前 formula/2 或兼容 process/1 程序。旧版本返回 StaleProgram，旧树运行时不支持。Scope 为 1–64 格边长的矩形，坐标范围 ±2^54 内，Origin 必须在其中且驻留于活动世界。宿主分配非重用承载 ID、最多64次付费输出额度、600个成功全局 tick 的租约；语言已有单步预算、最多16实例/128弹体/半径16限制继续生效。
 
-安装先核验当前能力与区域，再启动并发布实际 ProgramActivated/效果事实。requestSequence 重复返回原回执，不再启动；重复成功回执表示原请求的结果，不承诺实例仍存在。暂停期间允许原生驱动的显式安装；M5.3 的异步 WorldWill 则等待恢复运行后再提交，并继续计算墙钟期限。
+安装先核验当前能力与区域，再启动并发布实际 ProgramActivated/效果事实。requestSequence 重复返回原回执，不再启动；重复成功回执表示原请求的结果，不承诺实例仍存在。全局暂停时原生安装同样返回 GamePaused；WorldWill 暂停请求交付并顺延期限，恢复后重新核验。
 
 M5.3 增加 4 个并发干预槽，与解释器技术容量分开。每次成功安装占用、结束或取消归还时递增资源版本，不改变观察授权版本。请求必须携带非零的当前资源版本；旧版本返回 PreconditionFailed，当前版本但缺槽返回 LimitExceeded。`InterveneAtDevice` 先核验设备 ID/Version，再派生中心及 34×34 范围并复用安装路径。细节见 [WorldWill](WorldWill.md)。
 
@@ -42,7 +44,7 @@ OpenView 在捕获前核验整个 Policy.Region；任一保护区相交则拒绝
 
 M5.4已实现[持久干预检查点](PersistentInterventions.md)。保护模块、活跃/冻结干预及非默认能力均可保存；恢复核验设备/范围、实例/租约、资源槽及来源，重新绑定新运行身份。成功全局tick到期点保持，不能通过保存加载续租；已终止实例不复活。知识与重要历史也已接入磁盘。PendingStep保存仍返回Deferred。
 
-当前提供 C++ 动作与育圃保护UI；M5.3接异步fake model，M5.4接可试玩的持久自主权场景。没有模型网络。下文保留M5.2历史验证范围，最新结果见持久援助文档。
+当前提供 C++ 动作与育圃保护UI，运行默认使用随机 PseudoLLM，FakeModel仅用于测试；持久自主权能力仅在显式持久会话保存，默认游戏不保留进度。没有模型网络。下文保留M5.2历史验证范围，最新结果见持久援助文档。
 
 ## 验证
 

@@ -17,7 +17,7 @@
 
 温湿度与抬升噪声在第二轴使用固定非格点偏移，避免一维采样恰好落在 Perlin 格点行。高度在选择离散材质之前按权重混合，不会因为群落标签改变而形成垂直断崖。地层通过二维噪声交错过渡，深度 248 以下统一进入基础岩层及既有矿物/洞穴。
 
-群落参数集中在 `Pixel/Source/Runtime/Simulation/World/Generation/BiomeTerrain.cpp`。`WorldGenerator.cpp` 编排地形、湖盆、地层、洞穴、矿物、有限水、草皮和树木，公开 `SampleGenerationColumn` 的环境权重及 `SampleGeneration`/`PlanGenerationWater` 诊断接口。Simulation 不依赖 Render、Gameplay 或纹理 JSON。
+稳定气候及群落权重已提取到 `Pixel/Source/Runtime/Simulation/World/Environment/WorldBiome.cpp`，地形参数保留在 `Generation/BiomeTerrain.cpp`。二者共用采样，v2 数值保持不变。`WorldGenerator.cpp` 编排地形、湖盆、地层、洞穴、矿物、有限水、草皮和树木，公开 `SampleGenerationColumn` 的环境权重及 `SampleGeneration`/`PlanGenerationWater` 诊断接口。Simulation 不依赖 Render、Gameplay 或纹理 JSON。
 
 ## 行为与边界
 
@@ -27,7 +27,7 @@
 - 湖泊与地下水沿用完整、有界的封闭性检查，开采后不会自动补水；水开关只关闭水体。新增矿石只能替换岩层，不填洞穴、不替换冰体。
 - 树木按完整特征锚点计算，每个查询带 22 格横向余量，写入与当前区块的交集；竖向裁剪不改变树冠。树木不会覆盖土岩或水，不包含生长、落叶或砍树后整体倒塌模拟。
 - 出生点 x=512 保留 33 格平整平台和过渡区，湖泊和树木避让。平台可采用所在群落的材质。
-- 地表草皮沿用现有 exposed-surface 呈现规则；群落背景图仍使用原有山林视差背景，本轮变化是可交互的前景世界。
+- 地表草皮沿用现有 exposed-surface 呈现规则。2026-11-10 已接入同源群落查询、初始生物适生率、地区装饰和三类背景混合，见[世界生态群落](../.awtcontext/GlobalDoc/WorldBiomes.md)；该扩展不改变本页 v2 地形和树木生成结果。
 
 ## 材料与资源
 
