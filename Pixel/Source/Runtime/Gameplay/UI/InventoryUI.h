@@ -3,6 +3,7 @@
 #include "Runtime/Gameplay/GameAPI/GameplayObservations.h"
 #include "Runtime/Gameplay/Items/Inventory.h"
 #include "UIScale.h"
+#include "Canvas.h"
 #include "Runtime/Simulation/World/Environment/WorldCalendar.h"
 #include <array>
 #include <cstddef>
@@ -11,11 +12,6 @@
 #include <vector>
 
 namespace pixel::ui {
-struct Rect {
-    float X = 0, Y = 0, Width = 0, Height = 0;
-    bool Contains(float x, float y) const;
-};
-
 // Logical pixels are shared by painting and hit testing; input supplies its own
 // event's framebuffer extent so queued clicks retain their original DPI scale.
 struct InventoryLayout {
@@ -44,14 +40,6 @@ struct InventoryView {
     std::array<Slot, InventoryLayout::Columns> QuickSlots{};
     std::array<Slot, InventoryLayout::SlotCount> BagSlots{};
     bool operator==(const InventoryView &) const = default;
-};
-
-// Owned pixels, never references to the session or mutable inventory. The GPU
-// consumer caches Revision per in-flight slot and draws after scene postprocessing.
-struct Canvas {
-    uint64_t Revision = 0;
-    std::vector<std::byte> Pixels;
-    float UIScale = 1;
 };
 
 class InventoryUI {

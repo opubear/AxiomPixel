@@ -23,6 +23,10 @@
 
 [世界表示](Docs/WorldRepresentation.md) 与 [空间场存储](Docs/SpatialFieldStorage.md) 维护当前分块、预算与发布接口；[单位边界](Docs/WorldUnits.md) 规定游戏float厘米与模拟格单位的显式转换。[Core容器接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md) 和 [Platform查询](Axiom/Source/HAL/Platform/README.md) 维护引擎消费边界。
 
+引擎已提供 [FreeType/HarfBuzz 字体与文字塑形](Axiom/Source/Render/Text/README.md)：依赖直接挂在 `Axiom/ThirdParty`，CPU 布局可独立使用，原生文字由 Runtime 的 RHI renderer 绘制。当前 Pixel 菜单／背包继续使用已有像素画布文字，尚未迁移到该字体模块。
+
+[引擎本地化](Axiom/Source/Localization/README.md) 提供 `LocalizedString` 和语言目录，`Axiom/Content/Localization` 保存英文／中文及地区示例表。业务文本可按稳定键解析并随语言切换；Pixel 自身转换表和语言选择界面尚未接入。
+
 `Pixel/Source` 按运行时与开发支持分成两个根目录；以下五个领域是源码归属入口。
 
 ```text
@@ -42,7 +46,7 @@ Pixel/Source/
 | `Runtime/Gameplay/GameSession, Actions, Construction/` | 会话生命周期、动作、建造与跨领域提交；主动查询和影响Simulation |
 | `Runtime/Gameplay/Actors, Camera/` | Actors管理身份与生命周期；主角/居民/木头人统一为Actor，以BodyComponent和可选FormulaComponent组合能力，Body负责运动碰撞，PlayerInput表达意图；相机跟随/缩放/选格 |
 | `Runtime/Gameplay/Ecology/` | 群落适生率、地区候选记录、Actor休眠与恢复；筛选构建在PixelActors，生命周期构建在PixelGameplay |
-| `Runtime/Gameplay/UI/` | 原生背包UI的状态、库存投影、布局、命中测试与像素画布；不依赖Render/Input/ImGui |
+| `Runtime/Gameplay/UI/` | 原生背包和ESC菜单状态、库存投影、布局、命中测试与共享像素画布；不依赖Render/Input/ImGui |
 | `Runtime/Gameplay/Items, Devices, Authority, Knowledge/` | 游戏物品、设备、权限、知识与重要历史 |
 | `Runtime/Gameplay/GameAPI, Observation, LLMView/` | 类型化动作/回执、领域观测投影、授权冻结查询与模型派生记忆 |
 | `Runtime/Gameplay/LLM, WorldWill/` | 游戏目标/提案、DecisionAPI、PseudoLLM、游戏JSON协议、服务适配与世界意志行为 |
@@ -65,7 +69,7 @@ Render从Simulation及Gameplay的已提交状态构造呈现快照，Draw只消�
 
 引擎采用[游戏与渲染隔帧并行](Docs/Architecture/ParallelFrames.md)，Pixel 另启用[独立模拟线程](Docs/Architecture/SimulationThread.md)。游戏线程从已提交世界计算角色呈现和相机，世界动作排队至下一固定步；模拟线程完成环境、权威角色、构式和设备后才发布世界。主线程绘制上一帧的自持有地形、风、角色和 UI 数据。当前帧末仍等待双方完成，窗口、输入、DebugUI、资源发布和关闭保留同步边界。PerfTest trace 分为渲染、游戏、模拟三条时间线；AET 保留原有双线程接线。
 
-`Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass完成后在呈现目标内调用原生背包UI，再调用开发调试UI叠加；UI不受场景调色影响。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
+`Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass完成后在呈现目标内调用原生背包与ESC菜单UI，再调用开发调试UI叠加（菜单打开时隐藏开发面板）；UI不受场景调色影响。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
 
 `System/IO/Input`拥有键鼠事件解释、按键状态和控制模式，通过GameSession动作端口及GameCamera驱动游戏；`Gameplay/Actors/PlayerInput.h`保留角色需要的横向移动与跳跃意图。输入适配可以依赖Gameplay，Gameplay核心、Simulation及其余System服务不反向依赖Input；Input不包含Render实现或ImGui，退出、调试面板及画面尺寸由Application注入回调。
 
@@ -143,7 +147,8 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | F3 | 切换自由调试相机，清理持续按键状态 |
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
 | 左键（含Shift＋左键） | 使用当前高亮的手持物：木棍朝鼠标施放自己的构式，方块在面前放置并扣除一份；空手不施法 |
-| Tab / Escape | 展开或收起5行7列背包；Escape优先收起背包，关闭后再次按下退出 |
+| Tab | 展开或收起5行7列背包 |
+| Escape | 编辑调试文本时先取消编辑；否则优先收起背包，再打开游戏菜单；再次按下关闭菜单，点击菜单中的 `Quit game` 才退出 |
 | 1–7 / 快捷格左键 | 选择左上角常驻的7个快捷格，退出元素笔刷/设备布置；背包中点击物品绑定到当前快捷格 |
 | Shift+2 / Shift+3 / Shift+4，Shift+1 | 选择水 / 蒸汽 / 火调试笔刷，左键投放一团；Shift+1恢复普通工具；F2也可选择 |
 | 右键 / Shift＋右键 | 设备内启停 / 回收；其他位置均开采固体 |
@@ -279,6 +284,8 @@ ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-fail
 # 实际并行游戏推进、上一帧GPU像素、暂停、resize、重置与关闭
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --parallel-only)
 (cd Pixel && ../build/tests/PixelCloseSmoke)
+# 内建ESC菜单；验证有/无调试UI、活跃文本编辑捕获、面板恢复、按钮与输入拦截
+(cd Pixel && ../build/tests/PixelCloseSmoke --menu-only)
 # 单独检查实际地形PNG、表面条带和远坐标UV
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
 # 所有配置人物帧的PNG/GPU读回与正式游戏移动、跳跃、暂停

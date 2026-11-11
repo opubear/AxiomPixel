@@ -1,4 +1,6 @@
 #include "PixelRender.h"
+#include "Runtime/Gameplay/UI/InventoryUI.h"
+#include "Runtime/Gameplay/UI/GameMenuUI.h"
 #include "Dev/Debug/Performance/FrameProfiler.h"
 #include <utility>
 
@@ -6,9 +8,9 @@ PixelRender::PixelRender(DynamicRHI &rhi, GridTextureCatalog catalog,
                          std::function<void(WorldGridFrame &)> input, std::string postShader,
                          std::shared_ptr<const pixel::BackgroundAssets> background,
                          std::shared_ptr<const pixel::CharacterAssets> character,
-                         pixel::render::InventoryOverlay::Publisher ui, std::shared_ptr<const pixel::MonsterAssets> monsters)
+                         pixel::render::CanvasOverlay::Publisher ui, std::shared_ptr<const pixel::MonsterAssets> monsters, pixel::render::CanvasOverlay::Publisher menu)
     : RHI(rhi), Catalog(std::move(catalog)), Input(std::move(input)), PostShader(std::move(postShader)),
-      Background(std::move(background)), CharacterArt(std::move(character)), MonsterArt(std::move(monsters)), UIPublisher(std::move(ui)) {
+      Background(std::move(background)), CharacterArt(std::move(character)), MonsterArt(std::move(monsters)), UIPublisher(std::move(ui)), MenuPublisher(std::move(menu)) {
     ValidateGridTextureCatalog(Catalog);
     if (!Input)
         throw std::invalid_argument("2D rendering requires an input provider");
@@ -74,7 +76,10 @@ void PixelRender::Initialize() {
                                   RHIImageBinding{3, Resources.BackgroundTexture ? Resources.BackgroundTexture.get() : Resources.Materials.get()}};
         frame.WorldSet = RHI.CreateImageDescriptorSet(*Resources.Pool, *Resources.WorldPipeline, bindings);
     }
-    InventoryUI.Initialize(RHI, std::move(UIPublisher));
+    InventoryUI.Initialize(RHI, std::move(UIPublisher),
+        {pixel::ui::InventoryLayout::Width, pixel::ui::InventoryLayout::Height, pixel::ui::InventoryLayout::Placement});
+    GameMenu.Initialize(RHI, std::move(MenuPublisher),
+        {pixel::ui::GameMenuLayout::Width, pixel::ui::GameMenuLayout::Height, pixel::ui::GameMenuLayout::Placement});
     Published = std::make_unique<WorldGridFrame>();
 }
 void PixelRender::FrameBegin() {
@@ -98,6 +103,7 @@ void PixelRender::FrameBegin() {
             throw std::invalid_argument("monster frame exceeds loaded atlas");
     }
     InventoryUI.Prepare(RHI.GetActiveFrameToken().Slot);
+    GameMenu.Prepare(RHI.GetActiveFrameToken().Slot);
     FrameReady = true;
 }
 void PixelRender::CreateColorTargets() {
@@ -182,6 +188,7 @@ void PixelRender::OnPresentationChanged(const RHIPresentationChanged &) {
     RHI.WaitIdle();
     CreateColorTargets();
     InventoryUI.RecreatePipeline(RHI);
+    GameMenu.RecreatePipeline(RHI);
 }
 void PixelRender::Draw() {
     PIXEL_PROFILE_SCOPE(Render);
@@ -198,6 +205,7 @@ void PixelRender::Draw() {
     const pixel::render::RenderPassContext context{Resources, frame, input, Catalog, Background.get()};
     RHI.RecordFrame([&](RHICommandList &commands) {
         InventoryUI.Upload(commands, slot);
+        GameMenu.Upload(commands, slot);
         Upload.Record(commands, context);
         World.Record(commands, context);
         if (frame.HasWind)
@@ -208,10 +216,12 @@ void PixelRender::Draw() {
             Character.Record(commands, context);
         PostProcess.Record(commands, context, [this, slot](RHICommandList &overlay) {
             InventoryUI.Draw(overlay, slot, Resources.Extent);
+            GameMenu.Draw(overlay, slot, Resources.Extent);
             RecordOverlay(overlay);
         });
     });
     InventoryUI.Commit(slot);
+    GameMenu.Commit(slot);
     WorldUploadBytes += Upload.Commit(frame, input);
     ++FrameCount;
 }
@@ -230,7 +240,9 @@ void PixelRender::Clear() {
     // Application destroys the game first. Releasing a publisher must never call it.
     Input = {};
     UIPublisher = {};
+    MenuPublisher = {};
     InventoryUI.Clear();
+    GameMenu.Clear();
     SetOverlayDrawCallback({});
     Published.reset();
     Resources.Frames.clear();

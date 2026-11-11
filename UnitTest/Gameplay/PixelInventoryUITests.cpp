@@ -1,4 +1,5 @@
 #include "Runtime/Gameplay/UI/InventoryUI.h"
+#include "Runtime/Gameplay/UI/GameMenuUI.h"
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -72,11 +73,39 @@ void LayoutAndCanvas() {
     Require(ui.CloseInventory() && !ui.CloseInventory(), "close must report whether Escape was consumed");
     Require(!ui.PointerPress(30, 200, {1280, 720}, true), "hidden bag intercepted world click");
 }
+void MenuLayoutAndCanvas() {
+    ui::GameMenuUI menu;
+    Require(!menu.IsOpen() && !menu.Paint().Visible, "native menu must start hidden");
+    const auto revision = menu.Paint().Revision;
+    menu.Toggle();
+    Require(menu.Paint().Visible && menu.Paint().Revision == revision, "opening the menu should reuse painted pixels");
+    for (const auto size : {std::array{1280, 720}, std::array{2560, 1440}, std::array{320, 240}, std::array{800, 1200}}) {
+        for (float scale : {.5f, 1.f, 1.5f, 4.f}) {
+            menu.SetUIScale(scale);
+            const auto bounds = ui::GameMenuLayout::Placement(size, scale);
+            Require(bounds.X >= 0 && bounds.Y >= 0 && bounds.X + bounds.Width <= size[0]
+                && bounds.Y + bounds.Height <= size[1], "menu escaped viewport");
+            for (const auto action : {ui::GameMenuAction::Return, ui::GameMenuAction::Quit}) {
+                const auto button = action == ui::GameMenuAction::Return ? ui::GameMenuLayout::ReturnButton() : ui::GameMenuLayout::QuitButton();
+                const float x = bounds.X + (button.X + button.Width / 2) * bounds.Width / ui::GameMenuLayout::Width;
+                const float y = bounds.Y + (button.Y + button.Height / 2) * bounds.Height / ui::GameMenuLayout::Height;
+                Require(menu.PointerPress(x, y, size, true) == action, "scaled menu button hit disagrees with layout");
+                Require(menu.PointerPress(x, y, size, false) == ui::GameMenuAction::None, "nonprimary menu click activated button");
+            }
+        }
+    }
+    Require(menu.PointerPress(0, 0, {1280, 720}, true) == ui::GameMenuAction::None
+        && menu.PointerPress(100, 100, {0, 0}, true) == ui::GameMenuAction::None, "outside menu click activated a button");
+    menu.Toggle();
+    Require(!menu.Paint().Visible, "closed menu remained visible");
+}
+
 }
 int main() {
     try {
         InventoryAndBindings();
         LayoutAndCanvas();
+        MenuLayoutAndCanvas();
         std::cout << "Inventory UI state, bindings, canvas and scaled hit testing passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

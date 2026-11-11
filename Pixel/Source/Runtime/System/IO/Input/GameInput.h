@@ -2,6 +2,7 @@
 #include "Runtime/Gameplay/Actors/PlayerInput.h"
 #include "Input/MousePointerState.h"
 #include "Runtime/Gameplay/UI/InventoryUI.h"
+#include "Runtime/Gameplay/UI/GameMenuUI.h"
 #include "SystemEnum.h"
 #include <array>
 #include <functional>
@@ -26,7 +27,7 @@ struct GameInputHost {
 // Referenced subsystems and callback targets must remain alive during input use.
 class GameInput {
   public:
-    GameInput(GameSession &session, GameCamera &camera, PresentationControl &presentation, ui::InventoryUI &ui, GameInputHost host);
+    GameInput(GameSession &session, GameCamera &camera, PresentationControl &presentation, ui::InventoryUI &ui, ui::GameMenuUI &menu, GameInputHost host);
     void OnKeyEvent(Key key, int scancode, ButtonAction action, Mod mods);
     void OnMouseButtonEvent(MouseButton button, ButtonAction action, int mods, const MousePointerState &pointer);
     void OnMouseMove(float, float) {}
@@ -51,6 +52,7 @@ class GameInput {
     GameCamera &Camera;
     PresentationControl &Presentation;
     ui::InventoryUI &UI;
+    ui::GameMenuUI &Menu;
     GameInputHost Host;
     ControlMode Mode = ControlMode::Standard;
     std::array<bool, 4> Move{};

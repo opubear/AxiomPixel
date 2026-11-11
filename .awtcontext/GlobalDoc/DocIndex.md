@@ -26,9 +26,9 @@
 | 系统·构式物品｜物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 现行：14类资源与独立木棍、4096总量、共享方块映射、预留转移和保存 | |
 | 系统·构式物品｜构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | 现行：formula/2函数、Actor绑定、木棍承载、F4编辑与左键瞄准施放 | |
 | 系统·构式物品｜背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：50格和通用装备；现有木棍掉落拾取、7＋35展示与统一使用 | |
-| 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：7快捷格与35展示格、木棍手持高亮、同提交日历显示及画布缓存；无拖拽 | |
+| 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：7快捷格与35展示格、日历、共享原生画布；ESC收包后开合内建菜单 | |
 | 系统·家园｜设备、家园与会话进度 | `context:GlobalDoc/SystemsHome.md` | 现行：设备育圃与资源冻结、临时/持久会话、日历保存续接和产品边界 | |
-| 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：临时与持久会话、完整提交保存、world.meta v7日历与Gameplay v6兼容 | |
+| 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：临时与持久会话、菜单退出与保存协商、world.meta v7和Gameplay v6兼容 | |
 | 系统·家园｜设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 现行：推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
 | 系统·家园｜区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | 现行：M4.5本地活动时间与身份续接；M4.6磁盘恢复另见Checkpoints | |
 | 系统·家园｜游戏检查点与恢复 | `context:GlobalDoc/Checkpoints.md` | 现行：Gameplay v6物品与掉落、world.meta v7日历、跨域提交存档及恢复校验 | |
@@ -44,14 +44,14 @@
 | 系统·世界意志｜模型接口与祈祷交互 | `context:GlobalDoc/ModelServiceIntegration.md` | 现行：模型注入、受限JSON、原文取消与Queued终态；Ready为兼容，未接网络 | |
 | 系统·世界意志｜LLM抽象与随机PseudoLLM | `context:GlobalDoc/LLMAndPseudoLLM.md` | 现行：独立模型生命周期、共用决策API、随机函数组合兜底及验证边界 | |
 | 系统·世界意志｜BehaviorDSL必要性与有限决策图实验 | `workspace:Docs/Architecture/BehaviorDecisionExperiment.md` | 现行：M6.1同场景表达、诊断和成本对照；暂缓持久DSL的依据与重启门槛 | |
-| 系统·呈现｜画面、交互与内容资产 | `context:GlobalDoc/SystemsPresentation.md` | 现行：背景角色UI分层、昼夜与季节调色及时间显示、输入和资源分发边界 | |
+| 系统·呈现｜画面、交互与内容资产 | `context:GlobalDoc/SystemsPresentation.md` | 现行：背景角色UI分层、ESC编辑捕获、字体本地化及输入资源边界 | |
 | 系统·呈现｜游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | 现行：Content美术清单、背景/地形/人物分层动画、共享缓存、GPU上传与验证 | |
 | 工程｜分块、四叉树与流式世界 | `workspace:Docs/WorldRepresentation.md` | 现行：当前世界表示、材料调度、流式预算、文件与显示接口；空间场存储已统一 | |
 | 工程｜统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | 现行：统一手持使用与放置、排队终态、去重权限、暂停与持久会话边界 | |
 | 工程｜固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 现行：固定步与预算重试、WorldBuffers只读双缓冲、观测按需导出及GPU交接边界 | |
-| 工程｜正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | 现行：帧间关闭协商；默认临时会话直接关闭，持久会话先保存 | |
+| 工程｜正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | 现行：ESC菜单、调试文本捕获优先级、面板恢复与临时持久会话关闭协商 | |
 | 工程｜Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 现行：模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
-| 工程｜工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 现行：模块与输入分层、显示尺度、昼夜季节入口、构建运行和验证命令 | |
+| 工程｜工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 现行：模块输入分层、ESC与编辑捕获、字体本地化、构建运行和验证入口 | |
 | 工程｜Pixel 性能采样模块说明 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | 现行：PerfTest配置、CPU统计、三线程trace名称与帧标记、日志时钟和插桩入口 | |
 | 工程｜Axiom通用CPU诊断 | `workspace:Axiom/Source/Core/Diagnostics/README.md` | 现行：PerfTest门控、RAII纳秒事件trace、聚合采样和静态动态链接合同 | |
 | 工程｜Axiom统一日志 | `workspace:Axiom/Source/Log/README.md` | 现行：默认毫秒时间戳、日志级别和格式化接口、共享实例及静态动态链接验证 | |
@@ -119,3 +119,6 @@
 | 历史｜Natural v1固定生成参数 | `workspace:Pixel/Source/Runtime/Simulation/World/Generation/Version1.md` | 兼容：保留旧生成版本复现；新游戏默认Natural v2 | |
 | 系统·构式物品｜手持物品与木棍构式触发器 | `context:GlobalDoc/HandheldItems.md` | 现行：统一手持使用、身体外侧完整格放置、木棍构式与掉落拾取及v6存档 | |
 | 系统·世界｜昼夜与季节实现合同 | `context:GlobalDoc/WorldCalendar.md` | 现行：20分钟昼夜、7天四季、完整提交、光照HUD、季末晨昏跳转及world.meta v7 | |
+| 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |
+| 工程｜Axiom本地化字符串与转换表 | `workspace:Axiom/Source/Localization/README.md` | 现行：LocalizedString、语言地区表与回退；Pixel文案和语言选择尚未接入 | |
+| 证据｜字体本地化与Pixel菜单联合审查（2026-11-11） | `context:GlobalDoc/CodeReview-FontsLocalizationMenu-2026-11-11.md` | 证据：Astra ultra复核关闭两项问题，干净静态44项共享45项、运行时48项及GPU通过 | |

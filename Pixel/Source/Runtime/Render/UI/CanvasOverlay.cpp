@@ -1,21 +1,24 @@
-#include "InventoryOverlay.h"
+#include "CanvasOverlay.h"
 #include "HAL/Shader/ShaderLibrary.h"
 
 namespace pixel::render {
-void InventoryOverlay::Initialize(DynamicRHI &rhi, Publisher publisher) {
+void CanvasOverlay::Initialize(DynamicRHI &rhi, Publisher publisher, Layout layout) {
     Publish = std::move(publisher);
     if (!Publish) return;
+    if (layout.Width <= 0 || layout.Height <= 0 || !layout.Placement)
+        throw std::invalid_argument("invalid UI canvas layout");
+    Geometry = layout;
     const auto slots = rhi.GetFrameSlotCount();
     Pool = rhi.CreateImageDescriptorPool(slots, slots, 0);
     Frames.resize(slots);
     for (auto &frame : Frames) {
-        frame.Texture = rhi.CreateTexture({ui::InventoryLayout::Width, ui::InventoryLayout::Height, 1, RHITextureFormat::RGBA8SRGB});
-        frame.Upload = rhi.CreateUploadBuffer(size_t(ui::InventoryLayout::Width) * ui::InventoryLayout::Height * 4);
+        frame.Texture = rhi.CreateTexture({uint32_t(Geometry.Width), uint32_t(Geometry.Height), 1, RHITextureFormat::RGBA8SRGB});
+        frame.Upload = rhi.CreateUploadBuffer(size_t(Geometry.Width) * Geometry.Height * 4);
     }
     RecreatePipeline(rhi);
 }
 
-void InventoryOverlay::RecreatePipeline(DynamicRHI &rhi) {
+void CanvasOverlay::RecreatePipeline(DynamicRHI &rhi) {
     if (!Publish) return;
     for (auto &frame : Frames) frame.Set.reset();
     Pipeline.reset();
@@ -27,29 +30,32 @@ void InventoryOverlay::RecreatePipeline(DynamicRHI &rhi) {
     }
 }
 
-void InventoryOverlay::Prepare(uint32_t slot) {
+void CanvasOverlay::Prepare(uint32_t slot) {
     if (!Publish) return;
     const auto &canvas = Publish();
     auto &frame = Frames.at(slot);
-    if (!canvas.Revision || canvas.Pixels.size() != size_t(ui::InventoryLayout::Width) * ui::InventoryLayout::Height * 4)
-        throw std::invalid_argument("invalid inventory UI canvas");
+    if (!canvas.Revision || canvas.Pixels.size() != size_t(Geometry.Width) * Geometry.Height * 4)
+        throw std::invalid_argument("invalid UI canvas");
     PendingRevision = canvas.Revision;
     frame.UIScale = canvas.UIScale;
+    frame.Visible = canvas.Visible;
+    if (!frame.Visible) return;
     if (frame.Revision != PendingRevision) frame.Upload->Write(canvas.Pixels);
 }
 
-void InventoryOverlay::Upload(RHICommandList &commands, uint32_t slot) {
+void CanvasOverlay::Upload(RHICommandList &commands, uint32_t slot) {
     if (!Publish) return;
     auto &frame = Frames.at(slot);
-    if (frame.Revision == PendingRevision) return;
+    if (!frame.Visible || frame.Revision == PendingRevision) return;
     commands.TransitionTexture(*frame.Texture, RHITextureState::TransferDestination);
     commands.CopyBufferToTexture(*frame.Upload, *frame.Texture);
     commands.TransitionTexture(*frame.Texture, RHITextureState::FragmentSampledRead);
 }
 
-void InventoryOverlay::Draw(RHICommandList &commands, uint32_t slot, RHIPresentationExtent extent) {
+void CanvasOverlay::Draw(RHICommandList &commands, uint32_t slot, RHIPresentationExtent extent) {
     if (!Publish) return;
-    const auto placement = ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)}, Frames.at(slot).UIScale);
+    if (!Frames.at(slot).Visible) return;
+    const auto placement = Geometry.Placement({int(extent.Width), int(extent.Height)}, Frames.at(slot).UIScale);
     const std::array<float, 4> bounds{placement.X, placement.Y, placement.Width, placement.Height};
     commands.SetViewport({placement.X, placement.Y, placement.Width, placement.Height, 0, 1});
     commands.SetScissor({0, 0, extent.Width, extent.Height});
@@ -60,11 +66,11 @@ void InventoryOverlay::Draw(RHICommandList &commands, uint32_t slot, RHIPresenta
     commands.SetViewport({0, 0, float(extent.Width), float(extent.Height), 0, 1});
 }
 
-void InventoryOverlay::Commit(uint32_t slot) {
-    if (Publish) Frames.at(slot).Revision = PendingRevision;
+void CanvasOverlay::Commit(uint32_t slot) {
+    if (Publish && Frames.at(slot).Visible) Frames.at(slot).Revision = PendingRevision;
 }
 
-void InventoryOverlay::Clear() {
+void CanvasOverlay::Clear() {
     Publish = {};
     Frames.clear();
     Pool.reset();

@@ -21,7 +21,7 @@ RenderSetup CreatePixelRenderSetup(PixelGame &game) {
                                                  auto &ui = game.GetUI();
                                                  ui.Publish(snapshot ? &*snapshot : nullptr, game.GetSession().PlayerInventory(), calendar ? &*calendar : nullptr);
                                                  return ui.Paint();
-                                             }, monsters);
+                                             }, monsters, [&game]() -> const pixel::ui::Canvas & { return game.GetGameMenu().Paint(); });
     };
     return setup;
 }

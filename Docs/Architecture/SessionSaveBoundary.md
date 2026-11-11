@@ -16,7 +16,7 @@ M2.3 将会话元数据写入限制在完整提交边界；M4.6已接入[多领�
 
 ## 关闭阶段
 
-窗口关闭按钮、Escape 和性能捕获结束都进入 `PixelApplication::OnCloseRequested`。默认 Temporary 游戏直接允许退出，不发起保存；显式 Persistent 会话同步发起 SaveWorld，成功才允许退出，Deferred、Failed 或不可用会话拒绝当前请求。关闭请求由引擎消费一次，不会因后续容量或 I/O 恢复而自动退出。拒绝期间游戏、窗口、输入回调和调试 UI 继续工作。
+窗口关闭按钮、Escape菜单中的 `Quit game` 和性能捕获结束都进入 `PixelApplication::OnCloseRequested`；Escape自身只收起背包或开合菜单，见[关闭与菜单合同](CloseRequests.md)。默认 Temporary 游戏直接允许退出，不发起保存；显式 Persistent 会话同步发起 SaveWorld，成功才允许退出，Deferred、Failed 或不可用会话拒绝当前请求。关闭请求由引擎消费一次，不会因后续容量或 I/O 恢复而自动退出。拒绝期间游戏、窗口、输入回调和调试 UI 继续工作。
 
 `PixelGame::GameEnd`关闭WorldWill及模型工作并清理输入；直接Shutdown/析构不再保存。正常保存捕获的Thinking/Ready祈祷在下次加载时变为Interrupted，不恢复请求线程、超时或待执行提案。嵌入宿主要保存退出，必须先在帧间处理关闭请求。默认 Temporary 会话直接丢弃当前游戏进度；持久模式没有额外的“放弃保存退出”UI。
 
@@ -41,4 +41,4 @@ v2–v4 读取旧时钟行时，以旧 PhysicsTime 为已提交时间，保留�
 - `Pixel.SessionStore`：独立 v7 格式样本、v2–v6 转换、损坏文件及原子单文件提交边界。
 - `Pixel.Persistence`：真实容量不足时反复 Save/Reset、元数据/目录不变、显式重试、暂停和完整余量、旧 deferred 导入后材料/角色/风推进、保存失败和流式驻留版本同步。
 - `Pixel.Input`：延期 R 保留相机和呈现。
-- `PixelCloseSmoke`：生产关闭钩子，程序/原生关闭拒绝、独立提示、I/O 失败后 Escape 显式重试、GameEnd 不重复保存。与 PixelRuntimeSmoke 一样需真实 GLFW/Vulkan 窗口，运行目录为 Pixel。
+- `PixelCloseSmoke`：生产关闭钩子，程序/原生关闭拒绝、独立提示、I/O失败后打开菜单并点击退出显式重试、GameEnd不重复保存。与PixelRuntimeSmoke一样需真实GLFW/Vulkan窗口，运行目录为Pixel。

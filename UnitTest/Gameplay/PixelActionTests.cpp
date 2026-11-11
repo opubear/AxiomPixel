@@ -24,7 +24,8 @@ void ThreeEntrances() {
         GameCamera camera;
         GamePresentation presentation;
         ui::InventoryUI ui;
-        GameInput input(session, camera, presentation, ui, {[] {}, [] {}, [] {}, [] { return std::array{800, 600}; }});
+        ui::GameMenuUI menu;
+        GameInput input(session, camera, presentation, ui, menu, {[] {}, [] {}, [] {}, [] { return std::array{800, 600}; }});
         camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(520, 512));
         const MousePointerState pointer{{400, 300}, {800, 600}, {800, 600}};
         if (caller == NativeCaller::Input)

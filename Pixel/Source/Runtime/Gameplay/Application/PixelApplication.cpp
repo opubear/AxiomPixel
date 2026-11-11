@@ -4,9 +4,12 @@
 #include "Asset/Loaders/AssetLoader.h"
 
 bool PixelApplication::OnCloseRequested() {
-    auto &session = static_cast<PixelGame &>(*GetGame()).GetSession();
-    return !session.IsPersistent()
+    auto &game = static_cast<PixelGame &>(*GetGame());
+    auto &session = game.GetSession();
+    const bool accepted = !session.IsPersistent()
         || session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded();
+    game.GetGameMenu().SetExitBlocked(!accepted);
+    return accepted;
 }
 
 std::unique_ptr<IGameInterface> PixelApplication::CreateGame() {

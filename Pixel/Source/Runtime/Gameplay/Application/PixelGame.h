@@ -28,10 +28,12 @@ class PixelGame final : public IGameInterface {
     pixel::llm::ViewService &GetObservationViews() { return ObservationViews; }
     pixel::will::WorldWill &GetWorldWill() { return WorldWill; }
     pixel::ui::InventoryUI &GetUI() { return UI; }
+    pixel::ui::GameMenuUI &GetGameMenu() { return Menu; }
+    bool IsGameMenuOpen() const { return Menu.IsOpen(); }
     float GetSceneScale() const { return Camera.GetSceneScale(); }
     void SetSceneScale(float scale) { Camera.SetSceneScale(scale); }
     float GetUIScale() const { return UI.GetUIScale(); }
-    void SetUIScale(float scale) { UI.SetUIScale(scale); }
+    void SetUIScale(float scale) { UI.SetUIScale(scale); Menu.SetUIScale(scale); }
     pixel::ArtAssetStore &GetArtAssets() { return ArtAssets; }
     void SetControlMode(ControlMode mode) { Input.SetControlMode(mode); }
     ControlMode GetControlMode() const { return Input.GetControlMode(); }
@@ -79,5 +81,6 @@ class PixelGame final : public IGameInterface {
     pixel::PixelDebugUI DebugUI;
     pixel::performance::GameProfiler Performance;
     pixel::ui::InventoryUI UI;
+    pixel::ui::GameMenuUI Menu;
     pixel::GameInput Input;
 };

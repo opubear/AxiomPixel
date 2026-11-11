@@ -1866,7 +1866,7 @@ void MonsterAnimationGpu() {
             frame.MonsterDraws = draws;
             frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
             std::fill(frame.Cells().begin(), frame.Cells().end(), field ? 0x8080FF : 0);
-        }, "Pixel2DPostProcess.fs", nullptr, nullptr, pixel::render::InventoryOverlay::Publisher{}, art);
+        }, "Pixel2DPostProcess.fs", nullptr, nullptr, pixel::render::CanvasOverlay::Publisher{}, art);
         policy = result.get();
         return result;
     };
@@ -2011,14 +2011,15 @@ void MonsterGameplayGpu(bool regional = false) {
     std::cout << "Monster gameplay GPU passed: " << expectedMonsters << " eligible monsters, regional=" << regional << ", movement, pause and F1\n";
 }
 
-void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const pixel::ui::Canvas &canvas,
-                              const char *captureName, PostProcessParameters tint = {{.35f, .35f, .35f, 1}}) {
+void VerifyCanvasComposite(GameEngine &engine, const RHITexture &scene, const pixel::ui::Canvas &canvas,
+                              const char *captureName, PostProcessParameters tint = {{.35f, .35f, .35f, 1}},
+                              pixel::render::CanvasOverlay::Layout layout = {pixel::ui::InventoryLayout::Width, pixel::ui::InventoryLayout::Height, pixel::ui::InventoryLayout::Placement}) {
     auto &rhi = *engine.GetRHI();
     const auto extent = rhi.GetPresentationExtent();
-    const auto placement = pixel::ui::InventoryLayout::Placement({int(extent.Width), int(extent.Height)}, canvas.UIScale);
+    const auto placement = layout.Placement({int(extent.Width), int(extent.Height)}, canvas.UIScale);
     const std::array<float, 4> bounds{placement.X, placement.Y, placement.Width, placement.Height};
     auto target = rhi.CreateTexture({extent.Width, extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
-    auto texture = rhi.CreateTexture({pixel::ui::InventoryLayout::Width, pixel::ui::InventoryLayout::Height, 1, RHITextureFormat::RGBA8SRGB});
+    auto texture = rhi.CreateTexture({uint32_t(layout.Width), uint32_t(layout.Height), 1, RHITextureFormat::RGBA8SRGB});
     auto upload = rhi.CreateUploadBuffer(canvas.Pixels.size());
     upload->Write(canvas.Pixels);
     auto sampler = rhi.CreateNearestSampler();
@@ -2077,15 +2078,15 @@ void VerifyInventoryComposite(GameEngine &engine, const RHITexture &scene, const
             const float u = (x + .5f - placement.X) / placement.Width;
             const float v = (y + .5f - placement.Y) / placement.Height;
             const bool inside = u >= 0 && v >= 0 && u < 1 && v < 1;
-            const size_t tx = std::min<size_t>(pixel::ui::InventoryLayout::Width - 1, size_t(std::max(0.f, u * pixel::ui::InventoryLayout::Width + .0001f)));
-            const size_t ty = std::min<size_t>(pixel::ui::InventoryLayout::Height - 1, size_t(std::max(0.f, v * pixel::ui::InventoryLayout::Height + .0001f)));
-            const size_t texel = inside ? (ty * pixel::ui::InventoryLayout::Width + tx) * 4 : 0;
+            const size_t tx = std::min<size_t>(layout.Width - 1, size_t(std::max(0.f, u * layout.Width + .0001f)));
+            const size_t ty = std::min<size_t>(layout.Height - 1, size_t(std::max(0.f, v * layout.Height + .0001f)));
+            const size_t texel = inside ? (ty * layout.Width + tx) * 4 : 0;
             const bool opaque = inside && std::to_integer<uint8_t>(canvas.Pixels[texel + 3]) != 0;
             for (size_t c = 0; c < 3; ++c) {
                 const int expected = opaque ? int(std::lround(255 * Linear(std::to_integer<uint8_t>(canvas.Pixels[texel + c]))))
                                             : int(std::lround(source[offset + c] * tint.Values[c]));
                 if (std::abs(int(result[offset + c]) - expected) > 2)
-                    throw std::runtime_error("inventory UI pixel mismatch x=" + std::to_string(x) + " y=" + std::to_string(y)
+                    throw std::runtime_error("native UI pixel mismatch x=" + std::to_string(x) + " y=" + std::to_string(y)
                         + " channel=" + std::to_string(c) + " expected=" + std::to_string(expected)
                         + " actual=" + std::to_string(result[offset + c]) + " texel=" + std::to_string(texel));
             }
@@ -2139,7 +2140,7 @@ void CalendarGameplayGpu() {
             && policy->PublishedFrame().Post.Values == post.Values, "runtime calendar publication disagrees with scene");
         Require(input->GetUI().Read().CalendarLabel.find(pixel::SeasonName(calendar.CurrentSeason)) == 0,
                 "runtime calendar HUD missing");
-        VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), sample.File, post);
+        VerifyCanvasComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), sample.File, post);
     }
     input->GetPresentation().ToggleFieldView();
     Draw(app);
@@ -2174,7 +2175,7 @@ void InventoryUIGpu() {
     auto token = Draw(app);
     app.Engine->GetRHI()->WaitIdle();
     Require(input->GetUI().Read().QuickSlots[0].Quantity == 137, "production UI lost committed stock");
-    VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-closed.ppm");
+    VerifyCanvasComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-closed.ppm");
     pixel::items::ItemRef heldStick;
     Require(inventory.CreateStick(inventory.Reference(session.PlayerInventory()), session.GetFormulaRuntime().ActiveProcess(), heldStick)
         == pixel::items::Result::Applied, "UI fixture stick failed");
@@ -2182,23 +2183,35 @@ void InventoryUIGpu() {
     for (int i = 0; i < 4; ++i) token = Draw(app);
     app.Engine->GetRHI()->WaitIdle();
     Require(input->GetUI().HeldItem() == heldStick, "production UI did not select the owned stick");
-    VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-held-stick.ppm");
+    VerifyCanvasComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-held-stick.ppm");
     input->OnKeyEvent(Key::KEY_TAB, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->OnKeyEvent(Key::KEY_TAB, 0, ButtonAction::ACTION_REPEAT, Mod{});
     for (int i = 0; i < 4; ++i) token = Draw(app);
     app.Engine->GetRHI()->WaitIdle();
     Require(input->GetUI().IsExpanded(), "Tab did not expand inventory in production app");
-    VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-open.ppm");
+    VerifyCanvasComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-open.ppm");
     for (float scale : {.5f, 1.5f, 4.f, 1.f}) {
         input->SetUIScale(scale);
         input->SetSceneScale(1.375f);
         for (int i = 0; i < 4; ++i) token = Draw(app);
         app.Engine->GetRHI()->WaitIdle();
         Require(input->GetUIScale() == scale && input->GetSceneScale() == 1.375f, "production scales interfered");
-        VerifyInventoryComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-scaled.ppm");
+        VerifyCanvasComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetUI().Paint(), "inventory-scaled.ppm");
     }
     input->OnKeyEvent(Key::KEY_ESCAPE, 0, ButtonAction::ACTION_PRESS, Mod{});
     Require(!input->GetUI().IsExpanded(), "Escape did not close production inventory");
+    input->OnKeyEvent(Key::KEY_ESCAPE, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Require(input->IsGameMenuOpen(), "Escape did not open the native menu without ImGui");
+    for (float scale : {.5f, 1.f, 1.5f, 4.f}) {
+        input->SetUIScale(scale);
+        for (int i = 0; i < 4; ++i) token = Draw(app);
+        app.Engine->GetRHI()->WaitIdle();
+        VerifyCanvasComposite(*app.Engine, policy->SceneColor(token.Slot), input->GetGameMenu().Paint(),
+            "game-menu.ppm", {{.35f, .35f, .35f, 1}},
+            {pixel::ui::GameMenuLayout::Width, pixel::ui::GameMenuLayout::Height, pixel::ui::GameMenuLayout::Placement});
+    }
+    input->OnKeyEvent(Key::KEY_ESCAPE, 0, ButtonAction::ACTION_PRESS, Mod{});
+    Require(!input->IsGameMenuOpen(), "second Escape did not close the native menu");
     Draw(app);
     app.Shutdown();
     std::cout << "Native inventory GPU passed: held stick, production publication, Tab/Escape, frame slots, pixel-exact canvas, transparency and post-tint isolation\n";

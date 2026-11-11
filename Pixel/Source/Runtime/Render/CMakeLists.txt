@@ -9,5 +9,5 @@ target_link_libraries(PixelPresentation PUBLIC PixelGameplay PixelCamera PixelAs
 add_library(PixelRender STATIC
     PixelRender.cpp Passes/RenderResources.cpp Passes/UploadPass.cpp
     Passes/WorldPass.cpp Passes/WindPass.cpp Passes/SceneObjectsPass.cpp
-    Passes/CharacterPass.cpp Passes/PostProcessPass.cpp UI/InventoryOverlay.cpp)
+    Passes/CharacterPass.cpp Passes/PostProcessPass.cpp UI/CanvasOverlay.cpp)
 target_link_libraries(PixelRender PUBLIC PixelPresentation PixelUI)

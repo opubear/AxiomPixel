@@ -5,10 +5,6 @@
 #include <stdexcept>
 
 namespace pixel::ui {
-bool Rect::Contains(float x, float y) const {
-    return x >= X && y >= Y && x < X + Width && y < Y + Height;
-}
-
 Rect InventoryLayout::QuickSlot(size_t index) { return {12.f + float(index) * 54, 30, 48, 48}; }
 Rect InventoryLayout::BagSlot(size_t index) {
     return {12.f + float(index % Columns) * 54, 162.f + float(index / Columns) * 54, 48, 48};

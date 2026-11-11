@@ -18,7 +18,9 @@ PixelGame::PixelGame(pixel::SessionMode mode, std::unique_ptr<pixel::llm::LLM> m
     : Session(mode, mode == pixel::SessionMode::Finite ? pixel::WorldGenerationSettings{} : pixel::GameSession::DefaultGeneration(),
           mode == pixel::SessionMode::Finite ? nullptr : pixel::MonsterCatalog::Parse(AssetLoader::LoadContentFile("Monsters.json"))),
       Model(model ? std::move(model) : std::make_unique<pixel::llm::PseudoLLM>()),
-      ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, UI, {[] { GAxiom->RequestClose(); }, [this] { DebugUI.Toggle(); }, [this] { DebugUI.ToggleFormulaEditor(); }, [] {
+      ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, UI, Menu, {
+          [] { GAxiom->RequestClose(); },
+          [this] { DebugUI.Toggle(); }, [this] { DebugUI.ToggleFormulaEditor(); }, [] {
               std::array<int, 2> size{};
               GAxiom->Engine->GetPlatform()->GetFramebufferSize(size[0], size[1]);
               return size; }}) {}
@@ -75,15 +77,27 @@ void PixelGame::Initialize() {
     Session.EnableSimulationThread();
     GAxiom->Engine->GetPlatform()->SetCursorInputMode(true);
     Input.ResetView();
-    if (auto *ui = GAxiom->GetDebugUI())
+    if (auto *ui = GAxiom->GetDebugUI()) {
+        // The native modal owns input while visible. Debug windows retain their
+        // visibility settings, but do not paint or capture input over the menu.
+        GAxiom->Engine->GetInput()->SetCaptureCallbacks({
+            .LatestEventId = [] { return ImguiManager::LatestInputEventId(); },
+            .State = [this, ui] {
+                return InputCaptureState{.Keyboard = !Menu.IsOpen() && ImguiManager::WantsKeyboardCapture(),
+                    .Mouse = !Menu.IsOpen() && ImguiManager::WantsMouseCapture(),
+                    .ProcessedEventId = ui->ProcessedInputEventId()};
+            }});
         ui->SetFrameContent([this] {
+            if (Menu.IsOpen()) return;
             if (const auto mode = DebugUI.Draw(Session, Camera, Presentation, Input, Performance, WorldWill, UI))
                 SetControlMode(*mode);
         });
+    }
     axiom::Log::Info("{}", pixel::GameInput::ControlsDescription());
 }
 
 void PixelGame::FrameBegin() {
+    Menu.SetUIScale(UI.GetUIScale());
     DebugUI.ApplyUIScale(UI.GetUIScale());
     ProfileSimulation = Diagnostics && Diagnostics->IsCollecting();
     ObservationViews.AdvanceServiceFrame();

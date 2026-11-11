@@ -20,9 +20,11 @@ struct Fixture {
     pixel::GamePresentation Presentation;
     pixel::ui::InventoryUI UI;
     std::array<int, 2> Framebuffer{800, 600};
+    pixel::ui::GameMenuUI Menu;
     int QuitRequests = 0, PanelToggles = 0, EditorToggles = 0;
-    pixel::GameInput Input{Session, Camera, Presentation, UI, {
-        [this] { ++QuitRequests; }, [this] { ++PanelToggles; }, [this] { ++EditorToggles; }, [this] { return Framebuffer; }}};
+    pixel::GameInput Input{Session, Camera, Presentation, UI, Menu, {
+        [this] { ++QuitRequests; },
+        [this] { ++PanelToggles; }, [this] { ++EditorToggles; }, [this] { return Framebuffer; }}};
     Fixture() {
         pixel::testing::SessionAccess::World(Session).DisableWind();
         Input.ResetView();
@@ -136,7 +138,9 @@ void CommandsAndReset() {
     Require(f.PanelToggles == 1 && f.EditorToggles == 1, "F4 must toggle only the formula editor once per press");
     f.KeyEvent(Key::KEY_ESCAPE);
     f.KeyEvent(Key::KEY_ESCAPE, ButtonAction::ACTION_RELEASE);
-    Require(f.PanelToggles == 1 && f.QuitRequests == 1, "host actions must execute once per press");
+    Require(f.PanelToggles == 1 && f.QuitRequests == 0 && f.Menu.IsOpen(), "Escape must open the menu once per press");
+    f.KeyEvent(Key::KEY_ESCAPE);
+    Require(!f.Menu.IsOpen(), "second Escape must close the menu");
     f.KeyEvent(Key::KEY_T);
     Require(f.Presentation.Post.Values[1] == .35f, "T must invoke presentation tint");
     const auto centre = f.Camera.GetCamera().GetWorldPosition().RelativeCellsTo({});
@@ -336,9 +340,60 @@ void InventoryInput() {
                 && f.Session.GetFormulaRuntime().Projectiles().size() == projectiles,
             "scaled panel click reached world actions or lost selection");
     f.KeyEvent(Key::KEY_ESCAPE);
-    Require(!f.UI.IsExpanded() && f.QuitRequests == 0, "Escape should close inventory before quitting");
+    Require(!f.UI.IsExpanded() && f.QuitRequests == 0, "Escape should close inventory before opening the menu");
     f.KeyEvent(Key::KEY_ESCAPE);
-    Require(f.QuitRequests == 1, "closed inventory should retain Escape quit behavior");
+    Require(f.QuitRequests == 0 && f.Menu.IsOpen(), "Escape with closed inventory should open the menu");
+}
+
+void GameMenuBlocksGameplay() {
+    Fixture f;
+    f.HoldStick();
+    f.KeyEvent(Key::KEY_D);
+    f.KeyEvent(Key::KEY_SPACE);
+    f.KeyEvent(Key::KEY_ESCAPE);
+    f.KeyEvent(Key::KEY_ESCAPE, ButtonAction::ACTION_REPEAT);
+    f.KeyEvent(Key::KEY_ESCAPE, ButtonAction::ACTION_RELEASE);
+    Require(f.Menu.IsOpen() && f.QuitRequests == 0, "holding Escape must not repeatedly toggle the menu");
+    const auto input = f.Input.ConsumePlayerInput();
+    Require(input.Horizontal == 0 && !input.Jump, "opening the menu must clear movement and pending jump");
+
+    const auto view = f.Camera.GetView();
+    const auto commit = f.Session.CurrentCommit();
+    const auto held = f.UI.HeldItem();
+    for (Key key : {Key::KEY_D, Key::KEY_SPACE, Key::KEY_R, Key::KEY_TAB, Key::KEY_7,
+                    Key::KEY_B, Key::KEY_F1, Key::KEY_F2, Key::KEY_F3, Key::KEY_F4, Key::KEY_EQUAL})
+        f.KeyEvent(key);
+    const MousePointerState pointer{{600, 300}, {800, 600}, {800, 600}};
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, pointer);
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, pointer);
+    Require(f.Session.CurrentCommit() == commit && !f.Session.LastAction(pixel::NativeCaller::Input)
+                && f.Session.GetFormulaRuntime().Projectiles().empty(), "menu input reached world actions");
+    Require(f.UI.HeldItem() == held && !f.UI.IsExpanded() && !f.Input.IsDevicePlacementEnabled()
+                && f.PanelToggles == 0 && f.EditorToggles == 0
+                && f.Input.GetControlMode() == pixel::ControlMode::Standard
+                && f.Camera.GetView().CellSizePixels == view.CellSizePixels,
+            "menu input changed inventory, tools, camera or debug panels");
+
+    f.KeyEvent(Key::KEY_ESCAPE);
+    f.KeyEvent(Key::KEY_D, ButtonAction::ACTION_REPEAT);
+    const auto resumed = f.Input.ConsumePlayerInput();
+    Require(!f.Menu.IsOpen() && resumed.Horizontal == 0 && !resumed.Jump,
+            "closing the menu replayed a held key or jump");
+    f.KeyEvent(Key::KEY_D);
+    Require(f.Input.ConsumePlayerInput().Horizontal == 1, "fresh input after closing the menu must work");
+
+    f.KeyEvent(Key::KEY_ESCAPE);
+    f.Menu.SetUIScale(1.5f);
+    const auto bounds = pixel::ui::GameMenuLayout::Placement({2560, 1440}, f.Menu.GetUIScale());
+    const auto quit = pixel::ui::GameMenuLayout::QuitButton();
+    const MousePointerState click{{(bounds.X + (quit.X + quit.Width / 2) * bounds.Width / pixel::ui::GameMenuLayout::Width) / 2,
+                                  (bounds.Y + (quit.Y + quit.Height / 2) * bounds.Height / pixel::ui::GameMenuLayout::Height) / 2},
+                                 {1280, 720}, {2560, 1440}};
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_RIGHT, ButtonAction::ACTION_PRESS, 0, click);
+    Require(f.QuitRequests == 0, "right click requested quitting");
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, click);
+    f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_RELEASE, 0, click);
+    Require(f.QuitRequests == 1 && f.Menu.IsOpen(), "scaled quit click must issue one request and preserve a declined menu");
 }
 
 void ElementBrushInput() {
@@ -376,6 +431,7 @@ int main() {
         FormulaInputWithSimulationThread();
         DeviceInput();
         InventoryInput();
+        GameMenuBlocksGameplay();
         ElementBrushInput();
         std::cout << "Pixel input behavior passed\n";
     } catch (const std::exception &error) {

@@ -5,7 +5,7 @@
 #include "Render/RenderPolicy/RenderPolicyInterface.h"
 #include "Runtime/Render/Assets/ArtAssets.h"
 #include "WorldGridFrame.h"
-#include "UI/InventoryOverlay.h"
+#include "UI/CanvasOverlay.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -19,8 +19,9 @@ class PixelRender final : public RenderPolicyInterface {
                 std::string postShader = "Pixel2DPostProcess.fs",
                 std::shared_ptr<const pixel::BackgroundAssets> background = {},
                 std::shared_ptr<const pixel::CharacterAssets> character = {},
-                pixel::render::InventoryOverlay::Publisher ui = {},
-                std::shared_ptr<const pixel::MonsterAssets> monsters = {});
+                pixel::render::CanvasOverlay::Publisher ui = {},
+                std::shared_ptr<const pixel::MonsterAssets> monsters = {},
+                pixel::render::CanvasOverlay::Publisher menu = {});
     ~PixelRender() override;
     void Initialize() override;
     void FrameBegin() override;
@@ -58,8 +59,8 @@ class PixelRender final : public RenderPolicyInterface {
     pixel::render::SceneObjectsPass SceneObjects;
     pixel::render::CharacterPass Character;
     pixel::render::PostProcessPass PostProcess;
-    pixel::render::InventoryOverlay InventoryUI;
-    pixel::render::InventoryOverlay::Publisher UIPublisher;
+    pixel::render::CanvasOverlay InventoryUI, GameMenu;
+    pixel::render::CanvasOverlay::Publisher UIPublisher, MenuPublisher;
     uint64_t FrameCount = 0;
     uint64_t WorldUploadBytes = 0;
     void CreateColorTargets();

@@ -1,6 +1,6 @@
 # 画面、交互与内容资产
 
-状态核对：2026-11-10。本文按玩家可见内容组织现状与交付边界；美术资源的加入、运行时接线和实际画面验收是三个分别确认的步骤。
+状态核对：2026-11-11。本文按玩家可见内容组织现状与交付边界；美术资源的加入、运行时接线和实际画面验收是三个分别确认的步骤。
 
 ## 玩家体验与目标
 
@@ -18,6 +18,7 @@
 | 角色与怪物 | 玩家分层行走／跳落动画、木头人、居民简易呈现、八类怪物动作 | [美术接入](../../Docs/ArtAssetIntegration.md)、[怪物](../../Docs/Monsters.md) |
 | 构式与设施 | 已有弹体、设备、育圃表现；通过正式动作和领域状态驱动 | [构式实现](../../Docs/Architecture/FormulaComposition.md)、[设备](Devices.md) |
 | 原生游戏UI | 7个快捷格、35格背包展示、独立木棍图标与真实持有高亮；在后处理后叠加 | [原生背包UI](NativeInventoryUI.md) |
+| 内建游戏菜单 | 原生像素画布；编辑调试文本时Escape先取消编辑，否则优先收起背包、再打开菜单；再次Escape或 `Return to game` 返回，`Quit game` 退出；菜单拦截游戏输入，不改变全局暂停 | [正常关闭与菜单](../../Docs/Architecture/CloseRequests.md) |
 | 时间显示 | 快捷栏顶部显示季节、季内日期及24小时制时间；F2查看年份与调节日历 | [昼夜与季节](WorldCalendar.md) |
 | 开发UI | F2环境／设备／育圃等面板，F4构式编辑器，性能与观测工具 | [工程入口](../../README.md) |
 
@@ -32,6 +33,10 @@
 - F1隐藏普通场景效果，用方向颜色诊断力场；它不表达强度，也不代替普通画面的体验验证。
 
 三线程、帧槽、发布与关闭合同见[隔帧并行](../../Docs/Architecture/ParallelFrames.md)和[独立模拟线程](../../Docs/Architecture/SimulationThread.md)。
+
+引擎底层已加入 FreeType/HarfBuzz 字体模块，支持 UTF-8 文本段塑形、灰度字形缓存与原生 RHI 绘制，依赖从 `Axiom/ThirdParty` 子模块编译。Pixel 菜单／背包仍使用现有像素画布文字，游戏默认字体和多语言段落布局尚未接线；接口、混排限制与 2026-11-11 的 CPU／GPU 验证见[引擎字体合同](../../Axiom/Source/Render/Text/README.md)。
+
+引擎另提供 [LocalizedString 与本地化目录](../../Axiom/Source/Localization/README.md)：`Axiom/Content/Localization` 已有英文、中文及地区覆盖示例，支持语言切换与缺失译文回退，解析结果进入字体。此能力尚未迁移 Pixel 文案；游戏自己的语言表、语言选择界面、完整内容翻译和多语言排版仍待接入。
 
 ## 资产管理与交付
 
@@ -68,4 +73,4 @@ python3 RawData/Environment/Biomes/install_runtime.py
 
 当前没有BGM资源或播放逻辑；以上条目是待决策范围，不是已承诺的版本内容。
 
-验证按改动选择 ArtAssets、TerrainAssets、CharacterAnimation、Monsters、Biomes、InventoryUI、PixelScale 和相关输入专项；视觉改动追加对应原生GPU smoke与实际画面检查。历史结果见各合同带日期章节，本次文档整理没有重新生成素材或运行GPU。
+验证按改动选择 ArtAssets、TerrainAssets、CharacterAnimation、Monsters、Biomes、InventoryUI、PixelScale 和相关输入专项；视觉改动追加对应原生GPU smoke与实际画面检查。历史结果见各合同带日期章节。2026-11-10 文档整理未重新生成素材或运行GPU；2026-11-11 引擎字体实现已另行完成字体像素及 Pixel 原生UI GPU 回归，范围见字体合同。

@@ -1,5 +1,7 @@
 #include "HAL/Shader/ShaderLibrary.h"
 #include "Runtime/Render/PixelRender.h"
+#include "Runtime/Gameplay/UI/InventoryUI.h"
+#include "Runtime/Gameplay/UI/GameMenuUI.h"
 #include "Runtime/Render/PixelWorldPresentation.h"
 #include "Runtime/Simulation/World/World.h"
 #include <algorithm>
@@ -283,6 +285,34 @@ void NativeInventoryOverlay() {
     policy.FrameBegin();
     policy.Draw();
     policy.Clear();
+    policy.Clear();
+}
+
+void NativeGameMenuOverlay() {
+    MockRHI rhi;
+    pixel::ui::GameMenuUI menu;
+    PixelRender policy(rhi, Catalog(), [](WorldGridFrame &output) {
+        output.SetRegion({0, 0}, 64, 64);
+        std::fill(output.Cells().begin(), output.Cells().end(), 0);
+        output.PrepareRegionVersions(1);
+    }, "Pixel2DPostProcess.fs", {}, {}, {}, {}, [&]() -> const pixel::ui::Canvas & { return menu.Paint(); });
+    policy.Initialize();
+    policy.FrameBegin();
+    policy.Draw();
+    const auto hiddenDraws = std::count(rhi.Commands.Events.begin(), rhi.Commands.Events.end(), "draw");
+    menu.Toggle();
+    policy.FrameBegin();
+    menu.Toggle(); // Draw must use the published visibility, not the live menu.
+    policy.Draw();
+    Check(std::count(rhi.Commands.Events.begin(), rhi.Commands.Events.end(), "draw") == hiddenDraws + 1,
+          "native menu did not preserve visible publication");
+    Check(std::any_of(rhi.Commands.Copies.begin(), rhi.Commands.Copies.end(), [](const auto &copy) {
+        return copy.first->Desc.Width == pixel::ui::GameMenuLayout::Width;
+    }), "first visible menu did not upload its canvas");
+    policy.FrameBegin();
+    policy.Draw();
+    Check(std::count(rhi.Commands.Events.begin(), rhi.Commands.Events.end(), "draw") == hiddenDraws,
+          "closed menu was still drawn");
     policy.Clear();
 }
 
@@ -762,6 +792,7 @@ int main(int argc, char **argv) {
         WindComposition();
         FrameRecording();
         NativeInventoryOverlay();
+        NativeGameMenuOverlay();
         CharacterComposition();
         CharacterArtUpload();
         FailedFrames();
