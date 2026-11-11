@@ -1,21 +1,23 @@
 #include "Item.h"
+#include "Runtime/Simulation/World/CellType.h"
 #include <array>
 #include <stdexcept>
 
 namespace pixel::items {
 std::span<const ItemDefinition> Definitions() {
     static constexpr std::array values{
-        ItemDefinition{ItemId::Soil, "soil"}, ItemDefinition{ItemId::Stone, "stone"},
-        ItemDefinition{ItemId::Coal, "coal"}, ItemDefinition{ItemId::CopperOre, "copper_ore"},
-        ItemDefinition{ItemId::IronOre, "iron_ore"}, ItemDefinition{ItemId::TungstenOre, "tungsten_ore"},
-        ItemDefinition{ItemId::GoldOre, "gold_ore"},
-        ItemDefinition{ItemId::Sand, "sand"},
-        ItemDefinition{ItemId::Clay, "clay"},
-        ItemDefinition{ItemId::Sandstone, "sandstone"},
-        ItemDefinition{ItemId::Snow, "snow"},
-        ItemDefinition{ItemId::Ice, "ice"},
-        ItemDefinition{ItemId::Wood, "wood"},
-        ItemDefinition{ItemId::Leaves, "leaves"}};
+        ItemDefinition{ItemId::Soil, "soil", 1, uint32_t(CellTypeId::Dirt)}, ItemDefinition{ItemId::Stone, "stone", 1, uint32_t(CellTypeId::Stone)},
+        ItemDefinition{ItemId::Coal, "coal", 1, uint32_t(CellTypeId::CoalOre)}, ItemDefinition{ItemId::CopperOre, "copper_ore", 1, uint32_t(CellTypeId::CopperOre)},
+        ItemDefinition{ItemId::IronOre, "iron_ore", 1, uint32_t(CellTypeId::IronOre)}, ItemDefinition{ItemId::TungstenOre, "tungsten_ore", 1, uint32_t(CellTypeId::TungstenOre)},
+        ItemDefinition{ItemId::GoldOre, "gold_ore", 1, uint32_t(CellTypeId::GoldOre)},
+        ItemDefinition{ItemId::Sand, "sand", 1, uint32_t(CellTypeId::Sand)},
+        ItemDefinition{ItemId::Clay, "clay", 1, uint32_t(CellTypeId::Clay)},
+        ItemDefinition{ItemId::Sandstone, "sandstone", 1, uint32_t(CellTypeId::Sandstone)},
+        ItemDefinition{ItemId::Snow, "snow", 1, uint32_t(CellTypeId::Snow)},
+        ItemDefinition{ItemId::Ice, "ice", 1, uint32_t(CellTypeId::Ice)},
+        ItemDefinition{ItemId::Wood, "wood", 1, uint32_t(CellTypeId::Wood)},
+        ItemDefinition{ItemId::Leaves, "leaves", 1, uint32_t(CellTypeId::Leaves)},
+        ItemDefinition{ItemId::WoodenStick, "wooden_stick"}};
     return values;
 }
 bool IsKnown(ItemId item) {

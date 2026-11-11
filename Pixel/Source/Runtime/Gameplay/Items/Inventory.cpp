@@ -1,6 +1,7 @@
 #include "Inventory.h"
 #include <atomic>
 #include <stdexcept>
+#include <set>
 
 namespace pixel::items {
 namespace {
@@ -27,25 +28,37 @@ void Inventory::Clear() { Reservations.clear(); Containers.clear(); }
 InventoryState Inventory::CaptureState() const {
     if (!Reservations.empty()) throw std::logic_error("checkpoint during inventory reservation");
     InventoryState state{NextContainer, NextReservation};
+    state.NextInstance = NextInstance;
     for (const auto &[id, container] : Containers) state.Containers.push_back(Inspect(id));
     return state;
 }
 
 void Inventory::RestoreState(const InventoryState &state) {
-    if (!state.NextContainer || !state.NextReservation || state.Containers.size() > MaximumContainers)
+    if (!state.NextContainer || !state.NextReservation || !state.NextInstance
+        || state.NextInstance >= InstanceResourceBase || state.Containers.size() > MaximumContainers)
         throw std::invalid_argument("invalid inventory checkpoint");
     std::map<ContainerId, Container> restored;
+    std::set<uint64_t> instances;
     for (const auto &saved : state.Containers) {
         if (!saved.Ref.Id.Value || saved.Ref.Id.Value >= state.NextContainer || !saved.Ref.Version
-            || saved.Ref.Version == UINT64_MAX || !saved.Capacity || saved.Stacks.size() > Definitions().size())
+            || saved.Ref.Version == UINT64_MAX || !saved.Capacity || saved.Stacks.size() > Definitions().size()
+            || saved.Instances.size() > MaximumInstancesPerContainer)
             throw std::invalid_argument("invalid saved container");
         Container container{saved.Ref.Version, saved.Capacity, saved.Quantity};
         uint64_t total = 0;
         for (const auto &stack : saved.Stacks) {
-            if (!IsKnown(stack.Item) || !stack.Quantity || stack.Reserved
+            if (!IsKnown(stack.Item) || !Definition(stack.Item).BlockMaterial || !stack.Quantity || stack.Reserved
                 || !container.Stacks.emplace(stack.Item, stack).second)
                 throw std::invalid_argument("invalid saved item stack");
             total += stack.Quantity;
+        }
+        for (const auto &item : saved.Instances) {
+            if (item.Ref.Item != ItemId::WoodenStick || !item.Ref.Instance || item.Ref.Instance >= state.NextInstance
+                || !item.Formula || !item.FormulaVersion || item.FormulaVersion == UINT64_MAX
+                || !instances.insert(item.Ref.Instance).second)
+                throw std::invalid_argument("invalid or duplicated saved item instance");
+            container.Instances.emplace(item.Ref.Instance, item);
+            ++total;
         }
         if (total != saved.Quantity || total > saved.Capacity || !restored.emplace(saved.Ref.Id, std::move(container)).second)
             throw std::invalid_argument("invalid saved inventory contents");
@@ -56,6 +69,7 @@ void Inventory::RestoreState(const InventoryState &state) {
     Containers = std::move(restored);
     NextContainer = state.NextContainer;
     NextReservation = state.NextReservation;
+    NextInstance = state.NextInstance;
 }
 void Inventory::Destroy(ContainerId id) {
     if (Containers.at(id).Quantity != 0) throw std::logic_error("destroying nonempty inventory");
@@ -65,6 +79,7 @@ ContainerSnapshot Inventory::Inspect(ContainerId id) const {
     const auto &container = Containers.at(id);
     ContainerSnapshot snapshot{{id, container.Version}, container.Capacity, container.Quantity};
     for (const auto &[item, stack] : container.Stacks) snapshot.Stacks.push_back(stack);
+    for (const auto &[id, item] : container.Instances) snapshot.Instances.push_back(item);
     return snapshot;
 }
 ContainerRef Inventory::Reference(ContainerId id) const { return {id, Containers.at(id).Version}; }
@@ -83,7 +98,7 @@ Result Inventory::Validate(std::span<const ItemAmount> amounts) {
     if (amounts.empty() || amounts.size() > Definitions().size()) return Result::InvalidAmount;
     for (size_t i = 0; i < amounts.size(); ++i) {
         if (!IsKnown(amounts[i].Item)) return Result::UnknownItem;
-        if (!amounts[i].Quantity) return Result::InvalidAmount;
+        if (!amounts[i].Quantity || !Definition(amounts[i].Item).BlockMaterial) return Result::InvalidAmount;
         for (size_t j = 0; j < i; ++j)
             if (amounts[j].Item == amounts[i].Item) return Result::InvalidAmount;
     }
@@ -180,6 +195,65 @@ Result Inventory::Finish(ReservationId id, bool consume) {
     Touch(container);
     return Result::Applied;
 }
+Result Inventory::CreateStick(ContainerRef destination, const formula::process::ProgramArtifact &formula, ItemRef &created) {
+    Container *container = nullptr;
+    const auto result = Find(destination, container);
+    if (result != Result::Applied) return result;
+    if (container->Quantity == container->Capacity || container->Instances.size() == MaximumInstancesPerContainer)
+        return Result::CapacityExceeded;
+    if (NextInstance >= InstanceResourceBase - 1) throw std::overflow_error("item instance identity exhausted");
+    created = {ItemId::WoodenStick, NextIdentity(NextInstance)};
+    container->Instances.emplace(created.Instance, ItemInstance{created, 1, formula});
+    ++container->Quantity;
+    Touch(*container);
+    return Result::Applied;
+}
+
+const ItemInstance *Inventory::FindInstance(ContainerId id, ItemRef item) const {
+    const auto &container = Containers.at(id);
+    const auto found = container.Instances.find(item.Instance);
+    return found != container.Instances.end() && found->second.Ref == item ? &found->second : nullptr;
+}
+
+bool Inventory::ContainsItem(ContainerId id, ItemRef item) const {
+    if (item.Instance) return FindInstance(id, item) != nullptr;
+    const auto &stacks = Containers.at(id).Stacks;
+    const auto found = stacks.find(item.Item);
+    return found != stacks.end() && found->second.Available() != 0;
+}
+
+Result Inventory::TransferInstance(ContainerRef source, ContainerRef destination, ItemRef item) {
+    Container *from = nullptr, *to = nullptr;
+    auto result = Find(source, from);
+    if (result != Result::Applied) return result;
+    result = Find(destination, to);
+    if (result != Result::Applied) return result;
+    if (source.Id == destination.Id) return Result::InvalidAmount;
+    if (!FindInstance(source.Id, item)) return Result::InsufficientItems;
+    if (to->Quantity == to->Capacity || to->Instances.size() == MaximumInstancesPerContainer)
+        return Result::CapacityExceeded;
+
+    to->Instances.insert(from->Instances.extract(item.Instance));
+    --from->Quantity;
+    ++to->Quantity;
+    Touch(*from);
+    Touch(*to);
+    return Result::Applied;
+}
+
+Result Inventory::SetFormula(ContainerRef reference, ItemRef item, const formula::process::ProgramArtifact &formula) {
+    Container *container = nullptr;
+    const auto result = Find(reference, container);
+    if (result != Result::Applied) return result;
+    if (!FindInstance(reference.Id, item)) return Result::InsufficientItems;
+    auto &instance = container->Instances.at(item.Instance);
+    if (instance.FormulaVersion == UINT64_MAX - 1) throw std::overflow_error("item formula version exhausted");
+    instance.Formula = formula;
+    ++instance.FormulaVersion;
+    Touch(*container);
+    return Result::Applied;
+}
+
 Result Inventory::Release(ReservationId id) { return Finish(id, false); }
 Result Inventory::Consume(ReservationId id) { return Finish(id, true); }
 } // namespace pixel::items
