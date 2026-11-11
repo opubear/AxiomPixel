@@ -11,7 +11,7 @@ constexpr size_t MaxActivations = 8;
 struct FormulaBridge::State {
     ProcessHost Processes;
     std::optional<MiningCollector> PlayerCollector;
-    const Actors *Characters = nullptr;
+    Actors *Characters = nullptr;
     formula::process::ProgramArtifact ActiveProcess = DefaultPlayerProcess();
     uint64_t Version = 1, Epoch = 1, NextCast = 1;
     uint64_t Accepted = 0, Rejected = 0;
@@ -52,7 +52,7 @@ struct FormulaBridge::State {
 };
 FormulaBridge::FormulaBridge() : Data(std::make_unique<State>()) {}
 FormulaBridge::~FormulaBridge() = default;
-void FormulaBridge::BindActors(const Actors &actors) {
+void FormulaBridge::BindActors(Actors &actors) {
     Data->Processes.BindActors(actors);
     Data->Characters = &actors;
 }

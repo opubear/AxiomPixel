@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CommitStamp.h"
+#include "ProgramRef.h"
 #include "Runtime/Gameplay/Devices/DeviceTypes.h"
 #include <array>
 #include <cstdint>
@@ -22,10 +23,6 @@ struct Rect {
 struct Position {
     Cell AnchorCell;
     std::array<double, 2> Offset{}; // Normalized to [0,1), in cells.
-};
-struct ProgramRef {
-    uint64_t ResourceId = 1, Version = 0;
-    bool operator==(const ProgramRef &) const = default;
 };
 // Concurrent world-will influence slots, independent of interpreter capacity.
 struct InterventionResources {

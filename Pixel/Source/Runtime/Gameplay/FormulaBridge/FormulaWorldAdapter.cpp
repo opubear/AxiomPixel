@@ -122,22 +122,22 @@ FormulaContact FormulaWorldAdapter::Sweep(const World &world, WorldPosition from
         }
     }
     for (const auto &actor : actors) {
-        if (actor.Kind != ActorKind::TrainingDummy) continue;
+        if (actor.Kind != ActorKind::TrainingDummy && (actor.Kind != ActorKind::Monster || !actor.Monster || actor.Health <= 0)) continue;
         const auto position = actor.Position.RelativeCellsTo(origin);
         const auto actorCell = actor.Position.Cell();
         const auto offset = actor.Position.RelativeCellsTo(actorCell);
-        const CellCoord last{actorCell.X + int64_t(std::ceil(offset[0] + Body::WidthCells)) - 1,
-                             actorCell.Y + int64_t(std::ceil(offset[1] + Body::HeightCells)) - 1};
+        const CellCoord last{actorCell.X + int64_t(std::ceil(offset[0] + actor.SizeCells[0])) - 1,
+                             actorCell.Y + int64_t(std::ceil(offset[1] + actor.SizeCells[1])) - 1};
         if (!bounds.Contains(actor.Position.Cell()) || !bounds.Contains(last)) continue;
         // Broad phase also keeps distant actors out of the quadratic calculation.
         if (position[0] > std::max(start[0], end[0]) + radius + ContactEpsilon
-            || position[0] + Body::WidthCells < std::min(start[0], end[0]) - radius - ContactEpsilon
+            || position[0] + actor.SizeCells[0] < std::min(start[0], end[0]) - radius - ContactEpsilon
             || position[1] > std::max(start[1], end[1]) + radius + ContactEpsilon
-            || position[1] + Body::HeightCells < std::min(start[1], end[1]) - radius - ContactEpsilon) continue;
+            || position[1] + actor.SizeCells[1] < std::min(start[1], end[1]) - radius - ContactEpsilon) continue;
         const auto contact = CircleRectangle(start[0], start[1], dx, dy, position[0], position[1],
-                                              Body::WidthCells, Body::HeightCells, radius);
+                                              actor.SizeCells[0], actor.SizeCells[1], radius);
         // Terrain and unavailable regions win ties. Targets never bypass a wall
-        // or mutate health/lifetime; repeated hits keep the same actor identity.
+        // bypass terrain. The host applies damage after resolving the full batch.
         if (contact && (first.Kind == FormulaContactKind::None || *contact < first.Fraction - ContactEpsilon))
             first = {FormulaContactKind::Actor, *contact, {}, actor.Position.Cell(), actor.Id};
     }

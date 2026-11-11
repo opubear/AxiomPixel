@@ -80,6 +80,7 @@ struct Projectile {
 struct Collision {
     process::RequestId Request;
     FormulaContact Contact;
+    double Damage = 0;
 };
 bool Observable(const Running &root, const process::HostEvent &event) {
     const auto &state = root.Instance->State();
@@ -89,7 +90,7 @@ bool Observable(const Running &root, const process::HostEvent &event) {
 } // namespace
 
 struct ProcessHost::State {
-    const Actors *Characters = nullptr;
+    Actors *Characters = nullptr;
     std::vector<ActorSnapshot> ActorTargets;
     process::Boundary At = 0;
     std::vector<std::unique_ptr<Running>> Roots;
@@ -149,7 +150,7 @@ struct ProcessHost::State {
     bool ResolveBinding(ProcessCarrier &carrier) const {
         if (carrier.Binding == ProcessBindingKind::World) return true;
         if (!Characters) throw std::logic_error("actor binding requires an actor registry");
-        const auto *actor = Characters->Find(carrier.AttachedActor);
+        const auto actor = Characters->Find(carrier.AttachedActor);
         if (!actor) return false;
         carrier.Origin = FormulaWorldAdapter::OffsetCells(actor->Body.GetWorldPosition(),
             {carrier.LocalOffset[0], carrier.LocalOffset[1]});
@@ -264,7 +265,7 @@ struct ProcessHost::State {
                 it->Position = to;
                 ++it;
             } else {
-                Collisions.push_back({it->Request, contact});
+                Collisions.push_back({it->Request, contact, it->Damage});
                 it = Bolts.erase(it);
             }
         }
@@ -272,10 +273,13 @@ struct ProcessHost::State {
             return std::tuple(a.Contact.Fraction, a.Request.Instance, a.Request.Sequence, a.Contact.Cell.Y, a.Contact.Cell.X)
                 < std::tuple(b.Contact.Fraction, b.Request.Instance, b.Request.Sequence, b.Contact.Cell.Y, b.Contact.Cell.X);
         });
-        for (const auto &collision : Collisions)
+        for (const auto &collision : Collisions) {
+            if (Characters && collision.Contact.Target.Value)
+                Characters->Damage(collision.Contact.Target, float(collision.Damage));
             Queue(Owner(collision.Request.Instance), collision.Contact.IsHit()
                 ? process::Outcome::Hit : process::Outcome::Cancelled,
                 collision.Request, LanguagePosition(collision.Contact.Position));
+        }
     }
     void RecordEffect(const Running &root, const process::EffectRequest &request, api::FactPayload payload) {
         if (Effects.size() == MaximumEffects) throw std::logic_error("process effect record bound violated");
@@ -355,16 +359,19 @@ struct ProcessHost::State {
         Queue(root, outcome, request.Id, {}, {}, handle);
         if (refusal == ProcessRefusal::None && std::holds_alternative<process::Bolt>(request.Description)) {
             const auto &contact = root.BirthContacts[index];
-            if (contact.Kind != FormulaContactKind::None)
+            if (contact.Kind != FormulaContactKind::None) {
+                if (Characters && contact.Target.Value)
+                    Characters->Damage(contact.Target, float(std::get<process::Bolt>(request.Description).Damage));
                 Queue(root, contact.IsHit() ? process::Outcome::Hit : process::Outcome::Cancelled,
                     request.Id, LanguagePosition(contact.Position));
+            }
         }
     }
 };
 
 ProcessHost::ProcessHost() : Data(std::make_unique<State>()) {}
 ProcessHost::~ProcessHost() = default;
-void ProcessHost::BindActors(const Actors &actors) {
+void ProcessHost::BindActors(Actors &actors) {
     if (!Data->Roots.empty()) throw std::logic_error("cannot rebind a running formula host");
     Data->Characters = &actors;
 }

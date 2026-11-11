@@ -1,59 +1,34 @@
 #pragma once
-#include "Body.h"
-#include "PlayerInput.h"
-#include <optional>
-#include <vector>
+#include "Actor.h"
 
 namespace pixel {
-// Durable identity within a saved world. External references also need that
-// world's ID/epoch; an in-memory slot is never written as an actor identity.
-struct ActorId {
-    uint64_t Value = 0;
-    bool operator==(const ActorId &) const = default;
-};
-struct ActorHandle {
-    uint32_t Slot = UINT32_MAX;
-    uint64_t Generation = 0, Owner = 0;
-    bool operator==(const ActorHandle &) const = default;
-};
-enum class ActorKind { Player, Resident, TrainingDummy };
-struct ActorRecord {
-    ActorId Id;
-    ActorKind Kind;
-    pixel::Body Body;
-};
-struct ActorsState {
-    uint64_t NextId = 1;
-    std::vector<ActorRecord> Records;
-};
-// Presentation/observation values contain no velocity state or storage handle.
-struct ActorSnapshot {
-    ActorId Id;
-    ActorKind Kind;
-    WorldPosition Position;
-    bool Grounded = false;
-    WorldPosition GetWorldPosition() const { return Position; }
-};
-
 class Actors {
   public:
     static constexpr size_t MaximumCount = 256;
-    Actors();
+    explicit Actors(std::shared_ptr<const MonsterCatalog> monsters = {});
     Actors(const Actors &) = delete;
     Actors &operator=(const Actors &) = delete;
 
     std::optional<ActorHandle> Spawn(ActorKind kind, WorldPosition position);
+    std::optional<ActorHandle> SpawnMonster(std::string_view definition, WorldPosition position);
+    bool Damage(ActorId actor, float amount);
     // Trusted restore boundary; record identity survives while the slot and
     // generation are newly assigned. Duplicate IDs/kinds are programming errors.
     std::optional<ActorHandle> Restore(const ActorRecord &record);
     bool Remove(ActorHandle handle);
     void Clear();
     void SetPlayerPosition(WorldPosition position);
+    void EquipFormula(ActorId actor, FormulaEquipment equipment);
     void Step(WorldMapView terrain, PlayerInput input);
-    const ActorRecord *Find(ActorHandle handle) const;
-    const ActorRecord *Find(ActorId id) const;
+    // Queries return self-contained state values, never component owners.
+    std::optional<ActorRecord> Find(ActorHandle handle) const;
+    std::optional<ActorRecord> Find(ActorId id) const;
     std::optional<ActorHandle> Resolve(ActorId id) const;
-    const ActorRecord &Require(ActorHandle handle) const;
+    ActorRecord Require(ActorHandle handle) const;
+    // Synchronous read-only runtime access. Do not retain across removal/reset.
+    const Actor *FindActor(ActorHandle handle) const;
+    const Actor *FindActor(ActorId id) const;
+    const Actor *PlayerActor() const;
     const Body *Player() const;
     std::optional<ActorSnapshot> PlayerSnapshot() const;
     std::vector<ActorSnapshot> Snapshot() const;
@@ -64,8 +39,12 @@ class Actors {
     void RestoreState(const ActorsState &state);
 
   private:
-    struct Slot { uint64_t Generation = 1; std::optional<ActorRecord> Actor; };
+    struct Slot {
+        uint64_t Generation = 1;
+        std::unique_ptr<Actor> Object;
+    };
     std::vector<Slot> Slots;
+    std::shared_ptr<const MonsterCatalog> Monsters;
     uint64_t Owner, NextId = 1, ChangeRevision = 0;
     size_t LiveCount = 0;
     std::optional<ActorHandle> PlayerHandle;
