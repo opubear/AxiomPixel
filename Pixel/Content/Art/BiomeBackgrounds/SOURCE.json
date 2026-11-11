@@ -1,0 +1,28 @@
+{
+  "tool": "built-in image_gen",
+  "date": "2026-11-10",
+  "originalSize": [
+    1672,
+    941
+  ],
+  "runtimeSize": [
+    2560,
+    1440
+  ],
+  "preparation": "sips resize for the existing texture-array dimensions; no artistic edits",
+  "prompts": "prompts.json",
+  "files": [
+    {
+      "name": "desert",
+      "original": "desert.png",
+      "runtime": "Runtime2560/desert.png",
+      "sha256": "bdcc53129b31e66f5583a73e5ede8b3cf6f360b4092cc59df005d9017076efc9"
+    },
+    {
+      "name": "snow_mountain",
+      "original": "snow_mountain.png",
+      "runtime": "Runtime2560/snow_mountain.png",
+      "sha256": "f4568de967f9c96a43d2ff653f2aee67c2f6c2694986e18c0c1a5d2733d4670f"
+    }
+  ]
+}

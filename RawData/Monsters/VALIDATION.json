@@ -1,0 +1,38 @@
+{
+  "date": "2026-11-10",
+  "status": "passed",
+  "archives": 4,
+  "archive_bytes": 183460,
+  "extracted_files": 60,
+  "original_png_images": 60,
+  "monsters": 8,
+  "character_animation_sheets": 54,
+  "character_animation_frames": 370,
+  "empty_character_frames": 0,
+  "effect_sheets_without_verified_grid": 4,
+  "convenience_copies": 58,
+  "checks": [
+    "ZIP CRC",
+    "safe extraction paths",
+    "every extracted file byte-identical to archive member",
+    "all original PNGs decode",
+    "all convenience copies SHA-256 match original",
+    "every character sheet divides into stated grid",
+    "all indexed frames inspected for nonempty alpha bounds",
+    "all JSON parse",
+    "all local Markdown links resolve",
+    "all 56 GIF frames decode",
+    "all 8 still PNGs retain alpha",
+    "comparison PNG visually checked",
+    "comparison GIF frame 27 visually checked; layout and transparency composition intact"
+  ],
+  "not_verified": [
+    "game runtime integration",
+    "collision or attack hitboxes",
+    "playback fps from author",
+    "projectile slicing grids",
+    "GPU rendering"
+  ],
+  "preview_gif_frames": 56,
+  "preview_gif_duration_ms": 120
+}

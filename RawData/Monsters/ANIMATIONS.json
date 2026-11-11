@@ -1,0 +1,3312 @@
+{
+  "date": "2026-11-10",
+  "status": "temporary_assets_not_integrated",
+  "monsters": [
+    {
+      "id": "mushroom",
+      "name_zh": "蘑菇怪",
+      "name_original": "Mushroom",
+      "pack": "LuizMeloFantasy1",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "森林、潮湿洞穴；孢子近战/远程占位",
+      "frame_size": [
+        150,
+        150
+      ],
+      "preview_idle": "idle",
+      "preview_move": "run",
+      "preview_attack": "attack",
+      "still": "Stills/mushroom.png",
+      "still_derivation": {
+        "sheet": "Sprites/mushroom/idle.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          64,
+          64,
+          87,
+          101
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        23,
+        37
+      ],
+      "animations": [
+        {
+          "name": "attack",
+          "sheet": "Sprites/mushroom/attack.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              61,
+              61,
+              84,
+              101
+            ],
+            [
+              51,
+              58,
+              80,
+              101
+            ],
+            [
+              51,
+              58,
+              80,
+              101
+            ],
+            [
+              51,
+              58,
+              80,
+              101
+            ],
+            [
+              55,
+              56,
+              80,
+              101
+            ],
+            [
+              56,
+              59,
+              106,
+              101
+            ],
+            [
+              64,
+              59,
+              115,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/mushroom/death.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              65,
+              64,
+              91,
+              101
+            ],
+            [
+              69,
+              75,
+              92,
+              101
+            ],
+            [
+              69,
+              74,
+              92,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle",
+          "sheet": "Sprites/mushroom/idle.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              64,
+              65,
+              87,
+              101
+            ],
+            [
+              64,
+              66,
+              87,
+              101
+            ],
+            [
+              64,
+              65,
+              87,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "run",
+          "sheet": "Sprites/mushroom/run.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              62,
+              62,
+              87,
+              98
+            ],
+            [
+              63,
+              64,
+              87,
+              101
+            ],
+            [
+              64,
+              63,
+              87,
+              100
+            ],
+            [
+              64,
+              62,
+              87,
+              98
+            ],
+            [
+              64,
+              64,
+              88,
+              101
+            ],
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              64,
+              63,
+              87,
+              100
+            ],
+            [
+              64,
+              62,
+              88,
+              98
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "take_hit",
+          "sheet": "Sprites/mushroom/take_hit.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              44,
+              59,
+              81,
+              101
+            ],
+            [
+              49,
+              58,
+              83,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack2",
+          "sheet": "Sprites/mushroom/attack2.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              64,
+              64,
+              87,
+              101
+            ],
+            [
+              61,
+              61,
+              84,
+              101
+            ],
+            [
+              58,
+              59,
+              82,
+              101
+            ],
+            [
+              58,
+              59,
+              82,
+              101
+            ],
+            [
+              58,
+              59,
+              82,
+              101
+            ],
+            [
+              61,
+              55,
+              83,
+              101
+            ],
+            [
+              67,
+              63,
+              109,
+              101
+            ],
+            [
+              67,
+              63,
+              122,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack3",
+          "sheet": "Sprites/mushroom/attack3.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 11,
+          "nonempty_frame_count": 11,
+          "frame_bounds": [
+            [
+              62,
+              64,
+              87,
+              101
+            ],
+            [
+              62,
+              63,
+              85,
+              101
+            ],
+            [
+              62,
+              64,
+              87,
+              101
+            ],
+            [
+              66,
+              70,
+              93,
+              101
+            ],
+            [
+              66,
+              69,
+              93,
+              101
+            ],
+            [
+              66,
+              70,
+              93,
+              101
+            ],
+            [
+              66,
+              69,
+              93,
+              101
+            ],
+            [
+              59,
+              57,
+              106,
+              101
+            ],
+            [
+              58,
+              56,
+              105,
+              101
+            ],
+            [
+              55,
+              53,
+              106,
+              101
+            ],
+            [
+              57,
+              49,
+              105,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "goblin",
+      "name_zh": "哥布林",
+      "name_original": "Goblin",
+      "pack": "LuizMeloFantasy1",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "林地、营地与遗迹；持械近战、投掷物测试",
+      "frame_size": [
+        150,
+        150
+      ],
+      "preview_idle": "idle",
+      "preview_move": "run",
+      "preview_attack": "attack",
+      "still": "Stills/goblin.png",
+      "still_derivation": {
+        "sheet": "Sprites/goblin/idle.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          58,
+          65,
+          91,
+          101
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        33,
+        36
+      ],
+      "animations": [
+        {
+          "name": "attack",
+          "sheet": "Sprites/goblin/attack.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              58,
+              65,
+              91,
+              101
+            ],
+            [
+              60,
+              65,
+              88,
+              101
+            ],
+            [
+              60,
+              67,
+              89,
+              101
+            ],
+            [
+              60,
+              67,
+              89,
+              101
+            ],
+            [
+              60,
+              67,
+              89,
+              101
+            ],
+            [
+              60,
+              66,
+              91,
+              101
+            ],
+            [
+              31,
+              55,
+              119,
+              101
+            ],
+            [
+              31,
+              55,
+              118,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/goblin/death.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              57,
+              64,
+              100,
+              85
+            ],
+            [
+              60,
+              62,
+              95,
+              100
+            ],
+            [
+              58,
+              78,
+              95,
+              101
+            ],
+            [
+              58,
+              86,
+              109,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle",
+          "sheet": "Sprites/goblin/idle.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              58,
+              65,
+              91,
+              101
+            ],
+            [
+              58,
+              66,
+              91,
+              101
+            ],
+            [
+              58,
+              67,
+              91,
+              101
+            ],
+            [
+              58,
+              69,
+              91,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "run",
+          "sheet": "Sprites/goblin/run.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              56,
+              63,
+              91,
+              99
+            ],
+            [
+              59,
+              64,
+              86,
+              101
+            ],
+            [
+              66,
+              64,
+              86,
+              101
+            ],
+            [
+              64,
+              65,
+              90,
+              101
+            ],
+            [
+              61,
+              63,
+              94,
+              98
+            ],
+            [
+              67,
+              64,
+              92,
+              101
+            ],
+            [
+              69,
+              64,
+              92,
+              101
+            ],
+            [
+              62,
+              65,
+              88,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "take_hit",
+          "sheet": "Sprites/goblin/take_hit.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              58,
+              65,
+              91,
+              101
+            ],
+            [
+              58,
+              65,
+              91,
+              101
+            ],
+            [
+              54,
+              64,
+              96,
+              101
+            ],
+            [
+              54,
+              64,
+              93,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack2",
+          "sheet": "Sprites/goblin/attack2.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              42,
+              71,
+              87,
+              101
+            ],
+            [
+              48,
+              61,
+              71,
+              101
+            ],
+            [
+              35,
+              76,
+              69,
+              101
+            ],
+            [
+              35,
+              76,
+              69,
+              101
+            ],
+            [
+              35,
+              76,
+              69,
+              101
+            ],
+            [
+              58,
+              74,
+              96,
+              101
+            ],
+            [
+              64,
+              72,
+              141,
+              101
+            ],
+            [
+              64,
+              76,
+              143,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack3",
+          "sheet": "Sprites/goblin/attack3.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 12,
+          "nonempty_frame_count": 12,
+          "frame_bounds": [
+            [
+              58,
+              65,
+              91,
+              101
+            ],
+            [
+              55,
+              65,
+              85,
+              101
+            ],
+            [
+              54,
+              64,
+              84,
+              101
+            ],
+            [
+              54,
+              64,
+              84,
+              101
+            ],
+            [
+              54,
+              64,
+              84,
+              101
+            ],
+            [
+              54,
+              64,
+              84,
+              101
+            ],
+            [
+              54,
+              64,
+              90,
+              101
+            ],
+            [
+              54,
+              64,
+              94,
+              101
+            ],
+            [
+              54,
+              64,
+              94,
+              101
+            ],
+            [
+              56,
+              65,
+              94,
+              101
+            ],
+            [
+              54,
+              64,
+              104,
+              101
+            ],
+            [
+              54,
+              64,
+              85,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "skeleton",
+      "name_zh": "骷髅战士",
+      "name_original": "Skeleton",
+      "pack": "LuizMeloFantasy1",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "地下、遗迹；盾防与武器攻击测试",
+      "frame_size": [
+        150,
+        150
+      ],
+      "preview_idle": "idle",
+      "preview_move": "walk",
+      "preview_attack": "attack",
+      "still": "Stills/skeleton.png",
+      "still_derivation": {
+        "sheet": "Sprites/skeleton/idle.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          60,
+          50,
+          105,
+          101
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        45,
+        51
+      ],
+      "animations": [
+        {
+          "name": "attack",
+          "sheet": "Sprites/skeleton/attack.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              60,
+              50,
+              105,
+              101
+            ],
+            [
+              60,
+              49,
+              102,
+              101
+            ],
+            [
+              53,
+              44,
+              89,
+              101
+            ],
+            [
+              53,
+              44,
+              89,
+              101
+            ],
+            [
+              53,
+              44,
+              89,
+              101
+            ],
+            [
+              58,
+              44,
+              89,
+              101
+            ],
+            [
+              68,
+              48,
+              148,
+              101
+            ],
+            [
+              68,
+              49,
+              148,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/skeleton/death.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              60,
+              50,
+              105,
+              103
+            ],
+            [
+              56,
+              58,
+              107,
+              101
+            ],
+            [
+              54,
+              78,
+              108,
+              101
+            ],
+            [
+              52,
+              88,
+              108,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle",
+          "sheet": "Sprites/skeleton/idle.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              60,
+              50,
+              105,
+              101
+            ],
+            [
+              60,
+              51,
+              105,
+              101
+            ],
+            [
+              60,
+              52,
+              105,
+              101
+            ],
+            [
+              60,
+              51,
+              105,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "shield",
+          "sheet": "Sprites/skeleton/shield.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              69,
+              55,
+              109,
+              101
+            ],
+            [
+              69,
+              55,
+              102,
+              101
+            ],
+            [
+              69,
+              55,
+              107,
+              101
+            ],
+            [
+              69,
+              55,
+              109,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "take_hit",
+          "sheet": "Sprites/skeleton/take_hit.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              60,
+              50,
+              105,
+              101
+            ],
+            [
+              60,
+              50,
+              105,
+              101
+            ],
+            [
+              50,
+              50,
+              100,
+              101
+            ],
+            [
+              52,
+              48,
+              102,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "walk",
+          "sheet": "Sprites/skeleton/walk.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              60,
+              50,
+              105,
+              101
+            ],
+            [
+              60,
+              51,
+              105,
+              101
+            ],
+            [
+              60,
+              51,
+              105,
+              101
+            ],
+            [
+              60,
+              50,
+              105,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack2",
+          "sheet": "Sprites/skeleton/attack2.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              68,
+              52,
+              101,
+              101
+            ],
+            [
+              69,
+              52,
+              102,
+              101
+            ],
+            [
+              69,
+              50,
+              103,
+              101
+            ],
+            [
+              69,
+              50,
+              103,
+              101
+            ],
+            [
+              69,
+              50,
+              103,
+              101
+            ],
+            [
+              62,
+              49,
+              97,
+              101
+            ],
+            [
+              59,
+              14,
+              148,
+              101
+            ],
+            [
+              59,
+              14,
+              148,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack3",
+          "sheet": "Sprites/skeleton/attack3.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              44,
+              47,
+              98,
+              101
+            ],
+            [
+              49,
+              49,
+              97,
+              101
+            ],
+            [
+              66,
+              51,
+              91,
+              101
+            ],
+            [
+              66,
+              56,
+              106,
+              101
+            ],
+            [
+              66,
+              56,
+              101,
+              101
+            ],
+            [
+              66,
+              56,
+              101,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "flying_eye",
+      "name_zh": "飞眼",
+      "name_original": "Flying eye",
+      "pack": "LuizMeloFantasy1",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "洞穴、夜间空域；飞行与远程攻击测试",
+      "frame_size": [
+        150,
+        150
+      ],
+      "preview_idle": "flight",
+      "preview_move": "flight",
+      "preview_attack": "attack",
+      "still": "Stills/flying_eye.png",
+      "still_derivation": {
+        "sheet": "Sprites/flying_eye/flight.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          57,
+          61,
+          98,
+          92
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        41,
+        31
+      ],
+      "animations": [
+        {
+          "name": "attack",
+          "sheet": "Sprites/flying_eye/attack.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              57,
+              61,
+              98,
+              92
+            ],
+            [
+              57,
+              63,
+              98,
+              92
+            ],
+            [
+              53,
+              63,
+              94,
+              88
+            ],
+            [
+              53,
+              63,
+              94,
+              88
+            ],
+            [
+              53,
+              63,
+              94,
+              87
+            ],
+            [
+              55,
+              62,
+              92,
+              88
+            ],
+            [
+              61,
+              67,
+              96,
+              91
+            ],
+            [
+              62,
+              67,
+              95,
+              91
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/flying_eye/death.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              57,
+              61,
+              98,
+              92
+            ],
+            [
+              69,
+              70,
+              88,
+              99
+            ],
+            [
+              50,
+              88,
+              106,
+              101
+            ],
+            [
+              53,
+              86,
+              102,
+              101
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "flight",
+          "sheet": "Sprites/flying_eye/flight.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              57,
+              61,
+              98,
+              92
+            ],
+            [
+              57,
+              60,
+              98,
+              92
+            ],
+            [
+              57,
+              60,
+              97,
+              89
+            ],
+            [
+              58,
+              65,
+              97,
+              90
+            ],
+            [
+              57,
+              66,
+              97,
+              90
+            ],
+            [
+              56,
+              67,
+              98,
+              91
+            ],
+            [
+              58,
+              68,
+              98,
+              92
+            ],
+            [
+              58,
+              68,
+              98,
+              93
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "take_hit",
+          "sheet": "Sprites/flying_eye/take_hit.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              57,
+              61,
+              98,
+              92
+            ],
+            [
+              57,
+              61,
+              98,
+              94
+            ],
+            [
+              67,
+              64,
+              93,
+              88
+            ],
+            [
+              68,
+              66,
+              88,
+              87
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack2",
+          "sheet": "Sprites/flying_eye/attack2.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              57,
+              61,
+              98,
+              92
+            ],
+            [
+              67,
+              63,
+              91,
+              83
+            ],
+            [
+              71,
+              63,
+              94,
+              80
+            ],
+            [
+              74,
+              63,
+              96,
+              79
+            ],
+            [
+              73,
+              63,
+              92,
+              81
+            ],
+            [
+              62,
+              49,
+              103,
+              94
+            ],
+            [
+              68,
+              53,
+              99,
+              91
+            ],
+            [
+              71,
+              49,
+              104,
+              94
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack3",
+          "sheet": "Sprites/flying_eye/attack3.png",
+          "frame_size": [
+            150,
+            150
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              68,
+              68,
+              93,
+              91
+            ],
+            [
+              73,
+              72,
+              91,
+              86
+            ],
+            [
+              73,
+              72,
+              91,
+              86
+            ],
+            [
+              62,
+              68,
+              95,
+              92
+            ],
+            [
+              62,
+              60,
+              97,
+              92
+            ],
+            [
+              62,
+              61,
+              97,
+              91
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "slime",
+      "name_zh": "史莱姆",
+      "name_original": "Slime",
+      "pack": "LuizMeloFantasy2",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "林地、湿地、洞穴；低矮地面怪物",
+      "frame_size": [
+        156,
+        156
+      ],
+      "preview_idle": "idle",
+      "preview_move": "walk",
+      "preview_attack": "attack",
+      "still": "Stills/slime.png",
+      "still_derivation": {
+        "sheet": "Sprites/slime/idle.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          56,
+          69,
+          100,
+          87
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        44,
+        18
+      ],
+      "animations": [
+        {
+          "name": "attack",
+          "sheet": "Sprites/slime/attack.png",
+          "frame_size": [
+            156,
+            156
+          ],
+          "row": 0,
+          "frame_count": 19,
+          "nonempty_frame_count": 19,
+          "frame_bounds": [
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              56,
+              65,
+              97,
+              87
+            ],
+            [
+              56,
+              64,
+              96,
+              87
+            ],
+            [
+              56,
+              59,
+              91,
+              87
+            ],
+            [
+              56,
+              61,
+              91,
+              87
+            ],
+            [
+              56,
+              60,
+              91,
+              87
+            ],
+            [
+              56,
+              61,
+              91,
+              87
+            ],
+            [
+              56,
+              61,
+              91,
+              87
+            ],
+            [
+              57,
+              53,
+              90,
+              87
+            ],
+            [
+              65,
+              52,
+              129,
+              87
+            ],
+            [
+              67,
+              65,
+              145,
+              87
+            ],
+            [
+              67,
+              61,
+              149,
+              87
+            ],
+            [
+              67,
+              62,
+              152,
+              87
+            ],
+            [
+              67,
+              61,
+              154,
+              87
+            ],
+            [
+              67,
+              61,
+              155,
+              87
+            ],
+            [
+              67,
+              61,
+              137,
+              87
+            ],
+            [
+              66,
+              61,
+              134,
+              87
+            ],
+            [
+              62,
+              61,
+              129,
+              87
+            ],
+            [
+              59,
+              66,
+              113,
+              87
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/slime/death.png",
+          "frame_size": [
+            156,
+            156
+          ],
+          "row": 0,
+          "frame_count": 11,
+          "nonempty_frame_count": 11,
+          "frame_bounds": [
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              55,
+              72,
+              101,
+              87
+            ],
+            [
+              54,
+              74,
+              102,
+              87
+            ],
+            [
+              52,
+              76,
+              104,
+              87
+            ],
+            [
+              50,
+              78,
+              106,
+              87
+            ],
+            [
+              48,
+              79,
+              108,
+              87
+            ],
+            [
+              48,
+              79,
+              108,
+              87
+            ],
+            [
+              44,
+              79,
+              114,
+              87
+            ],
+            [
+              44,
+              79,
+              114,
+              87
+            ],
+            [
+              44,
+              79,
+              114,
+              87
+            ],
+            [
+              44,
+              79,
+              114,
+              87
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "hurt",
+          "sheet": "Sprites/slime/hurt.png",
+          "frame_size": [
+            156,
+            156
+          ],
+          "row": 0,
+          "frame_count": 3,
+          "nonempty_frame_count": 3,
+          "frame_bounds": [
+            [
+              56,
+              65,
+              96,
+              87
+            ],
+            [
+              56,
+              66,
+              97,
+              87
+            ],
+            [
+              56,
+              67,
+              97,
+              87
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle",
+          "sheet": "Sprites/slime/idle.png",
+          "frame_size": [
+            156,
+            156
+          ],
+          "row": 0,
+          "frame_count": 14,
+          "nonempty_frame_count": 14,
+          "frame_bounds": [
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              56,
+              70,
+              100,
+              87
+            ],
+            [
+              56,
+              72,
+              100,
+              87
+            ],
+            [
+              56,
+              72,
+              100,
+              87
+            ],
+            [
+              56,
+              72,
+              100,
+              87
+            ],
+            [
+              56,
+              71,
+              100,
+              87
+            ],
+            [
+              56,
+              67,
+              100,
+              87
+            ],
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              56,
+              72,
+              100,
+              87
+            ],
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              56,
+              70,
+              100,
+              87
+            ],
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              56,
+              69,
+              100,
+              87
+            ],
+            [
+              56,
+              69,
+              100,
+              87
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "walk",
+          "sheet": "Sprites/slime/walk.png",
+          "frame_size": [
+            156,
+            156
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              56,
+              69,
+              93,
+              87
+            ],
+            [
+              55,
+              69,
+              93,
+              87
+            ],
+            [
+              54,
+              68,
+              92,
+              87
+            ],
+            [
+              54,
+              68,
+              92,
+              87
+            ],
+            [
+              55,
+              69,
+              92,
+              87
+            ],
+            [
+              56,
+              69,
+              93,
+              87
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "rat",
+      "name_zh": "巨鼠",
+      "name_original": "Rat",
+      "pack": "LuizMeloFantasy2",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "洞穴、地道、地下建筑；快速贴地追击",
+      "frame_size": [
+        70,
+        70
+      ],
+      "preview_idle": "idle",
+      "preview_move": "run",
+      "preview_attack": "attack_bite",
+      "still": "Stills/rat.png",
+      "still_derivation": {
+        "sheet": "Sprites/rat/idle.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          15,
+          25,
+          55,
+          45
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        40,
+        20
+      ],
+      "animations": [
+        {
+          "name": "attack_bite",
+          "sheet": "Sprites/rat/attack_bite.png",
+          "frame_size": [
+            70,
+            70
+          ],
+          "row": 0,
+          "frame_count": 12,
+          "nonempty_frame_count": 12,
+          "frame_bounds": [
+            [
+              15,
+              25,
+              51,
+              45
+            ],
+            [
+              15,
+              25,
+              49,
+              45
+            ],
+            [
+              15,
+              23,
+              48,
+              45
+            ],
+            [
+              15,
+              23,
+              48,
+              45
+            ],
+            [
+              15,
+              23,
+              48,
+              45
+            ],
+            [
+              15,
+              23,
+              48,
+              45
+            ],
+            [
+              15,
+              23,
+              48,
+              45
+            ],
+            [
+              15,
+              29,
+              61,
+              45
+            ],
+            [
+              15,
+              29,
+              60,
+              45
+            ],
+            [
+              15,
+              29,
+              60,
+              45
+            ],
+            [
+              15,
+              28,
+              59,
+              45
+            ],
+            [
+              15,
+              27,
+              56,
+              45
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "hurt",
+          "sheet": "Sprites/rat/hurt.png",
+          "frame_size": [
+            70,
+            70
+          ],
+          "row": 0,
+          "frame_count": 3,
+          "nonempty_frame_count": 3,
+          "frame_bounds": [
+            [
+              15,
+              25,
+              49,
+              45
+            ],
+            [
+              15,
+              25,
+              52,
+              45
+            ],
+            [
+              15,
+              25,
+              55,
+              45
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle",
+          "sheet": "Sprites/rat/idle.png",
+          "frame_size": [
+            70,
+            70
+          ],
+          "row": 0,
+          "frame_count": 10,
+          "nonempty_frame_count": 10,
+          "frame_bounds": [
+            [
+              15,
+              25,
+              55,
+              45
+            ],
+            [
+              15,
+              26,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              26,
+              55,
+              45
+            ],
+            [
+              15,
+              25,
+              55,
+              45
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/rat/death.png",
+          "frame_size": [
+            70,
+            70
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              15,
+              25,
+              55,
+              45
+            ],
+            [
+              15,
+              26,
+              55,
+              45
+            ],
+            [
+              15,
+              27,
+              55,
+              45
+            ],
+            [
+              15,
+              32,
+              55,
+              45
+            ],
+            [
+              15,
+              34,
+              57,
+              45
+            ],
+            [
+              15,
+              33,
+              56,
+              45
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "run",
+          "sheet": "Sprites/rat/run.png",
+          "frame_size": [
+            70,
+            70
+          ],
+          "row": 0,
+          "frame_count": 8,
+          "nonempty_frame_count": 8,
+          "frame_bounds": [
+            [
+              3,
+              25,
+              55,
+              45
+            ],
+            [
+              4,
+              26,
+              60,
+              45
+            ],
+            [
+              6,
+              26,
+              62,
+              45
+            ],
+            [
+              7,
+              27,
+              50,
+              45
+            ],
+            [
+              5,
+              25,
+              55,
+              45
+            ],
+            [
+              6,
+              26,
+              60,
+              45
+            ],
+            [
+              7,
+              31,
+              56,
+              45
+            ],
+            [
+              5,
+              28,
+              50,
+              45
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "bat",
+      "name_zh": "蝙蝠",
+      "name_original": "Bat",
+      "pack": "LuizMeloFantasy2",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "洞穴、夜间林地；飞行、受击坠落测试",
+      "frame_size": [
+        87,
+        87
+      ],
+      "preview_idle": "fly",
+      "preview_move": "fly",
+      "preview_attack": "attack",
+      "still": "Stills/bat.png",
+      "still_derivation": {
+        "sheet": "Sprites/bat/fly.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          20,
+          29,
+          74,
+          62
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        54,
+        33
+      ],
+      "animations": [
+        {
+          "name": "attack",
+          "sheet": "Sprites/bat/attack.png",
+          "frame_size": [
+            87,
+            87
+          ],
+          "row": 0,
+          "frame_count": 11,
+          "nonempty_frame_count": 11,
+          "frame_bounds": [
+            [
+              22,
+              19,
+              70,
+              62
+            ],
+            [
+              23,
+              27,
+              73,
+              63
+            ],
+            [
+              22,
+              43,
+              76,
+              64
+            ],
+            [
+              34,
+              35,
+              62,
+              65
+            ],
+            [
+              34,
+              34,
+              60,
+              65
+            ],
+            [
+              34,
+              34,
+              60,
+              65
+            ],
+            [
+              35,
+              35,
+              60,
+              64
+            ],
+            [
+              33,
+              35,
+              64,
+              63
+            ],
+            [
+              33,
+              31,
+              86,
+              67
+            ],
+            [
+              32,
+              27,
+              78,
+              67
+            ],
+            [
+              25,
+              24,
+              69,
+              62
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/bat/death.png",
+          "frame_size": [
+            87,
+            87
+          ],
+          "row": 0,
+          "frame_count": 4,
+          "nonempty_frame_count": 4,
+          "frame_bounds": [
+            [
+              44,
+              17,
+              57,
+              55
+            ],
+            [
+              36,
+              27,
+              67,
+              55
+            ],
+            [
+              28,
+              46,
+              73,
+              55
+            ],
+            [
+              18,
+              43,
+              82,
+              55
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "fall",
+          "sheet": "Sprites/bat/fall.png",
+          "frame_size": [
+            87,
+            87
+          ],
+          "row": 0,
+          "frame_count": 5,
+          "nonempty_frame_count": 5,
+          "frame_bounds": [
+            [
+              44,
+              26,
+              56,
+              72
+            ],
+            [
+              43,
+              28,
+              54,
+              72
+            ],
+            [
+              43,
+              32,
+              56,
+              72
+            ],
+            [
+              45,
+              32,
+              53,
+              72
+            ],
+            [
+              43,
+              30,
+              55,
+              72
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "fly_to_fall",
+          "sheet": "Sprites/bat/fly_to_fall.png",
+          "frame_size": [
+            87,
+            87
+          ],
+          "row": 0,
+          "frame_count": 3,
+          "nonempty_frame_count": 3,
+          "frame_bounds": [
+            [
+              25,
+              29,
+              69,
+              68
+            ],
+            [
+              38,
+              28,
+              63,
+              71
+            ],
+            [
+              42,
+              28,
+              57,
+              73
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "fly",
+          "sheet": "Sprites/bat/fly.png",
+          "frame_size": [
+            87,
+            87
+          ],
+          "row": 0,
+          "frame_count": 11,
+          "nonempty_frame_count": 11,
+          "frame_bounds": [
+            [
+              20,
+              29,
+              74,
+              62
+            ],
+            [
+              19,
+              32,
+              75,
+              61
+            ],
+            [
+              21,
+              47,
+              77,
+              62
+            ],
+            [
+              33,
+              47,
+              77,
+              71
+            ],
+            [
+              31,
+              47,
+              77,
+              67
+            ],
+            [
+              25,
+              45,
+              79,
+              63
+            ],
+            [
+              20,
+              42,
+              79,
+              60
+            ],
+            [
+              15,
+              37,
+              81,
+              60
+            ],
+            [
+              14,
+              30,
+              81,
+              61
+            ],
+            [
+              19,
+              21,
+              68,
+              62
+            ],
+            [
+              24,
+              16,
+              68,
+              62
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "hurt",
+          "sheet": "Sprites/bat/hurt.png",
+          "frame_size": [
+            87,
+            87
+          ],
+          "row": 0,
+          "frame_count": 3,
+          "nonempty_frame_count": 3,
+          "frame_bounds": [
+            [
+              22,
+              42,
+              75,
+              64
+            ],
+            [
+              23,
+              27,
+              73,
+              63
+            ],
+            [
+              22,
+              19,
+              70,
+              62
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    },
+    {
+      "id": "mimic",
+      "name_zh": "宝箱怪",
+      "name_original": "Mimic",
+      "pack": "LuizMeloFantasy2",
+      "author": "LuizMelo",
+      "license": "CC0-1.0",
+      "suggested_use": "遗迹、地下宝藏点；伪装、变形和伏击",
+      "frame_size": [
+        146,
+        146
+      ],
+      "preview_idle": "idle_transformed",
+      "preview_move": "walk",
+      "preview_attack": "attack_1",
+      "still": "Stills/mimic.png",
+      "still_derivation": {
+        "sheet": "Sprites/mimic/idle_transformed.png",
+        "frame_index": 0,
+        "crop_in_frame": [
+          56,
+          53,
+          98,
+          83
+        ],
+        "processing": "crop transparent margins only; original pixel colors unchanged"
+      },
+      "visible_still_size": [
+        42,
+        30
+      ],
+      "animations": [
+        {
+          "name": "idle_closed",
+          "sheet": "Sprites/mimic/idle_closed.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 1,
+          "nonempty_frame_count": 1,
+          "frame_bounds": [
+            [
+              58,
+              63,
+              89,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack_1",
+          "sheet": "Sprites/mimic/attack_1.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 14,
+          "nonempty_frame_count": 14,
+          "frame_bounds": [
+            [
+              56,
+              53,
+              98,
+              83
+            ],
+            [
+              56,
+              52,
+              98,
+              83
+            ],
+            [
+              55,
+              48,
+              98,
+              83
+            ],
+            [
+              51,
+              42,
+              92,
+              83
+            ],
+            [
+              50,
+              41,
+              91,
+              83
+            ],
+            [
+              49,
+              40,
+              91,
+              83
+            ],
+            [
+              49,
+              40,
+              91,
+              83
+            ],
+            [
+              49,
+              40,
+              91,
+              83
+            ],
+            [
+              48,
+              39,
+              91,
+              83
+            ],
+            [
+              47,
+              39,
+              93,
+              83
+            ],
+            [
+              47,
+              39,
+              93,
+              83
+            ],
+            [
+              48,
+              39,
+              95,
+              83
+            ],
+            [
+              52,
+              40,
+              98,
+              83
+            ],
+            [
+              56,
+              58,
+              116,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "attack_2",
+          "sheet": "Sprites/mimic/attack_2.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 13,
+          "nonempty_frame_count": 13,
+          "frame_bounds": [
+            [
+              56,
+              53,
+              98,
+              83
+            ],
+            [
+              55,
+              54,
+              89,
+              83
+            ],
+            [
+              54,
+              56,
+              83,
+              83
+            ],
+            [
+              52,
+              56,
+              81,
+              83
+            ],
+            [
+              44,
+              56,
+              83,
+              83
+            ],
+            [
+              35,
+              56,
+              83,
+              83
+            ],
+            [
+              32,
+              56,
+              83,
+              83
+            ],
+            [
+              37,
+              57,
+              84,
+              83
+            ],
+            [
+              69,
+              55,
+              114,
+              83
+            ],
+            [
+              69,
+              54,
+              145,
+              83
+            ],
+            [
+              69,
+              54,
+              130,
+              83
+            ],
+            [
+              69,
+              54,
+              112,
+              83
+            ],
+            [
+              65,
+              54,
+              111,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "death",
+          "sheet": "Sprites/mimic/death.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              56,
+              53,
+              98,
+              83
+            ],
+            [
+              56,
+              54,
+              99,
+              83
+            ],
+            [
+              56,
+              55,
+              100,
+              83
+            ],
+            [
+              57,
+              65,
+              102,
+              83
+            ],
+            [
+              57,
+              67,
+              106,
+              83
+            ],
+            [
+              57,
+              66,
+              107,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "hurt",
+          "sheet": "Sprites/mimic/hurt.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 3,
+          "nonempty_frame_count": 3,
+          "frame_bounds": [
+            [
+              54,
+              50,
+              85,
+              83
+            ],
+            [
+              56,
+              53,
+              93,
+              83
+            ],
+            [
+              56,
+              53,
+              96,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle_open",
+          "sheet": "Sprites/mimic/idle_open.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 1,
+          "nonempty_frame_count": 1,
+          "frame_bounds": [
+            [
+              46,
+              72,
+              89,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "idle_transformed",
+          "sheet": "Sprites/mimic/idle_transformed.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 9,
+          "nonempty_frame_count": 9,
+          "frame_bounds": [
+            [
+              56,
+              53,
+              98,
+              83
+            ],
+            [
+              56,
+              53,
+              99,
+              83
+            ],
+            [
+              56,
+              55,
+              97,
+              83
+            ],
+            [
+              56,
+              56,
+              92,
+              83
+            ],
+            [
+              56,
+              56,
+              94,
+              83
+            ],
+            [
+              56,
+              56,
+              96,
+              83
+            ],
+            [
+              56,
+              55,
+              95,
+              83
+            ],
+            [
+              56,
+              53,
+              95,
+              83
+            ],
+            [
+              56,
+              53,
+              96,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "opening",
+          "sheet": "Sprites/mimic/opening.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              56,
+              67,
+              91,
+              83
+            ],
+            [
+              57,
+              66,
+              90,
+              83
+            ],
+            [
+              56,
+              51,
+              86,
+              83
+            ],
+            [
+              55,
+              53,
+              87,
+              83
+            ],
+            [
+              50,
+              64,
+              88,
+              83
+            ],
+            [
+              46,
+              72,
+              89,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "transform",
+          "sheet": "Sprites/mimic/transform.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 7,
+          "nonempty_frame_count": 7,
+          "frame_bounds": [
+            [
+              46,
+              72,
+              89,
+              83
+            ],
+            [
+              47,
+              67,
+              90,
+              83
+            ],
+            [
+              47,
+              61,
+              92,
+              83
+            ],
+            [
+              49,
+              57,
+              93,
+              83
+            ],
+            [
+              51,
+              55,
+              92,
+              83
+            ],
+            [
+              55,
+              55,
+              92,
+              83
+            ],
+            [
+              55,
+              56,
+              93,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        },
+        {
+          "name": "walk",
+          "sheet": "Sprites/mimic/walk.png",
+          "frame_size": [
+            146,
+            146
+          ],
+          "row": 0,
+          "frame_count": 6,
+          "nonempty_frame_count": 6,
+          "frame_bounds": [
+            [
+              55,
+              62,
+              93,
+              83
+            ],
+            [
+              55,
+              61,
+              93,
+              83
+            ],
+            [
+              57,
+              49,
+              102,
+              83
+            ],
+            [
+              64,
+              51,
+              97,
+              79
+            ],
+            [
+              66,
+              51,
+              96,
+              83
+            ],
+            [
+              55,
+              58,
+              93,
+              83
+            ]
+          ],
+          "timing": "author fps unspecified; preview uses illustrative 8 fps"
+        }
+      ]
+    }
+  ],
+  "effects_without_verified_grid": [
+    {
+      "path": "Effects/mushroom/projectile_sprite.png",
+      "original_path": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Mushroom/Projectile_sprite.png",
+      "sha256": "1dbaca6c714129e284754cb8bafb900801b488fb60865a7d89bff2a16d87d46d",
+      "size": [
+        400,
+        50
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "grid_status": "not_indexed; preserve original, verify projectile grid separately"
+    },
+    {
+      "path": "Effects/goblin/bomb_sprite.png",
+      "original_path": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Goblin/Bomb_sprite.png",
+      "sha256": "cbd3951807fbee2ff8b650254f022b8bd4294946506df6db569e256f281becf5",
+      "size": [
+        1900,
+        100
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "grid_status": "not_indexed; preserve original, verify projectile grid separately"
+    },
+    {
+      "path": "Effects/skeleton/sword_sprite.png",
+      "original_path": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Skeleton/Sword_sprite.png",
+      "sha256": "17f972e78a0ed0f84eb4e3365b6f8d52cdc62e6e44ae25382dbd0153c95e6c8b",
+      "size": [
+        736,
+        102
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "grid_status": "not_indexed; preserve original, verify projectile grid separately"
+    },
+    {
+      "path": "Effects/flying_eye/projectile_sprite.png",
+      "original_path": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Flying eye/projectile_sprite.png",
+      "sha256": "c7a97fe712051560beaf3087318f3596f1378158a4801192a9c287cdaf534152",
+      "size": [
+        384,
+        48
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "grid_status": "not_indexed; preserve original, verify projectile grid separately"
+    }
+  ]
+}

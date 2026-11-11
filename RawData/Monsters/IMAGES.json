@@ -1,0 +1,485 @@
+{
+  "date": "2026-11-10",
+  "images": [
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.2)/Monster_Creatures_Fantasy(Version 1.2)/Flying eye/Attack2.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3839,
+      "sha256": "229493f78244fdec216a146f79ce40b90ac9640be77347ad89ab46392aa7de21"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.2)/Monster_Creatures_Fantasy(Version 1.2)/Goblin/Attack2.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 4222,
+      "sha256": "af7ef3ca6ee314eb1e589018daf916daff86fbbe29fdaa3e56970f673b500ccc"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.2)/Monster_Creatures_Fantasy(Version 1.2)/Mushroom/Attack2.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3852,
+      "sha256": "cb6dcbd56b30451887ae79d4e4d56439b86437cc5456385beaa093e2ae398c4f"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.2)/Monster_Creatures_Fantasy(Version 1.2)/Skeleton/Attack2.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 6005,
+      "sha256": "afe7fb168b4a38f12da3286fe351e86b7ca29b073e7a5f15b4751cd78932e2d0"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Flying eye/Attack3.png",
+      "width": 900,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2617,
+      "sha256": "24adf5a0e1e6868e52dd09d68e5cf46feaf2b5bc23298f040a1e5cd6a2d23c0f"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Flying eye/projectile_sprite.png",
+      "width": 384,
+      "height": 48,
+      "mode": "RGBA",
+      "bytes": 1640,
+      "sha256": "c7a97fe712051560beaf3087318f3596f1378158a4801192a9c287cdaf534152"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Goblin/Attack3.png",
+      "width": 1800,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 5451,
+      "sha256": "9ba7a5eb4012f6ebcec6966bf267bcc61a53d1f86a03ac7584ae59d9a8b55b90"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Goblin/Bomb_sprite.png",
+      "width": 1900,
+      "height": 100,
+      "mode": "RGBA",
+      "bytes": 4945,
+      "sha256": "cbd3951807fbee2ff8b650254f022b8bd4294946506df6db569e256f281becf5"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Mushroom/Attack3.png",
+      "width": 1650,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 4342,
+      "sha256": "8e1812ab855b4780b24024fd06301edd00b19bfd70a60c976e4717869160d65f"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Mushroom/Projectile_sprite.png",
+      "width": 400,
+      "height": 50,
+      "mode": "RGBA",
+      "bytes": 878,
+      "sha256": "1dbaca6c714129e284754cb8bafb900801b488fb60865a7d89bff2a16d87d46d"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Skeleton/Attack3.png",
+      "width": 900,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 4059,
+      "sha256": "e762ef64b61ef131a1224034a5edfd224d002fac30dc547d5e468cd721d6d82a"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monster_Creatures_Fantasy(Version 1.3)/Monster_Creatures_Fantasy(Version 1.3)/Skeleton/Sword_sprite.png",
+      "width": 736,
+      "height": 102,
+      "mode": "RGBA",
+      "bytes": 2058,
+      "sha256": "17f972e78a0ed0f84eb4e3365b6f8d52cdc62e6e44ae25382dbd0153c95e6c8b"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/All Characters.png",
+      "width": 630,
+      "height": 500,
+      "mode": "RGBA",
+      "bytes": 6901,
+      "sha256": "a0a69d922b6e49febca6067063d271e6c8d156f2992e0cb58f4246fc031fde50"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Flying eye/Attack.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3492,
+      "sha256": "ed1cd29ee28b368077a7c691c56d32e0b1e0dcb591478164fe15287c1f349369"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Flying eye/Death.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2242,
+      "sha256": "d632ed033273ca53dde9a52059fca8f5b5cf92a9d8d57735284e307c6cb18c44"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Flying eye/Flight.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3508,
+      "sha256": "0555d4ff47209478889b1cdcee7ee8b0a5ec758e679e109414530d39a9243d45"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Flying eye/Take Hit.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2104,
+      "sha256": "4751aa7999e096c0b718b07393e5fd35f38832b6063ccbfc182ed3d7fa46ee46"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Goblin/Attack.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 4967,
+      "sha256": "e9055f50a93fc214660cdb798e65979a7cd76a9fbb9435135b39544171a43bae"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Goblin/Death.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2935,
+      "sha256": "e74bdf72f128164592c455d4c5c48f0c229d18e62ee9f3abfa39a75e0c82c097"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Goblin/Idle.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2573,
+      "sha256": "b4e413f6c237de96baf48879a2119a1aa3185827e78db2bd567c0992fb922860"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Goblin/Run.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 4883,
+      "sha256": "a93aaa44b29f9070344572c26e13843058a19df8a97838fe8727158339e88c2e"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Goblin/Take Hit.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3039,
+      "sha256": "2bb34335146df28177a17b3b43925ac91e6c64157c1def70d99c39d67ccbb396"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Mushroom/Attack.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3937,
+      "sha256": "47e9ca3bc1369c27eb687397229536bd685879333c94a0e8ece73052bfca4e19"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Mushroom/Death.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2490,
+      "sha256": "4eea4d6542ee507603ed6737c7d8c3826b5f09e186d250a287d7a620febff208"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Mushroom/Idle.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 1737,
+      "sha256": "326c6d499729f50ffb999957586b50eb86133781d180adb409fca75971090c22"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Mushroom/Run.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3415,
+      "sha256": "73f72bc64033f4af2335390223965ca4b36f0ff8a6731612238058fb39d8198e"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Mushroom/Take Hit.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2333,
+      "sha256": "e0a9e0e91ec564adeb55f04536e1288d1c71b2e4cfaa04564b4bc762b6a154b9"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Skeleton/Attack.png",
+      "width": 1200,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 5605,
+      "sha256": "0eed7488da2294bf221494cfa9f4e9836cbfd00add085a64113a2d3d0b077430"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Skeleton/Death.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3513,
+      "sha256": "e137f81c473c870c9b069982389cbaaa6363d35720895b2bd3ce3708558473d1"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Skeleton/Idle.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2767,
+      "sha256": "80ca8c9f59c425d064e93acb505047db0ca1e23b3dafffc0a077a42b2b73ec06"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Skeleton/Shield.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2510,
+      "sha256": "3cd4edd0c19b1fdad33781916bb10445cd1f2ed556662bac43b9fda83f8cdec1"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Skeleton/Take Hit.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 3425,
+      "sha256": "cf3e747bf5c54a3c4adfc5c803e30ceb9e89689961d468ab471dc5c555d8f06a"
+    },
+    {
+      "file": "LuizMeloFantasy1/Extracted/Monsters_Creatures_Fantasy/Monsters_Creatures_Fantasy/Skeleton/Walk.png",
+      "width": 600,
+      "height": 150,
+      "mode": "RGBA",
+      "bytes": 2793,
+      "sha256": "1f8e6db4b949ae9f4571f030d6bef34bfbcd195edf4c7ea16d9e7e00f42a39c8"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Bat/attack.png",
+      "width": 957,
+      "height": 87,
+      "mode": "RGBA",
+      "bytes": 3822,
+      "sha256": "3679999a79f26b9de02c5f9a3cbd46f9aaba8b86c4ab7b10baa7eb88dbe93e6a"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Bat/death.png",
+      "width": 348,
+      "height": 87,
+      "mode": "RGBA",
+      "bytes": 873,
+      "sha256": "9b2a774d37ca5540cdfa16b810974e4938d7dbb90be969d3be5d3c9c1567167c"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Bat/fall.png",
+      "width": 435,
+      "height": 87,
+      "mode": "RGBA",
+      "bytes": 998,
+      "sha256": "2c49914e84ba4d0f688853f772e4ed2d23e2ce4766e83d60effcbdca52fd4b1a"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Bat/fly-to-fall.png",
+      "width": 261,
+      "height": 87,
+      "mode": "RGBA",
+      "bytes": 1339,
+      "sha256": "80a577de738e270d5018136353402f0430768515396cf58c4f4a3396ca2ccda7"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Bat/fly.png",
+      "width": 957,
+      "height": 87,
+      "mode": "RGBA",
+      "bytes": 3362,
+      "sha256": "339a5acd82eff2dc765483dc2f75d7913247b68bed35257f43596dc3a26c7e5b"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Bat/hurt.png",
+      "width": 261,
+      "height": 87,
+      "mode": "RGBA",
+      "bytes": 1333,
+      "sha256": "2f27932c4b665be5aae49e94660b90b89b7139f61475a0079a6c42599b69c51d"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/Idle_closed.png",
+      "width": 146,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 584,
+      "sha256": "42988b312160d01c6e7c9e563380046add7e73624d5a4e61ac081c1a8ea0c944"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/attack_1.png",
+      "width": 2044,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 8778,
+      "sha256": "857b9181fba0358a6cdf93cf3712bcfa4fb2bae0ad2a16722ce0dfee031154b9"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/attack_2.png",
+      "width": 1898,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 7026,
+      "sha256": "a5f9402252007545924c2ff8a752a05024ea0a11d45fb5869b8386645908d4dc"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/death.png",
+      "width": 876,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 3165,
+      "sha256": "94d4d902b714e33fcea264b6d692bfa65ac7333f909d9700d529e8b056a1779b"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/hurt.png",
+      "width": 438,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 2163,
+      "sha256": "ed92bf2e4e01301fdaf935e4a5d7ba71dca1061989c42380508d649ac534f018"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/idle_open.png",
+      "width": 146,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 430,
+      "sha256": "ed97f4704e0ac25d51e6c80e90f43872ffdb2340d73676c943e8a9ea48a9bb36"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/idle_transformed.png",
+      "width": 1314,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 3848,
+      "sha256": "777443df843699f4e025320f7299dbc22ac169ccf57a3898299edfeb762107c0"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/opening.png",
+      "width": 876,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 1829,
+      "sha256": "7b853bbda34d8c1cea7b431a4cc25ca07101f9f1731524ee28307f4693ea45c4"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/transform.png",
+      "width": 1022,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 3791,
+      "sha256": "e963502d341de7daf17be05ad27dc34fcddc6dbac38b86ffdfd787913d92fa06"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Mimic/walk.png",
+      "width": 876,
+      "height": 146,
+      "mode": "RGBA",
+      "bytes": 4032,
+      "sha256": "d2ae442a4475df87db851d72086008ebdc7d7003d0662cf2697c9e352ad10a64"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Rat/attack_bite.png",
+      "width": 840,
+      "height": 70,
+      "mode": "RGBA",
+      "bytes": 2612,
+      "sha256": "b4ec9525152e67068131cbe03940c273bc94d9ef9fd8db50cf5e155252036e9a"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Rat/hurt.png",
+      "width": 210,
+      "height": 70,
+      "mode": "RGBA",
+      "bytes": 1062,
+      "sha256": "c598febac809d056550f5eb9ca2d1eacb201e5aa20fd141f3afc6490b4eac337"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Rat/idle.png",
+      "width": 700,
+      "height": 70,
+      "mode": "RGBA",
+      "bytes": 1539,
+      "sha256": "7df1cd5c9ea6e51f21d2fe07830d6a725f63a67dd4e9e08ed55e465fab4dda40"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Rat/rat-death.png",
+      "width": 420,
+      "height": 70,
+      "mode": "RGBA",
+      "bytes": 1359,
+      "sha256": "7990864790fb3d58f1d4396d9ac7dd0e3855ede8b17d133f1e027ae09a9085c4"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Rat/run.png",
+      "width": 560,
+      "height": 70,
+      "mode": "RGBA",
+      "bytes": 2371,
+      "sha256": "17113107fcb33ce9b2602b32057a602d791c974098d577d4b70ef5922889a2ab"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Slime/attack.png",
+      "width": 2964,
+      "height": 156,
+      "mode": "RGBA",
+      "bytes": 7596,
+      "sha256": "191c176248eb21392c56569699cdf571a957c1f7eb93f272c5ea2bcb1a551a8d"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Slime/death.png",
+      "width": 1716,
+      "height": 156,
+      "mode": "RGBA",
+      "bytes": 2903,
+      "sha256": "abf9c6a0356b99ed0893fc58be4ba5749154f700919fee1d8faf0afd076b7c07"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Slime/hurt.png",
+      "width": 468,
+      "height": 156,
+      "mode": "RGBA",
+      "bytes": 1058,
+      "sha256": "6d647a19dfc3ca51b6e5fb6849214247616195a383662d0fe29f09149f1e10b3"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Slime/idle.png",
+      "width": 2184,
+      "height": 156,
+      "mode": "RGBA",
+      "bytes": 3212,
+      "sha256": "040b0e91ab4961bace4ec591dc8308bc3eb8c2cbcc9984a1fc4005d4ca3ceb18"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/Slime/walk.png",
+      "width": 936,
+      "height": 156,
+      "mode": "RGBA",
+      "bytes": 1623,
+      "sha256": "b0d9c01fddcb75711e577f1e023f8ac1524282aa7e05357bb3eea2616c941d88"
+    },
+    {
+      "file": "LuizMeloFantasy2/Extracted/Monsters Creatures Fantasy 2/preview.png",
+      "width": 148,
+      "height": 141,
+      "mode": "RGBA",
+      "bytes": 2637,
+      "sha256": "67e587175a328e422226b32edcf21eed2dfa4ad1363b6a8bed678ec3121a445a"
+    }
+  ]
+}

@@ -1,0 +1,280 @@
+{
+  "Author": "LuizMelo",
+  "License": "CC0-1.0",
+  "Sources": [
+    "RawData/Monsters/LuizMeloFantasy1/SOURCE.json",
+    "RawData/Monsters/LuizMeloFantasy2/SOURCE.json"
+  ],
+  "Files": [
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/attack.png",
+      "Path": "Art/Monsters/mushroom/attack.png",
+      "SHA256": "47e9ca3bc1369c27eb687397229536bd685879333c94a0e8ece73052bfca4e19"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/death.png",
+      "Path": "Art/Monsters/mushroom/death.png",
+      "SHA256": "4eea4d6542ee507603ed6737c7d8c3826b5f09e186d250a287d7a620febff208"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/idle.png",
+      "Path": "Art/Monsters/mushroom/idle.png",
+      "SHA256": "326c6d499729f50ffb999957586b50eb86133781d180adb409fca75971090c22"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/run.png",
+      "Path": "Art/Monsters/mushroom/run.png",
+      "SHA256": "73f72bc64033f4af2335390223965ca4b36f0ff8a6731612238058fb39d8198e"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/take_hit.png",
+      "Path": "Art/Monsters/mushroom/take_hit.png",
+      "SHA256": "e0a9e0e91ec564adeb55f04536e1288d1c71b2e4cfaa04564b4bc762b6a154b9"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/attack2.png",
+      "Path": "Art/Monsters/mushroom/attack2.png",
+      "SHA256": "cb6dcbd56b30451887ae79d4e4d56439b86437cc5456385beaa093e2ae398c4f"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mushroom/attack3.png",
+      "Path": "Art/Monsters/mushroom/attack3.png",
+      "SHA256": "8e1812ab855b4780b24024fd06301edd00b19bfd70a60c976e4717869160d65f"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/attack.png",
+      "Path": "Art/Monsters/goblin/attack.png",
+      "SHA256": "e9055f50a93fc214660cdb798e65979a7cd76a9fbb9435135b39544171a43bae"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/death.png",
+      "Path": "Art/Monsters/goblin/death.png",
+      "SHA256": "e74bdf72f128164592c455d4c5c48f0c229d18e62ee9f3abfa39a75e0c82c097"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/idle.png",
+      "Path": "Art/Monsters/goblin/idle.png",
+      "SHA256": "b4e413f6c237de96baf48879a2119a1aa3185827e78db2bd567c0992fb922860"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/run.png",
+      "Path": "Art/Monsters/goblin/run.png",
+      "SHA256": "a93aaa44b29f9070344572c26e13843058a19df8a97838fe8727158339e88c2e"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/take_hit.png",
+      "Path": "Art/Monsters/goblin/take_hit.png",
+      "SHA256": "2bb34335146df28177a17b3b43925ac91e6c64157c1def70d99c39d67ccbb396"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/attack2.png",
+      "Path": "Art/Monsters/goblin/attack2.png",
+      "SHA256": "af7ef3ca6ee314eb1e589018daf916daff86fbbe29fdaa3e56970f673b500ccc"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/goblin/attack3.png",
+      "Path": "Art/Monsters/goblin/attack3.png",
+      "SHA256": "9ba7a5eb4012f6ebcec6966bf267bcc61a53d1f86a03ac7584ae59d9a8b55b90"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/attack.png",
+      "Path": "Art/Monsters/skeleton/attack.png",
+      "SHA256": "0eed7488da2294bf221494cfa9f4e9836cbfd00add085a64113a2d3d0b077430"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/death.png",
+      "Path": "Art/Monsters/skeleton/death.png",
+      "SHA256": "e137f81c473c870c9b069982389cbaaa6363d35720895b2bd3ce3708558473d1"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/idle.png",
+      "Path": "Art/Monsters/skeleton/idle.png",
+      "SHA256": "80ca8c9f59c425d064e93acb505047db0ca1e23b3dafffc0a077a42b2b73ec06"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/shield.png",
+      "Path": "Art/Monsters/skeleton/shield.png",
+      "SHA256": "3cd4edd0c19b1fdad33781916bb10445cd1f2ed556662bac43b9fda83f8cdec1"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/take_hit.png",
+      "Path": "Art/Monsters/skeleton/take_hit.png",
+      "SHA256": "cf3e747bf5c54a3c4adfc5c803e30ceb9e89689961d468ab471dc5c555d8f06a"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/walk.png",
+      "Path": "Art/Monsters/skeleton/walk.png",
+      "SHA256": "1f8e6db4b949ae9f4571f030d6bef34bfbcd195edf4c7ea16d9e7e00f42a39c8"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/attack2.png",
+      "Path": "Art/Monsters/skeleton/attack2.png",
+      "SHA256": "afe7fb168b4a38f12da3286fe351e86b7ca29b073e7a5f15b4751cd78932e2d0"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/skeleton/attack3.png",
+      "Path": "Art/Monsters/skeleton/attack3.png",
+      "SHA256": "e762ef64b61ef131a1224034a5edfd224d002fac30dc547d5e468cd721d6d82a"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/flying_eye/attack.png",
+      "Path": "Art/Monsters/flying_eye/attack.png",
+      "SHA256": "ed1cd29ee28b368077a7c691c56d32e0b1e0dcb591478164fe15287c1f349369"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/flying_eye/death.png",
+      "Path": "Art/Monsters/flying_eye/death.png",
+      "SHA256": "d632ed033273ca53dde9a52059fca8f5b5cf92a9d8d57735284e307c6cb18c44"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/flying_eye/flight.png",
+      "Path": "Art/Monsters/flying_eye/flight.png",
+      "SHA256": "0555d4ff47209478889b1cdcee7ee8b0a5ec758e679e109414530d39a9243d45"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/flying_eye/take_hit.png",
+      "Path": "Art/Monsters/flying_eye/take_hit.png",
+      "SHA256": "4751aa7999e096c0b718b07393e5fd35f38832b6063ccbfc182ed3d7fa46ee46"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/flying_eye/attack2.png",
+      "Path": "Art/Monsters/flying_eye/attack2.png",
+      "SHA256": "229493f78244fdec216a146f79ce40b90ac9640be77347ad89ab46392aa7de21"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/flying_eye/attack3.png",
+      "Path": "Art/Monsters/flying_eye/attack3.png",
+      "SHA256": "24adf5a0e1e6868e52dd09d68e5cf46feaf2b5bc23298f040a1e5cd6a2d23c0f"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/slime/attack.png",
+      "Path": "Art/Monsters/slime/attack.png",
+      "SHA256": "191c176248eb21392c56569699cdf571a957c1f7eb93f272c5ea2bcb1a551a8d"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/slime/death.png",
+      "Path": "Art/Monsters/slime/death.png",
+      "SHA256": "abf9c6a0356b99ed0893fc58be4ba5749154f700919fee1d8faf0afd076b7c07"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/slime/hurt.png",
+      "Path": "Art/Monsters/slime/hurt.png",
+      "SHA256": "6d647a19dfc3ca51b6e5fb6849214247616195a383662d0fe29f09149f1e10b3"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/slime/idle.png",
+      "Path": "Art/Monsters/slime/idle.png",
+      "SHA256": "040b0e91ab4961bace4ec591dc8308bc3eb8c2cbcc9984a1fc4005d4ca3ceb18"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/slime/walk.png",
+      "Path": "Art/Monsters/slime/walk.png",
+      "SHA256": "b0d9c01fddcb75711e577f1e023f8ac1524282aa7e05357bb3eea2616c941d88"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/rat/attack_bite.png",
+      "Path": "Art/Monsters/rat/attack_bite.png",
+      "SHA256": "b4ec9525152e67068131cbe03940c273bc94d9ef9fd8db50cf5e155252036e9a"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/rat/hurt.png",
+      "Path": "Art/Monsters/rat/hurt.png",
+      "SHA256": "c598febac809d056550f5eb9ca2d1eacb201e5aa20fd141f3afc6490b4eac337"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/rat/idle.png",
+      "Path": "Art/Monsters/rat/idle.png",
+      "SHA256": "7df1cd5c9ea6e51f21d2fe07830d6a725f63a67dd4e9e08ed55e465fab4dda40"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/rat/death.png",
+      "Path": "Art/Monsters/rat/death.png",
+      "SHA256": "7990864790fb3d58f1d4396d9ac7dd0e3855ede8b17d133f1e027ae09a9085c4"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/rat/run.png",
+      "Path": "Art/Monsters/rat/run.png",
+      "SHA256": "17113107fcb33ce9b2602b32057a602d791c974098d577d4b70ef5922889a2ab"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/bat/attack.png",
+      "Path": "Art/Monsters/bat/attack.png",
+      "SHA256": "3679999a79f26b9de02c5f9a3cbd46f9aaba8b86c4ab7b10baa7eb88dbe93e6a"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/bat/death.png",
+      "Path": "Art/Monsters/bat/death.png",
+      "SHA256": "9b2a774d37ca5540cdfa16b810974e4938d7dbb90be969d3be5d3c9c1567167c"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/bat/fall.png",
+      "Path": "Art/Monsters/bat/fall.png",
+      "SHA256": "2c49914e84ba4d0f688853f772e4ed2d23e2ce4766e83d60effcbdca52fd4b1a"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/bat/fly_to_fall.png",
+      "Path": "Art/Monsters/bat/fly_to_fall.png",
+      "SHA256": "80a577de738e270d5018136353402f0430768515396cf58c4f4a3396ca2ccda7"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/bat/fly.png",
+      "Path": "Art/Monsters/bat/fly.png",
+      "SHA256": "339a5acd82eff2dc765483dc2f75d7913247b68bed35257f43596dc3a26c7e5b"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/bat/hurt.png",
+      "Path": "Art/Monsters/bat/hurt.png",
+      "SHA256": "2f27932c4b665be5aae49e94660b90b89b7139f61475a0079a6c42599b69c51d"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/idle_closed.png",
+      "Path": "Art/Monsters/mimic/idle_closed.png",
+      "SHA256": "42988b312160d01c6e7c9e563380046add7e73624d5a4e61ac081c1a8ea0c944"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/attack_1.png",
+      "Path": "Art/Monsters/mimic/attack_1.png",
+      "SHA256": "857b9181fba0358a6cdf93cf3712bcfa4fb2bae0ad2a16722ce0dfee031154b9"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/attack_2.png",
+      "Path": "Art/Monsters/mimic/attack_2.png",
+      "SHA256": "a5f9402252007545924c2ff8a752a05024ea0a11d45fb5869b8386645908d4dc"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/death.png",
+      "Path": "Art/Monsters/mimic/death.png",
+      "SHA256": "94d4d902b714e33fcea264b6d692bfa65ac7333f909d9700d529e8b056a1779b"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/hurt.png",
+      "Path": "Art/Monsters/mimic/hurt.png",
+      "SHA256": "ed92bf2e4e01301fdaf935e4a5d7ba71dca1061989c42380508d649ac534f018"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/idle_open.png",
+      "Path": "Art/Monsters/mimic/idle_open.png",
+      "SHA256": "ed97f4704e0ac25d51e6c80e90f43872ffdb2340d73676c943e8a9ea48a9bb36"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/idle_transformed.png",
+      "Path": "Art/Monsters/mimic/idle_transformed.png",
+      "SHA256": "777443df843699f4e025320f7299dbc22ac169ccf57a3898299edfeb762107c0"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/opening.png",
+      "Path": "Art/Monsters/mimic/opening.png",
+      "SHA256": "7b853bbda34d8c1cea7b431a4cc25ca07101f9f1731524ee28307f4693ea45c4"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/transform.png",
+      "Path": "Art/Monsters/mimic/transform.png",
+      "SHA256": "e963502d341de7daf17be05ad27dc34fcddc6dbac38b86ffdfd787913d92fa06"
+    },
+    {
+      "Source": "RawData/Monsters/Sprites/mimic/walk.png",
+      "Path": "Art/Monsters/mimic/walk.png",
+      "SHA256": "d2ae442a4475df87db851d72086008ebdc7d7003d0662cf2697c9e352ad10a64"
+    }
+  ]
+}

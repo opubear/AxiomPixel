@@ -1,0 +1,757 @@
+{
+  "Version": 1,
+  "Monsters": [
+    {
+      "Id": "mushroom",
+      "Name": "蘑菇怪",
+      "Gameplay": {
+        "BodySizeCells": [
+          2.2,
+          3.5
+        ],
+        "Flying": false,
+        "SpeedCellsPerSecond": 3,
+        "MaxHealth": 40,
+        "Damage": 8,
+        "DetectionCells": 12,
+        "AttackRangeCells": 1.6,
+        "PatrolCells": 6,
+        "AttackWindupTicks": 22,
+        "AttackDurationTicks": 40,
+        "AttackCooldownTicks": 70,
+        "HurtTicks": 24,
+        "DeathTicks": 54,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          100,
+          0,
+          0
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          150,
+          150
+        ],
+        "FootAnchor": [
+          75,
+          101
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "idle",
+          "Move": "run",
+          "Attack": "attack",
+          "Hurt": "take_hit",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack": {
+            "Path": "Art/Monsters/mushroom/attack.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/mushroom/death.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "idle": {
+            "Path": "Art/Monsters/mushroom/idle.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "run": {
+            "Path": "Art/Monsters/mushroom/run.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "take_hit": {
+            "Path": "Art/Monsters/mushroom/take_hit.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "attack2": {
+            "Path": "Art/Monsters/mushroom/attack2.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "attack3": {
+            "Path": "Art/Monsters/mushroom/attack3.png",
+            "FrameCount": 11,
+            "FramesPerSecond": 12,
+            "Loop": false
+          }
+        }
+      }
+    },
+    {
+      "Id": "goblin",
+      "Name": "哥布林",
+      "Gameplay": {
+        "BodySizeCells": [
+          2.8,
+          3.4
+        ],
+        "Flying": false,
+        "SpeedCellsPerSecond": 6,
+        "MaxHealth": 45,
+        "Damage": 10,
+        "DetectionCells": 15,
+        "AttackRangeCells": 2.2,
+        "PatrolCells": 7,
+        "AttackWindupTicks": 22,
+        "AttackDurationTicks": 40,
+        "AttackCooldownTicks": 70,
+        "HurtTicks": 24,
+        "DeathTicks": 54,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          80,
+          35,
+          10
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          150,
+          150
+        ],
+        "FootAnchor": [
+          75,
+          101
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "idle",
+          "Move": "run",
+          "Attack": "attack",
+          "Hurt": "take_hit",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack": {
+            "Path": "Art/Monsters/goblin/attack.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/goblin/death.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "idle": {
+            "Path": "Art/Monsters/goblin/idle.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "run": {
+            "Path": "Art/Monsters/goblin/run.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "take_hit": {
+            "Path": "Art/Monsters/goblin/take_hit.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "attack2": {
+            "Path": "Art/Monsters/goblin/attack2.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "attack3": {
+            "Path": "Art/Monsters/goblin/attack3.png",
+            "FrameCount": 12,
+            "FramesPerSecond": 12,
+            "Loop": false
+          }
+        }
+      }
+    },
+    {
+      "Id": "skeleton",
+      "Name": "骷髅战士",
+      "Gameplay": {
+        "BodySizeCells": [
+          2.6,
+          4.5
+        ],
+        "Flying": false,
+        "SpeedCellsPerSecond": 3.5,
+        "MaxHealth": 70,
+        "Damage": 12,
+        "DetectionCells": 14,
+        "AttackRangeCells": 2.8,
+        "PatrolCells": 6,
+        "AttackWindupTicks": 22,
+        "AttackDurationTicks": 40,
+        "AttackCooldownTicks": 70,
+        "HurtTicks": 24,
+        "DeathTicks": 54,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          25,
+          90,
+          70
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          150,
+          150
+        ],
+        "FootAnchor": [
+          75,
+          101
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "idle",
+          "Move": "walk",
+          "Attack": "attack",
+          "Hurt": "take_hit",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack": {
+            "Path": "Art/Monsters/skeleton/attack.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/skeleton/death.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "idle": {
+            "Path": "Art/Monsters/skeleton/idle.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "shield": {
+            "Path": "Art/Monsters/skeleton/shield.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "take_hit": {
+            "Path": "Art/Monsters/skeleton/take_hit.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "walk": {
+            "Path": "Art/Monsters/skeleton/walk.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "attack2": {
+            "Path": "Art/Monsters/skeleton/attack2.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "attack3": {
+            "Path": "Art/Monsters/skeleton/attack3.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 12,
+            "Loop": false
+          }
+        }
+      }
+    },
+    {
+      "Id": "flying_eye",
+      "Name": "飞眼",
+      "Gameplay": {
+        "BodySizeCells": [
+          3.2,
+          2.6
+        ],
+        "Flying": true,
+        "SpeedCellsPerSecond": 5,
+        "MaxHealth": 30,
+        "Damage": 7,
+        "DetectionCells": 15,
+        "AttackRangeCells": 1.5,
+        "PatrolCells": 6,
+        "AttackWindupTicks": 22,
+        "AttackDurationTicks": 40,
+        "AttackCooldownTicks": 70,
+        "HurtTicks": 24,
+        "DeathTicks": 54,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          35,
+          75,
+          90
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          150,
+          150
+        ],
+        "FootAnchor": [
+          77.5,
+          92
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "flight",
+          "Move": "flight",
+          "Attack": "attack",
+          "Hurt": "take_hit",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack": {
+            "Path": "Art/Monsters/flying_eye/attack.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/flying_eye/death.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "flight": {
+            "Path": "Art/Monsters/flying_eye/flight.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "take_hit": {
+            "Path": "Art/Monsters/flying_eye/take_hit.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "attack2": {
+            "Path": "Art/Monsters/flying_eye/attack2.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "attack3": {
+            "Path": "Art/Monsters/flying_eye/attack3.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 12,
+            "Loop": false
+          }
+        }
+      }
+    },
+    {
+      "Id": "slime",
+      "Name": "史莱姆",
+      "Gameplay": {
+        "BodySizeCells": [
+          3.8,
+          1.7
+        ],
+        "Flying": false,
+        "SpeedCellsPerSecond": 2.5,
+        "MaxHealth": 30,
+        "Damage": 6,
+        "DetectionCells": 10,
+        "AttackRangeCells": 1.2,
+        "PatrolCells": 5,
+        "AttackWindupTicks": 52,
+        "AttackDurationTicks": 95,
+        "AttackCooldownTicks": 125,
+        "HurtTicks": 18,
+        "DeathTicks": 96,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          100,
+          0,
+          15
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          156,
+          156
+        ],
+        "FootAnchor": [
+          78.0,
+          87
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "idle",
+          "Move": "walk",
+          "Attack": "attack",
+          "Hurt": "hurt",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack": {
+            "Path": "Art/Monsters/slime/attack.png",
+            "FrameCount": 19,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/slime/death.png",
+            "FrameCount": 11,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "hurt": {
+            "Path": "Art/Monsters/slime/hurt.png",
+            "FrameCount": 3,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "idle": {
+            "Path": "Art/Monsters/slime/idle.png",
+            "FrameCount": 14,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "walk": {
+            "Path": "Art/Monsters/slime/walk.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 10,
+            "Loop": true
+          }
+        }
+      }
+    },
+    {
+      "Id": "rat",
+      "Name": "巨鼠",
+      "Gameplay": {
+        "BodySizeCells": [
+          3.4,
+          1.8
+        ],
+        "Flying": false,
+        "SpeedCellsPerSecond": 8,
+        "MaxHealth": 25,
+        "Damage": 5,
+        "DetectionCells": 14,
+        "AttackRangeCells": 1.3,
+        "PatrolCells": 8,
+        "AttackWindupTicks": 33,
+        "AttackDurationTicks": 60,
+        "AttackCooldownTicks": 90,
+        "HurtTicks": 18,
+        "DeathTicks": 66,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          60,
+          85,
+          15
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          70,
+          70
+        ],
+        "FootAnchor": [
+          35.0,
+          45
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "idle",
+          "Move": "run",
+          "Attack": "attack_bite",
+          "Hurt": "hurt",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack_bite": {
+            "Path": "Art/Monsters/rat/attack_bite.png",
+            "FrameCount": 12,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "hurt": {
+            "Path": "Art/Monsters/rat/hurt.png",
+            "FrameCount": 3,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "idle": {
+            "Path": "Art/Monsters/rat/idle.png",
+            "FrameCount": 10,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "death": {
+            "Path": "Art/Monsters/rat/death.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "run": {
+            "Path": "Art/Monsters/rat/run.png",
+            "FrameCount": 8,
+            "FramesPerSecond": 10,
+            "Loop": true
+          }
+        }
+      }
+    },
+    {
+      "Id": "bat",
+      "Name": "蝙蝠",
+      "Gameplay": {
+        "BodySizeCells": [
+          3,
+          2
+        ],
+        "Flying": true,
+        "SpeedCellsPerSecond": 7,
+        "MaxHealth": 20,
+        "Damage": 5,
+        "DetectionCells": 16,
+        "AttackRangeCells": 1.3,
+        "PatrolCells": 7,
+        "AttackWindupTicks": 30,
+        "AttackDurationTicks": 55,
+        "AttackCooldownTicks": 85,
+        "HurtTicks": 18,
+        "DeathTicks": 54,
+        "WakeTicks": 0,
+        "BiomeWeights": [
+          65,
+          20,
+          100
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          87,
+          87
+        ],
+        "FootAnchor": [
+          47.0,
+          62
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "fly",
+          "Move": "fly",
+          "Attack": "attack",
+          "Hurt": "hurt",
+          "Death": "death"
+        },
+        "Clips": {
+          "attack": {
+            "Path": "Art/Monsters/bat/attack.png",
+            "FrameCount": 11,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/bat/death.png",
+            "FrameCount": 4,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "fall": {
+            "Path": "Art/Monsters/bat/fall.png",
+            "FrameCount": 5,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "fly_to_fall": {
+            "Path": "Art/Monsters/bat/fly_to_fall.png",
+            "FrameCount": 3,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "fly": {
+            "Path": "Art/Monsters/bat/fly.png",
+            "FrameCount": 11,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "hurt": {
+            "Path": "Art/Monsters/bat/hurt.png",
+            "FrameCount": 3,
+            "FramesPerSecond": 10,
+            "Loop": false
+          }
+        }
+      }
+    },
+    {
+      "Id": "mimic",
+      "Name": "宝箱怪",
+      "Gameplay": {
+        "BodySizeCells": [
+          3.6,
+          3
+        ],
+        "Flying": false,
+        "SpeedCellsPerSecond": 4,
+        "MaxHealth": 90,
+        "Damage": 15,
+        "DetectionCells": 7,
+        "AttackRangeCells": 2,
+        "PatrolCells": 4,
+        "AttackWindupTicks": 38,
+        "AttackDurationTicks": 70,
+        "AttackCooldownTicks": 100,
+        "HurtTicks": 18,
+        "DeathTicks": 66,
+        "WakeTicks": 42,
+        "BiomeWeights": [
+          25,
+          65,
+          40
+        ]
+      },
+      "Visual": {
+        "FrameSize": [
+          146,
+          146
+        ],
+        "FootAnchor": [
+          73,
+          83
+        ],
+        "PixelsPerCell": 10.5,
+        "States": {
+          "Idle": "idle_transformed",
+          "Move": "walk",
+          "Attack": "attack_1",
+          "Hurt": "hurt",
+          "Death": "death",
+          "Dormant": "idle_closed",
+          "Wake": "transform"
+        },
+        "Clips": {
+          "idle_closed": {
+            "Path": "Art/Monsters/mimic/idle_closed.png",
+            "FrameCount": 1,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "attack_1": {
+            "Path": "Art/Monsters/mimic/attack_1.png",
+            "FrameCount": 14,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "attack_2": {
+            "Path": "Art/Monsters/mimic/attack_2.png",
+            "FrameCount": 13,
+            "FramesPerSecond": 12,
+            "Loop": false
+          },
+          "death": {
+            "Path": "Art/Monsters/mimic/death.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "hurt": {
+            "Path": "Art/Monsters/mimic/hurt.png",
+            "FrameCount": 3,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "idle_open": {
+            "Path": "Art/Monsters/mimic/idle_open.png",
+            "FrameCount": 1,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "idle_transformed": {
+            "Path": "Art/Monsters/mimic/idle_transformed.png",
+            "FrameCount": 9,
+            "FramesPerSecond": 10,
+            "Loop": true
+          },
+          "opening": {
+            "Path": "Art/Monsters/mimic/opening.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "transform": {
+            "Path": "Art/Monsters/mimic/transform.png",
+            "FrameCount": 7,
+            "FramesPerSecond": 10,
+            "Loop": false
+          },
+          "walk": {
+            "Path": "Art/Monsters/mimic/walk.png",
+            "FrameCount": 6,
+            "FramesPerSecond": 10,
+            "Loop": true
+          }
+        }
+      }
+    }
+  ],
+  "Spawns": [
+    {
+      "Id": "mushroom",
+      "OffsetCells": -20,
+      "HeightAboveGroundCells": 0
+    },
+    {
+      "Id": "goblin",
+      "OffsetCells": 27,
+      "HeightAboveGroundCells": 0
+    },
+    {
+      "Id": "skeleton",
+      "OffsetCells": -39,
+      "HeightAboveGroundCells": 0
+    },
+    {
+      "Id": "flying_eye",
+      "OffsetCells": 46,
+      "HeightAboveGroundCells": 5
+    },
+    {
+      "Id": "slime",
+      "OffsetCells": -57,
+      "HeightAboveGroundCells": 0
+    },
+    {
+      "Id": "rat",
+      "OffsetCells": 66,
+      "HeightAboveGroundCells": 0
+    },
+    {
+      "Id": "bat",
+      "OffsetCells": -77,
+      "HeightAboveGroundCells": 5
+    },
+    {
+      "Id": "mimic",
+      "OffsetCells": 88,
+      "HeightAboveGroundCells": 0
+    }
+  ]
+}

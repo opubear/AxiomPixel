@@ -1,0 +1,30 @@
+{
+  "title": "Monsters Creatures Fantasy 2",
+  "author": "LuizMelo",
+  "author_url": "https://luizmelo.itch.io/",
+  "source_url": "https://luizmelo.itch.io/monsters-creatures-fantasy-2",
+  "retrieved_date": "2026-11-10",
+  "timezone": "Asia/Shanghai",
+  "acquisition": "Official itch.io Download Now -> No thanks, just take me to the downloads; downloaded using browser",
+  "paid_usd": 0,
+  "license_id": "CC0-1.0",
+  "license_source": "https://luizmelo.itch.io/monsters-creatures-fantasy-2",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "license_evidence_excerpt": "License: CC0 (Creative Commons Zero).",
+  "copyright_status": "Author declares CC0 public-domain dedication to the extent allowed by law; no separate copyright year or license document inside these ZIP files.",
+  "attribution_required": false,
+  "suggested_credit": "Monster sprites by LuizMelo — https://luizmelo.itch.io/monsters-creatures-fantasy-2 — CC0 1.0.",
+  "commercial_use": true,
+  "modification": true,
+  "redistribution": true,
+  "author_ai_disclosure": "Author page: No generative AI was used. This is the author declaration, not an independent audit.",
+  "originals": [
+    {
+      "file": "LuizMeloFantasy2/Originals/Monsters Creatures Fantasy 2.zip",
+      "bytes": 72251,
+      "sha256": "781c7e1003dd179ba56c72c0099fbda301f4571c99552e0a916332f3d33e4b7e",
+      "file_count": 27,
+      "crc_and_extracted_bytes_verified": true
+    }
+  ]
+}

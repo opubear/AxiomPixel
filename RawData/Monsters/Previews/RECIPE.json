@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-10",
+  "source": "../ANIMATIONS.json; preview_idle for each monster",
+  "scale": 3,
+  "resampling": "nearest",
+  "crop": "fixed union of non-transparent bounds over each preview animation",
+  "originals_modified": false,
+  "gif_frames": 56,
+  "requested_duration_ms": 125,
+  "gif_duration_note": "GIF stores centiseconds; Pillow quantizes requested 125 ms to 120 ms. Illustrative only.",
+  "palette": "GIF palette quantization may differ slightly from PNG source",
+  "limitations": "No game integration, GPU verification, or author-provided playback timing. Preview loop may restart part-way through a creature cycle."
+}

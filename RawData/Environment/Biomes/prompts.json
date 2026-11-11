@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "date": "2026-11-10",
+  "prompts": {
+    "desert": "Use case: stylized-concept. Asset type: opaque distant background image for a cozy side-view pixel sandbox game. Create a wide 16:9 2560x1440 desert panorama. Soft restrained pixel art, clear large pixel clusters, pale cream-blue sky occupying the upper half, distant ochre mesas and layered rolling golden sand dunes below, very sparse small dry shrubs near the bottom. Gentle daylight, tranquil exploration mood, low contrast so gameplay foreground stays readable. Horizon continuous across entire width; left and right edges at matching heights for mirrored horizontal scrolling. No characters, buildings, objects close to camera, UI, lettering, logos, borders, sun disc or focal centerpiece. Entire canvas filled; opaque.",
+    "snow_mountain": "Use case: stylized-concept. Asset type: opaque distant background image for a cozy side-view pixel sandbox game. Create a wide 16:9 2560x1440 snowy alpine panorama. Soft restrained pixel art, clear large pixel clusters, pale ice-blue sky occupying the upper half, distant layered blue-gray mountain ridges with broad white snow caps below, sparse low dark blue fir silhouettes near the bottom. Gentle daylight, tranquil exploration mood, low contrast so gameplay foreground stays readable. Horizon continuous across entire width; left and right edges at matching heights for mirrored horizontal scrolling. No characters, buildings, objects close to camera, UI, lettering, logos, borders, sun disc or focal centerpiece. Entire canvas filled; opaque."
+  }
+}

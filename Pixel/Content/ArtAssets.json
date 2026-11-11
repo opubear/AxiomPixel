@@ -19,7 +19,17 @@
                 "Path": "Art/NaturalParallax/03_near.png",
                 "RepeatCells": 4096
             }
-        ]
+        ],
+        "Biomes": {
+            "desert": {
+                "Path": "Art/BiomeBackgrounds/desert.png",
+                "RepeatCells": 16384
+            },
+            "snow_mountain": {
+                "Path": "Art/BiomeBackgrounds/snow_mountain.png",
+                "RepeatCells": 16384
+            }
+        }
     },
     "Terrain": {
         "CellsPerTile": 64,
