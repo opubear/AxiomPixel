@@ -9,7 +9,7 @@ class BiomeTerrain {
   public:
     explicit BiomeTerrain(uint64_t seed);
 
-    GenerationEnvironment Environment(int64_t x) const;
+    GenerationEnvironment Environment(int64_t x) const { return Climate.Sample(x); }
     int64_t HeightOffset(int64_t x, const GenerationEnvironment &environment) const;
     uint32_t SoilThickness(int64_t x, const GenerationEnvironment &environment) const;
     CellTypeId Stratum(CellCoord point, int64_t depth, uint32_t soilDepth,
@@ -17,7 +17,8 @@ class BiomeTerrain {
     bool HasTree(int64_t feature, int64_t &center, uint32_t &height, uint32_t &radius) const;
 
   private:
-    uint64_t Temperature, Moisture, Uplift, Continental, Warp, Hills, Detail;
+    BiomeClimate Climate;
+    uint64_t Continental, Warp, Hills, Detail;
     uint64_t Dunes, Ridges, Soil, Patches, Trees, ForestDensity;
 };
 } // namespace pixel::generation

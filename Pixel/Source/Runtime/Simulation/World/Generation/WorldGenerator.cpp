@@ -477,6 +477,8 @@ void ValidateGenerationSettings(const WorldGenerationSettings &settings) {
     ValidatePoint({0, settings.SurfaceY});
 }
 
+void ValidateGenerationPoint(CellCoord point) { ValidatePoint(point); }
+
 const char *GeneratorName(WorldGeneratorKind kind) {
     switch (kind) {
     case WorldGeneratorKind::Flat: return "flat";

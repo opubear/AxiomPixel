@@ -24,6 +24,8 @@ class World {
     CellState GetCell(int64_t x, int64_t y) const { return GetMap().Get({x, y}); }
     std::optional<CellState> TryGetCell(int64_t x, int64_t y) const { return GetMap().TryGet({x, y}); }
     CellQuery QueryCell(int64_t x, int64_t y) const;
+    WorldGenerationSettings GetGenerationSettings() const { return Streamer ? Streamer->Settings().Generation : WorldGenerationSettings{}; }
+    BiomeSample SampleBiome(CellCoord point) const { return SampleWorldBiome(GetGenerationSettings(), point); }
     void SetCell(int64_t x, int64_t y, CellState cell) { GetMutableMap().Set({x, y}, cell); }
     void Fill(CellState cell);
     void FillRegion(WorldRect region, CellState cell) { GetMutableMap().Fill(region, cell); }

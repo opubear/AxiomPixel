@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Runtime/Simulation/World/WorldMap.h"
+#include "Runtime/Simulation/World/Environment/WorldBiome.h"
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -20,6 +21,7 @@ struct WorldGenerationSettings {
 };
 
 void ValidateGenerationSettings(const WorldGenerationSettings &settings);
+void ValidateGenerationPoint(CellCoord point);
 uint64_t GenerationFingerprint(const WorldGenerationSettings &settings);
 const char *GeneratorName(WorldGeneratorKind kind);
 
@@ -36,13 +38,8 @@ std::unique_ptr<IWorldGenerator> CreateWorldGenerator(WorldGenerationSettings se
 // Pure bounded sampling shares the generator stages and never reads WorldMap.
 // The returned vector is row-major. At most 4096 columns and 4M cells per call.
 enum class GenerationStage : uint8_t { Strata, Caves, Ores, Water, Surface };
-enum class GenerationBiome : uint8_t { Forest, Desert, SnowMountain };
-struct GenerationEnvironment {
-    GenerationBiome Biome = GenerationBiome::Forest;
-    // Signed Q16.16 climate fields; nonnegative biome weights sum to 65536.
-    int32_t Temperature = 0, Moisture = 0, Uplift = 0;
-    int32_t ForestWeight = 65536, DesertWeight = 0, SnowWeight = 0;
-};
+using GenerationBiome = BiomeId;
+using GenerationEnvironment = BiomeSample;
 struct WorldGenerationColumn {
     int64_t DrySurfaceY = 0;
     int64_t SurfaceY = 0;

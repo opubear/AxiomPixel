@@ -390,6 +390,26 @@ void LayeredBiomes() {
     Require(std::find(dry.begin(), dry.end(), CellTypeId::Water) == dry.end(), "v2 dry generation emitted water");
     Require(GenerationFingerprint(settings) != GenerationFingerprint(Natural(42)), "v2 did not change generation identity");
 }
+void PublicCoordinateEdges() {
+    WorldGenerationSettings settings{WorldGeneratorKind::Natural, 2, 42};
+    constexpr int64_t lower = -(int64_t{1} << 60) + 4096;
+    constexpr int64_t upper = (int64_t{1} << 60) - 4096;
+    for (const auto x : {lower + 1, upper - 2}) {
+        // Lake planning and tree canopies sample beyond the public request
+        // inside the reserved halo. The accepted request must still complete.
+        const auto column = SampleGenerationColumn(settings, x);
+        Require(column.Environment == SampleWorldBiome(settings, {x, 512}), "edge column climate differs");
+        Require(column.SurfaceY == (x < 0 ? 283 : 360), "edge terrain changed from original v2");
+        for (const bool water : {true, false}) {
+            auto variant = settings; variant.WaterEnabled = water;
+            Require(SampleGeneration(variant, {x, 512, 1, 1}).size() == 1, "accepted edge request failed");
+        }
+    }
+    for (const auto x : {lower, upper}) {
+        RequireRejected([&] { SampleWorldBiome(settings, {x, 0}); }, "public climate boundary was relaxed");
+        RequireRejected([&] { SampleGenerationColumn(settings, x); }, "public column boundary was relaxed");
+    }
+}
 } // namespace
 
 int main() {
@@ -400,6 +420,7 @@ int main() {
         NaturalStagesAndContent();
         FiniteWaterAndFeatureBoundaries();
         LayeredBiomes();
+        PublicCoordinateEdges();
         std::cout << "Deterministic generation, stages, finite water and chunk consistency tests passed\n";
         return 0;
     } catch (const std::exception &error) {
