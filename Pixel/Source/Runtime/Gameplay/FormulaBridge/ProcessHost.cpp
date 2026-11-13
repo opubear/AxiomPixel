@@ -70,6 +70,33 @@ FormulaVector Direction(const Running &root, double x, double y) {
     const auto forward = Velocity(root.Carrier, 1);
     return {x * forward.X - y * forward.Y, x * forward.Y + y * forward.X};
 }
+
+std::optional<FieldSourceSpec> PrepareFieldSource(const Running &root, process::Position origin,
+                                                 const process::FieldSource &source) {
+    const auto magnitude = std::hypot(source.AccelerationX, source.AccelerationY);
+    if (!std::isfinite(magnitude) || magnitude > FieldSources::MaximumAcceleration
+        || !std::isfinite(source.Radius) || source.Radius <= 0 || source.Radius > 16
+        || source.Lifetime == 0 || source.Lifetime > 3600)
+        return std::nullopt;
+
+    const auto direction = Direction(root, source.AccelerationX, source.AccelerationY);
+    ForceVector acceleration{float(direction.X), float(direction.Y)};
+    const auto representedMagnitude = std::hypot(double(acceleration.X), double(acceleration.Y));
+    if (representedMagnitude > FieldSources::MaximumAcceleration) {
+        // A legal vector can round outside the bound after rotation. Leave one
+        // float ULP of headroom for the final component rounding; the World
+        // contract stays strict, and genuinely oversized requests were rejected above.
+        const auto scale = std::nextafter(FieldSources::MaximumAcceleration, 0.f) / representedMagnitude;
+        acceleration = {float(acceleration.X * scale), float(acceleration.Y * scale)};
+    }
+    return FieldSourceSpec{WorldPoint(origin), source.Radius, acceleration, source.Lifetime};
+}
+
+struct ValidatedEffect {
+    ProcessRefusal Refusal = ProcessRefusal::None;
+    std::optional<FieldSourceSpec> Field;
+};
+
 struct Projectile {
     process::RequestId Request;
     WorldPosition Position;
@@ -181,36 +208,35 @@ struct ProcessHost::State {
             if (bolt.Request.Instance == id && !resident(bolt.Position, FormulaWorldAdapter::BoltRadius)) return false;
         return true;
     }
-    ProcessRefusal Validate(const Running &root, const process::EffectRequest &request, const World &world) const {
-        if (!(root.Carrier.Grants & process::Mask(CapabilityOf(request.Description)))) return ProcessRefusal::Capability;
+    ValidatedEffect Validate(const Running &root, const process::EffectRequest &request, const World &world) const {
+        if (!(root.Carrier.Grants & process::Mask(CapabilityOf(request.Description)))) return {ProcessRefusal::Capability};
         // Stopping a resource never needs another paid credit or new geometry.
-        if (std::holds_alternative<process::StopField>(request.Description)) return ProcessRefusal::None;
+        if (std::holds_alternative<process::StopField>(request.Description)) return {};
         double radius = FormulaWorldAdapter::BoltRadius;
         if (const auto *dig = std::get_if<process::Dig>(&request.Description)) radius = dig->Radius;
         if (const auto *wind = std::get_if<process::Wind>(&request.Description)) {
             radius = wind->Radius;
-            if (std::hypot(wind->VelocityX, wind->VelocityY) > 600) return ProcessRefusal::Geometry;
+            if (std::hypot(wind->VelocityX, wind->VelocityY) > 600) return {ProcessRefusal::Geometry};
         }
         if (const auto *bolt = std::get_if<process::Bolt>(&request.Description)) {
             if (std::abs(bolt->VelocityX) > 600 || bolt->Lifetime > 3600 || bolt->Damage > 1e6)
-                return ProcessRefusal::Geometry;
+                return {ProcessRefusal::Geometry};
         }
         const auto *source = std::get_if<process::FieldSource>(&request.Description);
         if (const auto *update = std::get_if<process::UpdateField>(&request.Description)) source = &update->Source;
+        ValidatedEffect result;
         if (source) {
             radius = source->Radius;
-            // Validate the actual float representation accepted by Environment.
-            if (radius <= 0 || source->Lifetime > 3600 ||
-                std::hypot(double(float(source->AccelerationX)), double(float(source->AccelerationY))) > 36000)
-                return ProcessRefusal::Geometry;
+            result.Field = PrepareFieldSource(root, request.Origin, *source);
+            if (!result.Field) return {ProcessRefusal::Geometry};
         }
-        if (radius > root.Carrier.MaximumRadius || radius > 16) return ProcessRefusal::Geometry;
+        if (radius > root.Carrier.MaximumRadius || radius > 16) return {ProcessRefusal::Geometry};
         const auto origin = WorldPoint(request.Origin);
         if (!ContainsDisk(root.Carrier.Scope, origin, radius)
-            || !ContainsDisk(world.GetSimulationBounds(), origin, radius)) return ProcessRefusal::Scope;
-        if (!world.TryGetCell(request.Origin.CellX, request.Origin.CellY)) return ProcessRefusal::NotReady;
-        if (root.Carrier.Credits == 0) return ProcessRefusal::Resources;
-        return ProcessRefusal::None;
+            || !ContainsDisk(world.GetSimulationBounds(), origin, radius)) return {ProcessRefusal::Scope};
+        if (!world.TryGetCell(request.Origin.CellX, request.Origin.CellY)) return {ProcessRefusal::NotReady};
+        if (root.Carrier.Credits == 0) return {ProcessRefusal::Resources};
+        return result;
     }
     void Evaluate(Running &root, const World &world) {
         if (root.Suspended) return;
@@ -233,7 +259,7 @@ struct ProcessHost::State {
             root.BirthContacts[i] = {};
             const auto &request = root.Slice.Requests[i];
             if (std::holds_alternative<process::Bolt>(request.Description)
-                && Validate(root, request, world) == ProcessRefusal::None) {
+                && Validate(root, request, world).Refusal == ProcessRefusal::None) {
                 const auto position = WorldPoint(request.Origin);
                 root.BirthContacts[i] = FormulaWorldAdapter::Sweep(world, position, position, FormulaWorldAdapter::BoltRadius, ActorTargets);
             }
@@ -287,7 +313,8 @@ struct ProcessHost::State {
     }
     void Apply(Running &root, size_t index, World &world, const std::optional<MiningCollector> &playerCollector) {
         const auto &request = root.Slice.Requests[index];
-        auto refusal = Validate(root, request, world);
+        const auto validated = Validate(root, request, world);
+        auto refusal = validated.Refusal;
         const auto origin = WorldPoint(request.Origin);
         uint32_t changed = 0;
         process::EffectHandle handle;
@@ -321,20 +348,15 @@ struct ProcessHost::State {
                 }
             } else {
                 const auto owner = root.Instance->State().Id;
-                const auto spec = [&](const process::FieldSource &value) {
-                    const auto acceleration = Direction(root, value.AccelerationX, value.AccelerationY);
-                    return FieldSourceSpec{origin, value.Radius,
-                        {float(acceleration.X), float(acceleration.Y)}, value.Lifetime};
-                };
-                if (const auto *source = std::get_if<process::FieldSource>(&request.Description)) {
-                    const auto installed = world.InstallFieldSource(owner, spec(*source));
+                if (std::holds_alternative<process::FieldSource>(request.Description)) {
+                    const auto installed = world.InstallFieldSource(owner, *validated.Field);
                     if (!installed) refusal = ProcessRefusal::Capacity;
                     else {
                         handle.Id = installed->Id;
                         RecordEffect(root, request, api::FieldSourceChanged{handle.Id, api::FieldSourceEvent::Installed});
                     }
                 } else if (const auto *update = std::get_if<process::UpdateField>(&request.Description)) {
-                    if (!world.UpdateFieldSource(owner, {update->Handle.Id}, spec(update->Source))) refusal = ProcessRefusal::InvalidHandle;
+                    if (!world.UpdateFieldSource(owner, {update->Handle.Id}, *validated.Field)) refusal = ProcessRefusal::InvalidHandle;
                     else {
                         handle = update->Handle;
                         RecordEffect(root, request, api::FieldSourceChanged{handle.Id, api::FieldSourceEvent::Updated});

@@ -451,7 +451,7 @@ std::optional<ControlMode> PixelDebugUI::Draw(GameSession &session, GameCamera &
             ImGui::EndDisabled();
             if (!ItemStatus.empty()) ImGui::TextWrapped("%s", ItemStatus.c_str());
             if (ImGui::Button("Formula presets")) FormulaEditor.ShowPresets();
-            DrawForceGardenUI(session, presentation, worldWill, GardenUI);
+            DrawForceGardenUI(session, presentation, worldWill, GardenUI, ui.HeldItem());
             int brush = int(input.GetElementBrush());
             if (ImGui::Combo("Element brush (Shift+1-4)", &brush, "Normal tool\0Water\0Steam\0Fire\0"))
                 input.SetElementBrush(ElementBrush(brush));

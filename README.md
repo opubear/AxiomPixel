@@ -83,6 +83,8 @@ Dev/Debug保留当前可运行的开发功能。各领域允许调用无UI的Per
 
 各系统的玩家规则、已实现范围与未交付项维护在上表的系统文档；历史 M1–M6 验收保留于 [AWT 索引](.awtcontext/GlobalDoc/DocIndex.md) 的“历史”类。
 
+`Pixel.ModuleBoundaries`扫描`.h/.hpp/.hxx/.inl/.c/.cc/.cpp/.cxx`中的双引号和尖括号字面include，解析项目内路径并核对上述依赖规则；`Pixel.ModuleBoundaryFixtures`用允许/拒绝夹具验证扫描器。该门禁不解析宏展开或完整CMake传递依赖，不能替代目标公共接口约束和代码审查。
+
 ## 构建和运行
 
 需要CMake 3.23+、C++20、引擎锁定子模块及运行时Slang/Vulkan工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎；窗口配置位于 `Pixel/Config/GameConfig.json`。

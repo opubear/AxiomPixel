@@ -10,30 +10,30 @@
 | 总览｜产品现状与待办 | `context:GlobalDoc/ProductStatus.md` | 现行：玩家闭环、昼夜四季等近期功能、未交付能力、决策顺序与验收边界 | |
 | 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：三群落与材料风场、地区人口休眠、昼夜四季与晨昏预览、试玩和后续边界 | |
 | 系统·世界｜世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | 兼容：Natural v1与旧生成实现；当前默认v2见BiomeWorldGeneration和WorldBiomes | |
-| 系统·世界｜有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 现行：持续来源、区域冻结、驻留失效及M4.6归属持久化 | |
+| 系统·世界｜有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 现行：持续来源、严格加速度上限、宿主转换、区域冻结与归属持久化 | |
 | 系统·世界｜水蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 现行：单格材料形态规则、调试笔刷、同步提交、存档与验证入口 | |
 | 系统·世界｜分层群落世界生成v2 | `workspace:Docs/BiomeWorldGeneration.md` | 现行：保持v2气候地形植被复现，生态群落查询与地区内容的新入口及原生成验证 | |
 | 系统·世界｜世界生态群落 | `context:GlobalDoc/WorldBiomes.md` | 现行：群落查询、地区生成与休眠、候选存档、背景装饰和验证边界 | |
 | 系统·角色｜角色、怪物与战斗 | `context:GlobalDoc/SystemsActors.md` | 现行：玩家与Actor、八类怪物、命中死亡复活、地区休眠及成长缺口 | |
 | 系统·角色｜Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 现行：Actor组件与生命周期；生产玩家构式归手持木棍，Gameplay v6保存 | |
 | 系统·角色｜怪物内容与运行时 | `workspace:Docs/Monsters.md` | 现行：怪物资源配置、行为战斗、地区候选与休眠存档及验证 | |
-| 系统·构式物品｜构式、资源与背包 | `context:GlobalDoc/SystemsFormulaItems.md` | 现行：木棍构式、F2掉落拾取、统一左键使用、移动后方块放置及快捷栏高亮 | |
+| 系统·构式物品｜构式、资源与背包 | `context:GlobalDoc/SystemsFormulaItems.md` | 现行：木棍构式与合法上限力场、掉落拾取、统一左键使用及资源背包 | |
 | 系统·构式物品｜构式系统（Formula System） | `workspace:Docs/GameDesign/FormulaSystem.md` | 现行：函数组合与世界绑定设计；formula/2已实现范围和后续能力边界 | 当前设计入口；formula/2已实现，process/1兼容 |
 | 系统·构式物品｜独立构式语言使用说明 | `workspace:Pixel/Source/Runtime/System/Formula/README.md` | 现行：System下独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
 | 系统·构式物品｜构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | 兼容：process/1编译与有界执行基础；当前formula/2差异见FormulaComposition | |
 | 系统·构式物品｜FormulaBridge与程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 现行：宿主基础与process/1兼容；formula/2绑定、伤害和保存见组合合同 | |
 | 系统·构式物品｜构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 现行：木棍独立程序版本与F4编辑、工作台兼容、临时游戏与草稿保存边界 | |
 | 系统·构式物品｜物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 现行：14类资源与独立木棍、4096总量、共享方块映射、预留转移和保存 | |
-| 系统·构式物品｜构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | 现行：formula/2函数、Actor绑定、木棍承载、F4编辑与左键瞄准施放 | |
+| 系统·构式物品｜构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | 现行：formula/2函数、木棍承载与方向转换；场源上限舍入及process/1兼容 | |
 | 系统·构式物品｜背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：50格和通用装备；现有木棍掉落拾取、7＋35展示与统一使用 | |
 | 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：7快捷格与35展示格、日历、共享原生画布；ESC收包后开合内建菜单 | |
-| 系统·家园｜设备、家园与会话进度 | `context:GlobalDoc/SystemsHome.md` | 现行：设备育圃与资源冻结、临时/持久会话、日历保存续接和产品边界 | |
+| 系统·家园｜设备、家园与会话进度 | `context:GlobalDoc/SystemsHome.md` | 现行：木棍复制晶体、设备育圃、区域冻结与临时持久会话边界 | |
 | 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：临时与持久会话、菜单退出与保存协商、world.meta v7和Gameplay v6兼容 | |
 | 系统·家园｜设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 现行：推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
 | 系统·家园｜区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | 现行：M4.5本地活动时间与身份续接；M4.6磁盘恢复另见Checkpoints | |
 | 系统·家园｜游戏检查点与恢复 | `context:GlobalDoc/Checkpoints.md` | 现行：Gameplay v6物品与掉落、world.meta v7日历、跨域提交存档及恢复校验 | |
 | 系统·家园｜设备库存与持续程序观测 | `context:GlobalDoc/GameplayObservation.md` | 现行：M4.7统一提交投影、库存授权与分页、设备状态与场源UI及验证 | |
-| 系统·家园｜可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | 现行：两花床与真实资源设备的开发场景；默认临时会话，成熟不产物 | |
+| 系统·家园｜可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | 现行：晶体程序装入当前木棍；两花床与真实资源设备，默认临时会话 | |
 | 系统·世界意志｜知识、世界意志与自主权 | `context:GlobalDoc/SystemsWorldWill.md` | 现行：授权观察、离线祈祷、排队执行、来源档案与保护撤销；网络未接入 | |
 | 系统·世界意志｜有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | 现行：M2投影与事实；M4.7加入同提交设备库存程序和场源值 | |
 | 系统·世界意志｜LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | 现行：授权冻结分页与JSON；M4.7库存设备、M5.1知识历史和来源摘要 | |
@@ -51,7 +51,7 @@
 | 工程｜固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 现行：固定步与预算重试、WorldBuffers只读双缓冲、观测按需导出及GPU交接边界 | |
 | 工程｜正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | 现行：ESC菜单、调试文本捕获优先级、面板恢复与临时持久会话关闭协商 | |
 | 工程｜Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 现行：模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
-| 工程｜工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 现行：模块输入分层、ESC与编辑捕获、字体本地化、构建运行和验证入口 | |
+| 工程｜工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 现行：模块输入分层、字面include门禁与正负夹具、构建运行验证入口 | |
 | 工程｜Pixel 性能采样模块说明 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | 现行：PerfTest配置、CPU统计、三线程trace名称与帧标记、日志时钟和插桩入口 | |
 | 工程｜Axiom通用CPU诊断 | `workspace:Axiom/Source/Core/Diagnostics/README.md` | 现行：PerfTest门控、RAII纳秒事件trace、聚合采样和静态动态链接合同 | |
 | 工程｜Axiom统一日志 | `workspace:Axiom/Source/Log/README.md` | 现行：默认毫秒时间戳、日志级别和格式化接口、共享实例及静态动态链接验证 | |

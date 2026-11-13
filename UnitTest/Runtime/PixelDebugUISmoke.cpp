@@ -466,10 +466,14 @@ void RunPixelDebugUISmoke() {
     platform->GetFramebufferSize(fw, fh);
     const auto picked = PickGridCell(pixel->GetView(), {outside.x, outside.y}, {ww, wh}, {fw, fh});
     Require(picked.has_value(), "outside UI fixture missed world");
-    Click(app, outside);
+    world.SetCell((*picked)[0], (*picked)[1], {pixel::CellTypeId::Stone});
+    pixel::testing::SessionAccess::CommitFixtureChanges(pixel->GetSession());
+    // Mining is the right-button world action; left click uses the held item.
+    ClickButton(app, outside, GLFW_MOUSE_BUTTON_RIGHT);
     const auto *outsideReceipt = pixel->GetSession().LastAction(pixel::NativeCaller::Input);
     Require(outsideReceipt && outsideReceipt->Applied()
-                && std::get<pixel::api::MaterialResult>(outsideReceipt->Result).Target == pixel::api::Cell{(*picked)[0], (*picked)[1]},
+                && std::get<pixel::api::MaterialResult>(outsideReceipt->Result).Target == pixel::api::Cell{(*picked)[0], (*picked)[1]}
+                && world.GetCell((*picked)[0], (*picked)[1]).Type == pixel::CellTypeId::Air,
             "outside UI click did not reach the simulation action port");
     SendKey(app, GLFW_KEY_F1, true);
     SendKey(app, GLFW_KEY_F1, false);
@@ -687,9 +691,35 @@ void RunPixelGardenUISmoke() {
             initialText.find("Needs rightward force") != std::string::npos &&
             initialText.find("Create garden: Applied.") != std::string::npos,
             "garden UI omitted coordinates, measured units, condition or creation receipt", initialText);
+    const auto globalProgram = session.GetFormulaRuntime().ActiveProcess().Identity();
+    Require(!pixel->GetUI().HeldItem() && session.GetFormulaRuntime().ActiveProcess().Identity() == globalProgram,
+            "garden Apply changed the workbench program without a held stick");
+    const auto emptyText = CaptureUiText(app);
+    RequireUiText(emptyText.find("Use Drop wooden stick") != std::string::npos,
+            "garden UI did not explain how to obtain a stick", emptyText);
+    Require(session.DropWoodenStick(pixel::NativeCaller::Debug).Succeeded(), "garden UI stick fixture failed");
+    for (int step = 0; step < 12; ++step) session.Tick(1.f / 60, {1, false});
+    Draw(app, 3);
+    const auto held = pixel->GetUI().HeldItem();
+    Require(held.has_value(), "garden UI did not select the picked-up stick");
+    const auto originalProgram = session.GetInventory().FindInstance(session.PlayerInventory(), *held)->Formula->Identity();
+    // Tab cannot focus disabled ImGui controls. Locate the enabled button first,
+    // then clear the held slot and click the same rectangle while it is disabled.
+    const auto applyPoint = ControlPoint(app, "Apply crystal program");
+    const auto heldSlot = pixel->GetUI().Read().Selected;
+    pixel->GetUI().SelectQuickSlot((heldSlot + 1) % pixel::ui::InventoryLayout::Columns);
+    Draw(app, 2);
+    Require(!pixel->GetUI().HeldItem(), "garden empty-hand fixture still holds an item");
+    Click(app, applyPoint);
+    Require(session.GetInventory().FindInstance(session.PlayerInventory(), *held)->Formula->Identity() == originalProgram
+            && session.GetFormulaRuntime().ActiveProcess().Identity() == globalProgram,
+            "disabled garden Apply modified a stick or the workbench program");
+    pixel->GetUI().SelectQuickSlot(heldSlot);
+    Draw(app, 2);
     Click(app, ControlPoint(app, "Apply crystal program"));
-    Require(session.GetFormulaRuntime().ActiveProcess().Source() == pixel::ForceGardenSource,
-            "garden Apply did not install the natural crystal program");
+    Require(session.GetInventory().FindInstance(session.PlayerInventory(), *held)->Formula->Source() == pixel::ForceGardenSource
+            && session.GetFormulaRuntime().ActiveProcess().Identity() == globalProgram,
+            "garden Apply did not equip the selected stick independently of the workbench program");
     // Position the player as a fixture, then exercise the actual platform input
     // and GameInput aiming path. Activation must remain player-local.
     pixel::testing::SessionAccess::SetPlayerPosition(session, pixel::WorldPosition::FromCells(535, double(surface - 4)));

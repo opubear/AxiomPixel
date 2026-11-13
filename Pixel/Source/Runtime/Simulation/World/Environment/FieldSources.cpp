@@ -30,7 +30,7 @@ void FieldSources::RestoreState(const FieldSourcesState &state, WorldMap &map) {
 FieldSourceSpec FieldSources::Validate(uint64_t owner, FieldSourceSpec spec) {
     if (!owner || !std::isfinite(spec.Radius) || spec.Radius <= 0 || spec.Radius > 16
         || !std::isfinite(spec.Acceleration.X) || !std::isfinite(spec.Acceleration.Y)
-        || std::hypot(double(spec.Acceleration.X), double(spec.Acceleration.Y)) > 36000
+        || std::hypot(double(spec.Acceleration.X), double(spec.Acceleration.Y)) > MaximumAcceleration
         || !spec.Lifetime || spec.Lifetime > 3600)
         throw std::invalid_argument("invalid field source specification");
     spec.Center.Normalize();

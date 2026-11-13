@@ -42,6 +42,7 @@ struct FieldSourcesState {
 class FieldSources {
   public:
     static constexpr size_t Capacity = 256;
+    static constexpr float MaximumAcceleration = 36000;
     explicit FieldSources(const WorldMap &map) : Map(&map) {}
     size_t Size() const { return Count; }
     bool HasCapacity() const { return Count < Capacity; }

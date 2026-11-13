@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <numbers>
 
 namespace {
 using namespace pixel;
@@ -387,6 +388,95 @@ void PersistentFields() {
     }
 }
 
+void FieldAccelerationBoundaries() {
+    World world(64, 64);
+    FormulaBridge bridge;
+    const auto program = Program("formula 2; run field(cells(1), acceleration(36000), acceleration(0), ticks(10));");
+    const auto checkMagnitude = [](ForceVector acceleration) {
+        const auto magnitude = std::hypot(double(acceleration.X), double(acceleration.Y));
+        Check(magnitude <= 36000 && magnitude >= 35999.99,
+              "legal boundary acceleration escaped the World bound or lost strength");
+    };
+    for (int angle = 0; angle < 360; ++angle) {
+        bridge.BeginFrame();
+        bridge.ApplyProcess(program);
+        auto carrier = Carrier();
+        carrier.AngleDegrees = angle;
+        Check(bridge.CastCarrier(world, carrier), "boundary field activation failed");
+        const auto fields = world.GetEnvironment().GetFieldSources().Sources();
+        Check(fields.size() == 1 && bridge.ProcessReceipts().back().Outcome == process::Outcome::Applied,
+              "legal field was refused at a non-axis angle");
+        const auto acceleration = fields.front().Spec.Acceleration;
+        checkMagnitude(acceleration);
+        const auto radians = angle * std::numbers::pi / 180;
+        Check(std::abs(acceleration.X - 36000 * std::cos(radians)) < .01
+            && std::abs(acceleration.Y - 36000 * std::sin(radians)) < .01,
+            "boundary correction changed field direction");
+        bridge.Clear(world);
+    }
+
+    // The double vector has length 36000; its float components round outside
+    // the bound. Legacy update_field must use the same conversion as installation.
+    bridge.ApplyProcess(Program(R"(process 1;
+        emit field(cells(1), acceleration(1), acceleration(0), ticks(20));
+        await result within ticks(1); let h = effect_handle();
+        emit update_field(h, field(cells(1), acceleration(35950.66325116466), acceleration(1884.0944247459781), ticks(20)));
+        await result within ticks(1);
+        emit update_field(h, field(cells(1), acceleration(36000.0001), acceleration(0), ticks(20)));
+        await result within ticks(1); wait ticks(5);
+    )"));
+    auto carrier = Carrier();
+    carrier.AngleDegrees = 173; // process/1 retains world axes.
+    Check(bridge.CastCarrier(world, carrier), "legacy update fixture failed");
+    const auto handle = world.GetEnvironment().GetFieldSources().Sources().front().Handle;
+    bridge.Step(world);
+    const auto updated = world.GetEnvironment().GetFieldSources().Sources().front();
+    Check(bridge.ProcessReceipts().back().Outcome == process::Outcome::Applied && updated.Handle == handle,
+          "legal field update was refused or replaced the handle");
+    checkMagnitude(updated.Spec.Acceleration);
+    Check(updated.Spec.Acceleration.X > 35000 && updated.Spec.Acceleration.Y > 1800,
+          "legacy field update was rotated");
+    bridge.Step(world);
+    const auto retained = world.GetEnvironment().GetFieldSources().Sources().front();
+    Check(bridge.ProcessReceipts().back().Refusal == ProcessRefusal::Geometry
+        && retained.Handle == handle && retained.Spec.Acceleration.X == updated.Spec.Acceleration.X
+        && retained.Spec.Acceleration.Y == updated.Spec.Acceleration.Y,
+        "oversized update was clamped into validity or changed the existing source");
+}
+
+void PlayerFieldBoundary() {
+    const auto program = Program("formula 2; run field(cells(1), acceleration(36000), acceleration(0), ticks(10));");
+    for (const bool threaded : {false, true}) {
+        for (const double angle : {0., 3.}) {
+            GameSession session;
+            Check(session.DropWoodenStick(NativeCaller::Debug).Succeeded(), "boundary player could not drop a stick");
+            for (int step = 0; step < 12; ++step) session.Tick(1.f / 60, {1, false});
+            const auto bag = session.GetInventory().Inspect(session.PlayerInventory());
+            Check(bag.Instances.size() == 1, "boundary player could not pick up the stick");
+            const auto stick = bag.Instances.front().Ref;
+            Check(bool(session.ApplyHeldProcess(NativeCaller::Debug, stick, program)), "boundary player could not equip field");
+            const auto &body = *session.GetPlayer();
+            auto center = body.GetWorldPosition();
+            center.Local[0] += body.Size[0] / 2;
+            center.Local[1] += body.Size[1] / 2;
+            center.Normalize();
+            const auto radians = angle * std::numbers::pi / 180;
+            const auto target = FormulaWorldAdapter::OffsetCells(center, {20 * std::cos(radians), 20 * std::sin(radians)});
+            const auto cell = target.Cell();
+            if (threaded) session.EnableSimulationThread();
+            const auto receipt = session.Execute(NativeCaller::Input,
+                api::UseHeldItem{stick, {{cell.X, cell.Y}, target.RelativeCellsTo(cell)}});
+            Check(threaded ? receipt.Queued() : receipt.Applied(), "player field action was not admitted");
+            session.Tick(1.f / 60, {});
+            const auto resolved = session.FindAction(receipt.Key);
+            Check(resolved && resolved->Applied(), "queued player field did not commit");
+            const auto fields = session.GetWorld().GetEnvironment().GetFieldSources().Sources();
+            Check(fields.size() == 1 && std::hypot(double(fields.front().Spec.Acceleration.X),
+                double(fields.front().Spec.Acceleration.Y)) <= 36000, "player field was not installed within the bound");
+        }
+    }
+}
+
 } // namespace
 int main() {
     try {
@@ -400,6 +490,8 @@ int main() {
         InvalidHostCoordinates();
         ProcessEditingAndInspection();
         PersistentFields();
+        FieldAccelerationBoundaries();
+        PlayerFieldBoundary();
         std::cout << "FormulaBridge contracts passed\n";
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

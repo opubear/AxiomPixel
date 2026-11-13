@@ -142,6 +142,9 @@ if(BUILD_TESTING)
     add_test(NAME Pixel.ModuleBoundaries COMMAND ${CMAKE_COMMAND}
         -DPIXEL_SOURCE_DIR=${PROJECT_SOURCE_DIR}/Pixel/Source
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyModuleBoundaries.cmake)
+    add_test(NAME Pixel.ModuleBoundaryFixtures COMMAND ${CMAKE_COMMAND}
+        -DFIXTURE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/module-boundary-fixtures
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ModuleBoundaryTests.cmake)
     target_link_libraries(PixelModelProtocolTests PRIVATE PixelModelProtocol)
     target_include_directories(PixelModelProtocolTests PRIVATE "${AXIOM_ENGINE_DIR}/ThirdParty/nlohmannJson/single_include")
     add_test(NAME Pixel.ModelProtocol COMMAND PixelModelProtocolTests)

@@ -1,6 +1,6 @@
 # 构式函数组合与世界绑定（formula/2）
 
-初版：2026-10-26；现状核对：2026-11-10。这里描述已实现的构式合同；设计动机见[构式系统](../GameDesign/FormulaSystem.md)，验证记录见[独立验证](FormulaCompositionVerification.md)。函数与不可变描述位于 System/Formula，世界绑定和领域 API 位于 Gameplay/FormulaBridge。Simulation、Axiom 不依赖构式。本次没有需要放入引擎的通用能力变更。
+初版：2026-10-26；现状核对：2026-11-13。这里描述已实现的构式合同；设计动机见[构式系统](../GameDesign/FormulaSystem.md)，验证记录见[独立验证](FormulaCompositionVerification.md)。函数与不可变描述位于 System/Formula，世界绑定和领域 API 位于 Gameplay/FormulaBridge。Simulation、Axiom 不依赖构式。本次没有需要放入引擎的通用能力变更。
 
 ## 使用
 
@@ -41,6 +41,8 @@ run burst(3, impact_shot(speed(60), mining));
 | `nothing() -> action` | 空描述，用于条件分支 |
 
 基础函数和用户函数共享类型及调用规则；例如函数可以返回 `cells` 用作 dig 参数，也可以把 `on_hit(...)` 返回的 action 交给 repeat。非法类型、重复名字、未知调用和无效参数返回带原始行列的编译诊断。`on_hit` 的载体约束在描述构造阶段检查。游戏几何、权限、资源条件由运行宿主检查；描述合法不表示必然生效。
+
+场源半径为 `(0,16]` 格、寿命为 `1..3600` 活动步，请求的双精度加速度向量模长不得超过 `36000` 格/秒²；超限返回 Geometry。宿主先校验请求，再生成最终方向与 float 分量。合法上限向量若仅因旋转/窄化舍入越界，会以一个 float ULP 的余量缩回边界内，预检查与提交复用同一规格；World 仍严格拒绝非法规格。process/1 的 field/update_field 共用该转换，但保留世界坐标方向。详见[场源领域合同](../../.awtcontext/GlobalDoc/FieldSources.md)。
 
 本版没有并行分支、散射、通用对象选择、独立子实例、对象旋转、运行中重绑定或随机数。这里的 action 是统一行为值，不是对过程脚本增加宏替换指令的公开接口。旧 process/1 的句柄式更新/停止场源仍可读取；formula/2 的场源采用有限寿命组合，暂不暴露句柄操作。
 

@@ -89,6 +89,46 @@ void SetHomeForce(GameSession &session, float acceleration) {
     testing::SessionAccess::PublishFixtureChanges(session);
 }
 
+void VerifyPlayerCrystalProgram() {
+    for (const bool threaded : {false, true}) {
+        GameSession session;
+        CreateGarden(session);
+        Check(session.DropWoodenStick(NativeCaller::Debug).Succeeded(), "garden stick drop failed");
+        for (int step = 0; step < 82; ++step) {
+            session.BeginFrame();
+            session.Tick(1.f / 60, {1, false});
+        }
+        const auto bag = session.GetInventory().Inspect(session.PlayerInventory());
+        Check(bag.Instances.size() == 1, "garden player did not pick up the stick");
+        const auto stick = bag.Instances.front().Ref;
+        Check(session.Control(NativeCaller::Debug, api::ClearRunning{}).Succeeded(), "garden source isolation failed");
+        const auto globalProgram = session.GetFormulaRuntime().ActiveProcess().Identity();
+        if (threaded) session.EnableSimulationThread();
+        Check(bool(session.ApplyHeldProcess(NativeCaller::Debug, stick, ForceGardenProgram())),
+              "crystal program could not be equipped on the player's stick");
+        Check(session.GetInventory().FindInstance(session.PlayerInventory(), stick)->Formula->Identity()
+            == ForceGardenProgram().Identity() && session.GetFormulaRuntime().ActiveProcess().Identity() == globalProgram,
+            "crystal equip changed the workbench program instead of the held stick");
+
+        const auto surface = Garden(session).State.SurfaceY;
+        const api::Position target{{GardenHomeX, surface - 1}, {0, 0}};
+        const auto empty = session.Execute(NativeCaller::Input, api::UseHeldItem{{}, target});
+        session.Tick(1.f / 60, {});
+        Check(session.FindAction(empty.Key)->Rejection == api::Reason::InsufficientItems,
+              "empty hands used the crystal program");
+        const auto use = session.Execute(NativeCaller::Input, api::UseHeldItem{stick, target});
+        Check(threaded ? use.Queued() : use.Applied(), "garden held-item action was not admitted");
+        session.Tick(1.f / 60, {});
+        const auto resolved = session.FindAction(use.Key);
+        const auto garden = Garden(session);
+        Check(resolved && resolved->Applied() && session.GetFormulaRuntime().Projectiles().empty()
+            && session.GetWorld().GetEnvironment().GetFieldSources().Size() == 1
+            && garden.Home.HorizontalAcceleration >= GardenMinimumForce
+            && garden.Home.HorizontalAcceleration <= GardenMaximumForce && garden.State.HomeGrowth > 0,
+            "equipped crystal did not create the player field and advance the home bed");
+    }
+}
+
 void VerifyBedsAndForceThresholds() {
     WorldGenerationSettings generation;
     generation.Kind = WorldGeneratorKind::Flat;
@@ -535,6 +575,7 @@ void VerifyCrystalRenewalBoundary() {
 int main() {
     try {
         VerifyBedsAndForceThresholds();
+        VerifyPlayerCrystalProgram();
         VerifyDeviceSupplyAndFuel();
         VerifyPauseAndPendingCommit();
         VerifyPersistenceAndCrystalClear();

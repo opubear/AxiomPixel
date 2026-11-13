@@ -190,7 +190,7 @@ void DrawHomeAid(GameSession &session, will::WorldWill &worldWill, const api::Ga
 } // namespace
 
 void DrawForceGardenUI(GameSession &session, const GamePresentation &presentation, will::WorldWill &worldWill,
-                      ForceGardenUIState &state) {
+                      ForceGardenUIState &state, std::optional<items::ItemRef> held) {
     RefreshActionStatus(session, state);
     auto &receipt = state.Receipt;
     if (!ImGui::CollapsingHeader("Force garden"))
@@ -216,13 +216,20 @@ void DrawForceGardenUI(GameSession &session, const GamePresentation &presentatio
         ImGui::TextWrapped("Growth needs air, solid support below, and rightward acceleration +1800..+5400 cells/s^2 for 180 successful steps (3 active seconds). Progress is retained when conditions fail.");
 
         ImGui::Separator();
-        ImGui::TextWrapped("2. Copy the crystal's exact program. Walk within 8 cells of the home bed (%lld, %lld), then left-click toward it. The temporary field starts in front of the player; the click only aims it.",
+        ImGui::TextWrapped("2. Equip the crystal's exact program on your held wooden stick. Walk within 8 cells of the home bed (%lld, %lld), then left-click toward it. The temporary field starts in front of the player; the click only aims it.",
             static_cast<long long>(GardenHomeX), static_cast<long long>(y - 1));
+        const auto *stick = held ? session.GetInventory().FindInstance(session.PlayerInventory(), *held) : nullptr;
+        ImGui::BeginDisabled(!stick || !session.CanEditWorld());
         if (ImGui::Button("Apply crystal program")) {
-            const auto result = session.ApplyProcess(NativeCaller::Debug, ForceGardenProgram());
-            receipt = result ? "Apply crystal program: Applied. Stand near the home bed and left-click toward it; existing instances keep their program."
+            const auto result = session.ApplyHeldProcess(NativeCaller::Debug, *held, ForceGardenProgram());
+            receipt = result ? "Apply crystal program: Applied to your held stick. Stand near the home bed and left-click toward it; other sticks and existing instances keep their programs."
                              : "Apply crystal program: Rejected. " + result.Message;
         }
+        ImGui::EndDisabled();
+        if (!stick)
+            ImGui::TextDisabled("Use Drop wooden stick, walk over it to pick it up, then select its quick slot.");
+        else if (!session.CanEditWorld())
+            ImGui::TextDisabled("Resume the game and finish world loading to equip the crystal program.");
         if (ImGui::TreeNode("Crystal program source")) {
             ImGui::TextUnformatted(ForceGardenSource);
             ImGui::TreePop();
