@@ -440,7 +440,7 @@ void PendingSessionKeepsOnlyTheFrozenExternalView() {
     testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindDomain(256, wind);
+    world.ConfigureWindDomain(wind);
     world.SetCell(32, 10, {CellTypeId::Dirt, {0, 1}});
     testing::SessionAccess::PublishFixtureChanges(session);
     session.Control(NativeCaller::Driver, api::SetPaused{false});

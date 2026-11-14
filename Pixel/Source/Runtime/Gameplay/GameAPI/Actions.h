@@ -17,7 +17,6 @@ struct SpawnElement { Cell Target; uint32_t MaterialId = 50; uint32_t Radius = 4
 struct ActivateProgram { ProgramRef Program; Position Target; };
 struct UseHeldItem { std::optional<items::ItemRef> Item; Position Target; };
 struct SelectWindStrategy { WindKind Kind; };
-struct SetWindBoundary { int64_t Y; };
 struct PlaceDevice { Cell Target; };
 struct RemoveDevice { DeviceRef Device; };
 struct SupplyDevice { DeviceRef Device; uint32_t Quantity = 1; };
@@ -39,7 +38,7 @@ struct InterveneAtDevice {
     DeviceRef Device;
     uint64_t ExpectedResourceVersion = 0;
 };
-using Action = std::variant<MineRegion, PlaceMaterial, SpawnElement, ActivateProgram, SelectWindStrategy, SetWindBoundary,
+using Action = std::variant<MineRegion, PlaceMaterial, SpawnElement, ActivateProgram, SelectWindStrategy,
                             PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection,
                             InstallIntervention, InterveneAtDevice, UseHeldItem>;
 struct ActionRequest {
@@ -66,7 +65,7 @@ struct ActivationResult {
     ProgramRef Program;
     uint64_t RunningRoots = 0, Projectiles = 0, Pending = 0;
 };
-struct WindResult { WindKind Kind; int64_t BoundaryY; };
+struct WindResult { WindKind Kind; };
 using ActionResult = std::variant<std::monostate, MaterialResult, ElementsSpawned, ActivationResult, WindResult, DeviceChanged, ForceObserved, AuthorityChanged>;
 // Queued acknowledges admission only; result, facts and ResolvedAt are filled
 // after the simulation step commits. Resubmission/query preserves the key.

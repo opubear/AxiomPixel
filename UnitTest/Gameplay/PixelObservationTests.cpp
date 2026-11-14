@@ -35,7 +35,7 @@ void SnapshotValuesAndIncrementalSampling() {
     GameSession session;
     WindStrategySettings emptyWind;
     emptyWind.Kind = WindStrategyKind::Empty;
-    testing::SessionAccess::World(session).ConfigureWindDomain(600, emptyWind);
+    testing::SessionAccess::World(session).ConfigureWindDomain(emptyWind);
     testing::SessionAccess::PublishFixtureChanges(session);
     const api::Rect scope{{504, 504}, 32, 16};
     const auto firstResult = session.Observe(NativeCaller::Driver, scope);
@@ -166,7 +166,7 @@ void PendingStepUsesOnlyCompleteCopies() {
     testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindDomain(256, wind);
+    world.ConfigureWindDomain(wind);
     world.SetCell(32, 10, {CellTypeId::Dirt, {0, 1}});
     testing::SessionAccess::PublishFixtureChanges(session);
     session.Control(NativeCaller::Driver, api::SetPaused{false});
@@ -393,7 +393,7 @@ void FactRangesCursorsAndWindSemantics() {
     WindStrategySettings coarse;
     coarse.Kind = WindStrategyKind::Coarse;
     coarse.Coarse.Columns = coarse.Coarse.Rows = 16;
-    testing::SessionAccess::World(emissionSession).ConfigureWindDomain(600, coarse);
+    testing::SessionAccess::World(emissionSession).ConfigureWindDomain(coarse);
     testing::SessionAccess::PublishFixtureChanges(emissionSession);
     const auto delayed = emissionSession.ApplyProcess(NativeCaller::Driver, Program("process 1; emit wind(cells(1), speed(60), speed(0)); wait ticks(2); emit wind(cells(1), speed(60), speed(0));"));
     Require(bool(delayed), "cross-tick wind formula could not be applied");
@@ -421,7 +421,7 @@ void FactRangesCursorsAndWindSemantics() {
     GameSession overflowSession;
     for (int index = 0; index < 257; ++index)
         overflowSession.Execute(NativeCaller::Driver,
-            api::SetWindBoundary{GameSession::DefaultWindStartHeight + index + 1});
+            api::SelectWindStrategy{api::WindKind::Empty});
     const auto overflow = overflowSession.ReadFacts(overflowSession.WorldEpoch(), 0,
         overflowSession.FactHighWatermark());
     Require(overflow.Status == api::FactReadStatus::Gap && overflow.FirstAvailableSequence > 1,

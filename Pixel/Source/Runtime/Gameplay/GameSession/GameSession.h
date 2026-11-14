@@ -38,7 +38,6 @@ class GameSession : public api::WorldWillHost {
     static constexpr uint32_t WorldWidth = 1024;
     static constexpr uint32_t WorldHeight = 1024;
     static constexpr uint32_t TerrainHeight = 512;
-    static constexpr uint32_t DefaultWindStartHeight = 600;
     // Existing fixtures select finite or persistent storage explicitly.
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
     explicit GameSession(SessionMode mode, WorldGenerationSettings generation = {}, std::shared_ptr<const MonsterCatalog> monsters = {});
@@ -136,7 +135,6 @@ class GameSession : public api::WorldWillHost {
     void Save();
     bool TrySave();
     bool SelectWindStrategy(WindStrategyKind kind);
-    bool SetWindBoundary(int64_t y);
     struct CallerState {
         api::CallerSessionId Id = 0;
         uint64_t HighWatermark = 0;

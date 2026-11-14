@@ -252,6 +252,34 @@ void Version3GenerationRemainsReadable() {
     GameSession loaded(true);
     Require(loaded.GetGenerationSettings() == natural, "v3 generation descriptor was skipped by the v5 reader");
 }
+
+void LegacyWindHeightIsIgnored() {
+    SaveRoot files;
+    std::filesystem::path directory;
+    {
+        GameSession session(true);
+        Require(session.GetWorld().GetWindBounds() == session.GetWorld().GetSimulationBounds(),
+                "new session did not configure full-window wind");
+        session.Execute(NativeCaller::Driver, api::SelectWindStrategy{api::WindKind::Procedural});
+        Require(session.Control(NativeCaller::Driver, api::SaveWorld{}).Succeeded(), "wind fixture save failed");
+        directory = session.GetSaveDirectory();
+    }
+    testing::ExportLegacyFixture(directory);
+    SessionStore store(files.Path);
+    auto metadata = store.ReadMetadata(directory);
+    metadata.LegacyWindBoundary = -100000;
+    store.WriteMetadata(directory, metadata);
+    GameSession loaded(true);
+    const auto &world = loaded.GetWorld();
+    Require(loaded.GetSelectedWindStrategy() == WindStrategyKind::Procedural
+                && world.GetWindBounds() == world.GetSimulationBounds(),
+            "legacy height clipped the restored wind window");
+    const auto player = loaded.GetPlayer()->GetWorldPosition().Cell();
+    Require(world.SampleWind(player).X != 0, "restored wind did not reach player-height air");
+    Require(loaded.Control(NativeCaller::Driver, api::SaveWorld{}).Succeeded(), "full-window save failed");
+    Require(store.ReadMetadata(testing::CheckpointDirectory(directory)).LegacyWindBoundary == 0,
+            "new checkpoint retained an active legacy height setting");
+}
 } // namespace
 
 int main() {
@@ -262,6 +290,7 @@ int main() {
         LegacyFlatAndResetFailure();
         FailedRecoveryIsIsolatedAndRetryable();
         Version3GenerationRemainsReadable();
+        LegacyWindHeightIsIgnored();
         std::cout << "Generation strategy persistence, legacy compatibility and reset recovery passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

@@ -64,7 +64,6 @@ void SessionRoundTrip() {
         Require(world.GetSimulationBounds().X < 0 && world.TryGetCell(-24, 10), "player window did not load negative chunks");
         world.SetCell(-24, 10, {pixel::CellTypes::Dirt, {-1, 1}});
         world.SetBaseForce(-24, 10, {123.25f, -456.5f});
-        session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{450});
         session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Procedural});
         session.Control(pixel::NativeCaller::Driver, pixel::api::SetPaused{true});
         savedWind = world.SampleWind(100.5, 100.5);
@@ -81,7 +80,7 @@ void SessionRoundTrip() {
                 "session save lost map or base force");
         Require(restored.GetPlayer()->GetWorldPosition().Chunk == position.Chunk && restored.GetPlayer()->GetWorldPosition().Local == position.Local,
                 "player sub-cell position did not round trip");
-        Require(world.GetWindBoundary() == 450 && restored.GetSelectedWindStrategy() == pixel::WindStrategyKind::Procedural,
+        Require(world.GetWindBounds() == world.GetSimulationBounds() && restored.GetSelectedWindStrategy() == pixel::WindStrategyKind::Procedural,
                 "world environment settings did not round trip");
         const auto restoredWind = world.SampleWind(100.5, 100.5);
         Require(std::abs(restoredWind.X - savedWind.X) < 1e-5 && std::abs(restoredWind.Y - savedWind.Y) < 1e-5 && restored.GetSimulationTime() == savedPhysicsTime && restored.GetTimeRemainder() == savedRemainder,
@@ -328,7 +327,7 @@ void DeferredStepKeepsStreamingDomain() {
     wind.Coarse.Columns = wind.Coarse.Rows = 32;
     wind.Coarse.Ambient = {};
     wind.Coarse.GustSpeed = 0;
-    world.ConfigureWindDomain(256, wind);
+    world.ConfigureWindDomain(wind);
     world.AddWindImpulse(190, 128, 16, {100, 0});
     world.SetCell(10, 10, {pixel::CellTypeId::Dirt, {0, 1}});
     world.WaitForStreaming();
@@ -383,7 +382,7 @@ void SuccessfulSingleStepBacklogRoundTrip() {
         Require(session.Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "backlog fixture failed to cast");
         auto &world = pixel::testing::SessionAccess::World(session);
         pixel::testing::SessionAccess::RestoreClock(session, 0, .1, true);
-        Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{500}).Applied() && !session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse}).Applied(),
+        Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse}).Applied(),
                 "waiting step permits wind backend replacement");
         Require(!session.Execute(pixel::NativeCaller::Driver, pixel::api::ActivateProgram{session.AppliedProgram(), {{600, 510}, {0, 0}}}).Applied(), "waiting step accepted a new cast");
         session.Control(pixel::NativeCaller::Driver, pixel::api::StepSimulation{});

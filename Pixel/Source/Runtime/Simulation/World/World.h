@@ -56,12 +56,12 @@ class World {
         Environment.SuspendFieldSources(*this, owner, suspended);
     }
 
+    // Explicit bounded fixtures for finite-world numerical tests only.
     void ConfigureWind(uint32_t endRow, const WindSettings &settings = {});
     void ConfigurePixelWind(uint32_t endRow, const PixelWindSettings &settings = {});
     void ConfigureWindStrategy(uint32_t endRow, const WindStrategySettings &settings);
-    void ConfigureWindDomain(int64_t boundaryY, const WindStrategySettings &settings, bool enabled = true);
-    void SetWindBoundary(int64_t y);
-    int64_t GetWindBoundary() const { return WindBoundaryY; }
+    // Production wind always covers the complete player simulation window.
+    void ConfigureWindDomain(const WindStrategySettings &settings, bool enabled = true);
     bool IsWindEnabled() const { return WindEnabled; }
     const WindStrategySettings &GetWindSettings() const { return WindSettings; }
     WindStrategyKind GetWindStrategyKind() const { return Environment.GetWindSimulation().GetKind(); }
@@ -145,7 +145,7 @@ class World {
     std::unique_ptr<WorldStreamer> Streamer;
     WorldRect SimulationBounds{0, 0, storage::DefaultWindowEdge, storage::DefaultWindowEdge};
     WorldRect VisibleBounds;
-    int64_t WindBoundaryY = 424;
+    std::optional<uint32_t> FiniteWindRows;
     bool WindEnabled = false;
     WindStrategySettings WindSettings;
     std::optional<CellCoord> SimulationFocus;
@@ -154,6 +154,7 @@ class World {
     axiom::Map<const void *, uint64_t> PublicationOwners;
     std::shared_ptr<const int> Lifetime = std::make_shared<const int>(0);
     void RequireFinite() const;
+    void ConfigureWindView(WorldMapView view, const WindStrategySettings &settings, bool enabled);
     void InitializeBufferBudget();
     void ReserveBufferWrite(uint64_t bytes, std::span<const CellCoord> protectedChunks);
 };

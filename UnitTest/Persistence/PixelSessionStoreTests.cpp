@@ -84,7 +84,7 @@ void MetadataCompatibility() {
     Require(data.Player.Chunk == CellCoord{-1234567890123, 2345678901234}
                 && data.Player.Local == std::array<float, 2>{6.25f, 3187.5f}, "metadata lost distant position precision");
     Require(data.CommittedTime == 12.25 && data.TimeRemainder == .125
-                && data.WindBoundary == -23456 && data.WindEnabled && !data.Paused,
+                && data.LegacyWindBoundary == -23456 && data.WindEnabled && !data.Paused,
             "metadata lost committed clock or session state");
     const auto &wind = data.Wind;
     Require(wind.Kind == WindStrategyKind::Hybrid && wind.Coarse.Ambient == WindVelocity{1.25f, -2.5f}

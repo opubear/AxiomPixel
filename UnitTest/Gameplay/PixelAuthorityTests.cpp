@@ -112,7 +112,7 @@ void InfluenceLifecycle() {
         "stale influence observation was accepted");
 
     const auto independent = Request(session, 4);
-    Check(session.Execute(NativeCaller::Driver, api::SetWindBoundary{601}).Applied(), "unrelated revision fixture");
+    Check(session.Execute(NativeCaller::Driver, api::SelectWindStrategy{api::WindKind::Empty}).Applied(), "unrelated revision fixture");
     Check(host.Submit(initial.Caller, independent).Applied(), "unrelated commit invalidated influence proposal");
     Check(host.Submit(initial.Caller, Request(session, 5)).Applied()
         && host.Submit(initial.Caller, Request(session, 6)).Applied(), "four influence slots unavailable");
@@ -317,7 +317,7 @@ void PendingAndPersistence() {
     auto &world = testing::SessionAccess::World(session);
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindDomain(256, wind);
+    world.ConfigureWindDomain(wind);
     for (const auto x : {600, 602, 604, 606}) world.SetCell(x, 504, {CellTypeId::Dirt, {0, 1}});
     world.SetBaseForce(600, 504, {0, 3600});
     world.SetBaseForce(602, 504, {3600, 0});

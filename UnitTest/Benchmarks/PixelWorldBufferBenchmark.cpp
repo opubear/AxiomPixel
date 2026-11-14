@@ -17,7 +17,7 @@ void Measure(WindStrategyKind kind, int readers, bool moving) {
     auto &world = testing::SessionAccess::World(session);
     WindStrategySettings settings;
     settings.Kind = kind;
-    world.ConfigureWindDomain(512, settings);
+    world.ConfigureWindDomain(settings);
     if (moving) world.FillRegion({128, 32, 128, 64}, {CellTypeId::Dirt});
     testing::SessionAccess::PublishFixtureChanges(session);
     std::vector<std::shared_ptr<CommittedWorldView>> views;

@@ -70,9 +70,6 @@ api::Reason Validate(const api::Action &action) {
         } else if constexpr (std::is_same_v<T, api::InterveneAtDevice>) {
             if (!value.ExpectedResourceVersion || !value.Device.Id || !value.Device.Version)
                 return api::Reason::InvalidArgument;
-        } else if constexpr (std::is_same_v<T, api::SetWindBoundary>) {
-            if (!ValidCell({0, value.Y}))
-                return api::Reason::InvalidArgument;
         }
         return api::Reason::None;
     },
@@ -212,13 +209,13 @@ api::ActionReceipt GameSession::Submit(api::CallerSessionId caller, const api::A
         reason = PrepareWorldMutation();
     if (reason == api::Reason::None)
         reason = AuthorizeAction(caller, request.Payload);
-    const bool wind = std::holds_alternative<api::SelectWindStrategy>(request.Payload) || std::holds_alternative<api::SetWindBoundary>(request.Payload);
+    const bool wind = std::holds_alternative<api::SelectWindStrategy>(request.Payload);
     if (reason == api::Reason::None && (wind || std::holds_alternative<api::SpawnElement>(request.Payload)) && !state->Debug)
         reason = api::Reason::PermissionDenied;
     if (reason != api::Reason::None) {
         receipt = reject(reason);
     } else {
-        const api::WindConfiguration beforeWind{PublicWind(WindKind), GameWorld.GetWindBoundary()};
+        const api::WindConfiguration beforeWind{PublicWind(WindKind)};
         receipt = Dispatch(request.Payload, {request.WorldEpoch, caller, request.Sequence});
         receipt.Key = {request.WorldEpoch, caller, request.Sequence};
         if (receipt.Applied()) {
@@ -375,12 +372,9 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
             receipt = PlaceDevice(value.Target);
         } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> || std::is_same_v<T, api::SetDeviceEnabled>) {
             receipt = ChangeDevice(value.Device, action);
-        } else {
-            if constexpr (std::is_same_v<T, api::SelectWindStrategy>)
-                SelectWindStrategy(WorldWind(value.Kind));
-            else
-                SetWindBoundary(value.Y);
-            receipt.Result = api::WindResult{PublicWind(WindKind), GameWorld.GetWindBoundary()};
+        } else if constexpr (std::is_same_v<T, api::SelectWindStrategy>) {
+            SelectWindStrategy(WorldWind(value.Kind));
+            receipt.Result = api::WindResult{PublicWind(WindKind)};
         }
     },
                action);

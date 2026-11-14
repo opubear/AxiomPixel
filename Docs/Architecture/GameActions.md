@@ -24,11 +24,13 @@ const auto result = session.Execute(pixel::NativeCaller::Driver,
 - UseHeldItem 是玩家左键入口，携带点击时ItemRef和目标；执行时重新验证拥有／可用数量，再通过HandheldItem使用木棍或共享BlockItem。方块在身体前方一格放置。规则与独立构式身份见[手持物品合同](../../.awtcontext/GlobalDoc/HandheldItems.md)。
 - ActivateProgram 仅供Debug／Driver工作台夹具，Input拒绝此绕过手持物的入口；核验当前 ProgramRef、连续目标、会话阶段、发射路径和既有额度；返回本次激活身份和当前运行数量。Empty/延迟程序成功时可以没有球。拒绝发射不会改变上次成功瞄准方向。
 - InstallIntervention、InterveneAtDevice 仅由宿主世界意志身份提交，核验当前程序、资源版本、区域控制及目标设备版本。成功干预占用4个并发槽之一，结束归还；模型不消耗玩家库存。动作序号在安全提交边界分配，异步调度与离线演示见 [WorldWill](../../.awtcontext/GlobalDoc/WorldWill.md)。
-- SelectWindStrategy、SetWindBoundary 需要 Debug 能力。保留原有七策略；切换不自动改变GameSession全局暂停；没有通用属性写入接口。
+- SelectWindStrategy 需要 Debug 能力；高度设置动作 SetWindBoundary 已移除，风域统一覆盖完整玩家模拟窗口。保留原有七策略；切换不自动改变GameSession全局暂停；没有通用属性写入接口。
 
 GameAPI动作边界保留 int64 cell 和 [0,1) double offset；游戏内部连续位置为float厘米（见[单位合同](../WorldUnits.md)）。边界转换先保留整数格再处理局部小数，不经过绝对 double。边界拒绝非有限值、非法offset、不受支持的材料/枚举及超出当前 WorldPosition 能力的坐标；极端chunk预留给内部邻域和发射偏移。动作入口没有通用JSON写接口；外围模型协议只解析受限提案，由WorldWill构造获准动作。
 
 所有新世界动作都在 Ready 且没有预算延期步时执行；验证顺序为调用者/epoch、去重、payload合法性、可写阶段、能力、局部前置条件和实际领域操作。材料编辑由World执行，角色/设备占用与库存成本由Gameplay组合；玩家与构式开采共用Mining规则。构式效果经FormulaWorldAdapter接入领域，同批先碰撞查询再提交的顺序保持。
+
+2026-11-14起，风动作回执只返回后端种类，不再返回高度。新的WindConfigured事实不设置高度；旧事实的高度仍由知识编解码保留，JSON以legacyBoundaryY标注历史字段，不表示现行配置。
 
 ## 会话与界面
 
@@ -52,6 +54,6 @@ process源码先在独立编译器完成语法、类型和静态额度检查，�
 
 `Pixel.Actions`覆盖三入口开采结果、玩家/水放置阻挡、缺失格优先级、材料前置条件、重复和淘汰、调用者/epoch替换、权限、非法坐标、预算等待、暂停激活、单步及旧程序隔离。既有Input、Session、FormulaGameplay、FormulaRendering与存储回归继续验证完整行为。
 
-`PixelRuntimeSmoke --debug-ui-only`使用真实生产按钮验证Debug开采和放置，并保留七风策略、int64边界、UI捕获和窗口重建；`--formula-only`验证真实Apply/Clear、版本隔离、输入捕获及GPU合成。执行结果以当前AWT任务日志为准，本文不替代测试报告。
+`PixelRuntimeSmoke --debug-ui-only`使用真实生产按钮验证Debug开采和放置，并验证完整窗口上的Coarse/Procedural/Hybrid/Empty切换、UI捕获和窗口重建；七种后端的窗口迁移由Pixel.Chunks/WindDomains覆盖；`--formula-only`验证真实Apply/Clear、版本隔离、输入捕获及GPU合成。执行结果以当前AWT任务日志为准，本文不替代测试报告。
 
 当前`SetPaused`控制GameSession全局冻结，默认运行。暂停时世界修改及Apply/Clear返回`GamePaused`；保存/恢复/重置和显式完整单步仍可使用。Simulation不再提供独立暂停。

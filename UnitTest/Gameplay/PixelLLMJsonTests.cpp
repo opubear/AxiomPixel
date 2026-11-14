@@ -360,8 +360,8 @@ void FactsPreserveEveryCauseAndPayload() {
                 && values[2]["payload"]["kind"] == "ProgramActivated"
                 && values[2]["payload"]["activationId"] == std::to_string(Identity - 17)
                 && values[3]["payload"]["kind"] == "WindConfigured"
-                && values[3]["payload"]["before"]["boundaryY"] == std::to_string(-Far)
-                && values[3]["payload"]["after"]["boundaryY"] == std::to_string(Far)
+                && values[3]["payload"]["before"]["legacyBoundaryY"] == std::to_string(-Far)
+                && values[3]["payload"]["after"]["legacyBoundaryY"] == std::to_string(Far)
                 && values[3]["payload"]["after"]["backendKind"] == "hybrid",
             "material, activation or wind configuration fact payload was incomplete");
     const auto &pulse = values[4]["payload"];
@@ -448,10 +448,10 @@ void ActionReceiptUsesTheSameIntegerContract() {
                 && json["result"]["changed"] == 1 && json["result"]["blocked"] == 2
                 && json["result"]["notReady"] == 3,
             "material receipt lost optional-state or integer coordinate semantics");
-    receipt.Result = api::WindResult{api::WindKind::Lbm, -Far};
+    receipt.Result = api::WindResult{api::WindKind::Lbm};
     json = llm::ToJson(receipt);
-    Require(json["result"]["boundaryY"] == std::to_string(-Far) && json["result"]["backendKind"] == "lbm",
-            "wind action receipt lost backend or signed boundary precision");
+    Require(!json["result"].contains("boundaryY") && json["result"]["backendKind"] == "lbm",
+            "wind action receipt retained height configuration or lost backend");
 }
 
 void GameplayJsonPreservesValuesAndHidesInternals() {

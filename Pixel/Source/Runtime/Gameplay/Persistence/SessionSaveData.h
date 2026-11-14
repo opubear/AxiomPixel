@@ -17,7 +17,8 @@ struct SessionSaveData {
     WorldPosition Player;
     double CommittedTime = 0;
     double TimeRemainder = 0;
-    int64_t WindBoundary = 0;
+    // v2-v7 format slot: read for compatibility, never used to clip wind.
+    int64_t LegacyWindBoundary = 0;
     bool WindEnabled = false;
     bool Paused = false;
     WorldCalendarState Calendar;

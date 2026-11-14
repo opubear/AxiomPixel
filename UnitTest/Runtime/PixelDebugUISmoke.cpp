@@ -168,7 +168,6 @@ void EnterScalar(Axiom &app, const char *label, const char *value, const char *s
     SendKey(app, GLFW_KEY_ENTER, true);
     SendKey(app, GLFW_KEY_ENTER, false);
 }
-void EnterBoundary(Axiom &app, const char *value) { EnterScalar(app, "Wind boundary Y", value); }
 
 // Capture text submitted by the actual production ImGui callbacks. The optional
 // action runs after render publication and before UI, exposing accidental live reads.
@@ -404,43 +403,27 @@ void RunPixelDebugUISmoke() {
     Require(ImGui::GetDrawData()->TotalVtxCount > 0 && app.GetDebugUI()->FrameBuffers.LiveBufferCount() > 0,
             "debug UI did not upload GPU geometry");
     Require(app.GetDebugUI()->pushConstBlock.scale.X() > 0, "Pixel present pass did not record the UI overlay");
-    Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty && world.GetWindEndRow() == 424,
-            "default UI must preserve empty wind and world Y = 424");
+    Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty && world.GetWindBounds() == world.GetSimulationBounds(),
+            "default UI must preserve empty wind with full-window coverage");
     SelectWindStrategy(app, int(pixel::WindStrategyKind::Coarse));
     const auto original = CopyWorldCells(world);
     const auto originalOrigin = pixel->GetView().OriginPixels;
 
-    EnterBoundary(app, "512");
-    Require(world.GetWindBoundary() == 512 && world.GetWindEndRow() == 512 && world.SampleWind(12.5, 511.5).X != 0 && world.SampleWind(12.5, 512.0).X == 0,
-            "world-Y boundary 512 did not include exactly the rows above it");
-    EnterBoundary(app, "0");
-    Require(world.GetWindBoundary() == 0 && world.GetWindEndRow() == 0,
-            "world-Y zero must leave the finite player window outside the wind");
-    EnterBoundary(app, "-2147483649");
-    Require(world.GetWindBoundary() == -2147483649LL && world.GetWindEndRow() == 0,
-            "negative world-Y input was clamped or truncated to 32 bits");
-    EnterBoundary(app, "2048");
-    Require(world.GetWindBoundary() == 2048 && world.GetWindEndRow() == 1024 && world.SampleWind(12.5, 1023.5).X != 0,
-            "boundary below the player window did not cover all its rows");
-    EnterBoundary(app, "9007199254740993");
-    Require(world.GetWindBoundary() == 9007199254740993LL && world.GetWindEndRow() == 1024,
-            "large world-Y input lost integer precision or was clamped to the window");
-    Click(app, ControlPoint(app, "Default boundary (Y = 424)"));
-    Require(world.GetWindBoundary() == 424 && world.GetWindEndRow() == 424,
-            "default boundary button did not restore world Y = 424");
+    Require(world.GetWindBounds() == world.GetSimulationBounds()
+                && world.SampleWind(12.5, 511.5).X != 0,
+            "production wind did not cover air below the former height limit");
     Require(original == CopyWorldCells(world),
             "editing UI placed/removed dirt or altered the base force field");
     Require(pixel->GetSession().GetInventory().Inspect(pixel->GetSession().PlayerInventory()) == inventoryBefore,
             "editing UI consumed inventory through leaked gameplay input");
     Require(pixel->GetView().OriginPixels == originalOrigin, "typing in UI moved the gameplay view");
 
-    // Exercise the production combo with real input on a one-row wind domain;
-    // this avoids running the expensive reference while still checking switching.
-    EnterBoundary(app, "1");
+    // Exercise practical full-window backends here; all seven backends are
+    // covered by the small-domain CPU migration tests.
     world.SetBaseForce(2, 2, {123, 456});
-    for (const int selected : {1, 2, 3, 4, 5, 6, 0}) {
+    for (const int selected : {2, 3, 6, 0}) {
         SelectWindStrategy(app, selected);
-        Require(int(world.GetWindStrategyKind()) == selected && world.GetWindBoundary() == 1 && world.GetWindEndRow() == 1,
+        Require(int(world.GetWindStrategyKind()) == selected && world.GetWindBounds() == world.GetSimulationBounds(),
                 "production combo selected the wrong wind strategy");
         Require(world.GetBaseForceField().Get(2, 2) == pixel::ForceVector{123, 456},
                 "UI strategy switch changed independent force storage");
@@ -450,7 +433,6 @@ void RunPixelDebugUISmoke() {
                 "strategy combo input changed inventory");
     }
     world.SetBaseForce(2, 2, {0, 3600});
-    EnterBoundary(app, "424");
 
     // Unfocus by clicking outside the panel; world interaction must still work.
     auto *platform = engine.GetPlatform();
@@ -484,11 +466,11 @@ void RunPixelDebugUISmoke() {
     SendKey(app, GLFW_KEY_F2, true);
     SendKey(app, GLFW_KEY_F2, false);
     Require(ImGui::FindWindowByName("Pixel Debug")->Active, "F2 did not reopen debug UI");
-    EnterBoundary(app, "0");
+    SelectWindStrategy(app, int(pixel::WindStrategyKind::Empty));
     Click(app, outside);
     SendKey(app, GLFW_KEY_R, true);
     SendKey(app, GLFW_KEY_R, false);
-    Require(world.GetWindEndRow() == 424 && world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty
+    Require(world.GetWindBounds() == world.GetSimulationBounds() && world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty
                 && world.GetCell(0, 511).Type == pixel::CellTypes::Empty
                 && world.GetCell(0, 512).Type == pixel::CellTypes::Dirt,
             "R did not restore default wind and terrain");
@@ -523,8 +505,9 @@ void RunPixelDebugUISmoke() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     Require(engine.GetRHI()->GetSwapchainGeneration() > oldGeneration, "debug UI resize did not recreate the swapchain");
-    EnterBoundary(app, "512");
-    Require(world.GetWindEndRow() == 512, "UI stopped working after resize");
+    SelectWindStrategy(app, int(pixel::WindStrategyKind::Coarse));
+    Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Coarse
+                && world.GetWindBounds() == world.GetSimulationBounds(), "UI stopped working after resize");
     CheckMemoryPanel(app);
     const auto baseStyle = ImGui::GetStyle();
     debugWindow->StateStorage.SetInt(debugWindow->GetID("Display scale"), 1);
@@ -546,7 +529,7 @@ void RunPixelDebugUISmoke() {
     Require(pixel->GetSceneScale() == 1 && pixel->GetUIScale() == 1, "display reset did not restore both scales");
     app.Shutdown();
     Require(!ImGui::GetCurrentContext() && !g_render_context, "debug UI context survived shutdown");
-    std::cout << "Pixel ImGui Environment passed: seven strategies, int64 world-Y input/coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
+    std::cout << "Pixel ImGui Environment passed: full-window strategies and coverage, UI capture, F1/F2/reset, device build/fuel/enable/disable/recycle, resize, memory collection/table, 2D-only lifecycle\n";
 }
 
 void RunPixelCalendarUISmoke() {

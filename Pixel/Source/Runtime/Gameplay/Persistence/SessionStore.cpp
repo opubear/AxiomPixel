@@ -275,7 +275,7 @@ SessionSaveData SessionStore::ReadMetadata(const std::filesystem::path &director
     } else {
         input >> data.CommittedTime >> data.TimeRemainder;
     }
-    input >> data.WindBoundary >> data.WindEnabled >> data.Paused;
+    input >> data.LegacyWindBoundary >> data.WindEnabled >> data.Paused;
     // Old metadata paused the environment by default. That removed simulation
     // switch must not turn into a global game freeze when an old world loads.
     if (version < 6) data.Paused = false;
@@ -317,7 +317,7 @@ void SessionStore::WriteMetadata(const std::filesystem::path &directory, const S
         out << data.Player.Chunk.X << ' ' << data.Player.Chunk.Y << ' ' << double(data.Player.Local[0]) / CentimetersPerCell
             << ' ' << double(data.Player.Local[1]) / CentimetersPerCell << '\n'
             << data.CommittedTime << ' ' << data.TimeRemainder << ' '
-            << data.WindBoundary << ' ' << data.WindEnabled << ' ' << data.Paused << '\n';
+            << data.LegacyWindBoundary << ' ' << data.WindEnabled << ' ' << data.Paused << '\n';
         WriteSettings(out, data.Wind);
         const auto &calendar = data.Calendar;
         out << calendar.Day << ' ' << calendar.TickOfDay << ' ' << calendar.SecondsPerDay

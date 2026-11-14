@@ -81,7 +81,7 @@ void PendingStepRetainsCompleteProjection() {
     testing::SessionAccess::SetPlayerPosition(session, WorldPosition::FromCells(191.9, 128));
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindDomain(256, wind);
+    world.ConfigureWindDomain(wind);
     world.SetCell(32, 10, {CellTypeId::Dirt, {0, 1}});
     world.SetCell(32, 9, {CellTypeId::Fire});
     world.SetCell(33, 9, {CellTypeId::Water});

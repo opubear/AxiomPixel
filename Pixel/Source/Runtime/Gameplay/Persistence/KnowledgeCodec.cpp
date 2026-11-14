@@ -158,8 +158,8 @@ void WritePayload(std::ostream &out, const api::ProgramActivated &value) {
 }
 
 void WritePayload(std::ostream &out, const api::WindConfigured &value) {
-    WriteAll(out, "wind_configured", EnumValue(value.Before.Kind, api::WindKind::Empty), value.Before.BoundaryY,
-        EnumValue(value.After.Kind, api::WindKind::Empty), value.After.BoundaryY);
+    WriteAll(out, "wind_configured", EnumValue(value.Before.Kind, api::WindKind::Empty), value.Before.LegacyBoundaryY,
+        EnumValue(value.After.Kind, api::WindKind::Empty), value.After.LegacyBoundaryY);
 }
 
 void WritePayload(std::ostream &out, const api::WindPulseSubmitted &value) {
@@ -227,9 +227,9 @@ api::FactPayload ReadPayload(std::istream &in) {
     if (tag == "wind_configured") {
         api::WindConfigured value;
         value.Before.Kind = ReadEnum(in, api::WindKind::Empty);
-        Read(in, value.Before.BoundaryY);
+        Read(in, value.Before.LegacyBoundaryY);
         value.After.Kind = ReadEnum(in, api::WindKind::Empty);
-        Read(in, value.After.BoundaryY);
+        Read(in, value.After.LegacyBoundaryY);
         return value;
     }
     if (tag == "wind_pulse") {

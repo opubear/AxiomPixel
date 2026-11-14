@@ -200,7 +200,7 @@ void FilesBudgetAndFailure() {
     Require(rejected && map.FindChunk({2, 0})->Dirty && map.Get({2 * int64_t(storage::ChunkEdge), 0}).Type == CellTypes::Dirt,
             "failed save lost dirty resident data");
 }
-void WindOnlyReevaluatesItsCoveredRegions() {
+void WindReevaluatesTheEntireWindow() {
     World world(128, 128);
     world.Fill({CellTypes::Dirt, {0, 1}});
     WindStrategySettings settings;
@@ -208,11 +208,55 @@ void WindOnlyReevaluatesItsCoveredRegions() {
     settings.Coarse.Ambient = {};
     settings.Coarse.GustSpeed = 0;
     settings.Coarse.DirtDrag = 0;
-    world.ConfigureWindDomain(64, settings);
+    world.ConfigureWindDomain(settings);
     world.Tick(1.f / 60);
     world.Tick(1.f / 60);
-    Require(world.GetEnvironment().LastVisitedCells() == 128 * 64 && world.GetEnvironment().LastActiveRegions() == 2,
-            "dynamic wind woke sleeping material regions outside its domain");
+    Require(world.GetEnvironment().LastVisitedCells() == 128 * 128 && world.GetEnvironment().LastActiveRegions() == 4,
+            "dynamic wind did not cover every region of the simulation window");
+}
+
+void WindFollowsTheFullPlayerWindow() {
+    TemporaryWorld files;
+    World world;
+    WorldStreamSettings stream;
+    stream.Directory = files.Path;
+    stream.WindowEdge = 64;
+    world.EnableStreaming(stream);
+    for (const auto kind : {WindStrategyKind::Coarse, WindStrategyKind::Reference, WindStrategyKind::Procedural,
+                           WindStrategyKind::Hybrid, WindStrategyKind::Adaptive, WindStrategyKind::Lbm, WindStrategyKind::Empty}) {
+        WindStrategySettings settings;
+        settings.Kind = kind;
+        settings.Coarse.Ambient = settings.Reference.Ambient = settings.Adaptive.Flow.Ambient = settings.Lbm.Ambient = {8, 0};
+        settings.Coarse.GustSpeed = settings.Reference.GustSpeed = settings.Adaptive.Flow.GustSpeed = settings.Lbm.GustSpeed = 0;
+        world.ConfigureWindDomain(settings);
+        for (const CellCoord focus : {CellCoord{32, 32}, {32, 672}, {32, -672}, {160, -672}}) {
+            world.SetSimulationFocus(WorldPosition::FromCells(double(focus.X), double(focus.Y)));
+            world.UpdateStreaming();
+            world.LoadSimulationNow();
+            const auto bounds = world.GetSimulationBounds();
+            world.FillRegion(bounds, {CellTypes::Empty});
+            Require(world.Tick(1.f / 60) == 1, "full-window wind step did not commit");
+            Require(world.GetWindBounds() == bounds, "wind coverage was clipped after player movement");
+            const auto domain = world.GetEnvironment().GetWindSimulation().GetDomain();
+            Require(domain.Origin == CellCoord{bounds.X, bounds.Y} && domain.Width == bounds.Width && domain.Height == bounds.Height,
+                    "wind backend did not follow the complete player window");
+            for (const int y : {0, 32, 63}) {
+                const auto velocity = world.SampleWind(CellCoord{bounds.X + 32, bounds.Y + y});
+                const float expected = kind == WindStrategyKind::Empty ? 0.f : 8.f;
+                Require(std::abs(velocity.X - expected) < .01f, "wind missing above or below the former height boundary");
+            }
+            Require(world.SampleWind(CellCoord{bounds.X + 32, bounds.Y + 64}) == WindVelocity{},
+                    "wind escaped the player window");
+            if (kind != WindStrategyKind::Empty)
+                world.AddWindImpulse(double(bounds.X + 32), double(bounds.Y + 63), 2, {1, 0});
+        }
+    }
+    bool rejected = false;
+    try { world.ConfigureWind(1); }
+    catch (const std::logic_error &) { rejected = true; }
+    Require(rejected, "finite diagnostic height was accepted by a streaming world");
+    world.DisableWind();
+    Require(world.GetWindBounds().Empty(), "disabling wind retained an active domain");
 }
 
 void BudgetDefersAndResumesSimulation() {
@@ -243,7 +287,8 @@ int main() {
         SynchronousReferenceAndSleep();
         FilesBudgetAndFailure();
         BudgetDefersAndResumesSimulation();
-        WindOnlyReevaluatesItsCoveredRegions();
+        WindReevaluatesTheEntireWindow();
+        WindFollowsTheFullPlayerWindow();
         std::cout << "Chunk, synchronous region and streaming tests passed\n";
         return 0;
     } catch (const std::exception &error) {

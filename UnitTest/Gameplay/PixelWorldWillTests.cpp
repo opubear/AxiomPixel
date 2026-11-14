@@ -274,7 +274,7 @@ void PreconditionsAreSpecific() {
 
     Fixture revision;
     const auto current = revision.Request();
-    Check(revision.Source.Session.Execute(NativeCaller::Driver, api::SetWindBoundary{601}).Applied(), "unrelated revision fixture");
+    Check(revision.Source.Session.Execute(NativeCaller::Driver, api::SelectWindStrategy{api::WindKind::Empty}).Applied(), "unrelated revision fixture");
     Check(revision.Source.Session.CurrentCommit() != revision.Model.Inputs.front().ObservedAt, "fixture did not advance revision");
     revision.Model.Reply(current);
     revision.Service();

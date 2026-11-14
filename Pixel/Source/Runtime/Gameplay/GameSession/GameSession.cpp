@@ -103,7 +103,7 @@ void GameSession::InitializeScene() {
     Paused = false;
     WindStrategySettings wind;
     wind.Kind = WindKind;
-    GameWorld.ConfigureWindDomain(generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88), wind);
+    GameWorld.ConfigureWindDomain(wind);
     if (CreateGardenOnReset) debug::InitializeForceGarden(GameWorld, Formulas, Garden, *GetPlayer());
     const auto target = FormulaWorldAdapter::OffsetCells(GetPlayer()->GetWorldPosition(), {12, 0});
     if (!Characters.Spawn(ActorKind::TrainingDummy, target))
@@ -256,7 +256,7 @@ void GameSession::LoadDirectory(const std::filesystem::path &directory) {
         GameWorld.SetSimulationFocus(data.Player);
         GameWorld.UpdateStreaming();
         GameWorld.LoadSimulationNow();
-        GameWorld.ConfigureWindDomain(data.WindBoundary, data.Wind, data.WindEnabled);
+        GameWorld.ConfigureWindDomain(data.Wind, data.WindEnabled);
         Simulation.Restore(data.CommittedTime, data.TimeRemainder);
         Calendar.Restore(data.Calendar);
         if (gameplay) {
@@ -293,7 +293,6 @@ SessionSaveData GameSession::CaptureSaveData() const {
     data.Player = GetPlayer() ? GetPlayer()->GetWorldPosition() : WorldPosition{};
     data.CommittedTime = Simulation.Time();
     data.TimeRemainder = Simulation.Remainder();
-    data.WindBoundary = GameWorld.GetWindBoundary();
     data.WindEnabled = GameWorld.IsWindEnabled();
     data.Paused = Paused;
     data.Calendar = Calendar.State();
@@ -374,19 +373,12 @@ void GameSession::TickSimulation(float duration, PlayerInput input) {
     }
 }
 
-bool GameSession::SetWindBoundary(int64_t y) {
-    if (!CanEditWorld())
-        return false;
-    GameWorld.ConfigureWindDomain(y, GameWorld.GetWindSettings());
-    return true;
-}
-
 bool GameSession::SelectWindStrategy(WindStrategyKind kind) {
     if (!CanEditWorld())
         return false;
     auto settings = GameWorld.GetWindSettings();
     settings.Kind = kind;
-    GameWorld.ConfigureWindDomain(GameWorld.GetWindBoundary(), settings, GameWorld.IsWindEnabled());
+    GameWorld.ConfigureWindDomain(settings, GameWorld.IsWindEnabled());
     WindKind = kind;
     if (!ProcessingActions) Simulation.CancelStepRequest();
     return true;

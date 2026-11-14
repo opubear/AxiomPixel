@@ -253,7 +253,10 @@ void PendingMeasurementIsNotLearned() {
     auto &world = testing::SessionAccess::World(session);
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindDomain(256, wind);
+    // Keep the budget fixture dynamic without changing its measured garden forces.
+    wind.Coarse.Ambient = {};
+    wind.Coarse.GustSpeed = 0;
+    world.ConfigureWindDomain(wind);
     constexpr int64_t motionY = 504;
     for (const auto x : {600, 602, 604, 606})
         world.SetCell(x, motionY, {CellTypeId::Dirt, {0, 1}});

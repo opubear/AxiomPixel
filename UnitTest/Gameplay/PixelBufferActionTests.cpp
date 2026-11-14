@@ -24,7 +24,7 @@ void BudgetRefusalsPreserveDomainTransactions() {
     world.SetCell(10, 10, {CellTypeId::Stone});
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Coarse;
-    world.ConfigureWindDomain(64, wind);
+    world.ConfigureWindDomain(wind);
     auto &inventory = testing::SessionAccess::Inventory(session);
     const auto bag = session.PlayerInventory();
     const items::ItemAmount soil{items::ItemId::Soil, 1};

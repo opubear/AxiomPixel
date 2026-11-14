@@ -308,26 +308,15 @@ void DrawEnvironment(GameSession &session, GamePresentation &presentation) {
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::BeginDisabled(!session.IsReady());
         ImGui::BeginDisabled(!session.CanEditWorld());
-        int64_t boundary = World.GetWindBoundary();
-        ImGui::TextUnformatted("Wind blows above the world Y boundary.");
-        ImGui::SetNextItemWidth(190);
-        if (ImGui::InputScalar("Wind boundary Y", ImGuiDataType_S64, &boundary))
-            session.Execute(NativeCaller::Debug, api::SetWindBoundary{boundary});
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Enter the world Y coordinate; wind covers cells above this boundary.");
-        ImGui::Text("Wind coverage: %u rows in the player window", World.GetWindEndRow());
-        ImGui::TextDisabled("Changing height restarts the wind simulation.");
-        const auto &generation = session.GetGenerationSettings();
-        const auto defaultBoundary = generation.SurfaceY - (generation.Kind == WorldGeneratorKind::Natural ? 152 : 88);
-        const auto boundaryLabel = "Default boundary (Y = " + std::to_string(defaultBoundary) + ")";
-        if (ImGui::Button(boundaryLabel.c_str()))
-            session.Execute(NativeCaller::Debug, api::SetWindBoundary{defaultBoundary});
+        const auto bounds = World.GetWindBounds();
+        ImGui::TextUnformatted("Wind covers the entire player simulation window.");
+        ImGui::Text("Wind coverage: %u x %u cells", bounds.Width, bounds.Height);
         int selected = int(session.GetSelectedWindStrategy());
         if (ImGui::Combo("Wind strategy", &selected, "Coarse NS\0Pixel reference (1:1)\0Procedural + obstacles\0Coarse NS + local model\0Adaptive NS (CPU prototype)\0LBM D2Q9 (CPU prototype)\0Empty (no wind)\0")) {
             session.Execute(NativeCaller::Debug, api::SelectWindStrategy{api::WindKind(selected)});
         }
         if (session.GetSelectedWindStrategy() == WindStrategyKind::Empty)
-            ImGui::TextDisabled("No wind simulation; height is kept for comparison.");
+            ImGui::TextDisabled("No wind simulation.");
         ImGui::EndDisabled();
         if (const auto *streamer = World.GetStreamer()) {
             if (World.GetEnvironment().IsWaitingForBudget())

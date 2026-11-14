@@ -245,14 +245,14 @@ cmake -S . -B build -DPIXEL_RENDER_PIXELS_PER_LOGICAL_PIXEL=20
 
 Environment可在Empty、Coarse NS、Pixel reference、Procedural、Hybrid、Adaptive NS、LBM D2Q9七策略间切换，默认Empty。Reference、Adaptive和LBM计算成本较高，可用全局暂停和单步进行诊断；切换风后端不再自动改变暂停状态。切换重建当前风后端，保留地图、基础力及物理时钟；不保存每策略的独立运行历史。
 
-`Wind boundary Y`是世界坐标：Superflat默认424，Natural默认360，后者按地表最高可能位置上方88格设置；它仍是水平风域，不贴合每个山坡。旧档保留已保存的边界。风域随玩家移动，迁移重叠速度/分布，新进入区域由背景风初始化；离开窗口的动态扰动丢弃。正常游戏使用流入/流出开放边界，周期模式仅在显式数值测试中开启。
+风域覆盖玩家附近的整个模拟窗口（默认1024×1024格），不再按世界Y坐标裁剪；自然地形和超平坦使用同一规则。F2显示覆盖尺寸，已移除高度设置；旧档的高度字段仅兼容读取，不恢复限制。风域随玩家移动，迁移重叠速度/分布，新进入区域由背景风初始化；离开窗口的动态扰动丢弃。正常游戏使用流入/流出开放边界，周期模式仅在显式数值测试中开启。
 
 ```cpp
 pixel::WindStrategySettings settings;
 settings.Kind = pixel::WindStrategyKind::Coarse;
 settings.Coarse.Ambient = {90, 0};
 settings.Coarse.GustSpeed = 60;
-world.ConfigureWindDomain(424, settings);
+world.ConfigureWindDomain(settings);
 auto air = world.SampleWind(pixel::CellCoord{-1, 200}); // 远坐标精确格中心采样
 world.AddWindImpulse(100, 200, 64, {0, -120});
 ```

@@ -8,7 +8,7 @@
 | 总览｜Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 设计方向：核心愿景、流程、构式调用逻辑、统一函数组合与世界绑定、家园及世界意志的设计取舍 | |
 | 总览｜文档分类与维护规则 | `context:GlobalDoc/DocumentationGovernance.md` | 现行：文档分层、状态词、功能变更同步、历史清理和本轮整理记录 | |
 | 总览｜产品现状与待办 | `context:GlobalDoc/ProductStatus.md` | 现行：玩家闭环、昼夜四季等近期功能、未交付能力、决策顺序与验收边界 | |
-| 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：三群落与材料风场、地区人口休眠、昼夜四季与晨昏预览、试玩和后续边界 | |
+| 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：三群落、完整玩家窗口风场、地区休眠、昼夜四季与试玩边界 | |
 | 系统·世界｜世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | 兼容：Natural v1与旧生成实现；当前默认v2见BiomeWorldGeneration和WorldBiomes | |
 | 系统·世界｜有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 现行：持续来源、严格加速度上限、宿主转换、区域冻结与归属持久化 | |
 | 系统·世界｜水蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 现行：单格材料形态规则、调试笔刷、同步提交、存档与验证入口 | |
@@ -28,7 +28,7 @@
 | 系统·构式物品｜背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：50格和通用装备；现有木棍掉落拾取、7＋35展示与统一使用 | |
 | 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：7快捷格与35展示格、日历、共享原生画布；ESC收包后开合内建菜单 | |
 | 系统·家园｜设备、家园与会话进度 | `context:GlobalDoc/SystemsHome.md` | 现行：木棍复制晶体、设备育圃、区域冻结与临时持久会话边界 | |
-| 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：临时与持久会话、菜单退出与保存协商、world.meta v7和Gameplay v6兼容 | |
+| 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：保存退出协商、world.meta v7与Gameplay v6兼容，旧风高度仅解码不裁剪 | |
 | 系统·家园｜设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 现行：推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
 | 系统·家园｜区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | 现行：M4.5本地活动时间与身份续接；M4.6磁盘恢复另见Checkpoints | |
 | 系统·家园｜游戏检查点与恢复 | `context:GlobalDoc/Checkpoints.md` | 现行：Gameplay v6物品与掉落、world.meta v7日历、跨域提交存档及恢复校验 | |
@@ -46,8 +46,8 @@
 | 系统·世界意志｜BehaviorDSL必要性与有限决策图实验 | `workspace:Docs/Architecture/BehaviorDecisionExperiment.md` | 现行：M6.1同场景表达、诊断和成本对照；暂缓持久DSL的依据与重启门槛 | |
 | 系统·呈现｜画面、交互与内容资产 | `context:GlobalDoc/SystemsPresentation.md` | 现行：背景角色UI分层、ESC编辑捕获、字体本地化及输入资源边界 | |
 | 系统·呈现｜游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | 现行：Content美术清单、背景/地形/人物分层动画、共享缓存、GPU上传与验证 | |
-| 工程｜分块、四叉树与流式世界 | `workspace:Docs/WorldRepresentation.md` | 现行：当前世界表示、材料调度、流式预算、文件与显示接口；空间场存储已统一 | |
-| 工程｜统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | 现行：统一手持使用与放置、排队终态、去重权限、暂停与持久会话边界 | |
+| 工程｜分块、四叉树与流式世界 | `workspace:Docs/WorldRepresentation.md` | 现行：世界表示、材料调度、完整窗口风域及旧高度兼容、流式预算与显示接口 | |
+| 工程｜统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | 现行：手持使用与放置、队列权限、完整窗口风策略动作、暂停与持久会话边界 | |
 | 工程｜固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 现行：固定步与预算重试、WorldBuffers只读双缓冲、观测按需导出及GPU交接边界 | |
 | 工程｜正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | 现行：ESC菜单、调试文本捕获优先级、面板恢复与临时持久会话关闭协商 | |
 | 工程｜Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 现行：模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |

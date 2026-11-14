@@ -120,27 +120,30 @@ void World::ConfigurePixelWind(uint32_t endRow, const PixelWindSettings &setting
 }
 
 void World::ConfigureWindStrategy(uint32_t endRow, const WindStrategySettings &settings) {
-    const auto view = ReadState();
+    RequireFinite();
+    auto view = ReadState();
     if (endRow > view.Height)
         throw std::out_of_range("wind boundary is outside the simulation window");
-    ConfigureWindDomain(view.Origin.Y + endRow, settings, endRow != 0);
+    view.Height = endRow;
+    ConfigureWindView(view, settings, endRow != 0);
+    FiniteWindRows = endRow;
 }
 
-void World::ConfigureWindDomain(int64_t boundaryY, const WindStrategySettings &settings, bool enabled) {
+void World::ConfigureWindDomain(const WindStrategySettings &settings, bool enabled) {
     auto view = ReadState();
-    view.Height = !enabled || boundaryY <= view.Origin.Y ? 0 : boundaryY >= view.Origin.Y + view.Height ? view.Height
-                                                                                                        : uint32_t(boundaryY - view.Origin.Y);
+    if (!enabled)
+        view.Height = 0;
+    ConfigureWindView(view, settings, enabled);
+    FiniteWindRows.reset();
+}
+
+void World::ConfigureWindView(WorldMapView view, const WindStrategySettings &settings, bool enabled) {
     const double time = std::as_const(Environment).GetWindSimulation().GetSimulationTime();
     Environment.GetWindSimulation().Configure(view, view.Height, settings);
     Environment.GetWindSimulation().SetSimulationTime(time);
     WindSettings = settings;
-    WindBoundaryY = boundaryY;
     WindEnabled = enabled;
     GetMutableMap().Wake(GetSimulationBounds());
-}
-
-void World::SetWindBoundary(int64_t y) {
-    ConfigureWindDomain(y, WindSettings);
 }
 
 void World::DisableWind() {
@@ -151,8 +154,7 @@ void World::DisableWind() {
 
 WorldRect World::GetWindBounds() const {
     auto bounds = GetSimulationBounds();
-    bounds.Height = !WindEnabled || WindBoundaryY <= bounds.Y ? 0 : WindBoundaryY >= bounds.Y + bounds.Height ? bounds.Height
-                                                                                                              : uint32_t(WindBoundaryY - bounds.Y);
+    bounds.Height = WindEnabled ? std::min(bounds.Height, FiniteWindRows.value_or(bounds.Height)) : 0;
     return bounds;
 }
 

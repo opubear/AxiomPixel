@@ -258,7 +258,10 @@ void VerifyPauseAndPendingCommit() {
     auto &world = testing::SessionAccess::World(session);
     WindStrategySettings wind;
     wind.Kind = WindStrategyKind::Procedural;
-    world.ConfigureWindDomain(256, wind);
+    // Keep the budget fixture dynamic without changing its measured garden forces.
+    wind.Coarse.Ambient = {};
+    wind.Coarse.GustSpeed = 0;
+    world.ConfigureWindDomain(wind);
     const auto motionY = Garden(session).State.SurfaceY - 8;
     for (const auto x : {600, 602, 604, 606}) world.SetCell(x, motionY, {CellTypeId::Dirt, {0, 1}});
     world.SetBaseForce(600, motionY, {0, 3600});

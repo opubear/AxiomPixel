@@ -37,7 +37,7 @@ void ConfigureScenario(GameSession &session, bool dynamicWind) {
         WindStrategySettings settings;
         settings.Kind = WindStrategyKind::Procedural;
         settings.Coarse.Seed = 0x4d325f34;
-        testing::SessionAccess::World(session).ConfigureWindDomain(424, settings);
+        testing::SessionAccess::World(session).ConfigureWindDomain(settings);
         testing::SessionAccess::PublishFixtureChanges(session);
     }
     session.Control(NativeCaller::Driver, api::SetPaused{false});

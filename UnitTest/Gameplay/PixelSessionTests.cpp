@@ -16,7 +16,7 @@ void SessionAndPublicationContracts() {
     pixel::GameSession session;
     auto &world = pixel::testing::SessionAccess::World(session);
     Require(!session.IsPaused(), "session must start running");
-    Require(world.GetWindEndRow() == 424 && session.GetPlayer(), "default scene changed");
+    Require(world.GetWindBounds() == world.GetSimulationBounds() && session.GetPlayer(), "default scene changed");
     Require(&world.GetBaseForceField() == &world.GetEnvironment().GetBaseForceField(),
             "environment must own the world base field");
     Require(session.GetSelectedWindStrategy() == pixel::WindStrategyKind::Empty &&
@@ -25,12 +25,11 @@ void SessionAndPublicationContracts() {
     session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Coarse});
     Require(world.SampleWind(12.5f, 12.5f).X != 0, "comparison switch did not start wind");
     session.Execute(pixel::NativeCaller::Driver, pixel::api::SelectWindStrategy{pixel::api::WindKind::Empty});
-    Require(world.SampleWind(12.5f, 12.5f) == pixel::WindVelocity{} && world.GetWindEndRow() == 424,
-            "empty comparison must clear wind and preserve height");
+    Require(world.SampleWind(12.5f, 12.5f) == pixel::WindVelocity{} && world.GetWindBounds() == world.GetSimulationBounds(),
+            "empty comparison must clear wind and preserve full-window coverage");
     Require(!session.IsPaused(), "switching wind must not pause the game");
     world.SetBaseForce(12, 12, {123, 456});
     pixel::testing::SessionAccess::World(session).DisableWind();
-    session.Execute(pixel::NativeCaller::Driver, pixel::api::SetWindBoundary{424});
     const auto force = world.GetBaseForceField().Get(12, 12);
     Require(force.X == 123 && force.Y == 456, "wind restart must preserve base forces");
 
@@ -94,7 +93,7 @@ void SessionAndPublicationContracts() {
     session.Tick(1.f / 60, {});
     Require(session.GetSimulationTime() > time, "explicit resume must advance simulation");
     Require(session.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "session control failed");
-    Require(!session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindEndRow() == 424 && session.GetPlayer(),
+    Require(!session.IsPaused() && session.GetSimulationTime() == 0 && world.GetWindBounds() == world.GetSimulationBounds() && session.GetPlayer(),
             "reset must restore scene and simulation controls");
     Require(world.GetWindStrategyKind() == pixel::WindStrategyKind::Empty, "reset must restore empty wind");
     const auto resetForce = world.GetBaseForceField().Get(12, 12);

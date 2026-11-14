@@ -161,7 +161,7 @@ void CommandsAndReset() {
     f.Camera.GetCamera().SetFollowRate(4);
     f.Framebuffer = {1600, 1200};
     f.KeyEvent(Key::KEY_R);
-    Require(!f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && pixel::testing::SessionAccess::World(f.Session).GetWindEndRow() == 424 &&
+    Require(!f.Session.IsPaused() && f.Session.GetSimulationTime() == 0 && f.Session.GetWorld().GetWindBounds() == f.Session.GetWorld().GetSimulationBounds() &&
                 pixel::testing::SessionAccess::World(f.Session).GetCell(20, 512).Type == pixel::CellTypes::Dirt,
             "R must reset simulation and terrain");
     Require(f.Input.GetControlMode() == pixel::ControlMode::DebugCamera && f.Presentation.DisplayMode == GridDisplayMode::ForceField,

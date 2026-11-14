@@ -115,7 +115,7 @@ Json FactCauseJson(const api::FactCause &cause) {
 }
 
 Json WindConfigurationJson(const api::WindConfiguration &configuration) {
-    return {{"backendKind", WindName(configuration.Kind)}, {"boundaryY", std::to_string(configuration.BoundaryY)}};
+    return {{"backendKind", WindName(configuration.Kind)}, {"legacyBoundaryY", std::to_string(configuration.LegacyBoundaryY)}};
 }
 
 Json FactPayloadJson(const api::FactPayload &payload) {
@@ -707,8 +707,7 @@ Json ToJson(const api::ActionReceipt &receipt) {
                                 {"projectiles", std::to_string(value.Projectiles)}, {"pending", std::to_string(value.Pending)}};
         },
         [&](const api::WindResult &value) {
-            result["result"] = {{"kind", "wind"}, {"backendKind", WindName(value.Kind)},
-                                {"boundaryY", std::to_string(value.BoundaryY)}};
+            result["result"] = {{"kind", "wind"}, {"backendKind", WindName(value.Kind)}};
         }
     }, receipt.Result);
     return result;

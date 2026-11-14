@@ -75,7 +75,7 @@ void RequestLifetimeAndValidation() {
     Require(session.Execute(NativeCaller::Driver, MineRegion{{INT64_MAX, INT64_MIN}, {}}).Rejection == Reason::InvalidArgument,
             "unrepresentable coordinates accepted");
     const auto player = session.CallerSession(NativeCaller::Input);
-    Require(session.Submit(player, {session.WorldEpoch(), 1, SetWindBoundary{10}}).Rejection == Reason::PermissionDenied,
+    Require(session.Submit(player, {session.WorldEpoch(), 1, SelectWindStrategy{WindKind::Coarse}}).Rejection == Reason::PermissionDenied,
             "input caller acquired debug wind capability");
     Require(session.Submit(player, {session.WorldEpoch(), 2, SelectWindStrategy{WindKind(999)}}).Rejection == Reason::Unsupported,
             "payload validation must precede capability checks");

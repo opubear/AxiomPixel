@@ -221,7 +221,7 @@ void DistantCoordinates() {
             for (int i = 0; i < 4; ++i)
                 runtime.Step(world);
             Require(runtime.Projectiles().empty(), "far coordinate wall collision lost precision");
-            world.ConfigureWindDomain(baseY + storage::ChunkEdge, Coarse());
+            world.ConfigureWindDomain(Coarse());
             Require(FormulaWorldAdapter::Wind(world, anchor, 2, {60, 0}) == FormulaWindResult::Applied, "far coordinate wind did not use integer-relative conversion");
         }
     } catch (...) {

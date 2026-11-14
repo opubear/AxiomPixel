@@ -31,7 +31,7 @@ void Measure(std::ostream &output, bool dynamicWind, bool queries) {
         WindStrategySettings wind;
         wind.Kind = WindStrategyKind::Procedural;
         wind.Coarse.Seed = 0x4d325f35;
-        testing::SessionAccess::World(session).ConfigureWindDomain(424, wind);
+        testing::SessionAccess::World(session).ConfigureWindDomain(wind);
         testing::SessionAccess::PublishFixtureChanges(session);
     }
     session.Control(NativeCaller::Driver, api::SetPaused{false});
