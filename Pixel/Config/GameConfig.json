@@ -1,6 +1,6 @@
 {
     "Root": "Root.json",
-    "StaticNames": ["Material.Default", "Material.Tinted"],
+    "StaticNames": ["Material.Default", "Material.Tinted", "RHI.PresentationChanged"],
     "MaxFPS": 60,
     "VSync": true,
     "SceneScale": 1.0,

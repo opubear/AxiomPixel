@@ -26,6 +26,7 @@
 
 ## 显示与输入边界
 
+- 交换链重建后，引擎按 Render 域名字 `RHI.PresentationChanged` 通知 Render 与 ImGui，Pixel 渲染策略随回调更新尺寸相关资源。[引擎事件订阅合同](../../Axiom/Source/Core/Events/README.md)
 - `GameConfig.json` 的 `SceneScale` 与 `UIScale` 独立控制场景与UI显示；连续空间仍为每格50厘米，见[空间单位](../../Docs/WorldUnits.md)。
 - 键鼠由 Input 适配到 Gameplay；点击使用输入事件自带的鼠标与窗口快照。Gameplay核心不依赖Input、Render或ImGui。
 - 渲染消费自持有的冻结帧；世界、权威角色、物品、构式和UI应解释同一提交；玩家显示位置另有预测推进。角色预测仅用于呈现，权威碰撞和保存仍属于模拟。
