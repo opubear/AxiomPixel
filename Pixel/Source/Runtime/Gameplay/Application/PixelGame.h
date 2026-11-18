@@ -56,7 +56,7 @@ class PixelGame final : public IGameInterface {
     void FrameEnd() override;
     // Persistent fixtures negotiate saving before shutdown; normal games are temporary.
     void GameEnd() override { WorldWill.Close(); Input.ClearInputState(); }
-    void Destroy() override {}
+    void Destroy() override;
     void OnKeyEvent(Key key, int scancode, ButtonAction action, Mod mods) override {
         Input.OnKeyEvent(key, scancode, action, mods);
     }

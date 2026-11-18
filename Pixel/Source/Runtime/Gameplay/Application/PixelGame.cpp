@@ -2,6 +2,7 @@
 #include "PixelRuntime.h"
 #include "Axiom.h"
 #include "Asset/Loaders/AssetLoader.h"
+#include "Core/Hash/HashName.h"
 #include "DebugUI/ImguiManager.h"
 #include "Engine.h"
 #include "HAL/Platform/PlatformInterface.h"
@@ -75,6 +76,7 @@ void PixelGame::ConfigureDiagnostics(axiom::diagnostics::CaptureSession &session
 
 void PixelGame::Initialize() {
     Session.EnableSimulationThread();
+    axiom::BindNameThread(axiom::NameDomain::Simulation, Session.SimulationThreadId());
     GAxiom->Engine->GetPlatform()->SetCursorInputMode(true);
     Input.ResetView();
     if (auto *ui = GAxiom->GetDebugUI()) {
@@ -94,6 +96,11 @@ void PixelGame::Initialize() {
         });
     }
     axiom::Log::Info("{}", pixel::GameInput::ControlsDescription());
+}
+
+void PixelGame::Destroy() {
+    if (Session.SimulationThreadId() != std::thread::id{})
+        axiom::BindNameThread(axiom::NameDomain::Simulation, {});
 }
 
 void PixelGame::FrameBegin() {

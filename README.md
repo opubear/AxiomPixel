@@ -23,6 +23,8 @@
 
 [世界表示](Docs/WorldRepresentation.md) 与 [空间场存储](Docs/SpatialFieldStorage.md) 维护当前分块、预算与发布接口；[单位边界](Docs/WorldUnits.md) 规定游戏float厘米与模拟格单位的显式转换。[Core容器接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md) 和 [Platform查询](Axiom/Source/HAL/Platform/README.md) 维护引擎消费边界。
 
+Pixel 在启动时读取 `Config/GameConfig.json` 的 `StaticNames` 作为跨线程名字清单。渲染、游戏、模拟线程各自登记动态名字，底层复用 Core 的 deque 分块数组。[名字与线程域合同](Axiom/Source/Core/Hash/README.md)
+
 引擎已提供 [FreeType/HarfBuzz 字体与文字塑形](Axiom/Source/Render/Text/README.md)：依赖直接挂在 `Axiom/ThirdParty`，CPU 布局可独立使用，原生文字由 Runtime 的 RHI renderer 绘制。当前 Pixel 菜单／背包继续使用已有像素画布文字，尚未迁移到该字体模块。
 
 [引擎本地化](Axiom/Source/Localization/README.md) 提供 `LocalizedString` 和语言目录，`Axiom/Content/Localization` 保存英文／中文及地区示例表。业务文本可按稳定键解析并随语言切换；Pixel 自身转换表和语言选择界面尚未接入。
