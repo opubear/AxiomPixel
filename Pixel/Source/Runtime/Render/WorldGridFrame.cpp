@@ -31,6 +31,9 @@ void WorldGridFrame::SetRegion(std::array<int64_t, 2> origin, uint32_t width, ui
     WindVersions.clear();
     WindSourceVersions.clear();
     WindRegionActive.clear();
+    Lights.Enabled = false;
+    Lights.RegionVersions.clear();
+    if (shapeChanged) std::vector<pixel::render::LightTexel>().swap(Lights.Texels);
 }
 
 bool WorldGridFrame::PrepareRegionVersions(uint64_t signature) {
@@ -75,7 +78,9 @@ bool WorldGridFrame::PrepareWindRegionVersions(uint64_t revision) {
 }
 
 pixel::performance::MemoryUsage WorldGridFrame::GetMemoryUsage() const {
-    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions, WindVersions, WindSourceVersions, WindRegionActive, GardenDraws, ActorDraws, MonsterDraws, DecorationDraws, ItemDraws);
+    return pixel::performance::MeasureObject(*this, CellStorage, WindStorage, SourceVersions, Versions,
+        WindVersions, WindSourceVersions, WindRegionActive, GardenDraws, ActorDraws, MonsterDraws,
+        DecorationDraws, ItemDraws, Lights.Texels, Lights.RegionVersions);
 }
 
 void ValidateGridTextureCatalog(const GridTextureCatalog &catalog) {
@@ -107,6 +112,13 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     const size_t regionCount = size_t((frame.Width - 1) / Grid2D::RegionSize + 1) * ((frame.Height - 1) / Grid2D::RegionSize + 1);
     if ((!frame.RegionVersions.empty() && frame.RegionVersions.size() != regionCount) || (!frame.WindRegionVersions.empty() && frame.WindRegionVersions.size() != regionCount))
         throw std::invalid_argument("render region version count differs from grid dimensions");
+    if (const auto samples = frame.Lights.SamplesPerCell) {
+        if (samples > 2 || frame.Width > 2048 || frame.Height > 2048 || frame.DisplayMode != GridDisplayMode::Materials
+            || frame.Lights.Texels.size() != frame.Cells.size() * samples * samples
+            || (!frame.Lights.RegionVersions.empty() && frame.Lights.RegionVersions.size() != regionCount)
+            || !std::ranges::all_of(frame.Lights.Tint, [](float value) { return std::isfinite(value); }))
+            throw std::invalid_argument("invalid lightmap snapshot");
+    }
     constexpr auto maximum = std::numeric_limits<int32_t>::max();
     const std::array<uint32_t, 2> world{frame.Width, frame.Height};
     const std::array<uint32_t, 2> extent{width, height};

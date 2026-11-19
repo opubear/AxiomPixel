@@ -15,6 +15,7 @@
 #include "Runtime/Render/Assets/ArtAssets.h"
 #include "Runtime/Render/BackgroundView.h"
 #include "Runtime/Render/CalendarLighting.h"
+#include "Runtime/Render/Lighting/LightingCache.h"
 #include "Runtime/Render/PixelRender.h"
 #include "SystemEnum.h"
 #include <algorithm>
@@ -29,6 +30,14 @@
 #include <optional>
 #include <string>
 #include <thread>
+
+namespace pixel::testing {
+struct LightingRenderAccess {
+    static const RHITexture &Lightmap(const PixelRender &policy, uint32_t slot) {
+        return *policy.Resources.Frames.at(slot).Lights->Texture;
+    }
+};
+} // namespace pixel::testing
 
 namespace {
 using World = pixel::testing::SimulatedWorld;
@@ -123,16 +132,18 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
             const double qx = double(localOrigin[0]) + x + .5;
             const double qy = double(localOrigin[1]) + y + .5;
             auto expected = frame.View.Background;
+            expected[3] = 0;
             const auto cw = frame.View.CellSizePixels[0], ch = frame.View.CellSizePixels[1];
             if (qx >= 0 && qy >= 0 && qx < int64_t(frame.Width) * cw && qy < int64_t(frame.Height) * ch) {
                 const int64_t cx = int64_t(std::floor(qx / cw)), cy = int64_t(std::floor(qy / ch));
                 const auto id = frame.Cells[size_t(cy) * frame.Width + size_t(cx)];
                 if (id == Grid2D::MissingCell) {
                     const float shade = ((cx / 4 + cy / 4) & 1) ? .22f : .30f;
-                    expected = {shade, shade, shade, 1};
+                    expected = {shade, shade, shade, 0};
                 } else if (frame.DisplayMode == GridDisplayMode::ForceField) {
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = float((id >> (8 * c)) & 255) / 255;
+                    expected[3] = 1;
                 } else if (id) {
                     const auto phase = [&](int64_t cell) { return (cell % catalog.CellsPerTile + catalog.CellsPerTile) % catalog.CellsPerTile; };
                     const double fx = qx / cw - cx, fy = qy / ch - cy;
@@ -146,6 +157,7 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
                     const float alpha = float(std::to_integer<uint8_t>(catalog.Pixels[texel + 3])) / 255;
                     for (size_t c = 0; c < 3; ++c)
                         expected[c] = Linear(std::to_integer<uint8_t>(catalog.Pixels[texel + c])) * alpha + expected[c] * (1 - alpha);
+                    expected[3] = alpha;
                 }
             }
             if (frame.DisplayMode == GridDisplayMode::Materials) {
@@ -164,6 +176,7 @@ void VerifyColor(WorldGridFrameView frame, const RHITexture &texture, const Grid
                 const double body = horizontal * std::max(0.0, std::min(double(y + 1), bottom) - std::max(double(y), split));
                 for (size_t c = 0; c < 3; ++c)
                     expected[c] = float(expected[c] * (1 - head - body) + sprite.HeadColor[c] * head + sprite.BodyColor[c] * body);
+                expected[3] = float(expected[3] * (1 - head - body) + head + body);
             }
             for (size_t c = 0; c < 4; ++c) {
                 const int want = int(std::lround(expected[c] * 255));
@@ -314,17 +327,26 @@ double PostChannel(double color, size_t channel, const PostProcessParameters &pa
     return std::clamp(x * (2.51 * x + .03) / (x * (2.43 * x + .59) + .14), 0.0, 1.0);
 }
 
+struct LightmapPostCheck {
+    const RHITexture &Texture;
+    WorldGridFrameView Frame;
+};
+
 void VerifyPostShader(GameEngine &engine, const RHITexture &source,
-                      PostProcessParameters tint = {{.5f, .25f, .75f, 1}}) {
+                      PostProcessParameters tint = {{.5f, .25f, .75f, 1}}, const LightmapPostCheck *lighting = nullptr) {
     auto &rhi = *engine.GetRHI();
     const auto extent = rhi.GetPresentationExtent();
     auto target = rhi.CreateTexture({extent.Width, extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
     auto sampler = rhi.CreateNearestSampler();
     const std::array expected{DescriptorRequirement{0, 0, ShaderDescriptorType::SAMPLED_IMAGE, 1}, DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLER, 1}};
-    auto pipeline = rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo("Pixel2DPostProcess.fs"), expected, target.get(), 64});
+    auto colorBindings = expected;
+    if (lighting) colorBindings[1] = DescriptorRequirement{0, 1, ShaderDescriptorType::SAMPLED_IMAGE, 1};
+    const uint32_t bytes = lighting ? 48 : 64;
+    const auto *shader = lighting ? "Pixel2DLightPostProcess.fs" : "Pixel2DPostProcess.fs";
+    auto pipeline = rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo(shader), colorBindings, target.get(), bytes});
     auto presentPipeline = rhi.CreateRasterPipeline({GetShaderInfo("Pixel2DFullscreen.vs"), GetShaderInfo("Pixel2DPostProcess.fs"), expected, nullptr, 64});
-    auto pool = rhi.CreateImageDescriptorPool(2, 2, 2);
-    const std::array bindings{RHIImageBinding{0, &source}, RHIImageBinding{1, nullptr, sampler.get()}};
+    auto pool = rhi.CreateImageDescriptorPool(2, 3, 2);
+    const std::array bindings{RHIImageBinding{0, &source}, lighting ? RHIImageBinding{1, &lighting->Texture} : RHIImageBinding{1, nullptr, sampler.get()}};
     const std::array presentBindings{RHIImageBinding{0, target.get()}, RHIImageBinding{1, nullptr, sampler.get()}};
     auto set = rhi.CreateImageDescriptorSet(*pool, *pipeline, bindings);
     auto presentSet = rhi.CreateImageDescriptorSet(*pool, *presentPipeline, presentBindings);
@@ -334,29 +356,38 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source,
     std::unique_ptr<RHIBuffer> ib(rhi.CreateIndexBuffer(4, sizeof(indices), indices.data()));
     const auto begin = rhi.NewFrame();
     Require(begin.Ready, "post test frame unavailable");
-    auto draw = [&](RHICommandList &cmd, const RHIPipeline &p, const RHIDescriptorSet &s, const PostProcessParameters &params) {
+    auto draw = [&](RHICommandList &cmd, const RHIPipeline &p, const RHIDescriptorSet &s, const void *params, uint32_t size) {
         cmd.SetViewport({0, 0, float(extent.Width), float(extent.Height), 0, 1});
         cmd.SetScissor({0, 0, extent.Width, extent.Height});
         cmd.BindVertexBuffer(*vb);
         cmd.BindIndexBuffer(*ib);
         cmd.BindPipeline(p);
         cmd.BindDescriptorSet(p, s, 0);
-        cmd.PushConstants(p, RHIShaderStage::Fragment, 0, 64, &params);
+        cmd.PushConstants(p, RHIShaderStage::Fragment, 0, size, params);
         cmd.DrawIndexed(6);
         cmd.EndPass();
     };
+    std::array<float, 12> lightParams{};
+    if (lighting) {
+        const auto &frame = lighting->Frame;
+        const auto origin = LocalGridPixelOrigin(frame);
+        const auto &local = frame.Lights.Tint;
+        lightParams = {tint.Values[0], tint.Values[1], tint.Values[2], 1, local[0], local[1], local[2], 1,
+            origin[0], origin[1], float(frame.Lights.SamplesPerCell) / frame.View.CellSizePixels[0],
+            255.f / pixel::render::LightUnit};
+    }
     // Run the actual post shader against a readable attachment, then present it.
     // This is a shader verification frame, not a third pass added to the policy.
     try {
         rhi.RecordFrame([&](RHICommandList &cmd) {
             cmd.TransitionTexture(*target, RHITextureState::ColorAttachment);
             cmd.BeginColorPass(*target);
-            draw(cmd, *pipeline, *set, tint);
+            draw(cmd, *pipeline, *set, lighting ? static_cast<const void *>(lightParams.data()) : &tint, bytes);
             cmd.TransitionTexture(*target, RHITextureState::FragmentSampledRead);
             cmd.BeginPresentPass();
             PostProcessParameters copy;
             copy.Values[PostProcessParameters::TonemappingBypass] = 1;
-            draw(cmd, *presentPipeline, *presentSet, copy);
+            draw(cmd, *presentPipeline, *presentSet, &copy, 64);
         });
         rhi.Present(begin.Token);
         rhi.EndFrame(begin.Token);
@@ -367,13 +398,88 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source,
     }
     const auto before = ReadColor(source), after = ReadColor(*target);
     for (size_t pixel = 0; pixel < before.size() / 4; ++pixel) {
+        auto multiplier = tint;
+        if (lighting) {
+            const auto &light = lighting->Frame.Lights;
+            const auto &texture = lighting->Texture.Desc;
+            const double x = (lightParams[8] + double(pixel % extent.Width) + .5) * lightParams[10];
+            const double y = (lightParams[9] + double(pixel / extent.Width) + .5) * lightParams[10];
+            if (x >= 0 && y >= 0 && x < texture.Width && y < texture.Height) {
+                const auto texel = light.Texels[size_t(y) * texture.Width + size_t(x)];
+                for (size_t c = 0; c < 3; ++c)
+                    multiplier.Values[c] += (before[pixel * 4 + 3] / 255.f) * texel[c] * light.Tint[c] / pixel::render::LightUnit;
+            }
+        }
         for (size_t c = 0; c < 3; ++c) {
-            const int expected = int(std::lround(255 * PostChannel(before[pixel * 4 + c] / 255.0, c, tint)));
+            const int expected = int(std::lround(255 * PostChannel(before[pixel * 4 + c] / 255.0, c, multiplier)));
             Require(std::abs(int(after[pixel * 4 + c]) - expected) <= 1,
                     "post-process tonemapping, tint order or linear sampling incorrect");
         }
         Require(after[pixel * 4 + 3] == 255, "post-process output must be opaque");
     }
+}
+
+void LightingGpu() {
+    pixel::World world(128, 128);
+    const pixel::WorldRect bounds{0, 0, 128, 128};
+    world.SetMaterial({10, 10}, pixel::CellTypeId::LitTorch);
+    world.FillRegion({0, 12, 40, 1}, {pixel::CellTypeId::Stone});
+    world.FillRegion({13, 0, 1, 12}, {pixel::CellTypeId::Stone});
+    pixel::render::LightingCache lights;
+    PixelRender *policy = nullptr;
+    bool field = false;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto render = std::make_unique<PixelRender>(rhi, Textures(), [&](WorldGridFrame &frame) {
+            frame.View.CellSizePixels = {8, 8};
+            frame.View.Background = {.25f, .22f, .2f, 1};
+            frame.Post.Values = {.2f, .31f, .38f, 1};
+            if (field) {
+                BuildForceFieldFrame(world, frame);
+            } else {
+                BuildWorldGridFrame(world.GetMap().View(bounds), {{uint32_t(pixel::CellTypeId::Stone), 3}}, frame);
+                frame.Character = CharacterDraw{{56, 68, 12, 24}, {.5f, .5f, .5f, 1}, {.25f, .25f, .25f, 1}};
+                lights.Build(world.GetMap().View(bounds), bounds, {}, frame.Lights);
+            }
+        });
+        policy = render.get();
+        return render;
+    };
+    PixelSmokeApplication app(std::make_unique<PixelGame>(false));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    const auto verify = [&] {
+        const auto token = Draw(app);
+        app.Engine->WaitIdle();
+        const auto frame = policy->PublishedFrame();
+        const auto &mask = pixel::testing::LightingRenderAccess::Lightmap(*policy, token.Slot);
+        const auto lit = [&](size_t x, size_t y) {
+            const auto samples = frame.Lights.SamplesPerCell;
+            return frame.Lights.Texels[y * samples * mask.Desc.Width + x * samples][0];
+        };
+        Require(lit(12, 12) > 0 && lit(15, 12) == 0, "light map failed to shade across the one-cell wall");
+        const LightmapPostCheck check{mask, frame};
+        VerifyPostShader(*app.Engine, policy->SceneColor(token.Slot), frame.Post, &check);
+        return token;
+    };
+    const auto token = verify();
+    const auto scene = ReadColor(policy->SceneColor(token.Slot));
+    const auto width = policy->SceneColor(token.Slot).Desc.Width;
+    Require(scene[(80 * width + 64) * 4 + 3] == 255 && scene[(80 * width + 72) * 4 + 3] == 0,
+            "character or parallax background lost its light coverage");
+    world.SetMaterial({13, 10}, pixel::CellTypeId::Air);
+    const auto opened = Draw(app);
+    app.Engine->WaitIdle();
+    const auto openedFrame = policy->PublishedFrame();
+    const auto &openedMask = pixel::testing::LightingRenderAccess::Lightmap(*policy, opened.Slot);
+    const LightmapPostCheck check{openedMask, openedFrame};
+    VerifyPostShader(*app.Engine, policy->SceneColor(opened.Slot), openedFrame.Post, &check);
+    field = true;
+    Draw(app);
+    Require(!policy->PublishedFrame().Lights.SamplesPerCell, "force-field frame attempted local light composition");
+    app.Shutdown();
+    std::cout << "Lighting GPU passed: real lightmap upload, colour composition, foreground coverage and F1 bypass\n";
 }
 
 void TonemappingGpu() {
@@ -2544,6 +2650,10 @@ int main(int argc, char **argv) {
             TonemappingGpu();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--lighting-only") {
+            LightingGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--calendar-only") {
             CalendarGameplayGpu();
             return 0;
@@ -2640,6 +2750,7 @@ int main(int argc, char **argv) {
             return 0;
         }
         TonemappingGpu();
+        LightingGpu();
         ParallelGameplayGpu();
         InventoryUIGpu();
         CharacterAnimationGpu();

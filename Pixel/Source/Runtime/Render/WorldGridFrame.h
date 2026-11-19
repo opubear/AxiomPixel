@@ -1,5 +1,6 @@
 #pragma once
 #include "Runtime/Gameplay/Camera/GridView.h"
+#include "Lighting/Lightmap.h"
 
 #include "Dev/Debug/Performance/MemoryUsage.h"
 #include "WindVisualFrame.h"
@@ -118,6 +119,7 @@ struct WorldGridFrameView {
     std::array<float, 3> BiomeWeights{1, 0, 0};
     std::span<const DecorationDraw> DecorationDraws;
     std::span<const ItemDraw> ItemDraws;
+    pixel::render::LightmapView Lights;
 };
 // Persistent render-owned output, filled at FrameBegin. Gameplay storage is
 // converted into this format; it is never reinterpreted as texture indices.
@@ -135,7 +137,7 @@ class WorldGridFrame {
     WorldGridFrame &operator=(const WorldGridFrame &) = delete;
     std::span<uint32_t> Cells() { return CellStorage; }
     std::span<uint32_t> WindCells() { return WindStorage; }
-    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws, ActorDraws, MonsterDraws, BiomeWeights, DecorationDraws, ItemDraws}; }
+    WorldGridFrameView Read() const { return {CellStorage, View, Post, DisplayMode, Character, Wind, WindTimeSeconds, HasWind, WindStorage, Width, Height, CellOrigin, Versions, WindVersions, MissingOutsideRegion, FormulaDraws, DeviceDraws, GardenDraws, ActorDraws, MonsterDraws, BiomeWeights, DecorationDraws, ItemDraws, Lights.Read()}; }
     void SetRegion(std::array<int64_t, 2> origin, uint32_t width, uint32_t height);
     uint32_t GetWidth() const { return Width; }
     uint32_t GetHeight() const { return Height; }
@@ -185,6 +187,7 @@ class WorldGridFrame {
     std::array<float, 3> BiomeWeights{1, 0, 0};
     std::vector<DecorationDraw> DecorationDraws;
     std::vector<ItemDraw> ItemDraws;
+    pixel::render::Lightmap Lights;
 
   private:
     pixel::memory::PageBuffer<uint32_t> CellStorage, WindStorage;

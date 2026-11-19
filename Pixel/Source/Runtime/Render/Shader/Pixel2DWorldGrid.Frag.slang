@@ -34,7 +34,7 @@ float4 sampleBackground(float2 position, uint layer, float phase) {
 }
 
 float4 backgroundColor(float2 position) {
-    if (View.BackgroundSize.w == 0) return View.Background;
+    if (View.BackgroundSize.w == 0) return float4(View.Background.rgb, 0);
     float3 forest = View.Background.rgb;
     if (View.BiomeWeights.x > 0) {
         for (uint layer = 0; layer < uint(View.BackgroundSize.w); ++layer) {
@@ -48,7 +48,7 @@ float4 backgroundColor(float2 position) {
         float4 sample = sampleBackground(position, uint(View.BackgroundSize.w) + biome, View.BiomePhases[biome]);
         color += lerp(View.Background.rgb, sample.rgb, sample.a) * View.BiomeWeights[biome + 1];
     }
-    return float4(color, 1);
+    return float4(color, 0);
 }
 
 float4 torchColor(float2 pixel, float2 withinCell, bool lit) {
@@ -75,13 +75,13 @@ float4 main(float4 position : SV_Position) : SV_Target
         if (View.MissingOutsideRegion == 0) return backgroundColor(position.xy);
         uint2 tile = uint2(position.xy / View.CellSize / 4);
         float shade = ((tile.x + tile.y) & 1u) != 0 ? .22 : .30;
-        return float4(shade, shade, shade, 1);
+        return float4(shade, shade, shade, 0);
     }
     uint2 cell = uint2(floor(q / View.CellSize));
     uint id = GridData.Load(int3(cell, 0));
     if (id == 0xffffffffu) {
         float shade = ((cell.x / 4 + cell.y / 4) & 1u) != 0 ? .22 : .30;
-        return float4(shade, shade, shade, 1);
+        return float4(shade, shade, shade, 0);
     }
     // Force-field frames reuse the R32UInt texture for packed linear RGB8.
     // Decode before material/empty-cell handling so the field fills all cells.
@@ -104,5 +104,5 @@ float4 main(float4 position : SV_Position) : SV_Target
     float4 color = Materials.SampleLevel(NearestSampler, float3(uv, float(id)), 0.0);
     if (color.a == 1.0) return color;
     float4 background = backgroundColor(position.xy);
-    return float4(color.rgb * color.a + background.rgb * (1.0 - color.a), 1.0);
+    return float4(color.rgb * color.a + background.rgb * (1.0 - color.a), color.a);
 }

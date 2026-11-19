@@ -8,6 +8,7 @@
 #include "ForceGardenFrame.h"
 #include "BiomeFrame.h"
 #include "CalendarLighting.h"
+#include "Lighting/LightingCache.h"
 #include "Runtime/Render/Assets/ArtAssets.h"
 #include <algorithm>
 #include <cmath>
@@ -44,6 +45,7 @@ uint64_t PublicationCapacity(WorldRect region) {
     const uint64_t cells = uint64_t(region.Width) * region.Height;
     const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
     return CommittedWorldView::CapacityFor(region) + memory::PageBuffer<uint32_t>::AllocationBytes(cells) * 2 + regions * 512 + 2048
+        + render::LightingCache::CapacityFor(region)
         + 2 * api::GameplayObservation::MaximumRetainedBytes
         + items::Inventory::MaximumInstancesPerContainer * DroppedItemDrawParts * sizeof(ItemDraw)
         + MaximumBiomeDecorationParts * sizeof(DecorationDraw)
@@ -64,6 +66,14 @@ WorldRect LimitPublication(WorldRect region, uint64_t budget) {
     region.Height = height;
     return region;
 }
+
+bool HasTorch(const api::GameplayObservation &gameplay, items::ContainerId playerBag) {
+    const auto bag = std::find_if(gameplay.Inventories.begin(), gameplay.Inventories.end(),
+        [&](const auto &inventory) { return inventory.ContainerId == playerBag.Value; });
+    return bag != gameplay.Inventories.end() && std::ranges::any_of(bag->Stacks, [](const auto &item) {
+        return item.ItemId == uint32_t(items::ItemId::Torch) && item.Quantity > item.Reserved;
+    });
+}
 } // namespace
 GamePresentation::GamePresentation() : Appearances(DefaultAppearances()) {}
 
@@ -72,10 +82,12 @@ void GamePresentation::ToggleFieldView() {
     DisplayMode = DisplayMode == GridDisplayMode::Materials ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
 }
 std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(GameSession &session, const GameCamera &camera,
-    std::shared_ptr<const CharacterAssets> characterArt, const PlayerPresentation *player, std::shared_ptr<const MonsterAssets> monsterArt) {
+    std::shared_ptr<const CharacterAssets> characterArt, const PlayerPresentation *player,
+    std::shared_ptr<const MonsterAssets> monsterArt, std::function<bool()> holdsTorch) {
     auto snapshot = session.CreateReadView();
     return [this, &session, &camera, player, snapshot = std::move(snapshot), characterArt = std::move(characterArt), monsterArt = std::move(monsterArt),
-            animation = CharacterAnimation{}](WorldGridFrame &frame) mutable {
+            animation = CharacterAnimation{}, holdsTorch = std::move(holdsTorch),
+            lights = std::make_shared<render::LightingCache>()](WorldGridFrame &frame) mutable {
         auto &world = session.GameWorld;
         const auto lifetime = world.PublicationLifetime();
         frame.TrackPublication(world.GetMap().GetIdentity(), [&world, lifetime, key = &frame] {
@@ -95,6 +107,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             frame.PrepareRegionVersions(0x6d697373696e67ULL);
             frame.SetSourceRegionVersion(0, 0);
             frame.Character.reset();
+            frame.Lights.Enabled = false;
             frame.FormulaDraws.clear();
             frame.DeviceDraws.clear();
             frame.GardenDraws.clear();
@@ -112,7 +125,7 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
         const auto region = snapshot->Bounds();
         const uint64_t cells = uint64_t(region.Width) * region.Height;
         const uint64_t regions = uint64_t(region.Width / storage::RegionEdge) * (region.Height / storage::RegionEdge);
-        const uint64_t capacity = cells * 8 + regions * 512 + 2048
+        const uint64_t capacity = cells * 8 + regions * 512 + 2048 + render::LightingCache::CapacityFor(region)
             + Actors::MaximumCount * ((TrainingDummyDrawParts + 2) * sizeof(ActorDraw) + sizeof(MonsterDraw))
             + snapshot->Gameplay().RetainedBytes() + (GameplayFrame ? GameplayFrame->RetainedBytes() : 0)
             + items::Inventory::MaximumInstancesPerContainer * DroppedItemDrawParts * sizeof(ItemDraw)
@@ -157,12 +170,26 @@ std::function<void(WorldGridFrame &)> GamePresentation::CreateFramePublisher(Gam
             if (characterArt)
                 animation.Apply(*characterArt, frame);
         }
+        if (DisplayMode == GridDisplayMode::Materials) {
+            std::optional<CellCoord> held;
+            if (character && holdsTorch && holdsTorch() && HasTorch(snapshot->Gameplay(), session.PlayerInventory())) {
+                auto flame = character->Position;
+                flame.Local[0] += CellsToCentimeters(character->SizeCells[0] * .5f);
+                flame.Local[1] += CellsToCentimeters(character->SizeCells[1] * .4f);
+                flame.Normalize();
+                held = flame.Cell();
+            }
+            frame.Lights.Tint = {Post.Values[0], Post.Values[1], Post.Values[2]};
+            lights->Build(snapshot->ReadState(), VisibleWorldRegion(frame.View, camera.GetFramebufferSize(), 0), held, frame.Lights);
+        } else {
+            frame.Lights.Enabled = false;
+        }
         // Move an exact copy into the cache so retained vector capacities stay
         // bounded; UI reads these same commit values even if an action follows.
         auto gameplay = snapshot->Gameplay();
         GameplayFrame = std::move(gameplay);
         CalendarFrame = snapshot->Calendar();
-        world.SetPublicationBytes(&frame, frame.GetMemoryUsage().ReservedBytes() + GameplayFrame->RetainedBytes());
+        world.SetPublicationBytes(&frame, frame.GetMemoryUsage().ReservedBytes() + lights->ReservedBytes() + GameplayFrame->RetainedBytes());
     };
 }
 

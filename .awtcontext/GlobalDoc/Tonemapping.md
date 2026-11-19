@@ -4,9 +4,9 @@
 
 ## 作用时机与颜色空间
 
-普通场景的顺序为世界／背景 → 风 → 场景物体／怪物 → 人物 → 环境与用户乘色 → tonemapping → 原生背包／ESC菜单 → 开发UI → sRGB呈现编码。
+普通场景的顺序为世界／背景 → 风 → 场景物体／怪物 → 人物 → 环境与局部照明、用户乘色 → tonemapping → 原生背包／ESC菜单 → 开发UI → sRGB呈现编码。
 
-`Render/Passes/PostProcessPass`使用既有最终全屏Pass。`Pixel2DPostProcess.Frag.slang`读取场景并乘以`ColorMultiplier.rgb`。计算在线性RGB空间，sRGB呈现目标执行显示编码，输出alpha固定为1。
+`Render/Passes/PostProcessPass`使用既有最终全屏Pass。`Pixel2DPostProcess.Frag.slang`读取场景并乘以`ColorMultiplier.rgb`。有局部光时，`Pixel2DLightPostProcess.Frag.slang`会额外采样光照图，再使用同一条ACES近似曲线。计算在线性RGB空间，sRGB呈现目标执行显示编码，输出alpha固定为1。局部照明的上传与混合见[火把与局部光照](LocalLighting.md)。
 
 曲线逐通道计算，`x = clamp(scene * multiplier, 0, 16)`：
 

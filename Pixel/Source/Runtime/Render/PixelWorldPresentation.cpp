@@ -106,6 +106,7 @@ void BuildForceFieldFrameImpl(const ReadWorld &world, WorldGridFrame &output) {
     PIXEL_PROFILE_SCOPE(ForceColors);
     output.Character.reset();
     output.HasWind = false;
+    output.Lights.Enabled = false;
     auto cells = output.Cells();
     const auto origin = output.GetCellOrigin();
     const auto source = ReadSource(world, {origin[0], origin[1], output.GetWidth(), output.GetHeight()});
@@ -182,7 +183,7 @@ void BuildCharacterFrame(const pixel::ActorSnapshot &character, const pixel::Cam
     output.Character = draw;
 }
 
-pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> framebufferSize) {
+pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> framebufferSize, uint32_t halo) {
     if (!pixel::IsValidLogicalPixelSize(view.CellSizePixels))
         throw std::invalid_argument("visible region requires square logical pixels");
     std::array<int64_t, 2> begin{};
@@ -190,8 +191,8 @@ pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> f
     for (size_t axis = 0; axis < 2; ++axis) {
         if (!view.CellSizePixels[axis] || framebufferSize[axis] <= 0)
             throw std::invalid_argument("visible region requires a drawable viewport");
-        const double low = std::floor(double(view.OriginPixels[axis]) / view.CellSizePixels[axis]) - Grid2D::WindHalo;
-        const double high = std::ceil((double(view.OriginPixels[axis]) + framebufferSize[axis]) / view.CellSizePixels[axis]) + Grid2D::WindHalo;
+        const double low = std::floor(double(view.OriginPixels[axis]) / view.CellSizePixels[axis]) - halo;
+        const double high = std::ceil((double(view.OriginPixels[axis]) + framebufferSize[axis]) / view.CellSizePixels[axis]) + halo;
         const int64_t alignedLow = int64_t(std::floor(low / Grid2D::RegionSize)) * Grid2D::RegionSize;
         const int64_t alignedHigh = int64_t(std::ceil(high / Grid2D::RegionSize)) * Grid2D::RegionSize;
         if ((alignedLow < 0 && view.WorldOriginCells[axis] < INT64_MIN - alignedLow) || (alignedHigh > 0 && view.WorldOriginCells[axis] > INT64_MAX - alignedHigh) || uint64_t(alignedHigh - alignedLow) > UINT32_MAX)

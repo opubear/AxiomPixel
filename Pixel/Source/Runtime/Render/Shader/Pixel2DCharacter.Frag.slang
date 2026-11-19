@@ -33,12 +33,14 @@ float4 main(float4 position : SV_Position) : SV_Target {
         for (int layer = 0; layer < int(Character.Sprite.x); ++layer) {
             float4 color = CharacterLayers.Load(int4(texel, layer, 0));
             background.rgb = lerp(background.rgb, color.rgb, color.a);
+            background.a = lerp(background.a, 1, color.a);
         }
-        return float4(background.rgb, 1);
+        return background;
     }
     float split = minimum.y + Character.Bounds.w * Character.Parameters.x;
     float head = coverage(position.xy, minimum, float2(maximum.x, split));
     float body = coverage(position.xy, float2(minimum.x, split), maximum);
-    return float4(background.rgb * max(0.0, 1.0 - head - body)
-                  + Character.HeadColor.rgb * head + Character.BodyColor.rgb * body, 1.0);
+    float remaining = max(0.0, 1.0 - head - body);
+    return float4(background.rgb * remaining + Character.HeadColor.rgb * head + Character.BodyColor.rgb * body,
+                  background.a * remaining + head + body);
 }

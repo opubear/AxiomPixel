@@ -227,6 +227,10 @@ if(BUILD_TESTING)
     target_link_libraries(PixelTests PRIVATE PixelRender)
     add_test(NAME Pixel.Cpu COMMAND PixelTests)
 
+    add_executable(PixelLightingTests Rendering/PixelLightingTests.cpp)
+    target_link_libraries(PixelLightingTests PRIVATE PixelPresentation)
+    add_test(NAME Pixel.Lighting COMMAND PixelLightingTests)
+
     add_executable(PixelBaselineTests World/PixelBaselineTests.cpp)
     target_link_libraries(PixelBaselineTests PRIVATE PixelWorld)
     add_test(NAME Pixel.Baseline COMMAND PixelBaselineTests)

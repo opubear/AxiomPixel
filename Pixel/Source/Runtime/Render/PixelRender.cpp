@@ -114,6 +114,7 @@ void PixelRender::CreateColorTargets() {
         throw std::runtime_error("2D color target requires a drawable extent");
     // Called only at initialization or after GPU idle. Free sets before images/pipeline.
     for (auto &frame : Resources.Frames) {
+        frame.Lights.reset();
         frame.PostSet.reset();
         frame.CharacterSet.reset();
         frame.CharacterPostSet.reset();
@@ -133,6 +134,7 @@ void PixelRender::CreateColorTargets() {
         frame.WindRegionVersions.clear();
     }
     Resources.PostPipeline.reset();
+    Resources.LightPostPipeline.reset();
     for (auto &frame : Resources.Frames) {
         frame.Color = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
         frame.WindColor = RHI.CreateTexture({Resources.Extent.Width, Resources.Extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
@@ -202,6 +204,7 @@ void PixelRender::Draw() {
     frame.HasFormula = SceneObjects.Enabled(input);
     frame.HasCharacter = Character.Enabled(input);
     Upload.Prepare(RHI, Resources, frame, input);
+    PostProcess.Prepare(RHI, Resources, frame, input);
     const pixel::render::RenderPassContext context{Resources, frame, input, Catalog, Background.get()};
     RHI.RecordFrame([&](RHICommandList &commands) {
         InventoryUI.Upload(commands, slot);
@@ -222,6 +225,7 @@ void PixelRender::Draw() {
     });
     InventoryUI.Commit(slot);
     GameMenu.Commit(slot);
+    PostProcess.Commit(frame, input);
     WorldUploadBytes += Upload.Commit(frame, input);
     ++FrameCount;
 }
@@ -248,6 +252,7 @@ void PixelRender::Clear() {
     Resources.Frames.clear();
     Resources.Pool.reset();
     Resources.PostPipeline.reset();
+    Resources.LightPostPipeline.reset();
     Resources.WorldPipeline.reset();
     Resources.CharacterPipeline.reset();
     Resources.WindPipeline.reset();

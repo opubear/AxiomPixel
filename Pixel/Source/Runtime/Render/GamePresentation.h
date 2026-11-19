@@ -26,7 +26,7 @@ class GamePresentation : public PresentationControl {
     // never accesses them. Never call from Draw or concurrently with game Tick.
     std::function<void(WorldGridFrame &)> CreateFramePublisher(GameSession &session, const GameCamera &camera,
         std::shared_ptr<const CharacterAssets> characterArt = {}, const PlayerPresentation *player = nullptr,
-        std::shared_ptr<const MonsterAssets> monsterArt = {});
+        std::shared_ptr<const MonsterAssets> monsterArt = {}, std::function<bool()> holdsTorch = {});
     // Updated with terrain/device publication, never by UI actions or Draw.
     // Each presentation consumer owns its values until its next published frame.
     const std::optional<api::GameplayObservation> &PublishedGameplay() const { return GameplayFrame; }

@@ -47,7 +47,9 @@ class CharacterPass {
 class PostProcessPass {
   public:
     std::unique_ptr<RHIPipeline> CreatePipeline(DynamicRHI &rhi, const std::string &shader) const;
+    void Prepare(DynamicRHI &rhi, RenderResources &resources, FrameResources &frame, const WorldGridFrameView &input) const;
     void Record(RHICommandList &commands, const RenderPassContext &context,
                 const std::function<void(RHICommandList &)> &overlay) const;
+    void Commit(FrameResources &frame, const WorldGridFrameView &input) const;
 };
 } // namespace pixel::render

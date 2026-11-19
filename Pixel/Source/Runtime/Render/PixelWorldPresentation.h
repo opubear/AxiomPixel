@@ -36,4 +36,5 @@ void BuildForceFieldFrame(const pixel::CommittedWorldView &world, WorldGridFrame
 void BuildCharacterFrame(const pixel::ActorSnapshot &character, const pixel::Camera2D &camera,
                          std::array<int, 2> framebufferSize, WorldGridFrame &output);
 
-pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> framebufferSize);
+pixel::WorldRect VisibleWorldRegion(const GridView2D &view, std::array<int, 2> framebufferSize,
+                                   uint32_t halo = Grid2D::WindHalo);

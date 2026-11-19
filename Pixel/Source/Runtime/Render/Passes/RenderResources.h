@@ -7,6 +7,16 @@
 #include <vector>
 
 namespace pixel::render {
+struct LightmapSlot {
+    std::unique_ptr<RHIDescriptorPool> Pool;
+    std::unique_ptr<RHITexture> Texture;
+    std::unique_ptr<RHIUploadBuffer> Upload;
+    std::array<std::unique_ptr<RHIDescriptorSet>, 4> Sets;
+    std::array<int64_t, 2> CellOrigin{};
+    std::vector<uint64_t> Versions;
+    std::vector<RHITextureCopyRegion> Dirty;
+};
+
 // Each in-flight slot owns its writable images, descriptors and upload versions.
 struct FrameResources {
     std::unique_ptr<RHITexture> Data;
@@ -25,6 +35,13 @@ struct FrameResources {
     GridDisplayMode DisplayMode = GridDisplayMode::Materials;
     std::vector<uint64_t> RegionVersions, WindRegionVersions;
     std::vector<RHITextureCopyRegion> DirtyRegions, WindDirtyRegions;
+    std::unique_ptr<LightmapSlot> Lights;
+
+    size_t SceneIndex() const {
+        if (HasCharacter) return 3;
+        if (HasFormula) return 2;
+        return HasWind ? 1 : 0;
+    }
 };
 
 // PixelRender owns resource lifetime; concrete passes borrow resources while recording.
@@ -40,6 +57,7 @@ struct RenderResources {
     std::unique_ptr<RHITexture> MonsterTexture;
     std::unique_ptr<RHIUploadBuffer> MonsterUpload;
     std::unique_ptr<RHIPipeline> WorldPipeline, WindPipeline, FormulaPipeline, CharacterPipeline, PostPipeline;
+    std::unique_ptr<RHIPipeline> LightPostPipeline;
     std::unique_ptr<RHIDescriptorPool> Pool;
     std::vector<FrameResources> Frames;
     RHIPresentationExtent Extent{};
@@ -54,4 +72,8 @@ struct RenderPassContext {
 
     void BindFullscreen(RHICommandList &commands) const;
 };
+
+void StageGridUpload(RHIUploadBuffer &upload, const RHITextureDesc &texture, std::span<const std::byte> texels,
+                     uint32_t tileEdge, std::span<const uint64_t> versions, std::span<const uint64_t> uploaded,
+                     std::vector<RHITextureCopyRegion> &dirty);
 } // namespace pixel::render

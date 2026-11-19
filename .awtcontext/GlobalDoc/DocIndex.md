@@ -7,7 +7,7 @@
 | 总览｜游戏文档总入口 | `workspace:Docs/GameDesign/README.md` | 现行：总纲、六个游戏系统、昼夜季节与技术合同、产品状态及历史参考的导航 | |
 | 总览｜Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 设计方向：核心愿景、流程、构式调用逻辑、统一函数组合与世界绑定、家园及世界意志的设计取舍 | |
 | 总览｜文档分类与维护规则 | `context:GlobalDoc/DocumentationGovernance.md` | 现行：文档分层、状态词、功能变更同步、历史清理和本轮整理记录 | |
-| 总览｜产品现状与待办 | `context:GlobalDoc/ProductStatus.md` | 现行：玩家闭环、昼夜四季等近期功能、未交付能力、决策顺序与验收边界 | |
+| 总览｜产品现状与待办 | `context:GlobalDoc/ProductStatus.md` | 现行：Natural v3环境流体、昼夜四季、火把照明、角色起始背包及未交付能力 | |
 | 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：Natural v3环境流体与岩浆、完整窗口风场、地区生态、昼夜四季 | |
 | 系统·世界｜世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | 兼容：Natural v1与旧生成实现；当前默认v3见BiomeWorldGeneration | |
 | 系统·世界｜有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 现行：持续来源、严格加速度上限、宿主转换、区域冻结与归属持久化 | |
@@ -44,7 +44,7 @@
 | 系统·世界意志｜模型接口与祈祷交互 | `context:GlobalDoc/ModelServiceIntegration.md` | 现行：模型注入、受限JSON、原文取消与Queued终态；Ready为兼容，未接网络 | |
 | 系统·世界意志｜LLM抽象与随机PseudoLLM | `context:GlobalDoc/LLMAndPseudoLLM.md` | 现行：独立模型生命周期、共用决策API、随机函数组合兜底及验证边界 | |
 | 系统·世界意志｜BehaviorDSL必要性与有限决策图实验 | `workspace:Docs/Architecture/BehaviorDecisionExperiment.md` | 现行：M6.1同场景表达、诊断和成本对照；暂缓持久DSL的依据与重启门槛 | |
-| 系统·呈现｜画面、交互与内容资产 | `context:GlobalDoc/SystemsPresentation.md` | 现行：背景角色UI分层、ESC编辑捕获、字体本地化及输入资源边界 | |
+| 系统·呈现｜画面、交互与内容资产 | `context:GlobalDoc/SystemsPresentation.md` | 现行：火把动态光与持久烘焙、角色朝向、色调映射、UI及F1隔离 | |
 | 系统·呈现｜游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | 现行：人物朝左原图、运动朝向与锚点镜像；Content清单、共享缓存、GPU上传与验证 | |
 | 工程｜分块、四叉树与流式世界 | `workspace:Docs/WorldRepresentation.md` | 现行：世界表示、材料调度、完整窗口风域及旧高度兼容、流式预算与显示接口 | |
 | 工程｜统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | 现行：手持使用与放置、队列权限、完整窗口风策略动作、暂停与持久会话边界 | |
@@ -122,7 +122,7 @@
 | 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |
 | 工程｜Axiom本地化字符串与转换表 | `workspace:Axiom/Source/Localization/README.md` | 现行：LocalizedString、语言地区表与回退；Pixel文案和语言选择尚未接入 | |
 | 证据｜字体本地化与Pixel菜单联合审查（2026-11-11） | `context:GlobalDoc/CodeReview-FontsLocalizationMenu-2026-11-11.md` | 证据：Astra ultra复核关闭两项问题，干净静态44项共享45项、运行时48项及GPU通过 | |
-| 系统·呈现｜最终Tonemapping后处理 | `context:GlobalDoc/Tonemapping.md` | 现行：环境乘色后执行ACES近似曲线、UI及F1隔离 | |
-| 系统·呈现｜火把与局部光照 | `context:GlobalDoc/LocalLighting.md` | 现行：火把放置、点灭、回收及世界状态 | |
+| 系统·呈现｜最终Tonemapping后处理 | `context:GlobalDoc/Tonemapping.md` | 现行：环境与局部照明后执行ACES近似曲线、UI及F1隔离 | |
+| 系统·呈现｜火把与局部光照 | `context:GlobalDoc/LocalLighting.md` | 现行：角色火把操作、手持多源泛洪、持久火把分块烘焙、遮挡失效与合成 | |
 | 工程｜Axiom静态名字与线程域名字 | `workspace:Axiom/Source/Core/Hash/README.md` | 现行：32位名字、线程域与分块存储、退出期反查及宿主插件共享名字库 | |
 | 工程｜Axiom事件订阅 | `workspace:Axiom/Source/Core/Events/README.md` | 现行：HashName 订阅、跨动态库签名、广播参数转换和呈现变化通知 | |

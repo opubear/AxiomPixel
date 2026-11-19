@@ -59,6 +59,7 @@ class InventoryUI {
     void Publish(const api::GameplayObservation *gameplay, items::ContainerId playerBag,
                  const WorldCalendarSnapshot *calendar = nullptr);
     std::optional<items::ItemRef> HeldItem() const { return View.QuickSlots[View.Selected].Reference(); }
+    std::optional<items::ItemRef> SelectedBinding() const { return Bindings[View.Selected]; }
     const InventoryView &Read() const { return View; }
     const Canvas &Paint();
 

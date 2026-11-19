@@ -1,6 +1,5 @@
 #include "Dev/Debug/Performance/FrameProfiler.h"
 #include "RenderPasses.h"
-#include <algorithm>
 
 namespace pixel::render {
 namespace {
@@ -31,38 +30,14 @@ void UploadPass::Prepare(DynamicRHI &rhi, const RenderResources &resources, Fram
     const bool relocated = frame.CellOrigin != input.CellOrigin;
     if (relocated)
         frame.WindRegionVersions.clear();
-    const auto prepare = [&](RHIUploadBuffer &upload, std::span<const uint32_t> cells,
-                             std::span<const uint64_t> versions, const std::vector<uint64_t> &cached,
-                             std::vector<RHITextureCopyRegion> &dirty) {
-        dirty.clear();
-        const bool full = versions.empty() || relocated || cached.size() != versions.size();
-        if (full) {
-            upload.Write(std::as_bytes(cells));
-            dirty.push_back({0, 0, 0, 0, 0, input.Width, input.Height});
-            return;
-        }
-        const uint32_t columns = (input.Width + Grid2D::RegionSize - 1) / Grid2D::RegionSize;
-        for (size_t index = 0; index < versions.size(); ++index) {
-            if (cached[index] == versions[index])
-                continue;
-            const uint32_t x = uint32_t(index % columns) * Grid2D::RegionSize;
-            const uint32_t y = uint32_t(index / columns) * Grid2D::RegionSize;
-            const uint32_t width = std::min(Grid2D::RegionSize, input.Width - x);
-            const uint32_t height = std::min(Grid2D::RegionSize, input.Height - y);
-            for (uint32_t row = 0; row < height; ++row) {
-                const size_t first = size_t(y + row) * input.Width + x;
-                upload.WriteRegion(std::as_bytes(cells.subspan(first, width)), first * sizeof(uint32_t));
-            }
-            dirty.push_back({(size_t(y) * input.Width + x) * sizeof(uint32_t), input.Width, input.Height,
-                             x, y, width, height});
-        }
-    };
-    if (frame.DisplayMode != input.DisplayMode)
+    if (relocated || frame.DisplayMode != input.DisplayMode)
         frame.RegionVersions.clear();
-    prepare(*frame.Upload, input.Cells, input.RegionVersions, frame.RegionVersions, frame.DirtyRegions);
+    StageGridUpload(*frame.Upload, frame.Data->Desc, std::as_bytes(input.Cells), Grid2D::RegionSize,
+                    input.RegionVersions, frame.RegionVersions, frame.DirtyRegions);
     frame.WindDirtyRegions.clear();
     if (frame.HasWind)
-        prepare(*frame.WindUpload, input.WindCells, input.WindRegionVersions, frame.WindRegionVersions, frame.WindDirtyRegions);
+        StageGridUpload(*frame.WindUpload, frame.WindData->Desc, std::as_bytes(input.WindCells), Grid2D::RegionSize,
+                        input.WindRegionVersions, frame.WindRegionVersions, frame.WindDirtyRegions);
     const auto bytes = [](const auto &regions) {
         uint64_t total = 0;
         for (const auto &region : regions)

@@ -10,6 +10,8 @@
 #include <memory>
 #include <string>
 
+namespace pixel::testing { struct LightingRenderAccess; }
+
 // The publisher fills owned N-1 CPU data at the synchronized frame boundary.
 // Draw runs concurrently with game Tick N and never calls either publisher.
 class PixelRender final : public RenderPolicyInterface {
@@ -43,6 +45,7 @@ class PixelRender final : public RenderPolicyInterface {
     WorldGridFrameView PublishedFrame() const;
 
   private:
+    friend struct pixel::testing::LightingRenderAccess;
     DynamicRHI &RHI;
     GridTextureCatalog Catalog;
     std::function<void(WorldGridFrame &)> Input;

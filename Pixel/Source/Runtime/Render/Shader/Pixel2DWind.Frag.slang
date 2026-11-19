@@ -125,5 +125,5 @@ float4 main(float4 position : SV_Position) : SV_Target {
     float luminance = dot(background.rgb, float3(.2126, .7152, .0722));
     float contrast = luminance < .5 ? 1 : 0;
     float opacity = Wind.Opacity * mask * sqrt(strength) * (Wind.Mode == 1 ? .85 : .45);
-    return float4(lerp(color, float3(contrast), opacity), 1);
+    return float4(lerp(color, float3(contrast), opacity), background.a);
 }

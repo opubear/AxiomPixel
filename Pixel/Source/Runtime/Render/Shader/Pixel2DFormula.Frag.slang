@@ -23,7 +23,7 @@ float4 main(float4 position : SV_Position) : SV_Target {
         if (Formula.Mode.y != 0) texel.x = int(Formula.FrameTexels.z) - 1 - texel.x;
         texel += int2(Formula.FrameTexels.xy);
         float4 color = MonsterAtlas.Load(int4(texel, 0, 0));
-        return float4(lerp(background.rgb, color.rgb, color.a), 1);
+        return float4(lerp(background.rgb, color.rgb, color.a), lerp(background.a, 1, color.a));
     }
     if (Formula.Mode.x == 1 ? dot(distance, distance) > 1.0 : any(abs(distance) > 1.0))
         discard;

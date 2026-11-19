@@ -13,7 +13,7 @@
 | [构式、物品与背包](.awtcontext/GlobalDoc/SystemsFormulaItems.md) | formula/2、木棍施放和拾取、方块与火把、7快捷格与42展示格 |
 | [设备、家园与会话](.awtcontext/GlobalDoc/SystemsHome.md) | 推力设备、煤燃料、力场育圃、活动区冻结与底层一致检查点 |
 | [知识、世界意志与自主权](.awtcontext/GlobalDoc/SystemsWorldWill.md) | 授权观测、知识历史、离线PseudoLLM祈祷、受限干预与保护撤销 |
-| [画面、交互与内容资源](.awtcontext/GlobalDoc/SystemsPresentation.md) | 群落背景/装饰、人物怪物动画、原生库存UI、独立显示缩放与资源来源 |
+| [画面、交互与内容资源](.awtcontext/GlobalDoc/SystemsPresentation.md) | 群落背景/装饰、人物怪物动画、火把光照、原生库存UI与显示缩放 |
 
 规划中的通用装备与资源掉落、完整居民生活、真实网络模型等尚未交付，决策与依赖见 [产品现状与待办](.awtcontext/GlobalDoc/ProductStatus.md)。2026-10 的 [架构规划](Docs/Architecture/GameplayArchitecturePlan.md) 和阶段验收归入历史依据，不是当前路线图或当前测试结果。
 
@@ -71,7 +71,7 @@ Render从Simulation及Gameplay的已提交状态构造呈现快照，Draw只消�
 
 引擎采用[游戏与渲染隔帧并行](Docs/Architecture/ParallelFrames.md)，Pixel 另启用[独立模拟线程](Docs/Architecture/SimulationThread.md)。游戏线程从已提交世界计算角色呈现和相机，世界动作排队至下一固定步；模拟线程完成环境、权威角色、构式和设备后才发布世界。主线程绘制上一帧的自持有地形、风、角色和 UI 数据。当前帧末仍等待双方完成，窗口、输入、DebugUI、资源发布和关闭保留同步边界。PerfTest trace 分为渲染、游戏、模拟三条时间线；AET 保留原有双线程接线。
 
-`Render/GamePresentation`在帧首构造`WorldGridFrame`；`PixelRender::Draw`仅编排`Render/Passes`中的上传、世界、风、场景物体、角色和后处理Pass。具体Pass封装纹理状态切换、复制、管线绑定及绘制命令；场景物体Pass合成设备、育圃和构式弹体，后处理Pass完成后在呈现目标内调用原生背包与ESC菜单UI，再调用开发调试UI叠加（菜单打开时隐藏开发面板）；UI不受场景调色影响。共享GPU资源仍由PixelRender管理生命周期，区域上传版本与首次美术上传标记仅在整帧录制成功后提交。
+`Render/GamePresentation`在帧首构造`WorldGridFrame`，其中包含派生的局部光照图。`PixelRender::Draw`编排上传、世界、风、场景物体、角色和后处理。最终后处理合成环境光与局部照明，再执行ACES近似色调映射。原生背包、ESC菜单和开发UI接着在呈现目标内叠加，F1使用诊断画面。分块烘焙、动态泛洪及颜色空间见[局部光照合同](.awtcontext/GlobalDoc/LocalLighting.md)和[最终色调映射](.awtcontext/GlobalDoc/Tonemapping.md)。各帧槽的上传版本与首次美术上传标记在整帧录制成功后更新。
 
 `System/IO/Input`拥有键鼠事件解释、按键状态和控制模式，通过GameSession动作端口及GameCamera驱动游戏；`Gameplay/Actors/PlayerInput.h`保留角色需要的横向移动与跳跃意图。输入适配可以依赖Gameplay，Gameplay核心、Simulation及其余System服务不反向依赖Input；Input不包含Render实现或ImGui，退出、调试面板及画面尺寸由Application注入回调。
 
@@ -162,7 +162,7 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | F4 | 显示或隐藏Formula Editor，预设／源码应用到当前手持木棍 |
 | R | 创建新世界，重置视角；默认临时会话丢弃当前进度，保留显示/控制模式 |
 
-默认使用调试角色。新世界的背包第 1 格是一根可施放构式的木棍，第 2 格是 1000 支火把，快捷键分别为 `1` 和 `2`。选中火把后，左键点地面放置，右键取回。[火把与局部光照](.awtcontext/GlobalDoc/LocalLighting.md)
+默认使用调试角色。新世界的背包第 1 格是一根可施放构式的木棍，第 2 格是 1000 支火把，快捷键分别为 `1` 和 `2`。选中火把后，左键点地面放置，右键取回。F2 的 `Day / night and seasons` 可切到夜间观察遮挡。 [火把与局部光照](.awtcontext/GlobalDoc/LocalLighting.md)
 
 用 `PIXEL_PLAYER_PROFILE=normal ./run-debug.sh` 启动普通角色，开局有 8 支火把，按 `7` 选中。可修改 `PlayerProfiles.json` 的 `DefaultProfile`、数量和格号，重启后生效。按 `R` 新建世界会沿用本次启动的角色配置。 [角色配置文件](Pixel/Content/PlayerProfiles.json) [初始背包规则](.awtcontext/GlobalDoc/Items.md#角色初始背包)
 

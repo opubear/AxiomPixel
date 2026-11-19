@@ -40,7 +40,8 @@ class PixelGame final : public IGameInterface {
     bool IsDevicePlacementEnabled() const { return Input.IsDevicePlacementEnabled(); }
     std::function<void(WorldGridFrame &)> CreateFramePublisher(std::shared_ptr<const pixel::CharacterAssets> characterArt = {},
         std::shared_ptr<const pixel::MonsterAssets> monsterArt = {}) {
-        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt), &PlayerFrame, std::move(monsterArt));
+        return Presentation.CreateFramePublisher(Session, Camera, std::move(characterArt), &PlayerFrame, std::move(monsterArt),
+            [this] { return UI.SelectedBinding() == pixel::items::ItemRef{pixel::items::ItemId::Torch}; });
     }
     const pixel::World &GetWorld() const { return Session.GetWorld(); }
     pixel::GamePresentation &GetPresentation() { return Presentation; }
