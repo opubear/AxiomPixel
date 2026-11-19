@@ -174,22 +174,22 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
     auto &map = world.GetMutableMap();
     const auto bounds = world.GetSimulationBounds();
     const auto step = uint64_t(std::round(PendingSeconds * FieldResponse::StepsPerSecond));
-    bool hasTransient = false;
+    bool needsNextStep = false;
     for (uint32_t row = 0; row < region.Height; ++row) {
         const CellCoord begin{region.X, region.Y + row};
         const auto materials = map.MaterialRow(begin, region.Width);
         const auto forces = map.ForceRow(begin, region.Width);
         for (uint32_t column = 0; column < region.Width; ++column) {
             const auto type = materials[column];
-            if (type != CellTypeId::Dirt && type != CellTypeId::Water && !cellular::IsTransient(type))
+            if (type != CellTypeId::Dirt && !IsLiquid(type) && !cellular::IsTransient(type))
                 continue;
             const CellCoord source{begin.X + column, begin.Y};
             ForceDirection direction{0, 0};
             if (type == CellTypeId::Dirt) {
                 direction = FieldResponse::MovementDirection(FieldResponse::MovementVelocity(SampleForce(source, bounds, forces[column])));
             } else {
-                hasTransient |= cellular::IsTransient(type);
                 const auto update = cellular::Evaluate(map, bounds, source, type, step, GetWindSimulation().SampleWorld(source));
+                needsNextStep |= cellular::IsTransient(type) || update.KeepAwake;
                 if (update.Material != type) {
                     AppendScratch(Changes, MaterialChange{source, type, update.Material}, world, *this);
                     continue;
@@ -212,8 +212,8 @@ void Environment::ProposeRegion(World &world, WorldRect region) {
             }
         }
     }
-    // A trapped or momentarily idle wisp still has a time-dependent rule.
-    if (hasTransient)
+    // Time-dependent rules may have stayed idle during this step.
+    if (needsNextStep)
         map.Wake(region);
 }
 

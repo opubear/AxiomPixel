@@ -80,6 +80,33 @@ struct Column {
     GenerationEnvironment Environment;
 };
 
+struct FluidPocket {
+    CellCoord Feature, Center;
+    int64_t RadiusX, RadiusY;
+    CellTypeId Material;
+
+    WorldRect Shell() const {
+        return {Center.X - RadiusX - 3, Center.Y - RadiusY - 3,
+                uint32_t(2 * RadiusX + 7), uint32_t(2 * RadiusY + 7)};
+    }
+
+    bool Contains(CellCoord point, int64_t padding = 0) const {
+        const int64_t dx = point.X - Center.X, dy = point.Y - Center.Y;
+        const int64_t rx = RadiusX + padding, ry = RadiusY + padding;
+        return dx * dx * ry * ry + dy * dy * rx * rx <= rx * rx * ry * ry;
+    }
+
+    GenerationFluidBody Body() const {
+        uint32_t volume = 0;
+        for (int64_t y = 0; y <= RadiusY; ++y)
+            for (int64_t x = -RadiusX; x <= RadiusX; ++x)
+                volume += Contains({Center.X + x, Center.Y + y});
+        return {Material == CellTypeId::Lava ? GenerationFluidKind::LavaPool : GenerationFluidKind::Groundwater,
+                Feature, {Center.X - RadiusX, Center.Y, uint32_t(2 * RadiusX + 1), uint32_t(RadiusY + 1)},
+                Center.Y, volume, Material};
+    }
+};
+
 class NaturalModel {
   public:
     explicit NaturalModel(WorldGenerationSettings settings)
@@ -112,7 +139,7 @@ class NaturalModel {
         Column column;
         column.DryHeight = column.Height = DryHeight(x);
         column.SoilDepth = uint32_t(std::clamp<int64_t>(18 + FixedRound(int64_t(6) * Perlin(Noise.Soil, x, 0, 256, 256)), 12, 24));
-        if (Settings.Version == 2) {
+        if (Settings.Version >= 2) {
             column.Environment = Biomes.Environment(x);
             column.SoilDepth = Biomes.SoilThickness(x, column.Environment);
         }
@@ -131,7 +158,7 @@ class NaturalModel {
         const int64_t depth = point.Y - column.Height;
         if (depth < 0)
             return CellTypeId::Air;
-        const auto host = Settings.Version == 2
+        const auto host = Settings.Version >= 2
             ? Biomes.Stratum(point, depth, column.SoilDepth, column.Environment)
             : depth < column.SoilDepth ? CellTypeId::GroundSoil : CellTypeId::Stone;
         if (depth < column.SoilDepth)
@@ -163,7 +190,7 @@ class NaturalModel {
             }
         }
 
-        if (through >= GenerationStage::Water && Settings.WaterEnabled)
+        if (through >= GenerationStage::Water && Settings.WaterEnabled && Settings.Version < 3)
             VisitGroundwater(bounds, [&](const GenerationWaterBody &, WorldRect window, std::span<const uint16_t> cells) {
                 for (uint16_t index : cells) {
                     const CellCoord point{window.X + index % WaterWindow, window.Y + index / WaterWindow};
@@ -171,6 +198,9 @@ class NaturalModel {
                         output[size_t(point.Y - bounds.Y) * bounds.Width + size_t(point.X - bounds.X)] = CellTypeId::Water;
                 }
             });
+
+        if (through >= GenerationStage::Caves && Settings.Version >= 3)
+            AddFluidPockets(bounds, output, through);
 
         if (through >= GenerationStage::Surface)
             for (uint32_t x = 0; x < bounds.Width; ++x) {
@@ -181,23 +211,31 @@ class NaturalModel {
                 if (output[index] == CellTypeId::GroundSoil)
                     output[index] = CellTypeId::GrassSoil;
             }
-        if (through >= GenerationStage::Surface && Settings.Version == 2)
+        if (through >= GenerationStage::Surface && Settings.Version >= 2)
             AddTrees(bounds, output);
     }
 
-    std::vector<GenerationWaterBody> WaterPlans(WorldRect bounds) const {
-        std::vector<GenerationWaterBody> result;
-        if (!Settings.WaterEnabled || bounds.Empty())
+    std::vector<GenerationFluidBody> FluidPlans(WorldRect bounds) const {
+        std::vector<GenerationFluidBody> result;
+        if (bounds.Empty())
             return result;
         for (const auto &lake : LakesFor(bounds.X, bounds.Width)) {
             const WorldRect water{lake.FirstWater, lake.Level, uint32_t(lake.LastWater - lake.FirstWater + 1), uint32_t(lake.DeepestBed - lake.Level)};
             if (water.Intersects(bounds))
                 result.push_back({GenerationWaterKind::SurfaceLake, {lake.Feature, 0}, water, lake.Level, lake.Volume});
         }
-        VisitGroundwater(bounds, [&](const GenerationWaterBody &body, WorldRect, std::span<const uint16_t>) {
-            if (body.Bounds.Intersects(bounds))
-                result.push_back(body);
-        });
+        if (Settings.Version >= 3) {
+            for (const auto &pocket : PocketsFor(bounds)) {
+                const auto body = pocket.Body();
+                if (body.Bounds.Intersects(bounds) && (Settings.WaterEnabled || body.Material != CellTypeId::Water))
+                    result.push_back(body);
+            }
+        } else {
+            VisitGroundwater(bounds, [&](const GenerationWaterBody &body, WorldRect, std::span<const uint16_t>) {
+                if (body.Bounds.Intersects(bounds))
+                    result.push_back(body);
+            });
+        }
         return result;
     }
 
@@ -208,7 +246,7 @@ class NaturalModel {
     int64_t SpawnHeight;
 
     int64_t RawHeight(int64_t x) const {
-        if (Settings.Version == 2)
+        if (Settings.Version >= 2)
             return Settings.SurfaceY + Biomes.HeightOffset(x, Biomes.Environment(x));
         return Settings.SurfaceY + FixedRound(int64_t(48) * Perlin(Noise.Height0, x, 0, 1024, 1024) +
                                                int64_t(12) * Perlin(Noise.Height1, x, 0, 256, 256) +
@@ -217,10 +255,13 @@ class NaturalModel {
 
     int64_t LakeBed(const LakePlan &lake, int64_t x, int64_t dry) const {
         const int64_t distance = x >= lake.Center ? x - lake.Center : lake.Center - x;
-        const int32_t weight = FixedFade(int32_t((lake.Radius - distance) * FixedOne / lake.Radius));
+        // v3 keeps a broad, continuous basin with a twelve-cell shore blend;
+        // v1/v2 retain their original narrow depression exactly.
+        const int64_t shore = Settings.Version >= 3 ? std::min<int64_t>(12, lake.Radius) : lake.Radius;
+        const int32_t weight = FixedFade(int32_t(std::min<int64_t>(FixedOne, (lake.Radius - distance) * FixedOne / shore)));
         const int64_t detail = FixedRound(Perlin(Noise.LakeDepth, x, 0, 64, 64));
-        const int64_t depth = std::clamp<int64_t>(int64_t(lake.TargetDepth) + detail, 2, 8);
-        const int64_t cut = std::max<int64_t>(0, lake.Level + depth - dry);
+        const int64_t depth = std::clamp<int64_t>(int64_t(lake.TargetDepth) + detail, 2, Settings.Version >= 3 ? 16 : 8);
+        const int64_t cut = Settings.Version >= 3 ? lake.Level + depth - dry : std::max<int64_t>(0, lake.Level + depth - dry);
         return dry + FixedRound(cut * weight);
     }
 
@@ -229,22 +270,25 @@ class NaturalModel {
         LakePlan lake;
         lake.Feature = feature;
         lake.Center = FeatureOrigin(feature) + 256 + int64_t(hash % 129) - 64;
-        if (Settings.Version == 2) {
+        if (Settings.Version >= 2) {
             const auto environment = Biomes.Environment(lake.Center);
             // Rare desert oases; no liquid surface lakes on the alpine cap.
-            if (environment.SnowWeight > 32768 || (environment.DesertWeight > 32768 && (hash >> 32) % 8 != 0))
+            const uint64_t oasisPeriod = Settings.Version >= 3 ? 4 : 8;
+            if (environment.SnowWeight > 32768 || (environment.DesertWeight > 32768 && (hash >> 32) % oasisPeriod != 0))
+                return std::nullopt;
+            if (Settings.Version >= 3 && environment.Moisture < -12000 && (hash >> 40) % 4 != 0)
                 return std::nullopt;
         }
-        lake.Radius = 16 + int64_t((hash >> 8) % 49);
-        lake.TargetDepth = 2 + uint32_t((hash >> 16) % 7);
+        lake.Radius = (Settings.Version >= 3 ? 24 : 16) + int64_t((hash >> 8) % 49);
+        lake.TargetDepth = (Settings.Version >= 3 ? 6 : 2) + uint32_t((hash >> 16) % 7);
         const int64_t left = lake.Center - lake.Radius, right = lake.Center + lake.Radius;
         if (left - 8 < FeatureOrigin(feature) || right + 8 >= FeatureOrigin(feature) + FeatureEdge ||
             (left - 8 <= SpawnX + SpawnDryRadius && right + 8 >= SpawnX - SpawnDryRadius) ||
-            Perlin(Noise.LakeWetness, lake.Center, 0, 2048, 2048) <= -8192)
+            (Settings.Version < 3 && Perlin(Noise.LakeWetness, lake.Center, 0, 2048, 2048) <= -8192))
             return std::nullopt;
 
         const int64_t leftHeight = DryHeight(left), rightHeight = DryHeight(right);
-        if (std::abs(leftHeight - rightHeight) > 8)
+        if (std::abs(leftHeight - rightHeight) > (Settings.Version >= 3 ? 20 : 8))
             return std::nullopt;
         lake.Level = std::max(leftHeight, rightHeight) + 1;
         lake.DeepestBed = lake.Level;
@@ -254,7 +298,8 @@ class NaturalModel {
             const int64_t dry = DryHeight(x), bed = LakeBed(lake, x, dry);
             minimum = std::min(minimum, dry);
             maximum = std::max(maximum, dry);
-            if (maximum - minimum > 12 || bed - dry > 24 || bed - lake.Level > 8)
+            if (maximum - minimum > (Settings.Version >= 3 ? 32 : 12) ||
+                bed - dry > (Settings.Version >= 3 ? 48 : 24) || bed - lake.Level > (Settings.Version >= 3 ? 16 : 8))
                 return std::nullopt;
             if (bed <= lake.Level) {
                 finishedWater |= sawWater;
@@ -274,6 +319,60 @@ class NaturalModel {
         return lake;
     }
 
+    std::vector<FluidPocket> PocketsFor(WorldRect bounds) const {
+        std::vector<FluidPocket> result;
+        // Each complete chamber and its three-cell impermeable rim lie inside
+        // one 256-cell feature tile. No neighbour residency is consulted.
+        const auto channel = ChannelSeed(Settings.Seed, "environment-fluid-pockets-v3");
+        for (int64_t fy = FloorDivide(bounds.Y, 256); fy <= FloorDivide(bounds.Y + bounds.Height - 1, 256); ++fy)
+            for (int64_t fx = FloorDivide(bounds.X, 256); fx <= FloorDivide(bounds.X + bounds.Width - 1, 256); ++fx) {
+                const auto hash = FeatureHash(channel, fx, fy);
+                FluidPocket pocket{{fx, fy}, {fx * 256 + 96 + int64_t(hash % 65),
+                                             fy * 256 + 96 + int64_t((hash >> 8) % 65)},
+                                   24 + int64_t((hash >> 16) % 23), 14 + int64_t((hash >> 24) % 13), CellTypeId::Water};
+                if (!pocket.Shell().Intersects(bounds))
+                    continue;
+                const auto environment = Biomes.Environment(pocket.Center.X);
+                const int64_t depth = pocket.Center.Y - DryHeight(pocket.Center.X);
+                const int64_t hotDepth = std::max<int64_t>(512, 704 - environment.Temperature / 128);
+                if (depth >= hotDepth) {
+                    if ((hash >> 32) % 3 == 0) continue;
+                    pocket.Material = CellTypeId::Lava;
+                } else if (depth >= hotDepth - 128 || environment.Moisture < -8000 || (hash >> 32) % 4 == 0) {
+                    continue;
+                }
+                // Keep every roof and rim below the intact surface cover.
+                bool underground = true;
+                for (int64_t x = pocket.Shell().X; x < pocket.Shell().X + pocket.Shell().Width; ++x)
+                    underground &= pocket.Shell().Y - DryHeight(x) >= 96;
+                if (underground)
+                    result.push_back(pocket);
+            }
+        return result;
+    }
+
+    template<class Output>
+    void AddFluidPockets(WorldRect bounds, Output &output, GenerationStage through) const {
+        for (const auto &pocket : PocketsFor(bounds)) {
+            const auto extent = pocket.Shell();
+            const int64_t left = std::max(bounds.X, extent.X), top = std::max(bounds.Y, extent.Y);
+            const WorldRect shell{left, top,
+                uint32_t(std::min(bounds.X + bounds.Width, extent.X + extent.Width) - left),
+                uint32_t(std::min(bounds.Y + bounds.Height, extent.Y + extent.Height) - top)};
+            for (int64_t y = shell.Y; y < shell.Y + shell.Height; ++y)
+                for (int64_t x = shell.X; x < shell.X + shell.Width; ++x) {
+                    auto &cell = output[size_t(y - bounds.Y) * bounds.Width + size_t(x - bounds.X)];
+                    if (pocket.Contains({x, y})) {
+                        const bool filled = through >= GenerationStage::Water && y >= pocket.Center.Y &&
+                            (Settings.WaterEnabled || pocket.Material != CellTypeId::Water);
+                        cell = filled ? pocket.Material : CellTypeId::Air;
+                    } else if (pocket.Contains({x, y}, 3) && cell == CellTypeId::Air) {
+                        cell = CellTypeId::Stone;
+                    }
+                }
+        }
+    }
+
     bool LakeProtected(CellCoord point, std::span<const LakePlan> lakes) const {
         for (const auto &lake : lakes)
             if (point.X >= lake.FirstWater - 8 && point.X <= lake.LastWater + 8 &&
@@ -288,13 +387,13 @@ class NaturalModel {
         const int32_t strength = depth >= 96 ? FixedOne : int32_t((depth - 48) * FixedOne / 48);
         // Alpine rock has narrower fissures; humid forest rock has larger
         // chambers. Blend thresholds rather than cutting caves at biome edges.
-        const int32_t roomBase = Settings.Version == 2
+        const int32_t roomBase = Settings.Version >= 2
             ? 28000 + FixedMultiply(6000, environment.SnowWeight) - FixedMultiply(2500, environment.ForestWeight)
             : 29491;
         const int32_t roomThreshold = FixedOne - FixedMultiply(FixedOne - roomBase, strength);
         if (Perlin(Noise.CaveRoom, point.X, point.Y, 128, 128) > roomThreshold)
             return true;
-        const int32_t tunnelBase = Settings.Version == 2 ? 4200 - FixedMultiply(1800, environment.SnowWeight) : 3932;
+        const int32_t tunnelBase = Settings.Version >= 2 ? 4200 - FixedMultiply(1800, environment.SnowWeight) : 3932;
         const int32_t tunnelWidth = FixedMultiply(tunnelBase, strength);
         return std::abs(Perlin(Noise.CaveTunnel, point.X, point.Y, 256, 64)) < tunnelWidth &&
                Perlin(Noise.CaveGate, point.X, point.Y, 512, 512) > 0;
@@ -472,7 +571,7 @@ class NaturalGenerator final : public IWorldGenerator {
 void ValidateGenerationSettings(const WorldGenerationSettings &settings) {
     if (settings.Kind != WorldGeneratorKind::Flat && settings.Kind != WorldGeneratorKind::Natural)
         throw std::invalid_argument("unknown world generator");
-    if (settings.Version != 1 && !(settings.Kind == WorldGeneratorKind::Natural && settings.Version == 2))
+    if (settings.Version != 1 && !(settings.Kind == WorldGeneratorKind::Natural && settings.Version >= 2 && settings.Version <= LatestNaturalGenerationVersion))
         throw std::invalid_argument("unsupported world generator version");
     ValidatePoint({0, settings.SurfaceY});
 }
@@ -541,12 +640,18 @@ std::vector<CellTypeId> SampleGeneration(WorldGenerationSettings settings, World
 }
 
 std::vector<GenerationWaterBody> PlanGenerationWater(WorldGenerationSettings settings, WorldRect bounds) {
+    auto result = PlanGenerationFluids(settings, bounds);
+    std::erase_if(result, [](const auto &body) { return body.Material != CellTypeId::Water; });
+    return result;
+}
+
+std::vector<GenerationFluidBody> PlanGenerationFluids(WorldGenerationSettings settings, WorldRect bounds) {
     ValidateGenerationSettings(settings);
     ValidateBounds(bounds);
     if (bounds.Width > 65536 || bounds.Height > 65536)
         throw std::invalid_argument("water diagnostic range exceeds bounded feature limits");
     if (settings.Kind == WorldGeneratorKind::Flat)
         return {};
-    return NaturalModel(settings).WaterPlans(bounds);
+    return NaturalModel(settings).FluidPlans(bounds);
 }
 } // namespace pixel

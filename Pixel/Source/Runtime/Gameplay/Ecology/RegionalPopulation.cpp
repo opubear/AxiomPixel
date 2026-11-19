@@ -142,7 +142,7 @@ void RegionalPopulation::SynchronizeActivity(const World &world, Actors &actors,
 void RegionalPopulation::Activate(const World &world, Actors &actors, const MonsterCatalog *catalog,
                                   std::span<const ActorId> pinned, bool residents) {
     const auto settings = world.GetGenerationSettings();
-    if (settings.Kind != WorldGeneratorKind::Natural || settings.Version != 2) return;
+    if (settings.Kind != WorldGeneratorKind::Natural || settings.Version < 2) return;
     SynchronizeActivity(world, actors, pinned);
     if (Decisions.size() == MaximumSites || actors.Count() == Actors::MaximumCount) return;
     const auto bounds = world.GetSimulationBounds();

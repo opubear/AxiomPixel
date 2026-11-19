@@ -8,12 +8,12 @@
 | 总览｜Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 设计方向：核心愿景、流程、构式调用逻辑、统一函数组合与世界绑定、家园及世界意志的设计取舍 | |
 | 总览｜文档分类与维护规则 | `context:GlobalDoc/DocumentationGovernance.md` | 现行：文档分层、状态词、功能变更同步、历史清理和本轮整理记录 | |
 | 总览｜产品现状与待办 | `context:GlobalDoc/ProductStatus.md` | 现行：玩家闭环、昼夜四季等近期功能、未交付能力、决策顺序与验收边界 | |
-| 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：三群落、完整玩家窗口风场、地区休眠、昼夜四季与试玩边界 | |
-| 系统·世界｜世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | 兼容：Natural v1与旧生成实现；当前默认v2见BiomeWorldGeneration和WorldBiomes | |
+| 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：Natural v3环境流体与岩浆、完整窗口风场、地区生态、昼夜四季 | |
+| 系统·世界｜世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | 兼容：Natural v1与旧生成实现；当前默认v3见BiomeWorldGeneration | |
 | 系统·世界｜有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 现行：持续来源、严格加速度上限、宿主转换、区域冻结与归属持久化 | |
-| 系统·世界｜水蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 现行：单格材料形态规则、调试笔刷、同步提交、存档与验证入口 | |
-| 系统·世界｜分层群落世界生成v2 | `workspace:Docs/BiomeWorldGeneration.md` | 现行：保持v2气候地形植被复现，生态群落查询与地区内容的新入口及原生成验证 | |
-| 系统·世界｜世界生态群落 | `context:GlobalDoc/WorldBiomes.md` | 现行：群落查询、地区生成与休眠、候选存档、背景装饰和验证边界 | |
+| 系统·世界｜水岩浆蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 现行：水流、岩浆慢流与遇水凝固、瞬态元素、休眠、保存及验证入口 | |
+| 系统·世界｜分层群落世界生成v2与v3 | `workspace:Docs/BiomeWorldGeneration.md` | 现行：v3气候湖泊地下水与深层岩浆、有限体积、v1/v2兼容及验证入口 | |
+| 系统·世界｜世界生态群落 | `context:GlobalDoc/WorldBiomes.md` | 现行：v2/v3同源群落查询、地区生成休眠、候选存档、背景装饰及验证边界 | |
 | 系统·角色｜角色、怪物与战斗 | `context:GlobalDoc/SystemsActors.md` | 现行：玩家与Actor、八类怪物、命中死亡复活、地区休眠及成长缺口 | |
 | 系统·角色｜Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 现行：Actor组件与生命周期；生产玩家构式归手持木棍，Gameplay v6保存 | |
 | 系统·角色｜怪物内容与运行时 | `workspace:Docs/Monsters.md` | 现行：怪物资源配置、行为战斗、地区候选与休眠存档及验证 | |
@@ -116,7 +116,7 @@
 | 历史｜M6运行时逻辑构建与DSL阶段验收 | `context:GlobalDoc/M6Acceptance.md` | 历史：暂缓持久DSL的场景依据、实验隔离、阶段复测与独立审查 | |
 | 历史｜游戏愿景模块化架构总验收 | `context:GlobalDoc/GameplayArchitectureAcceptance.md` | 历史：六阶段29项任务的组合合同、CPU与GPU/AET验证、独立审查及范围限制 | |
 | 历史｜Performance引擎迁移验收 | `workspace:Docs/DiagnosticsMigration.md` | 历史：通用诊断边界、PerfTest与纳秒trace、静态动态库及原生窗口验收结果 | |
-| 历史｜Natural v1固定生成参数 | `workspace:Pixel/Source/Runtime/Simulation/World/Generation/Version1.md` | 兼容：保留旧生成版本复现；新游戏默认Natural v2 | |
+| 历史｜Natural v1固定生成参数 | `workspace:Pixel/Source/Runtime/Simulation/World/Generation/Version1.md` | 兼容：保留旧生成版本复现；新游戏默认Natural v3 | |
 | 系统·构式物品｜手持物品与木棍构式触发器 | `context:GlobalDoc/HandheldItems.md` | 现行：统一手持使用、身体外侧完整格放置、木棍构式与掉落拾取及v6存档 | |
 | 系统·世界｜昼夜与季节实现合同 | `context:GlobalDoc/WorldCalendar.md` | 现行：20分钟昼夜、7天四季、完整提交、光照HUD、季末晨昏跳转及world.meta v7 | |
 | 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |

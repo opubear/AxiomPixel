@@ -1679,7 +1679,7 @@ void TerrainMaterialsGpu() {
     constexpr std::array types{pixel::CellTypeId::Dirt, pixel::CellTypeId::GroundSoil,
         pixel::CellTypeId::GrassSoil, pixel::CellTypeId::Stone, pixel::CellTypeId::CoalOre,
         pixel::CellTypeId::CopperOre, pixel::CellTypeId::IronOre, pixel::CellTypeId::TungstenOre,
-        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water, pixel::CellTypeId::Steam, pixel::CellTypeId::Fire,
+        pixel::CellTypeId::GoldOre, pixel::CellTypeId::Water, pixel::CellTypeId::Steam, pixel::CellTypeId::Fire, pixel::CellTypeId::Lava,
         pixel::CellTypeId::Sand, pixel::CellTypeId::Clay, pixel::CellTypeId::MossStone, pixel::CellTypeId::Sandstone,
         pixel::CellTypeId::Snow, pixel::CellTypeId::Ice, pixel::CellTypeId::Wood, pixel::CellTypeId::Leaves};
     for (uint32_t i = 0; i < types.size(); ++i)

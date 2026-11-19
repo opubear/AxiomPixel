@@ -76,6 +76,7 @@ void NaturalPersistenceAndStrategySelection(uint32_t version = 1) {
         world.SetCell(32, 10, {CellTypeId::Water});
         world.SetCell(33, 10, {CellTypeId::Ice});
         world.SetCell(34, 10, {CellTypeId::Leaves});
+        world.SetCell(35, 10, {CellTypeId::Lava});
         Require(session.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
         original = session.GetSaveDirectory();
     }
@@ -85,6 +86,7 @@ void NaturalPersistenceAndStrategySelection(uint32_t version = 1) {
         Require(testing::SessionAccess::World(restored).GetCell(33, 10).Type == CellTypeId::Ice && testing::SessionAccess::World(restored).GetCell(34, 10).Type == CellTypeId::Leaves,
                 "biome materials did not survive a chunk checkpoint");
         Require(pixel::testing::SessionAccess::World(restored).GetCell(32, 10).Type == CellTypeId::Water, "saved water was regenerated");
+        Require(pixel::testing::SessionAccess::World(restored).GetCell(35, 10).Type == CellTypeId::Lava, "saved lava was lost on load");
         pixel::testing::SessionAccess::World(restored).SetCell(32, 10, {});
         Require(restored.Control(pixel::NativeCaller::Driver, pixel::api::SaveWorld{}).Succeeded(), "session control failed");
     }
@@ -101,7 +103,7 @@ void NaturalPersistenceAndStrategySelection(uint32_t version = 1) {
         restored.Control(NativeCaller::Driver, api::SetNextGenerator{api::GeneratorKind::Natural});
         Require(restored.GetNextGenerationSettings().Version == LatestNaturalGenerationVersion &&
                     restored.GetGenerationSettings().Kind == WorldGeneratorKind::Flat && restored.GetGenerationSettings().Version == 1,
-                "selecting Natural did not choose v2 or mutated the active flat generator");
+                "selecting Natural did not choose the latest version or mutated the active flat generator");
     }
 }
 
@@ -287,6 +289,7 @@ int main() {
         TemporaryGamesIgnoreSavesAndDiscardProgress();
         NaturalPersistenceAndStrategySelection();
         NaturalPersistenceAndStrategySelection(2);
+        NaturalPersistenceAndStrategySelection(3);
         LegacyFlatAndResetFailure();
         FailedRecoveryIsIsolatedAndRetryable();
         Version3GenerationRemainsReadable();

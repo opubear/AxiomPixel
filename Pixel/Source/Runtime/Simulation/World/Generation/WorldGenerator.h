@@ -9,7 +9,7 @@
 
 namespace pixel {
 enum class WorldGeneratorKind : uint32_t { Flat = 0, Natural = 1 };
-inline constexpr uint32_t LatestNaturalGenerationVersion = 2;
+inline constexpr uint32_t LatestNaturalGenerationVersion = 3;
 
 struct WorldGenerationSettings {
     WorldGeneratorKind Kind = WorldGeneratorKind::Flat;
@@ -52,16 +52,21 @@ WorldGenerationColumn SampleGenerationColumn(WorldGenerationSettings settings, i
 std::vector<CellTypeId> SampleGeneration(WorldGenerationSettings settings, WorldRect bounds,
                                        GenerationStage through = GenerationStage::Surface);
 
-enum class GenerationWaterKind : uint8_t { SurfaceLake, Groundwater };
-struct GenerationWaterBody {
-    GenerationWaterKind Kind;
+enum class GenerationFluidKind : uint8_t { SurfaceLake, Groundwater, LavaPool };
+struct GenerationFluidBody {
+    GenerationFluidKind Kind;
     CellCoord Feature;
     WorldRect Bounds;
     int64_t Level = 0;
     uint32_t CellCount = 0;
+    CellTypeId Material = CellTypeId::Water;
 };
+using GenerationWaterKind = GenerationFluidKind;
+using GenerationWaterBody = GenerationFluidBody;
 
 // Returns complete accepted bodies intersecting bounds, including their total
 // volume outside bounds. Diagnostic plans do not create persistent water sources.
+// The water-only API filters out lava; the fluid API includes both materials.
 std::vector<GenerationWaterBody> PlanGenerationWater(WorldGenerationSettings settings, WorldRect bounds);
+std::vector<GenerationFluidBody> PlanGenerationFluids(WorldGenerationSettings settings, WorldRect bounds);
 } // namespace pixel

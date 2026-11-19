@@ -4,7 +4,7 @@ namespace pixel {
 std::optional<items::ItemAmount> MiningYield(CellTypeId material) {
     using items::ItemId;
     switch (material) {
-    case CellTypeId::Air: case CellTypeId::Water: case CellTypeId::Steam: case CellTypeId::Fire: return std::nullopt;
+    case CellTypeId::Air: case CellTypeId::Water: case CellTypeId::Steam: case CellTypeId::Fire: case CellTypeId::Lava: return std::nullopt;
     case CellTypeId::Dirt: case CellTypeId::GroundSoil: case CellTypeId::GrassSoil: return {{ItemId::Soil, 1}};
     case CellTypeId::MossStone: case CellTypeId::Stone: return {{ItemId::Stone, 1}};
     case CellTypeId::CoalOre: return {{ItemId::Coal, 1}};

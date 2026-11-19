@@ -9,6 +9,7 @@ namespace pixel::cellular {
 struct Update {
     CellTypeId Material;
     std::optional<CellCoord> Destination;
+    bool KeepAwake = false;
 };
 
 constexpr bool IsTransient(CellTypeId type) {

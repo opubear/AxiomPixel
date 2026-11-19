@@ -94,6 +94,38 @@ void LedgeAndWakeHalo() {
     Require(water.size() == 1 && water.front().Y > 31, "opening a four-cell-away outlet did not wake/drain water");
 }
 
+void LavaFlowCoolingAndSleep() {
+    TestWorld world(64, 64);
+    world.SetCell(20, 4, {CellTypeId::Lava});
+    for (int step = 0; step < 16; ++step) world.Tick(1.f / 60);
+    const auto lava = Find(world, CellTypeId::Lava);
+    Require(lava.size() == 1 && lava[0].Y == 8, "lava did not conserve volume or flow at quarter speed");
+    Require(!BlocksCharacter(CellTypeId::Lava) && BlocksWind(CellTypeId::Lava) && !IsMineable(CellTypeId::Lava),
+            "lava collision or mining definition is incorrect");
+
+    TestWorld basin(64, 64);
+    basin.Fill({CellTypeId::Stone});
+    basin.FillRegion({10, 10, 12, 12}, {CellTypeId::Air});
+    basin.FillRegion({10, 18, 12, 4}, {CellTypeId::Lava});
+    for (int step = 0; step < 32; ++step) basin.Tick(1.f / 60);
+    Require(Find(basin, CellTypeId::Lava).size() == 48 && basin.GetEnvironment().LastActiveRegions() == 0,
+            "settled lava lost volume or failed to sleep");
+    basin.SetCell(12, 17, {CellTypeId::Water});
+    basin.Tick(1.f / 60);
+    Require(basin.GetCell(12, 18).Type == CellTypeId::Stone && Find(basin, CellTypeId::Water).size() == 1,
+            "water failed to cool lava to stone while retaining water");
+
+    TestWorld outlet(128, 64);
+    outlet.FillRegion({0, 31, 128, 1}, {CellTypeId::Stone});
+    outlet.SetCell(60, 30, {CellTypeId::Lava});
+    for (int step = 0; step < 8; ++step) outlet.Tick(1.f / 60);
+    Require(outlet.GetEnvironment().LastActiveRegions() == 0, "still lava did not sleep");
+    outlet.TryRemoveMaterial(64, 31);
+    for (int step = 0; step < 48; ++step) outlet.Tick(1.f / 60);
+    const auto drained = Find(outlet, CellTypeId::Lava);
+    Require(drained.size() == 1 && drained[0].Y > 31, "opening an outlet did not wake and drain lava");
+}
+
 void CrossChunkAndFrozenBoundary() {
     World world;
     auto &map = testing::WorldAccess::Map(world);
@@ -104,10 +136,12 @@ void CrossChunkAndFrozenBoundary() {
     world.SetCell(-1, -1, {CellTypeId::Water});
     world.SetCell(1, 0, {CellTypeId::Steam});
     world.SetCell(5, 0, {CellTypeId::Fire});
+    world.SetCell(-6, -1, {CellTypeId::Lava});
     // Steam is allowed an idle step. All three must eventually cross Y=0.
     for (int step = 0; step < 10; ++step)
         Require(world.StepEnvironment(step / 60.0), "cross-chunk simulation failed");
     Require(Find(world, CellTypeId::Water).front().Y >= 0, "water failed to cross a negative chunk seam");
+    Require(Find(world, CellTypeId::Lava).front().Y >= 0, "lava failed to cross a negative chunk seam");
     for (const auto type : {CellTypeId::Steam, CellTypeId::Fire}) {
         const auto cells = Find(world, type);
         Require(!cells.empty() && cells.front().Y < 0, "rising element failed to cross a chunk seam");
@@ -116,10 +150,14 @@ void CrossChunkAndFrozenBoundary() {
         map.Insert(std::make_unique<WorldChunk>(ChunkOf({20, 64})));
     world.SetCell(20, 63, {CellTypeId::Water});
     world.SetCell(20, 64, {CellTypeId::Fire});
+    world.SetCell(25, 63, {CellTypeId::Lava});
+    world.SetCell(25, 64, {CellTypeId::Water});
     for (int step = 10; step < 100; ++step)
         world.StepEnvironment(step / 60.0);
     Require(world.GetCell(20, 63).Type == CellTypeId::Water && world.GetCell(20, 64).Type == CellTypeId::Fire,
             "simulation boundary moved or decayed frozen cells");
+    Require(world.GetCell(25, 63).Type == CellTypeId::Lava && world.GetCell(25, 64).Type == CellTypeId::Water,
+            "lava cooled against water outside the active simulation window");
 }
 
 void PersistenceAndContinuation() {
@@ -129,6 +167,7 @@ void PersistenceAndContinuation() {
     original.FillRegion({10, 40, 20, 4}, {CellTypeId::Water});
     original.FillRegion({50, 80, 20, 4}, {CellTypeId::Steam});
     original.FillRegion({90, 80, 20, 4}, {CellTypeId::Fire});
+    original.FillRegion({20, 100, 12, 4}, {CellTypeId::Lava});
     original.SetBaseForce(51, 70, {123, 456});
     for (int step = 0; step < 17; ++step) original.StepEnvironment(step / 60.0);
     auto &target = testing::WorldAccess::Map(restored);
@@ -139,7 +178,7 @@ void PersistenceAndContinuation() {
     }
     for (int step = 17; step < 50; ++step) {
         Require(original.StepEnvironment(step / 60.0) && restored.StepEnvironment(step / 60.0), "continuation step failed");
-        for (const auto type : {CellTypeId::Water, CellTypeId::Steam, CellTypeId::Fire})
+        for (const auto type : {CellTypeId::Water, CellTypeId::Steam, CellTypeId::Fire, CellTypeId::Lava})
             Require(Find(original, type) == Find(restored, type), "saved material or deterministic continuation differs");
     }
     Require(restored.GetBaseForceField().Get(51, 70) == ForceVector{123, 456}, "material motion transported spatial force");
@@ -152,6 +191,7 @@ int main() {
         MotionAndDecay();
         WallsWindAndWater();
         LedgeAndWakeHalo();
+        LavaFlowCoolingAndSleep();
         CrossChunkAndFrozenBoundary();
         PersistenceAndContinuation();
         std::cout << "Element motion, decay, wind, walls, wake halos, chunk boundaries and persistence passed\n";

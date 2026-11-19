@@ -23,6 +23,7 @@ enum class CellTypeId : uint32_t {
     Water = 50,
     Steam = 51,
     Fire = 52,
+    Lava = 53,
     Snow = 60,
     Ice = 61,
     Wood = 70,
@@ -69,6 +70,7 @@ template <> struct CellDefinition<CellTypeId::GoldOre> { inline static constexpr
 template <> struct CellDefinition<CellTypeId::Water> { inline static constexpr CellInfo Info{1.f, false, true, false}; };
 template <> struct CellDefinition<CellTypeId::Steam> { inline static constexpr CellInfo Info{0.f, false, false, false}; };
 template <> struct CellDefinition<CellTypeId::Fire> { inline static constexpr CellInfo Info{0.f, false, false, false}; };
+template <> struct CellDefinition<CellTypeId::Lava> { inline static constexpr CellInfo Info{2.f, false, true, false}; };
 
 template <> struct CellDefinition<CellTypeId::Sand> { inline static constexpr CellInfo Info{1.f}; };
 template <> struct CellDefinition<CellTypeId::Clay> { inline static constexpr CellInfo Info{1.f}; };
@@ -96,6 +98,7 @@ constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     case CellTypeId::Water: return CellDefinition<CellTypeId::Water>::Info;
     case CellTypeId::Steam: return CellDefinition<CellTypeId::Steam>::Info;
     case CellTypeId::Fire: return CellDefinition<CellTypeId::Fire>::Info;
+    case CellTypeId::Lava: return CellDefinition<CellTypeId::Lava>::Info;
     case CellTypeId::Sand: return CellDefinition<CellTypeId::Sand>::Info;
     case CellTypeId::Clay: return CellDefinition<CellTypeId::Clay>::Info;
     case CellTypeId::MossStone: return CellDefinition<CellTypeId::MossStone>::Info;
@@ -114,7 +117,7 @@ constexpr bool IsKnownCellType(CellTypeId type) {
     case CellTypeId::GrassSoil: case CellTypeId::Stone: case CellTypeId::CoalOre:
     case CellTypeId::CopperOre: case CellTypeId::IronOre: case CellTypeId::TungstenOre:
     case CellTypeId::GoldOre: case CellTypeId::Water:
-    case CellTypeId::Steam: case CellTypeId::Fire:
+    case CellTypeId::Steam: case CellTypeId::Fire: case CellTypeId::Lava:
     case CellTypeId::Sand:
     case CellTypeId::Clay:
     case CellTypeId::MossStone:
@@ -132,4 +135,5 @@ constexpr bool IsKnownCellType(CellTypeId type) {
 constexpr bool BlocksCharacter(CellTypeId type) { return !IsKnownCellType(type) || GetCellInfo(type).BlocksCharacter; }
 constexpr bool BlocksWind(CellTypeId type) { return !IsKnownCellType(type) || GetCellInfo(type).BlocksWind; }
 constexpr bool IsMineable(CellTypeId type) { return IsKnownCellType(type) && GetCellInfo(type).Mineable; }
+constexpr bool IsLiquid(CellTypeId type) { return type == CellTypeId::Water || type == CellTypeId::Lava; }
 } // namespace pixel

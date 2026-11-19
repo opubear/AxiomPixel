@@ -53,7 +53,7 @@ BiomeSample BiomeClimate::Sample(int64_t x) const {
 BiomeSample SampleWorldBiome(const WorldGenerationSettings &settings, CellCoord point) {
     ValidateGenerationSettings(settings);
     ValidateGenerationPoint(point);
-    if (settings.Kind == WorldGeneratorKind::Natural && settings.Version == 2)
+    if (settings.Kind == WorldGeneratorKind::Natural && settings.Version >= 2)
         return BiomeClimate(settings.Seed).Sample(point.X);
     return {};
 }

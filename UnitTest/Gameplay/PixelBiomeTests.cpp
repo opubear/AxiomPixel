@@ -19,7 +19,7 @@ std::vector<char> Read(std::string_view name) {
     if (!file) throw std::runtime_error("missing biome content");
     return {std::istreambuf_iterator<char>(file), {}};
 }
-WorldGenerationSettings Natural(uint64_t seed) { return {WorldGeneratorKind::Natural, 2, seed}; }
+WorldGenerationSettings Natural(uint64_t seed) { return {WorldGeneratorKind::Natural, LatestNaturalGenerationVersion, seed}; }
 
 void ClimateContract() {
     const auto settings = Natural(42);

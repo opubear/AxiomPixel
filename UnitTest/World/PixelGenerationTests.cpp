@@ -62,7 +62,7 @@ void NoiseContractAndSettings() {
     changed = settings;
     changed.WaterEnabled = false;
     Require(GenerationFingerprint(changed) != GenerationFingerprint(settings), "water switch is absent from generation identity");
-    changed = settings; changed.Version = 3;
+    changed = settings; changed.Version = LatestNaturalGenerationVersion + 1;
     RequireRejected([&] { CreateWorldGenerator(changed); }, "unknown natural version was accepted");
     changed.Kind = WorldGeneratorKind::Flat; changed.Version = 2;
     RequireRejected([&] { CreateWorldGenerator(changed); }, "natural v2 was incorrectly accepted as flat v2");
@@ -227,7 +227,7 @@ void CheckWaterBody(WorldGenerationSettings settings, const GenerationWaterBody 
     for (uint32_t y = 1; y + 1 < halo.Height; ++y)
         for (uint32_t x = 1; x + 1 < halo.Width; ++x) {
             const size_t index = size_t(y) * halo.Width + x;
-            if (cells[index] != CellTypeId::Water)
+            if (cells[index] != body.Material)
                 continue;
             ++volume;
             Require(halo.Y + y >= body.Level, "water appeared above its fixed level");
@@ -240,7 +240,7 @@ void CheckWaterBody(WorldGenerationSettings settings, const GenerationWaterBody 
                         "submerged lake floor acquired grass or lost solid support");
         }
     Require(volume == body.CellCount && volume > 0 && freeSurface, "water plan volume or free surface differs from generated material");
-    Require(volume <= (body.Kind == GenerationWaterKind::SurfaceLake ? 129 * 8 : 128 * 128), "water body exceeds finite capacity");
+    Require(volume <= (body.Kind == GenerationWaterKind::SurfaceLake ? 145 * 16 : 128 * 128), "water body exceeds finite capacity");
     CompareTiling(settings, halo);
 }
 
@@ -310,7 +310,7 @@ void FiniteWaterAndFeatureBoundaries() {
 }
 void LayeredBiomes() {
     auto settings = Natural(42);
-    settings.Version = LatestNaturalGenerationVersion;
+    settings.Version = 2;
     std::array<int64_t, 3> centers{};
     std::array<bool, 3> found{};
     for (int64_t x = -16384; x < 16384; x += 16) {
@@ -410,6 +410,67 @@ void PublicCoordinateEdges() {
         RequireRejected([&] { SampleGenerationColumn(settings, x); }, "public column boundary was relaxed");
     }
 }
+
+void EnvironmentalFluids() {
+    const WorldGenerationSettings settings{WorldGeneratorKind::Natural, 3, 42};
+    const WorldRect range{-8192, 0, 16384, 3072};
+    const auto bodies = PlanGenerationFluids(settings, range);
+    std::array<uint32_t, 3> counts{};
+    std::array<std::optional<GenerationFluidBody>, 3> examples;
+    for (const auto &body : bodies) {
+        const size_t kind = size_t(body.Kind);
+        ++counts[kind];
+        if (!examples[kind]) examples[kind] = body;
+        const auto column = SampleGenerationColumn(settings, body.Bounds.X + body.Bounds.Width / 2);
+        Require(column.Environment == SampleWorldBiome(settings, {body.Bounds.X + body.Bounds.Width / 2, body.Level}),
+                "v3 runtime ecology lost generation climate");
+        if (body.Kind == GenerationFluidKind::SurfaceLake)
+            Require(column.Environment.SnowWeight <= 32768, "v3 generated an exposed liquid lake in alpine climate");
+        else {
+            Require(body.Level - column.DrySurfaceY >= 96, "underground pool escaped the surface cover");
+            const auto hotDepth = std::max<int64_t>(512, 704 - column.Environment.Temperature / 128);
+            Require((body.Material == CellTypeId::Lava) == (body.Level - column.DrySurfaceY >= hotDepth),
+                    "pool material does not follow local temperature and depth");
+        }
+    }
+    for (size_t kind = 0; kind < counts.size(); ++kind) {
+        std::cout << "v3 fluid kind " << kind << ": " << counts[kind] << '\n';
+        Require(examples[kind].has_value(), "v3 fixture lacks a lake, aquifer or lava pool");
+        CheckWaterBody(settings, *examples[kind]);
+    }
+    const auto &lava = *examples[size_t(GenerationFluidKind::LavaPool)];
+    CheckActualChunkIntersection(settings, {lava.Bounds.X - 4, lava.Level - 4, lava.Bounds.Width + 8, lava.Bounds.Height + 8});
+    const auto beforeFluids = SampleGeneration(settings, lava.Bounds, GenerationStage::Ores);
+    Require(std::find(beforeFluids.begin(), beforeFluids.end(), CellTypeId::Lava) == beforeFluids.end(),
+            "lava appeared before the fluid generation stage");
+    auto dry = settings;
+    dry.WaterEnabled = false;
+    const auto dryBodies = PlanGenerationFluids(dry, range);
+    Require(PlanGenerationWater(dry, range).empty() &&
+                std::all_of(dryBodies.begin(), dryBodies.end(), [](const auto &body) { return body.Material == CellTypeId::Lava; }),
+            "disabled water removed lava or retained water");
+    Require(dryBodies.size() == counts[2], "water switch changed lava pool identities");
+    Require(SampleGeneration(settings, lava.Bounds) == SampleGeneration(dry, lava.Bounds),
+            "water switch changed a geothermal pool");
+    const auto &water = *examples[size_t(GenerationFluidKind::Groundwater)];
+    const auto dryWater = SampleGeneration(dry, water.Bounds);
+    Require(std::find(dryWater.begin(), dryWater.end(), CellTypeId::Water) == dryWater.end(), "dry aquifer retained water");
+    const auto spawn = SampleGenerationColumn(settings, 512).SurfaceY;
+    const auto clearance = SampleGeneration(settings, {496, spawn - 32, 33, 32});
+    Require(std::all_of(clearance.begin(), clearance.end(), [](auto type) { return type == CellTypeId::Air; }),
+            "v3 fluids obstructed spawn clearance");
+    for (int64_t x : {-(int64_t{1} << 55) - 17, (int64_t{1} << 55) + 13}) {
+        const auto column = SampleGenerationColumn(settings, x);
+        CompareTiling(settings, {x, column.SurfaceY + 768, 65, 128});
+    }
+    auto otherSeed = settings; otherSeed.Seed = 43;
+    Require(SampleGeneration(settings, lava.Bounds) != SampleGeneration(otherSeed, lava.Bounds),
+            "v3 fluid distribution ignored the seed");
+    Require(GenerationFingerprint(settings) != GenerationFingerprint({WorldGeneratorKind::Natural, 2, 42}),
+            "new generation version lost its identity");
+    Require(MaterialDigest(SampleGeneration(settings, {-129, 440, 256, 1024})) == 6575692422298785517ull,
+            "natural/3 fixed material golden region changed");
+}
 } // namespace
 
 int main() {
@@ -421,6 +482,7 @@ int main() {
         FiniteWaterAndFeatureBoundaries();
         LayeredBiomes();
         PublicCoordinateEdges();
+        EnvironmentalFluids();
         std::cout << "Deterministic generation, stages, finite water and chunk consistency tests passed\n";
         return 0;
     } catch (const std::exception &error) {

@@ -11,7 +11,7 @@
 #include <stdexcept>
 
 namespace {
-constexpr std::array<uint32_t, 21> RequiredTypes{0, 10, 20, 21, 30, 40, 41, 42, 43, 44, 50, 51, 52, 22, 23, 31, 32, 60, 61, 70, 71};
+constexpr std::array<uint32_t, 22> RequiredTypes{0, 10, 20, 21, 30, 40, 41, 42, 43, 44, 50, 51, 52, 53, 22, 23, 31, 32, 60, 61, 70, 71};
 
 void Check(bool value, const char *reason) {
     if (!value)

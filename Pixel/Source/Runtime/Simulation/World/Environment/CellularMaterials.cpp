@@ -38,12 +38,12 @@ uint64_t Noise(CellCoord cell, uint64_t step, CellTypeId material) {
     return value ^ (value >> 31);
 }
 
-std::optional<CellCoord> FlowWater(const Neighbours &near, int first) {
+std::optional<CellCoord> FlowLiquid(const Neighbours &near, CellTypeId material, int first) {
     if (near.Empty(0, 1))
         return near.At(0, 1);
 
-    const bool stacked = near.Is(0, -1, CellTypeId::Water);
-    const bool supportedByWater = near.Is(0, 1, CellTypeId::Water);
+    const bool stacked = near.Is(0, -1, material);
+    const bool supportedByWater = near.Is(0, 1, material);
     for (const int dx : {first, -first}) {
         if (!near.Empty(dx, 0))
             continue;
@@ -84,11 +84,20 @@ Update Evaluate(const WorldMap &map, WorldRect bounds, CellCoord cell,
     const Neighbours near(map, bounds, cell);
     const auto noise = Noise(cell, step, material);
     const int first = (noise & 1) ? -1 : 1;
-    if (material == CellTypeId::Water)
-        return {material, FlowWater(near, first)};
+    if (IsLiquid(material)) {
+        const auto destination = FlowLiquid(near, material, first);
+        if (material == CellTypeId::Lava) {
+            if (near.Touches(CellTypeId::Water))
+                return {CellTypeId::Stone, std::nullopt};
+            // A shared cadence remains slow as a cell changes coordinates.
+            if (step % 4 != 0)
+                return {material, std::nullopt, destination.has_value()};
+        }
+        return {material, destination};
+    }
 
     if (!IsTransient(material))
-        throw std::logic_error("cellular rule requires water, steam or fire");
+        throw std::logic_error("cellular rule requires a liquid, steam or fire");
 
     // Decay is a reproducible visual rule, not temperature or fuel use.
     const uint64_t decayMask = material == CellTypeId::Fire ? 63 : 511;

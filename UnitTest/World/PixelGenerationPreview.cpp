@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 // Reproducible CPU preview of real generated cells sampled from the runtime
 // texture catalog. This diagnostic never creates a save or starts simulation.
@@ -20,7 +21,7 @@ int main(int argc, char **argv) {
         });
         pixel::GamePresentation presentation;
         const auto catalog = presentation.LoadTextures(assets);
-        const pixel::WorldGenerationSettings settings{pixel::WorldGeneratorKind::Natural, 2, 42};
+        const pixel::WorldGenerationSettings settings{pixel::WorldGeneratorKind::Natural, pixel::LatestNaturalGenerationVersion, 42};
         std::array<bool, 3> found{};
         std::array<int64_t, 3> centers{};
         std::ofstream climate(destination / "climate.csv");
@@ -36,15 +37,35 @@ int main(int argc, char **argv) {
                 centers[biome] = x;
             }
         }
+        struct Region { std::string Name; pixel::WorldRect Bounds; };
+        std::vector<Region> regions;
         for (size_t biome = 0; biome < centers.size(); ++biome) {
             if (!found[biome]) throw std::runtime_error("preview seed lacks a biome");
             const auto column = pixel::SampleGenerationColumn(settings, centers[biome]);
             const pixel::WorldRect bounds{centers[biome] - 256, column.SurfaceY - 96, 512, 384};
+            const auto name = std::array{"forest", "desert", "snow"}[biome];
+            regions.push_back({name, bounds});
+            std::cout << name << ": seed 42, center " << centers[biome] << ", surface " << column.SurfaceY << '\n';
+        }
+        std::array<bool, 3> shown{};
+        std::array<uint32_t, 3> counts{};
+        for (const auto &body : pixel::PlanGenerationFluids(settings, {-8192, 0, 16384, 3072})) {
+            const size_t kind = size_t(body.Kind);
+            ++counts[kind];
+            if (shown[kind]) continue;
+            shown[kind] = true;
+            const auto name = std::array{"lake", "groundwater", "lava"}[kind];
+            regions.push_back({name, {body.Bounds.X - 32, body.Level - 48,
+                                     body.Bounds.Width + 64, body.Bounds.Height + 80}});
+            std::cout << name << ": " << body.Bounds.X << ',' << body.Level << ", volume " << body.CellCount << '\n';
+        }
+        for (const auto &region : regions) {
+            const auto &bounds = region.Bounds;
+            const auto &name = region.Name;
             const auto cells = pixel::SampleGeneration(settings, bounds);
-            std::array<int64_t, 512> surfaceHeights;
+            std::vector<int64_t> surfaceHeights(bounds.Width);
             for (size_t x = 0; x < surfaceHeights.size(); ++x)
                 surfaceHeights[x] = pixel::SampleGenerationColumn(settings, bounds.X + x).SurfaceY;
-            const auto name = std::array{"forest", "desert", "snow"}[biome];
             std::ofstream image(destination / (std::string(name) + ".ppm"), std::ios::binary);
             image << "P6\n" << bounds.Width << ' ' << bounds.Height << "\n255\n";
             for (uint32_t y = 0; y < bounds.Height; ++y)
@@ -65,12 +86,8 @@ int main(int argc, char **argv) {
                     }
                     image.write(reinterpret_cast<const char *>(color.data()), color.size());
                 }
-            std::cout << name << ": seed 42, center " << centers[biome] << ", surface " << column.SurfaceY << '\n';
         }
-        uint32_t lakes = 0, groundwater = 0;
-        for (const auto &water : pixel::PlanGenerationWater(settings, {-16384, 0, 32768, 3072}))
-            (water.Kind == pixel::GenerationWaterKind::SurfaceLake ? lakes : groundwater)++;
-        std::cout << "Water plans: " << lakes << " lakes, " << groundwater << " groundwater bodies\n";
+        std::cout << "Fluid plans: " << counts[0] << " lakes, " << counts[1] << " groundwater bodies, " << counts[2] << " lava pools\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
         return 1;

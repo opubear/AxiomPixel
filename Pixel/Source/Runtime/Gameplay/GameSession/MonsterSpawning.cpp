@@ -10,7 +10,7 @@ void GameSession::SpawnSceneActors() {
 
 void GameSession::ActivateRegionalPopulation() {
     const auto settings = GameWorld.GetGenerationSettings();
-    if (settings.Kind != WorldGeneratorKind::Natural || settings.Version != 2) return;
+    if (settings.Kind != WorldGeneratorKind::Natural || settings.Version < 2) return;
     // Referenced objects stay in Actors until their dependent domain can
     // participate in dormancy. This preserves carrier and owner identities.
     std::vector<ActorId> pinned;

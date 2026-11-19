@@ -20,7 +20,7 @@ constexpr std::array RequiredMaterials{
     uint32_t(CellTypeId::GrassSoil), uint32_t(CellTypeId::Stone), uint32_t(CellTypeId::CoalOre),
     uint32_t(CellTypeId::CopperOre), uint32_t(CellTypeId::IronOre), uint32_t(CellTypeId::TungstenOre),
     uint32_t(CellTypeId::GoldOre), uint32_t(CellTypeId::Water),
-    uint32_t(CellTypeId::Steam), uint32_t(CellTypeId::Fire),
+    uint32_t(CellTypeId::Steam), uint32_t(CellTypeId::Fire), uint32_t(CellTypeId::Lava),
     uint32_t(CellTypeId::Sand), uint32_t(CellTypeId::Clay), uint32_t(CellTypeId::MossStone),
     uint32_t(CellTypeId::Sandstone), uint32_t(CellTypeId::Snow), uint32_t(CellTypeId::Ice),
     uint32_t(CellTypeId::Wood), uint32_t(CellTypeId::Leaves)};
@@ -33,6 +33,7 @@ CellAppearanceTable DefaultAppearances() {
             {uint32_t(CellTypeId::TungstenOre), 7}, {uint32_t(CellTypeId::GoldOre), 8},
             {uint32_t(CellTypeId::Water), {9, 10, 3}},
             {uint32_t(CellTypeId::Steam), 11}, {uint32_t(CellTypeId::Fire), 12},
+            {uint32_t(CellTypeId::Lava), 12},
             {uint32_t(CellTypeId::Sand), 13}, {uint32_t(CellTypeId::Clay), 14},
             {uint32_t(CellTypeId::MossStone), 15}, {uint32_t(CellTypeId::Sandstone), 16},
             {uint32_t(CellTypeId::Snow), 17}, {uint32_t(CellTypeId::Ice), 18},
