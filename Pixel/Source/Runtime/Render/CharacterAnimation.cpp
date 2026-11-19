@@ -43,12 +43,14 @@ void CharacterAnimation::Apply(const CharacterAssets &assets, WorldGridFrame &fr
                                         : std::min(elapsedFrames, double(clip.FrameCount - 1)));
     const float scaleX = frame.View.CellSizePixels[0] / assets.PixelsPerCell;
     const float scaleY = frame.View.CellSizePixels[1] / assets.PixelsPerCell;
-    const float anchorX = Left ? assets.FrameSize[0] - assets.FootAnchor[0] : assets.FootAnchor[0];
+    // Character layers face left in the source atlas; mirror them to face right.
+    const bool flipX = !Left;
+    const float anchorX = flipX ? assets.FrameSize[0] - assets.FootAnchor[0] : assets.FootAnchor[0];
     draw.Bounds = {draw.Bounds[0] + draw.Bounds[2] * .5f - anchorX * scaleX,
         draw.Bounds[1] + draw.Bounds[3] - assets.FootAnchor[1] * scaleY,
         assets.FrameSize[0] * scaleX, assets.FrameSize[1] * scaleY};
     draw.FrameTexels = {float((clip.FirstFrame + index) * assets.FrameSize[0]), float(clip.Row * assets.FrameSize[1]),
         float(assets.FrameSize[0]), float(assets.FrameSize[1])};
-    draw.Sprite = {float(assets.Layers.size()), Left ? 1.f : 0.f, 0, 0};
+    draw.Sprite = {float(assets.Layers.size()), flipX ? 1.f : 0.f, 0, 0};
 }
 } // namespace pixel

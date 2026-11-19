@@ -57,7 +57,8 @@ void Assets() {
 }
 void Playback() {
     pixel::ArtAssetStore store(Read);
-    const auto art = store.LoadCharacter();
+    auto art = *store.LoadCharacter();
+    art.FootAnchor[0] = 30; // An off-centre pivot exposes mismatched sprite/anchor mirroring.
     pixel::CharacterAnimation animation;
     pixel::ActorSnapshot actor{{1}, pixel::ActorKind::Player, pixel::WorldPosition::FromChunkCells({-(int64_t(1) << 48), 0}, {10, 10}), true};
     pixel::Camera2D camera;
@@ -67,22 +68,32 @@ void Playback() {
     const auto publish = [&](double time, uint64_t world = 1) {
         BuildCharacterFrame(actor, camera, {800, 600}, frame);
         animation.Update(actor, world, time);
-        animation.Apply(*art, frame);
+        animation.Apply(art, frame);
         ValidateWorldGridFrame(frame.Read(), 1, 800, 600);
         return *frame.Character;
     };
     const auto idle = publish(0);
     Check(idle.FrameTexels == std::array<float, 4>{0, 0, 80, 64} && idle.Sprite[0] == 5, "idle did not use outfit atlas");
+    Check(!animation.FacingLeft() && idle.Sprite[1] == 1, "right-facing idle did not mirror left-facing source art");
+    Check(std::abs(idle.Bounds[0] + 50 * 2 - 421) < .001, "mirrored feet left collision centre");
     Check(std::abs(idle.Bounds[1] + idle.Bounds[3] - 384) < .001, "sprite feet left collision bottom");
     Check(publish(.5).FrameTexels[0] == 240, "idle did not advance on simulation clock");
     Check(publish(.5).FrameTexels[0] == 240, "paused animation moved");
     actor.Position.Local[0] -= 50;
     const auto run = publish(.6);
-    Check(animation.Motion() == pixel::CharacterMotion::Run && run.FrameTexels[1] == 128 && run.Sprite[1] == 1,
-          "far-coordinate movement did not select mirrored run");
+    Check(animation.Motion() == pixel::CharacterMotion::Run && animation.FacingLeft()
+          && run.FrameTexels[1] == 128 && run.Sprite[1] == 0,
+          "leftward movement did not use left-facing source art");
+    Check(std::abs(run.Bounds[0] + 30 * 2 - 400) < .001, "unmirrored feet left collision centre");
     Check(publish(.6).FrameTexels == run.FrameTexels, "repeat publication reset running animation");
     const auto stopped = publish(.7);
-    Check(animation.Motion() == pixel::CharacterMotion::Idle && stopped.Sprite[1] == 1, "stopping lost facing");
+    Check(animation.Motion() == pixel::CharacterMotion::Idle && stopped.Sprite[1] == 0, "stopping lost left facing");
+    actor.Position.Local[0] += 50;
+    const auto right = publish(.75);
+    Check(animation.Motion() == pixel::CharacterMotion::Run && !animation.FacingLeft() && right.Sprite[1] == 1,
+          "rightward movement did not mirror left-facing source art");
+    Check(std::abs(right.Bounds[0] + 50 * 2 - 421) < .001, "turning right shifted the foot anchor");
+    Check(publish(.76).Sprite[1] == 1 && animation.Motion() == pixel::CharacterMotion::Idle, "stopping lost right facing");
     actor.Grounded = false;
     actor.Position.Local[1] = 450;
     Check(publish(.8).FrameTexels[1] == 192, "ascending did not select jump");
@@ -92,10 +103,12 @@ void Playback() {
     Check(publish(1.9).FrameTexels[1] == 256, "descending did not select fall");
     actor.Grounded = true;
     Check(publish(2).FrameTexels[1] == 0, "landing did not return to idle");
-    Check(publish(0, 2).Sprite[1] == 0, "new world retained old facing");
+    actor.Position.Local[0] -= 50;
+    Check(publish(2.1).Sprite[1] == 0, "left turn before world reset lost facing");
+    Check(publish(0, 2).Sprite[1] == 1 && !animation.FacingLeft(), "new world retained old facing");
     frame.DisplayMode = GridDisplayMode::ForceField;
     BuildCharacterFrame(actor, camera, {800, 600}, frame);
-    animation.Apply(*art, frame);
+    animation.Apply(art, frame);
     Check(!frame.Character, "diagnostic view displayed character");
 }
 } // namespace

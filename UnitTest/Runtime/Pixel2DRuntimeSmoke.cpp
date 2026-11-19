@@ -2240,19 +2240,28 @@ void CharacterGameplayGpu() {
     capture();
     for (int i = 0; i < 60; ++i) input->Tick(1.f / 60);
     capture();
-    Require(policy->PublishedFrame().Character && policy->PublishedFrame().Character->Sprite[0] == 5,
+    Require(policy->PublishedFrame().Character && policy->PublishedFrame().Character->Sprite[0] == 5
+            && policy->PublishedFrame().Character->Sprite[1] == 1,
             "production setup did not attach the configured character");
     const auto frozen = *policy->PublishedFrame().Character;
     capture();
     Require(policy->PublishedFrame().Character->FrameTexels == frozen.FrameTexels, "draw-only frame advanced animation");
     input->OnKeyEvent(Key::KEY_A, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(.1f); capture();
-    Require(policy->PublishedFrame().Character->FrameTexels[1] == 128 && policy->PublishedFrame().Character->Sprite[1] == 1,
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 128 && policy->PublishedFrame().Character->Sprite[1] == 0,
             "game movement did not select left run");
     input->OnKeyEvent(Key::KEY_A, 0, ButtonAction::ACTION_RELEASE, Mod{});
     input->Tick(1.f / 60); capture();
-    Require(policy->PublishedFrame().Character->FrameTexels[1] == 0 && policy->PublishedFrame().Character->Sprite[1] == 1,
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 0 && policy->PublishedFrame().Character->Sprite[1] == 0,
             "game stop did not retain left idle");
+    input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_PRESS, Mod{});
+    input->Tick(.1f); capture();
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 128 && policy->PublishedFrame().Character->Sprite[1] == 1,
+            "game movement did not select right run");
+    input->OnKeyEvent(Key::KEY_D, 0, ButtonAction::ACTION_RELEASE, Mod{});
+    input->Tick(1.f / 60); capture();
+    Require(policy->PublishedFrame().Character->FrameTexels[1] == 0 && policy->PublishedFrame().Character->Sprite[1] == 1,
+            "game stop did not retain right idle");
     input->OnKeyEvent(Key::KEY_SPACE, 0, ButtonAction::ACTION_PRESS, Mod{});
     input->Tick(.05f); capture();
     Require(policy->PublishedFrame().Character->FrameTexels[1] == 192, "game jump did not select rising animation");

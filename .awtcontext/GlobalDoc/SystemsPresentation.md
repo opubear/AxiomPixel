@@ -15,7 +15,7 @@
 | 地区装饰 | 草叶野花、干灌木、覆雪小石；根据提交地形显示，不参与碰撞和产物 | [世界生态群落](WorldBiomes.md) |
 | 风与场 | 普通视图的短轨迹／柔和折光；F1为合成力方向调试视图 | [工程入口](../../README.md)、[世界表示](../../Docs/WorldRepresentation.md) |
 | 昼夜与季节光照 | 2026-11-11加入晨昏、蓝色夜光、连续季节色调与日长；场景统一调色，UI/F1保留原色 | [昼夜与季节](WorldCalendar.md) |
-| 角色与怪物 | 玩家分层行走／跳落动画、木头人、居民简易呈现、八类怪物动作 | [美术接入](../../Docs/ArtAssetIntegration.md)、[怪物](../../Docs/Monsters.md) |
+| 角色与怪物 | 玩家分层行走／跳落动画，朝向跟随水平移动、停止后保留；木头人、居民简易呈现、八类怪物动作 | [美术接入](../../Docs/ArtAssetIntegration.md)、[怪物](../../Docs/Monsters.md) |
 | 构式与设施 | 已有弹体、设备、育圃表现；通过正式动作和领域状态驱动 | [构式实现](../../Docs/Architecture/FormulaComposition.md)、[设备](Devices.md) |
 | 原生游戏UI | 7个快捷格、35格背包展示、独立木棍图标与真实持有高亮；在后处理后叠加 | [原生背包UI](NativeInventoryUI.md) |
 | 内建游戏菜单 | 原生像素画布；编辑调试文本时Escape先取消编辑，否则优先收起背包、再打开菜单；再次Escape或 `Return to game` 返回，`Quit game` 退出；菜单拦截游戏输入，不改变全局暂停 | [正常关闭与菜单](../../Docs/Architecture/CloseRequests.md) |

@@ -45,7 +45,7 @@
 | 系统·世界意志｜LLM抽象与随机PseudoLLM | `context:GlobalDoc/LLMAndPseudoLLM.md` | 现行：独立模型生命周期、共用决策API、随机函数组合兜底及验证边界 | |
 | 系统·世界意志｜BehaviorDSL必要性与有限决策图实验 | `workspace:Docs/Architecture/BehaviorDecisionExperiment.md` | 现行：M6.1同场景表达、诊断和成本对照；暂缓持久DSL的依据与重启门槛 | |
 | 系统·呈现｜画面、交互与内容资产 | `context:GlobalDoc/SystemsPresentation.md` | 现行：背景角色UI分层、ESC编辑捕获、字体本地化及输入资源边界 | |
-| 系统·呈现｜游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | 现行：Content美术清单、背景/地形/人物分层动画、共享缓存、GPU上传与验证 | |
+| 系统·呈现｜游戏美术清单与资源缓存 | `workspace:Docs/ArtAssetIntegration.md` | 现行：人物朝左原图、运动朝向与锚点镜像；Content清单、共享缓存、GPU上传与验证 | |
 | 工程｜分块、四叉树与流式世界 | `workspace:Docs/WorldRepresentation.md` | 现行：世界表示、材料调度、完整窗口风域及旧高度兼容、流式预算与显示接口 | |
 | 工程｜统一游戏动作与会话控制入口 | `workspace:Docs/Architecture/GameActions.md` | 现行：手持使用与放置、队列权限、完整窗口风策略动作、暂停与持久会话边界 | |
 | 工程｜固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 现行：固定步与预算重试、WorldBuffers只读双缓冲、观测按需导出及GPU交接边界 | |

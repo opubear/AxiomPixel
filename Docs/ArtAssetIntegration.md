@@ -96,6 +96,8 @@ cmake --build build --target Pixel Axiom PixelRuntimeSmoke -j4
 
 `ArtAssetStore` 共用PNG缓存。`CharacterAnimation` 属于Render，按已提交人物位移、Grounded与模拟时间选择动作；静止保留朝向，暂停及同一提交的重复绘制不推进时间，更换世界/角色或时间回退重置动画。状态由每个帧发布者持有，CPU资产由发布者及渲染策略共享。动作切换从首帧开始，不读取输入或可写物理对象，不改变Gameplay/Simulation、角色碰撞或存档。
 
+人物图层原图统一朝左：向左移动直接使用原图，向右移动水平镜像；脚底锚点使用相同镜像变换。初始或重置后默认朝右，静止、跳跃与下落在没有水平位移时保留朝向。`CharacterDraw.Sprite[1]` 表示是否镜像原图，不是人物是否朝左；替换人物图层时须保持原图朝左的约定。
+
 组合根 `PixelRuntime` 将同一份配置显式交给发布者和 `PixelRender`。独立的测试/诊断发布者可省略人物美术，继续使用原矩形呈现。正常玩家使用96字节 `CharacterDraw` 快照传递连续屏幕范围、图集帧和翻转标记。GPU在风和场景物体之后、后处理之前，以nearest texel读取sRGB图层并在线性空间按straight alpha合成。透明边缘保留背景，F1不绘制人物。此处像素人物使用最近点采样，最低缩放级别会丢失细节。
 
 五层解码数据合计6.84 MiB，上传缓冲及GPU图集各约6.84 MiB；缓存和纹理仅初始化一次，切frame slot或resize不重新解码/上传；失败录制会重试上传。本轮只接入玩家运动动画，保留现有木头人外观。工具使用、攻击、死亡动画和游戏内换装尚未绑定，未导入其他候选人物或Spine样例。
@@ -112,3 +114,5 @@ cmake --build build --target Pixel PixelRuntimeSmoke -j4
 # 可选导出生产游戏呈现画面（线性读回转sRGB PPM）
 (cd Pixel && PIXEL_CHARACTER_CAPTURE=/private/tmp/pixel-character.ppm ../build/tests/PixelRuntimeSmoke --character-only)
 ```
+
+2026-11-16 朝向修复验证：先用新增断言复现旧实现错误，再修正朝左原图与镜像标记的映射。`Pixel.CharacterAnimation`、`Pixel.Cpu`、`Pixel.ModuleBoundaries` 三项通过；包含双向移动、停止保向、非居中脚底锚点、暂停与世界重置。`Pixel` 和 `PixelRuntimeSmoke` Debug 构建通过；Apple M5 原生 `--character-only` 验证全部动作帧双向采样及生产装配的 A/D、跳落、暂停和 F1，并目视核对导出画面。首次沙箱运行无法连接窗口服务，清理该进程后在可访问窗口服务的环境重跑通过；Vulkan validation layer 不可用，未执行全量 CTest 或其他平台 GPU 验证。
