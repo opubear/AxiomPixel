@@ -1,6 +1,7 @@
 {
     "Root": "Root.json",
-    "StaticNames": ["Material.Default", "Material.Tinted", "RHI.PresentationChanged"],
+    "StaticNames": ["Material.Default", "Material.Tinted", "RHI.PresentationChanged",
+                    "Pixel.Calendar.DayPhaseChanged", "Pixel.Calendar.SeasonChanged"],
     "MaxFPS": 60,
     "VSync": true,
     "SceneScale": 1.0,

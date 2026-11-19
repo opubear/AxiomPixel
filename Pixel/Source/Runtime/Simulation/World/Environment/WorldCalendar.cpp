@@ -10,6 +10,12 @@ float Smooth(float value) {
     value = std::clamp(value, 0.0f, 1.0f);
     return value * value * (3 - 2 * value);
 }
+
+bool SamePhaseInterval(const WorldCalendarSnapshot &from, const WorldCalendarSnapshot &to) {
+    // Night occurs twice on one date, on opposite sides of noon.
+    return from.AbsoluteDay == to.AbsoluteDay && from.Phase == to.Phase
+        && (from.Phase != DayPhase::Night || (from.Hour < 12) == (to.Hour < 12));
+}
 } // namespace
 
 const char *SeasonName(Season season) {
@@ -64,6 +70,8 @@ WorldCalendarSnapshot WorldCalendar::Snapshot() const {
     const auto dayOfSeason = Value.Day % Value.DaysPerSeason;
     const auto ticksPerDay = Value.SecondsPerDay * TicksPerSecond;
     const auto minutes = uint64_t(Value.TickOfDay) * 1440 / ticksPerDay;
+    result.AbsoluteDay = Value.Day;
+    result.TickOfDay = Value.TickOfDay;
     result.Year = Value.Day / (4 * Value.DaysPerSeason) + 1;
     result.DayOfSeason = uint32_t(dayOfSeason + 1);
     result.CurrentSeason = Season(season);
@@ -86,6 +94,35 @@ WorldCalendarSnapshot WorldCalendar::Snapshot() const {
     else if (hour >= result.SunsetHour - .5f) result.Phase = DayPhase::Dusk;
     else result.Phase = DayPhase::Day;
     return result;
+}
+
+void WorldCalendar::VisitTransitions(uint64_t steps, const TransitionVisitor &visit) const {
+    auto sample = *this;
+    sample.Advance(steps);
+    const auto finish = sample.Snapshot();
+    const auto ticksPerDay = Value.SecondsPerDay * TicksPerSecond;
+    auto from = Snapshot();
+
+    while (!SamePhaseInterval(from, finish)) {
+        // The first tick outside this interval is at or before the next midnight.
+        // Sampling Snapshot() also follows moving sunrise/sunset during season blending.
+        const auto atTick = [&](uint32_t tick) {
+            sample.Value.Day = from.AbsoluteDay + tick / ticksPerDay;
+            sample.Value.TickOfDay = tick % ticksPerDay;
+            return sample.Snapshot();
+        };
+        uint32_t lower = from.TickOfDay + 1;
+        uint32_t upper = from.AbsoluteDay == finish.AbsoluteDay ? finish.TickOfDay : ticksPerDay;
+        while (lower < upper) {
+            const auto middle = lower + (upper - lower) / 2;
+            if (SamePhaseInterval(from, atTick(middle))) lower = middle + 1;
+            else upper = middle;
+        }
+        const auto next = atTick(lower);
+        if (from.Phase != next.Phase || from.CurrentSeason != next.CurrentSeason)
+            visit(atTick(lower - 1), next);
+        from = next;
+    }
 }
 
 uint32_t WorldCalendar::TickAtPhase(DayPhase phase) const {

@@ -379,6 +379,7 @@ void GameSession::TickSimulation(float duration, PlayerInput input) {
         StepDevices(effects, changes);
         debug::StepForceGarden(GameWorld, Formulas, Garden, effects);
         ActivateRegionalPopulation();
+        const auto previousCalendar = Calendar;
         Calendar.Advance();
         const bool singleStep = Simulation.CommitStep();
         CompletePendingActions();
@@ -388,6 +389,12 @@ void GameSession::TickSimulation(float duration, PlayerInput input) {
         for (const auto &change : changes)
             RecordFact(CurrentCommit(), api::DeviceCause{change.Device.Ref.Id, change.Device.Instance}, change);
         PublishCommit();
+        if (CalendarEvents) {
+            const auto stamp = PublishedCommit;
+            previousCalendar.VisitTransitions(1, [&](const auto &previous, const auto &current) {
+                CalendarEvents->BroadcastChanges({previous, current, stamp});
+            });
+        }
         if (singleStep) break;
     }
 }

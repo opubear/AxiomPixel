@@ -104,6 +104,16 @@ void PendingStepRetainsCompleteProjection() {
         if (!world.GetSimulationBounds().Contains({coordinate.X * storage::ChunkEdge, coordinate.Y * storage::ChunkEdge}))
             testing::WorldAccess::Map(world).Remove(coordinate);
     testing::SessionAccess::PublishFixtureChanges(session);
+    Require(session.Control(NativeCaller::Driver, api::SetWorldCalendar{{6, 71999, 1200, 7, 1}}).Succeeded(),
+            "budget fixture failed to place calendar before summer");
+    const auto &calendarEvents = session.GetCalendarEvents();
+    unsigned seasonChanges = 0;
+    auto seasonSubscription = calendarEvents.Subscribe<api::CalendarEvents::ChangedSignature>(calendarEvents.SeasonChanged,
+        [&](const api::CalendarTransition &change) {
+            Require(change.Current.CurrentSeason == Season::Summer && change.Commit == view->Stamp(),
+                    "season notification preceded recovery publication");
+            ++seasonChanges;
+        });
     const auto stamp = session.CurrentCommit();
     const auto calendar = session.GetCalendar().State();
     const auto calendarProgress = view->Calendar().DayProgress;
@@ -130,6 +140,7 @@ void PendingStepRetainsCompleteProjection() {
     session.ClearPlayerInput();
     session.Tick(.2f, {-1, true});
     publish(frame);
+    Require(seasonChanges == 0, "budget retry published an uncommitted season");
     Require(session.CurrentCommit() == stamp && view->Stamp() == stamp
                 && std::equal(colors.begin(), colors.end(), frame.Cells().begin())
                 && world.GetEnvironment().GetWindSimulation().GetRevision() == preparedRevision
@@ -163,6 +174,7 @@ void PendingStepRetainsCompleteProjection() {
     world.SetPublicationBytes(0);
     session.Control(NativeCaller::Driver, api::StepSimulation{});
     session.Tick(.2f, {-1, true});
+    Require(seasonChanges == 1, "budget recovery did not publish one season change");
     Require(session.CurrentCommit().Tick == stamp.Tick + 1 && session.CurrentCommit().Revision == stamp.Revision + 1
                 && view->Stamp() == session.CurrentCommit()
                 && std::abs(session.GetTimeRemainder() - (pendingRemainder - 1.0 / 60)) < 1e-10,
@@ -180,6 +192,8 @@ void PendingStepRetainsCompleteProjection() {
 
 int main() {
     try {
+        axiom::InitializeStaticNames({});
+        axiom::BindNameThread(axiom::NameDomain::Simulation, std::this_thread::get_id());
         CommitStampsAndPausedActions();
         PendingStepRetainsCompleteProjection();
         std::cout << "Simulation commit contracts passed\n";

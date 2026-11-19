@@ -138,6 +138,88 @@ void PhaseTargets() {
     Reject([&] { calendar.TickAtPhase(static_cast<DayPhase>(99)); });
 }
 
+bool SameInstant(const WorldCalendarSnapshot &a, const WorldCalendarSnapshot &b) {
+    return a.AbsoluteDay == b.AbsoluteDay && a.TickOfDay == b.TickOfDay
+        && a.Phase == b.Phase && a.CurrentSeason == b.CurrentSeason;
+}
+
+void TransitionMessages(bool threaded) {
+    GameSession session;
+    if (threaded) session.EnableSimulationThread();
+    const auto owner = threaded ? session.SimulationThreadId() : std::this_thread::get_id();
+    auto view = session.CreateReadView();
+    session.RefreshReadView(*view, {480, 480, 64, 64});
+
+    using Events = api::CalendarEvents;
+    const auto &events = session.GetCalendarEvents();
+    std::vector<std::pair<Events::Name, api::CalendarTransition>> received;
+    const auto record = [&](Events::Name topic, const api::CalendarTransition &change) {
+        Require(std::this_thread::get_id() == owner, "calendar message left the simulation owner");
+        Require(change.Commit == session.CurrentCommit() && change.Commit == view->Stamp()
+            && SameInstant(view->Calendar(), session.GetCalendar().Snapshot()), "message preceded the committed view");
+        received.emplace_back(topic, change);
+    };
+    auto phases = events.Subscribe<Events::ChangedSignature>(Events::Name{"Pixel.Calendar.DayPhaseChanged"},
+        [&](const auto &change) { record(events.DayPhaseChanged, change); });
+    auto seasons = events.Subscribe<Events::ChangedSignature>(Events::Name{"Pixel.Calendar.SeasonChanged"},
+        [&](const auto &change) { record(events.SeasonChanged, change); });
+    Require(received.empty(), "subscribing replayed a calendar transition");
+
+    const auto initial = session.GetCalendar().Snapshot();
+    const WorldCalendarState winter{3, 0, 1, 1, 3600};
+    session.Control(NativeCaller::Driver, api::SetPaused{true});
+    Require(session.Control(NativeCaller::Debug, api::SetWorldCalendar{winter}).Succeeded(), "winter jump failed");
+    const auto edited = session.GetCalendar().Snapshot();
+    Require(received.size() == 2 && received[0].first == events.SeasonChanged && received[1].first == events.DayPhaseChanged,
+            "calendar edit did not deliver changed channels in order");
+    for (const auto &[topic, change] : received)
+        Require(SameInstant(change.Previous, initial) && SameInstant(change.Current, edited), "edit replayed intermediate dates");
+    received.clear();
+    session.Control(NativeCaller::Debug, api::SetWorldCalendar{winter});
+    session.Control(NativeCaller::Input, api::SetWorldCalendar{});
+    session.Tick(.25f, {});
+    Require(received.empty(), "no-op, rejected edit or pause published a transition");
+
+    // Both endpoints are winter at midnight. Compare every crossing, including
+    // 15 winter-to-spring boundaries in this single accelerated simulation step.
+    session.Control(NativeCaller::Driver, api::StepSimulation{});
+    session.Tick(1.f / 60, {});
+    size_t index = 0;
+    const auto expect = [&](Events::Name topic, const auto &previous, const auto &current) {
+        Require(index < received.size(), "accelerated calendar missed a boundary");
+        const auto &[name, change] = received[index++];
+        Require(name == topic && SameInstant(change.Previous, previous) && SameInstant(change.Current, current),
+                "misordered calendar boundary or inaccurate transition tick");
+    };
+    WorldCalendar reference;
+    auto slow = winter;
+    slow.TimeScale = 1;
+    reference.Restore(slow);
+    for (uint32_t i = 0; i < winter.TimeScale; ++i) {
+        const auto previous = reference.Snapshot();
+        reference.Advance();
+        const auto current = reference.Snapshot();
+        if (previous.CurrentSeason != current.CurrentSeason) expect(events.SeasonChanged, previous, current);
+        if (previous.Phase != current.Phase) expect(events.DayPhaseChanged, previous, current);
+    }
+    Require(index == 300 && received.size() == index, "single step duplicated or dropped calendar events");
+
+    received.clear();
+    const WorldCalendarState winterNight{23, 59, 1, 7, 1};
+    Require(session.Control(NativeCaller::Driver, api::SetWorldCalendar{winterNight}).Succeeded() && received.empty(),
+            "editing the date within the same season and phase sent a message");
+    session.Control(NativeCaller::Driver, api::StepSimulation{});
+    session.Tick(1.f / 60, {});
+    Require(session.GetCalendar().State().Day == 24 && received.empty(), "ordinary midnight sent a transition");
+
+    Require(session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded() && received.empty(),
+            "world replacement replayed a calendar transition");
+    phases.Disconnect();
+    session.Control(NativeCaller::Driver, api::SetWorldCalendar{winter});
+    Require(received.size() == 1 && received.front().first == events.SeasonChanged
+        && received.front().second.Commit.WorldEpoch == session.WorldEpoch(), "subscriptions lost their session lifetime");
+}
+
 void SessionAndPresentation(bool threaded) {
     GameSession session;
     if (threaded) session.EnableSimulationThread();
@@ -240,10 +322,17 @@ void PersistenceAndCorruption() {
     {
         GameSession restored(true);
         Require(restored.IsPaused() && restored.GetCalendar().State() == saved, "checkpoint lost calendar or global pause");
+        std::vector<api::CalendarTransition> changes;
+        const auto &events = restored.GetCalendarEvents();
+        auto subscription = events.Subscribe<api::CalendarEvents::ChangedSignature>(events.SeasonChanged,
+            [&](const auto &change) { changes.push_back(change); });
         restored.Control(NativeCaller::Driver, api::StepSimulation{});
         restored.Tick(1.f / 60, {});
         Require(restored.GetCalendar().State().Day == 28 && restored.GetCalendar().Snapshot().Year == 2,
                 "restored calendar did not continue through midnight");
+        Require(changes.size() == 1 && changes[0].Previous.CurrentSeason == Season::Winter
+            && changes[0].Current.CurrentSeason == Season::Spring && changes[0].Current.Year == 2
+            && changes[0].Current.TickOfDay == 0, "loaded calendar missed its first season boundary");
     }
     SessionStore store(files.Path / "codec");
     const auto directory = store.CreateWorldDirectory({});
@@ -264,12 +353,15 @@ void PersistenceAndCorruption() {
 
 int main() {
     try {
+        axiom::InitializeStaticNames(std::array<std::string, 2>{"Pixel.Calendar.DayPhaseChanged", "Pixel.Calendar.SeasonChanged"});
         BoundariesAndLighting();
         PhaseTargets();
+        TransitionMessages(false);
+        TransitionMessages(true);
         SessionAndPresentation(false);
         SessionAndPresentation(true);
         PersistenceAndCorruption();
-        std::cout << "Calendar: boundaries, lighting, committed frames, worker, controls, HUD and checkpoints passed\n";
+        std::cout << "Calendar: boundaries, transition messages, lighting, committed frames, worker, controls, HUD and checkpoints passed\n";
         return 0;
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

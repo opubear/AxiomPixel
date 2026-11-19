@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 
 namespace pixel {
 enum class Season : uint32_t { Spring, Summer, Autumn, Winter };
@@ -30,6 +31,8 @@ struct WorldCalendarSnapshot {
     float SunriseHour = 6, SunsetHour = 18;
     float Daylight = 1; // smooth twilight, [0,1]
     float Twilight = 0;
+    uint64_t AbsoluteDay = 0; // zero based, as in WorldCalendarState
+    uint32_t TickOfDay = WorldCalendarState{}.TickOfDay;
 };
 
 class WorldCalendar {
@@ -41,6 +44,10 @@ class WorldCalendar {
     // Called once per successful fixed step. Large advances remain O(1).
     void Advance(uint64_t steps = 1);
     WorldCalendarSnapshot Snapshot() const;
+    // Visit phase and season boundaries in (now, now + steps], without moving
+    // the clock. Each pair describes the integer ticks on either side.
+    using TransitionVisitor = std::function<void(const WorldCalendarSnapshot &, const WorldCalendarSnapshot &)>;
+    void VisitTransitions(uint64_t steps, const TransitionVisitor &visit) const;
     // Same-day target: nearest representable sunrise/sunset, noon for Day,
     // midnight for Night. Resolves season blending at the target time.
     uint32_t TickAtPhase(DayPhase phase) const;

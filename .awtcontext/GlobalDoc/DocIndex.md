@@ -8,7 +8,7 @@
 | 总览｜Pixel 游戏设计总纲 | `workspace:Docs/GameDesign/GameDesignVision.md` | 设计方向：核心愿景、流程、构式调用逻辑、统一函数组合与世界绑定、家园及世界意志的设计取舍 | |
 | 总览｜文档分类与维护规则 | `context:GlobalDoc/DocumentationGovernance.md` | 现行：文档分层、状态词、功能变更同步、历史清理和本轮整理记录 | |
 | 总览｜产品现状与待办 | `context:GlobalDoc/ProductStatus.md` | 现行：Natural v3环境流体、昼夜四季、火把照明、角色起始背包及未交付能力 | |
-| 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：Natural v3环境流体与岩浆、完整窗口风场、地区生态、昼夜四季 | |
+| 系统·世界｜世界、环境与地区生态 | `context:GlobalDoc/SystemsWorld.md` | 现行：Natural v3环境流体与岩浆、完整窗口风场、地区生态、昼夜四季与转换消息 | |
 | 系统·世界｜世界生成与自然材质实现 | `context:GlobalDoc/WorldGenerationImplementation.md` | 兼容：Natural v1与旧生成实现；当前默认v3见BiomeWorldGeneration | |
 | 系统·世界｜有归属的持续FieldSource | `context:GlobalDoc/FieldSources.md` | 现行：持续来源、严格加速度上限、宿主转换、区域冻结与归属持久化 | |
 | 系统·世界｜水岩浆蒸汽火元胞运动模拟 | `context:GlobalDoc/CellularMaterials.md` | 现行：水流、岩浆慢流与遇水凝固、瞬态元素、休眠、保存及验证入口 | |
@@ -118,7 +118,7 @@
 | 历史｜Performance引擎迁移验收 | `workspace:Docs/DiagnosticsMigration.md` | 历史：通用诊断边界、PerfTest与纳秒trace、静态动态库及原生窗口验收结果 | |
 | 历史｜Natural v1固定生成参数 | `workspace:Pixel/Source/Runtime/Simulation/World/Generation/Version1.md` | 兼容：保留旧生成版本复现；新游戏默认Natural v3 | |
 | 系统·构式物品｜手持物品与木棍构式触发器 | `context:GlobalDoc/HandheldItems.md` | 现行：起始和拾取木棍的独立构式、方块与火把使用及v6存档 | |
-| 系统·世界｜昼夜与季节实现合同 | `context:GlobalDoc/WorldCalendar.md` | 现行：20分钟昼夜、7天四季、完整提交、光照HUD、季末晨昏跳转及world.meta v7 | |
+| 系统·世界｜昼夜与季节实现合同 | `context:GlobalDoc/WorldCalendar.md` | 现行：昼夜四季节奏、转换消息订阅与提交、季末晨昏、光照HUD及world.meta v7 | |
 | 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |
 | 工程｜Axiom本地化字符串与转换表 | `workspace:Axiom/Source/Localization/README.md` | 现行：LocalizedString、语言地区表与回退；Pixel文案和语言选择尚未接入 | |
 | 证据｜字体本地化与Pixel菜单联合审查（2026-11-11） | `context:GlobalDoc/CodeReview-FontsLocalizationMenu-2026-11-11.md` | 证据：Astra ultra复核关闭两项问题，干净静态44项共享45项、运行时48项及GPU通过 | |

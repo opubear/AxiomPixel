@@ -10,6 +10,7 @@
 #include "Runtime/Gameplay/Observation/DomainFactBuffer.h"
 #include "Runtime/Gameplay/Knowledge/Knowledge.h"
 #include "Runtime/Gameplay/Authority/Authority.h"
+#include "Runtime/Gameplay/GameAPI/CalendarEvents.h"
 #include "Runtime/Gameplay/GameAPI/WorldWillHost.h"
 #include "Runtime/Gameplay/Persistence/SessionStore.h"
 #include "Runtime/Simulation/World/World.h"
@@ -104,6 +105,8 @@ class GameSession : public api::WorldWillHost {
     bool IsPaused() const { return Paused; }
     // Host reads at the joined frame boundary; renderers use CommittedWorldView.
     const WorldCalendar &GetCalendar() const { return Calendar; }
+    // Subscribe/disconnect at joined frame boundaries or on the simulation owner.
+    const api::CalendarEvents &GetCalendarEvents() const;
     double GetSimulationTime() const { return Simulation.Time(); }
     double GetTimeRemainder() const { return Simulation.Remainder(); }
     api::CommitStamp CurrentCommit() const;
@@ -198,6 +201,7 @@ class GameSession : public api::WorldWillHost {
     SimulationCoordinator Simulation;
     bool Paused = false;
     WorldCalendar Calendar;
+    mutable std::optional<api::CalendarEvents> CalendarEvents;
     ObservationProjector Observations;
     api::GameplayObservation GameplayValues;
     void CaptureInitialPlayerTools();

@@ -501,8 +501,11 @@ api::ControlReceipt GameSession::Control(api::CallerSessionId caller, const api:
                     return {api::ControlStatus::Rejected, api::Reason::InvalidArgument, error.what()};
                 }
                 if (value.State != Calendar.State()) {
+                    const auto previous = Calendar.Snapshot();
                     Calendar.Restore(value.State);
                     CommitChange();
+                    if (CalendarEvents)
+                        CalendarEvents->BroadcastChanges({previous, Calendar.Snapshot(), PublishedCommit});
                 }
             } else if constexpr (std::is_same_v<T, api::SetPaused>) {
                 if (value.Paused != Paused) {

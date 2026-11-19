@@ -1,6 +1,6 @@
 # 昼夜与季节系统
 
-状态：现行实现。核对日期：2026-11-11。所属系统：[世界与生态](SystemsWorld.md)、[呈现](SystemsPresentation.md)、[会话与家园](SystemsHome.md)。
+现行实现，2026-11-19 核对。所属系统见[世界与生态](SystemsWorld.md)、[呈现](SystemsPresentation.md)、[会话与家园](SystemsHome.md)。
 
 ## 玩家规则与入口
 
@@ -32,6 +32,33 @@ GameSession拥有日历实例，协调器的每个成功1/60秒固定步在环�
 
 `Render/CalendarLighting` 将季节/昼夜乘色与用户已有的场景调色组合，不重传地形。既有后处理统一作用于背景、地形、角色和场景物体。原生UI和DebugUI在后处理后绘制；F1保持原方向诊断颜色。HUD只在显示到分钟的文字变化时更新像素画布，不因每个日历刻度重画。
 
+## 订阅昼夜与换季消息
+
+每个 `GameSession` 通过 `GetCalendarEvents()` 提供 Axiom Simulation 域的只读分发器。两个名字均登记在 Pixel 的静态名字表中，签名为 `void(const pixel::api::CalendarTransition &)`。[公开接口](../../Pixel/Source/Runtime/Gameplay/GameAPI/CalendarEvents.h)
+
+| 消息 | 自然触发时机 | 回调读取 |
+| --- | --- | --- |
+| `Pixel.Calendar.DayPhaseChanged` | 进入黎明、白天、黄昏或夜晚的第一个日历刻度 | `Previous.Phase`、`Current.Phase` |
+| `Pixel.Calendar.SeasonChanged` | 新季第1天零时，含冬季进入次年春季 | `Previous.CurrentSeason`、`Current.CurrentSeason` |
+
+固定步发布世界读视图后，按日历顺序交付该步跨过的每个边界。每条消息含边界前后相邻刻度的快照及本步的 `Commit`。用 `Current.AbsoluteDay` 和 `Current.TickOfDay` 可定位确切时刻。一个加速步内的多条消息共用提交戳，读视图显示步末状态。暂停、预算等待以及同一季内的午夜均保持静默，显式单步按正常规则交付。
+
+F2 或 Driver 通过 `SetWorldCalendar` 直接设置时间时，消息携带编辑前后的快照，只为实际改变的季节、时段各发一次。两者同时改变时先发季节，再发时段。新建、重置和读档建立该世界的时间基线。订阅随会话存活，跨重置继续生效，需要初值时可读取 `GetCalendar().Snapshot()`。
+
+例如，一个需要跟踪季节的系统可以在帧间同步点取得初值并持有订阅句柄。
+
+```cpp
+using Events = pixel::api::CalendarEvents;
+const auto &events = session.GetCalendarEvents();
+auto season = session.GetCalendar().Snapshot().CurrentSeason;
+auto subscription = events.Subscribe<Events::ChangedSignature>(
+    events.SeasonChanged, [&season](const pixel::api::CalendarTransition &change) {
+        season = change.Current.CurrentSeason;
+    });
+```
+
+回调在提交所在的模拟线程同步执行，单线程会话在调用线程执行。订阅、断开及句柄析构应在模拟线程或帧间已汇合时进行。跨线程消费时复制消息到接收方队列。独立 CPU 宿主使用分发器前须初始化 Axiom 名字表。[引擎分发合同](../../Axiom/Source/Core/Events/README.md)
+
 ## 保存与兼容
 
 `world.meta` 写版本7，保留v6已有字段，在风配置后新增一行：
@@ -61,6 +88,8 @@ cmake --build build --target Pixel Axiom PixelRuntimeSmoke -j4
 ```
 
 `Pixel.Calendar` 覆盖整数跨日/季/年、批量与逐步等价、日长/晨昏/季节色调、非法/溢出不修改、同步及独立worker下暂停/单步/控制权限/重置、冻结呈现、HUD缓存、真实检查点续接及损坏日历拒绝。`Pixel.Simulation`覆盖真实预算等待期间的日历冻结和控制拒绝；`Pixel.SessionStore/Persistence`覆盖v2–v6导入与v7线格式。
+
+转换消息回归在 `Pixel.Calendar` 中以逐刻日历核对最高倍率的每条消息、先后顺序及边界时刻，并检查线程、提交戳、调试跳转、退订、重置和读档后的首次换季。`Pixel.Simulation` 检查预算重试与恢复提交时的换季次数。
 
 GPU专项通过生产应用发布四季正午及春季晨昏夜晚，使用实际后处理shader逐像素核对场景乘色和UI隔离，并检查F1。截图可通过上述环境变量导出；实际执行结果另在本任务记录与下方带日期证据中报告。
 

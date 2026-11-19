@@ -1,6 +1,11 @@
 #include "GameSession.h"
 
 namespace pixel {
+const api::CalendarEvents &GameSession::GetCalendarEvents() const {
+    if (!CalendarEvents) CalendarEvents.emplace();
+    return *CalendarEvents;
+}
+
 api::CommitStamp GameSession::CurrentCommit() const {
     if (DeferredPublication && Worker && !Worker->IsCurrent()) return PublishedCommit;
     const auto worldId = TemporaryWorld ? TemporaryWorld->Path().filename().string()
