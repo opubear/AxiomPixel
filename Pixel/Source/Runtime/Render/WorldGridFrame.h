@@ -33,6 +33,8 @@ inline constexpr size_t UploadBytes = CellCount * sizeof(uint32_t);
 inline constexpr size_t PageBytes = UploadBytes / PageCount;
 } // namespace Grid2D
 struct PostProcessParameters {
+    // Shader ABI: multiplier at [0..3], tonemapping bypass at [4], reserved [5..15].
+    static constexpr size_t TonemappingBypass = 4;
     std::array<float, 16> Values{1, 1, 1, 1};
 };
 enum class GridDisplayMode : uint32_t {

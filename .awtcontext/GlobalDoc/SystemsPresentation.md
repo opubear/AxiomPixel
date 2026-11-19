@@ -15,6 +15,7 @@
 | 地区装饰 | 草叶野花、干灌木、覆雪小石；根据提交地形显示，不参与碰撞和产物 | [世界生态群落](WorldBiomes.md) |
 | 风与场 | 普通视图的短轨迹／柔和折光；F1为合成力方向调试视图 | [工程入口](../../README.md)、[世界表示](../../Docs/WorldRepresentation.md) |
 | 昼夜与季节光照 | 2026-11-11加入晨昏、蓝色夜光、连续季节色调与日长；场景统一调色，UI/F1保留原色 | [昼夜与季节](WorldCalendar.md) |
+| 最终色调映射 | 场景乘色后默认执行ACES近似tonemapping，压缩高亮；UI与F1方向诊断旁路 | [Tonemapping合同](Tonemapping.md) |
 | 角色与怪物 | 玩家分层行走／跳落动画，朝向跟随水平移动、停止后保留；木头人、居民简易呈现、八类怪物动作 | [美术接入](../../Docs/ArtAssetIntegration.md)、[怪物](../../Docs/Monsters.md) |
 | 构式与设施 | 已有弹体、设备、育圃表现；通过正式动作和领域状态驱动 | [构式实现](../../Docs/Architecture/FormulaComposition.md)、[设备](Devices.md) |
 | 原生游戏UI | 7个快捷格、42格背包展示，火把、木棍图标和真实持有高亮；在后处理后叠加 | [原生背包UI](NativeInventoryUI.md) |

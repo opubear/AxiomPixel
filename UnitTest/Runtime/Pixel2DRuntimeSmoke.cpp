@@ -306,7 +306,16 @@ void ParallelGameplayGpu() {
     app.Shutdown();
     std::cout << "Parallel Pixel GPU passed: previous-frame pixels, game advance, pause/resume, resize, reset and shutdown\n";
 }
-void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
+double PostChannel(double color, size_t channel, const PostProcessParameters &parameters) {
+    const double graded = color * parameters.Values[channel];
+    if (parameters.Values[PostProcessParameters::TonemappingBypass] > .5f)
+        return std::clamp(graded, 0.0, 1.0);
+    const double x = std::clamp(graded, 0.0, 16.0);
+    return std::clamp(x * (2.51 * x + .03) / (x * (2.43 * x + .59) + .14), 0.0, 1.0);
+}
+
+void VerifyPostShader(GameEngine &engine, const RHITexture &source,
+                      PostProcessParameters tint = {{.5f, .25f, .75f, 1}}) {
     auto &rhi = *engine.GetRHI();
     const auto extent = rhi.GetPresentationExtent();
     auto target = rhi.CreateTexture({extent.Width, extent.Height, 1, RHITextureFormat::RGBA8UNorm, false, true});
@@ -323,8 +332,6 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
     const std::array<uint32_t, 6> indices{0, 1, 2, 2, 3, 0};
     std::unique_ptr<RHIBuffer> vb(rhi.CreateVertexBuffer(8, sizeof(vertices), vertices.data()));
     std::unique_ptr<RHIBuffer> ib(rhi.CreateIndexBuffer(4, sizeof(indices), indices.data()));
-    PostProcessParameters tint;
-    tint.Values = {0.5f, 0.25f, 0.75f, 1};
     const auto begin = rhi.NewFrame();
     Require(begin.Ready, "post test frame unavailable");
     auto draw = [&](RHICommandList &cmd, const RHIPipeline &p, const RHIDescriptorSet &s, const PostProcessParameters &params) {
@@ -347,7 +354,9 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
             draw(cmd, *pipeline, *set, tint);
             cmd.TransitionTexture(*target, RHITextureState::FragmentSampledRead);
             cmd.BeginPresentPass();
-            draw(cmd, *presentPipeline, *presentSet, PostProcessParameters{});
+            PostProcessParameters copy;
+            copy.Values[PostProcessParameters::TonemappingBypass] = 1;
+            draw(cmd, *presentPipeline, *presentSet, copy);
         });
         rhi.Present(begin.Token);
         rhi.EndFrame(begin.Token);
@@ -357,9 +366,49 @@ void VerifyPostShader(GameEngine &engine, const RHITexture &source) {
         throw;
     }
     const auto before = ReadColor(source), after = ReadColor(*target);
-    for (size_t pixel = 0; pixel < before.size() / 4; ++pixel)
-        for (size_t c = 0; c < 3; ++c)
-            Require(std::abs(int(after[pixel * 4 + c]) - int(std::lround(before[pixel * 4 + c] * tint.Values[c]))) <= 1, "post-process tint or sampling incorrect");
+    for (size_t pixel = 0; pixel < before.size() / 4; ++pixel) {
+        for (size_t c = 0; c < 3; ++c) {
+            const int expected = int(std::lround(255 * PostChannel(before[pixel * 4 + c] / 255.0, c, tint)));
+            Require(std::abs(int(after[pixel * 4 + c]) - expected) <= 1,
+                    "post-process tonemapping, tint order or linear sampling incorrect");
+        }
+        Require(after[pixel * 4 + 3] == 255, "post-process output must be opaque");
+    }
+}
+
+void TonemappingGpu() {
+    PixelRender *policy = nullptr;
+    RenderSetup setup;
+    setup.Enable3DScene = false;
+    setup.CreatePolicy = [&](DynamicRHI &rhi, IRenderSceneInterface *) {
+        auto render = std::make_unique<PixelRender>(rhi, Textures(), [](WorldGridFrame &frame) {
+            frame.SetRegion({0, 0}, 256, 256);
+            frame.View.CellSizePixels = {4, 4};
+            frame.View.OriginPixels = {};
+            frame.View.WorldOriginCells = {};
+            // Packed diagnostic pixels provide an exact linear RGB8 ramp as shader input.
+            frame.DisplayMode = GridDisplayMode::ForceField;
+            for (uint32_t y = 0; y < 256; ++y)
+                for (uint32_t x = 0; x < 256; ++x)
+                    frame.Cells()[size_t(y) * 256 + x] = x | (((x + 85) % 256) << 8) | (((x + 170) % 256) << 16);
+        });
+        policy = render.get();
+        return render;
+    };
+    PixelSmokeApplication app(std::make_unique<PixelGame>(false));
+    app.Engine->SetRender(std::move(setup));
+    app.Initialize(); app.Begin();
+    for (const auto multiplier : {std::array<float, 4>{1, 1, 1, 1}, {4, 2, .5f, 1}, {-1, .25f, 64, 1}}) {
+        const auto token = Draw(app);
+        app.Engine->WaitIdle();
+        PostProcessParameters parameters;
+        std::copy(multiplier.begin(), multiplier.end(), parameters.Values.begin());
+        VerifyPostShader(*app.Engine, policy->SceneColor(token.Slot), parameters);
+        parameters.Values[PostProcessParameters::TonemappingBypass] = 1;
+        VerifyPostShader(*app.Engine, policy->SceneColor(token.Slot), parameters);
+    }
+    app.Shutdown();
+    std::cout << "Tonemapping GPU passed: RGB8 ramp, ACES curve, tint order, highlights, negative clamp, diagnostic bypass and opaque output\n";
 }
 void WindVisualizationGpu() {
     auto game = std::make_unique<PixelGame>(false);
@@ -2065,7 +2114,8 @@ void VerifyCanvasComposite(GameEngine &engine, const RHITexture &scene, const pi
             cmd.BeginPresentPass();
             cmd.SetViewport({0, 0, float(extent.Width), float(extent.Height), 0, 1});
             cmd.BindPipeline(*present); cmd.BindDescriptorSet(*present, *presentSet, 0);
-            const PostProcessParameters normal;
+            PostProcessParameters normal;
+            normal.Values[PostProcessParameters::TonemappingBypass] = 1;
             cmd.PushConstants(*present, RHIShaderStage::Fragment, 0, sizeof(normal), &normal);
             cmd.DrawIndexed(6); cmd.EndPass();
         });
@@ -2084,7 +2134,7 @@ void VerifyCanvasComposite(GameEngine &engine, const RHITexture &scene, const pi
             const bool opaque = inside && std::to_integer<uint8_t>(canvas.Pixels[texel + 3]) != 0;
             for (size_t c = 0; c < 3; ++c) {
                 const int expected = opaque ? int(std::lround(255 * Linear(std::to_integer<uint8_t>(canvas.Pixels[texel + c]))))
-                                            : int(std::lround(source[offset + c] * tint.Values[c]));
+                                            : int(std::lround(255 * PostChannel(source[offset + c] / 255.0, c, tint)));
                 if (std::abs(int(result[offset + c]) - expected) > 2)
                     throw std::runtime_error("native UI pixel mismatch x=" + std::to_string(x) + " y=" + std::to_string(y)
                         + " channel=" + std::to_string(c) + " expected=" + std::to_string(expected)
@@ -2490,6 +2540,10 @@ void RunPixelGardenUISmoke();
 void RunPixelGardenAidUISmoke();
 int main(int argc, char **argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--tonemapping-only") {
+            TonemappingGpu();
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--calendar-only") {
             CalendarGameplayGpu();
             return 0;
@@ -2585,6 +2639,7 @@ int main(int argc, char **argv) {
             Lifecycle(2);
             return 0;
         }
+        TonemappingGpu();
         ParallelGameplayGpu();
         InventoryUIGpu();
         CharacterAnimationGpu();

@@ -298,6 +298,8 @@ ctest --test-dir build -R '^Axiom\.UnitTest\.ApplicationClose$' --output-on-fail
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --terrain-only)
 # 所有配置人物帧的PNG/GPU读回与正式游戏移动、跳跃、暂停
 (cd Pixel && ../build/tests/PixelRuntimeSmoke --character-only)
+# 最终tonemapping曲线、线性乘色顺序、高亮压缩与诊断旁路
+(cd Pixel && ../build/tests/PixelRuntimeSmoke --tonemapping-only)
 # 原生背包UI、Tab/Escape、GPU逐像素及后处理隔离；可选导出开合画面
 (cd Pixel && PIXEL_UI_CAPTURE_DIR=/private/tmp/pixel-ui ../build/tests/PixelRuntimeSmoke --inventory-ui-only)
 # 连续144步的水、蒸汽、火及动态区域上传；可选导出每24步截图

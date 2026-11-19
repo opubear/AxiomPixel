@@ -750,6 +750,16 @@ void BackgroundCaching() {
         frame.DisplayMode = field ? GridDisplayMode::ForceField : GridDisplayMode::Materials;
     }, "Pixel2DPostProcess.fs", assets);
     policy.Initialize();
+    auto checkTonemapping = [&](float bypass) {
+        PostProcessParameters recorded;
+        const auto &bytes = rhi.Commands.Constants.back();
+        Check(bytes.size() == sizeof(recorded), "final pass lost the post parameter ABI");
+        std::memcpy(&recorded, bytes.data(), sizeof(recorded));
+        Check(recorded.Values[PostProcessParameters::TonemappingBypass] == bypass,
+              "tonemapping must run for materials and bypass direction diagnostics");
+        Check(policy.PublishedFrame().Post.Values == PostProcessParameters{}.Values,
+              "final pass changed the published post parameters");
+    };
     for (uint32_t index = 0; index < 6; ++index) {
         rhi.Commands.Token.Slot = index % 3;
         policy.FrameBegin(); policy.Draw();
@@ -757,15 +767,21 @@ void BackgroundCaching() {
         float count = 0;
         std::memcpy(&count, rhi.Commands.Constants[0].data() + 92, sizeof(count));
         Check(count == 1, "art layer count was not sent to shader");
+        checkTonemapping(0);
     }
     ResizePresentation(rhi, policy, {201, 121});
     policy.FrameBegin(); policy.Draw();
     Check(rhi.Commands.Copies.size() == 1, "resize uploaded cached background again");
+    checkTonemapping(0);
     field = true;
     policy.FrameBegin(); policy.Draw();
     float count = 1;
     std::memcpy(&count, rhi.Commands.Constants[0].data() + 92, sizeof(count));
     Check(count == 0, "art was enabled in diagnostic view");
+    checkTonemapping(1);
+    field = false;
+    policy.FrameBegin(); policy.Draw();
+    checkTonemapping(0);
     policy.Clear();
     Check(assets->Layers.front().Image == image, "render cleanup invalidated cached CPU art");
 }

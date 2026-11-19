@@ -1,0 +1,6 @@
+float3 TonemapACES(float3 color)
+{
+    // Bound the polynomial input to avoid overflow; the curve is white by 16.
+    float3 x = clamp(color, 0.0, 16.0);
+    return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+}

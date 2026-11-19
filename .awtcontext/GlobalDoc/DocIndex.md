@@ -122,6 +122,7 @@
 | 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |
 | 工程｜Axiom本地化字符串与转换表 | `workspace:Axiom/Source/Localization/README.md` | 现行：LocalizedString、语言地区表与回退；Pixel文案和语言选择尚未接入 | |
 | 证据｜字体本地化与Pixel菜单联合审查（2026-11-11） | `context:GlobalDoc/CodeReview-FontsLocalizationMenu-2026-11-11.md` | 证据：Astra ultra复核关闭两项问题，干净静态44项共享45项、运行时48项及GPU通过 | |
+| 系统·呈现｜最终Tonemapping后处理 | `context:GlobalDoc/Tonemapping.md` | 现行：环境乘色后执行ACES近似曲线、UI及F1隔离 | |
 | 系统·呈现｜火把与局部光照 | `context:GlobalDoc/LocalLighting.md` | 现行：火把放置、点灭、回收及世界状态 | |
 | 工程｜Axiom静态名字与线程域名字 | `workspace:Axiom/Source/Core/Hash/README.md` | 现行：32位名字、线程域与分块存储、退出期反查及宿主插件共享名字库 | |
 | 工程｜Axiom事件订阅 | `workspace:Axiom/Source/Core/Events/README.md` | 现行：HashName 订阅、跨动态库签名、广播参数转换和呈现变化通知 | |

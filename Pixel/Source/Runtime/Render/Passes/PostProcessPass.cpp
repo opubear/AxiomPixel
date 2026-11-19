@@ -16,7 +16,9 @@ void PostProcessPass::Record(RHICommandList &commands, const RenderPassContext &
                              const std::function<void(RHICommandList &)> &overlay) const {
     const auto &resources = context.Resources;
     const auto &frame = context.Frame;
-    const auto &parameters = context.Input.Post;
+    const auto &input = context.Input;
+    auto parameters = input.Post;
+    parameters.Values[PostProcessParameters::TonemappingBypass] = input.DisplayMode == GridDisplayMode::ForceField ? 1.f : 0.f;
     PIXEL_PROFILE_SCOPE(PostCommands);
     commands.BeginPresentPass();
     context.BindFullscreen(commands);
