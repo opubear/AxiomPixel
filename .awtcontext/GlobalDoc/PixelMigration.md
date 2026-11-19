@@ -2,7 +2,7 @@
 
 日期：2026-10-04。
 
-> 后续复核：下文最初的构建/GPU 记录限定于 PixelMain。原始 devmain 不兼容；用户随后授权移植通用能力，本地 devmain 的 `c7fbb59` 已补齐接口，并重新通过独立引擎与外部 Pixel 的 CPU、构建和 GPU 验证。当前引擎引用见 AxiomVersion.json，过程见 [devmain 兼容性复核](DevmainCompatibilityReview.md)。
+> 后续复核：下文最初的构建/GPU 记录限定于 PixelMain。原始 devmain 不兼容；用户随后授权移植通用能力，本地 devmain 的 `c7fbb59` 已补齐接口，并重新通过独立引擎与外部 Pixel 的 CPU、构建和 GPU 验证。现行引擎获取方式见[工程 README](../../README.md)，移植过程见 [devmain 兼容性复核](DevmainCompatibilityReview.md)。
 
 ## 历史依据与范围
 

@@ -1,6 +1,6 @@
 # Performance 上移 Axiom
 
-2026-10-28 完成；引擎基线为 `b08f000d62467eb38b4379d7d6248e2edded371d`，最终引擎提交以根目录 `AxiomVersion.json` 和子模块 gitlink 为准。修改位于本仓库 `Axiom/` 的 `PixelMain`，相邻参考工程没有修改。
+2026-10-28 完成。引擎基线为 `b08f000d62467eb38b4379d7d6248e2edded371d`，迁移时的引擎提交记录在当时版本的 `AxiomVersion.json` 和子模块 gitlink 中。修改位于本仓库 `Axiom/` 的 `PixelMain`，相邻参考工程没有修改。
 
 本文保留当时 schema 2 的串行采样验收。2026-10-29 的[游戏与渲染隔帧并行](Architecture/ParallelFrames.md)已升级为 schema 3 和两条 trace 时间线；跨线程 self 时间不能相加为 frame。
 

@@ -19,15 +19,15 @@
 
 ## 工程架构与模块
 
-基于 Axiom 的早期像素游戏，从引擎 `2DRender` 拆出。`Axiom/` 是跟踪 `PixelMain` 的 Git 子模块，父仓库 gitlink 与 [AxiomVersion.json](AxiomVersion.json) 锁定准确提交；AET 和通用引擎代码留在子模块。相邻 `../Axiom` 仅作只读参考。
+基于 Axiom 的早期像素游戏，从引擎 `2DRender` 拆出。引擎和 AET 位于独立的 `Axiom/` 工作目录，默认跟随 `PixelMain` 分支。AxiomPixel 的 Git 忽略这个目录。相邻 `../Axiom` 仅作只读参考。
 
-[世界表示](Docs/WorldRepresentation.md) 与 [空间场存储](Docs/SpatialFieldStorage.md) 维护当前分块、预算与发布接口；[单位边界](Docs/WorldUnits.md) 规定游戏float厘米与模拟格单位的显式转换。[Core容器接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md) 和 [Platform查询](Axiom/Source/HAL/Platform/README.md) 维护引擎消费边界。
+[世界表示](Docs/WorldRepresentation.md) 与 [空间场存储](Docs/SpatialFieldStorage.md) 维护当前分块、预算与发布接口；[单位边界](Docs/WorldUnits.md) 规定游戏float厘米与模拟格单位的显式转换。[Core容器接入](.awtcontext/GlobalDoc/CoreAllocatorAndContainers.md) 和 [Platform查询](https://github.com/opubear/Axiom/blob/PixelMain/Source/HAL/Platform/README.md) 维护引擎消费边界。
 
-Pixel 在启动时读取 `Config/GameConfig.json` 的 `StaticNames` 作为跨线程名字清单。渲染、游戏、模拟线程各自登记动态名字，底层复用 Core 的 deque 分块数组。[名字与线程域合同](Axiom/Source/Core/Hash/README.md)
+Pixel 在启动时读取 `Config/GameConfig.json` 的 `StaticNames` 作为跨线程名字清单。渲染、游戏、模拟线程各自登记动态名字，底层复用 Core 的 deque 分块数组。[名字与线程域合同](https://github.com/opubear/Axiom/blob/PixelMain/Source/Core/Hash/README.md)
 
-引擎已提供 [FreeType/HarfBuzz 字体与文字塑形](Axiom/Source/Render/Text/README.md)：依赖直接挂在 `Axiom/ThirdParty`，CPU 布局可独立使用，原生文字由 Runtime 的 RHI renderer 绘制。当前 Pixel 菜单／背包继续使用已有像素画布文字，尚未迁移到该字体模块。
+引擎已提供 [FreeType/HarfBuzz 字体与文字塑形](https://github.com/opubear/Axiom/blob/PixelMain/Source/Render/Text/README.md)：依赖直接挂在 `Axiom/ThirdParty`，CPU 布局可独立使用，原生文字由 Runtime 的 RHI renderer 绘制。当前 Pixel 菜单／背包继续使用已有像素画布文字，尚未迁移到该字体模块。
 
-[引擎本地化](Axiom/Source/Localization/README.md) 提供 `LocalizedString` 和语言目录，`Axiom/Content/Localization` 保存英文／中文及地区示例表。业务文本可按稳定键解析并随语言切换；Pixel 自身转换表和语言选择界面尚未接入。
+[引擎本地化](https://github.com/opubear/Axiom/blob/PixelMain/Source/Localization/README.md) 提供 `LocalizedString` 和语言目录，`Axiom/Content/Localization` 保存英文／中文及地区示例表。业务文本可按稳定键解析并随语言切换；Pixel 自身转换表和语言选择界面尚未接入。
 
 `Pixel/Source` 按运行时与开发支持分成两个根目录；以下五个领域是源码归属入口。
 
@@ -63,7 +63,7 @@ Pixel/Source/
 | `Dev/Debug/Formula/` | formula/2演示预设、启动配置与原生Session动作接入；不进入游戏规则或语言模块 |
 | `Dev/Debug/UI, LLM, Tools/` | ImGui面板与过程源码编辑器、测试专用FakeModel和观察demo |
 
-`Pixel/Content` 和 `Pixel/Config` 保留运行时资源/配置，自动化测试继续集中在 `UnitTest`，引擎及AET留在 `Axiom` 子模块。
+`Pixel/Content` 和 `Pixel/Config` 保留运行时资源/配置，自动化测试继续集中在 `UnitTest`，引擎及 AET 留在 `Axiom/`。
 
 Gameplay拥有游戏意图和领域状态：角色、物品、设备、构式宿主查询Simulation的环境，并通过明确接口提交影响。Simulation不会调用Gameplay或Render，也不依赖Formula；材料、水体、力场和世界生成规则位于Simulation，玩家移动/跳跃/水体响应等角色规则位于Gameplay。`SimulationCoordinator`属于Gameplay，因为它协调多个游戏领域的固定步、暂停和完整提交。
 
@@ -89,10 +89,14 @@ Dev/Debug保留当前可运行的开发功能。各领域允许调用无UI的Per
 
 ## 构建和运行
 
-需要CMake 3.23+、C++20、引擎锁定子模块及运行时Slang/Vulkan工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎；窗口配置位于 `Pixel/Config/GameConfig.json`。
+需要 CMake 3.23+、C++20、Axiom 源码及运行时 Slang/Vulkan 工具链。新应用通过 `CreateApplication → PixelApplication::CreateGame → PixelGame::ConfigureEngine` 接入引擎，窗口配置位于 `Pixel/Config/GameConfig.json`。
+
+在项目根目录运行 `./sync-axiom.sh` 准备或更新引擎。首次运行通过 SSH 克隆 `PixelMain`，以后按快进方式更新该分支。若本地与远端分叉，脚本停止并保留本地提交。同步时，引擎自己的第三方子模块按引擎记录的版本检出。日常构建直接使用本机源码。需要复现某次构建时，分别记录 `git rev-parse HEAD` 和 `git -C Axiom rev-parse HEAD`。
+
+从旧版子模块迁入时可以复用已有的 `Axiom/`。如果 `Axiom/.git` 是文件，保留它指向的 Git 数据目录。如果引擎处于 detached HEAD，先给需要保留的本地提交建分支，再运行 `git -C Axiom switch PixelMain` 并同步。
 
 ```sh
-git submodule update --init --recursive
+./sync-axiom.sh
 ./build-debug.sh
 ./run-debug.sh
 
@@ -122,7 +126,7 @@ git submodule update --init --recursive
 
 也可以只设置 `"VSync": false`，启动时用 `--max-fps 0` 覆盖帧率上限。`VSync` 当前仅通过配置文件设置。
 
-手动构建AET可运行 `cmake --build build --config Debug --target Axiom -j4`。项目不自动追踪远端引擎最新提交；升级引擎时同时更新gitlink与AxiomVersion.json。修改只在本地 `Axiom/` 的PixelMain进行，保留AET；Pixel专用shader、缓存和测试放父仓库。
+手动构建 AET 可运行 `cmake --build build --config Debug --target Axiom -j4`。引擎修改在本地 `Axiom/` 的 `PixelMain` 分支提交，Pixel 专用 shader、缓存和测试放在游戏仓库。
 
 M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：游戏使用 `Axiom::RequestClose()`，应用可覆盖 `OnCloseRequested()` 接受或拒绝。当前默认临时游戏直接接受关闭，不执行保存；显式持久化测试会话仍在该钩子中保存，保存失败或 Deferred 时拒绝退出。
 
@@ -380,7 +384,7 @@ AWT入口为 `../AIWorkTask/awt task list --project .awtcontext`，工程文档�
 
 ### 性能采样的引擎归属
 
-通用采样核心、会话、CSV 与可选 Performance 面板已迁入 [Axiom Diagnostics](Axiom/Source/Core/Diagnostics/README.md)，Pixel 只保留领域指标、世界内存提供者和 PIXEL_PROFILE_* 场景配置。Axiom 统一管理 Ready 帧边界并细分限帧、交换链等待、输入、提交和 Present。新增 `PIXEL_PROFILE_MEMORY_INTERVAL` 可降低内存查询频率，查询成本单独报告；指标名称兼容，CSV 按表头读取。当前口径及历史差异见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md)。
+通用采样核心、会话、CSV 与可选 Performance 面板已迁入 [Axiom Diagnostics](https://github.com/opubear/Axiom/blob/PixelMain/Source/Core/Diagnostics/README.md)，Pixel 只保留领域指标、世界内存提供者和 PIXEL_PROFILE_* 场景配置。Axiom 统一管理 Ready 帧边界并细分限帧、交换链等待、输入、提交和 Present。新增 `PIXEL_PROFILE_MEMORY_INTERVAL` 可降低内存查询频率，查询成本单独报告；指标名称兼容，CSV 按表头读取。当前口径及历史差异见 [性能模块说明](Pixel/Source/Dev/Debug/Performance/README.md)。
 
 本轮迁移范围和静态/动态库、CPU、原生窗口验证结果见 [迁移验收记录](Docs/DiagnosticsMigration.md)。
 

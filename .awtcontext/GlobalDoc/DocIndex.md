@@ -51,7 +51,7 @@
 | 工程｜固定步协调与完整提交 | `workspace:Docs/Architecture/SimulationCommits.md` | 现行：固定步与预算重试、WorldBuffers只读双缓冲、观测按需导出及GPU交接边界 | |
 | 工程｜正常关闭请求与最终释放 | `workspace:Docs/Architecture/CloseRequests.md` | 现行：ESC菜单、调试文本捕获优先级、面板恢复与临时持久会话关闭协商 | |
 | 工程｜Core Allocator与容器后端的Pixel接入 | `context:GlobalDoc/CoreAllocatorAndContainers.md` | 现行：模板后端与实例资源选择、区块和scratch寿命、当前专项验证及限制 | |
-| 工程｜工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 现行：模块输入分层、字面include门禁与正负夹具、构建运行验证入口 | |
+| 工程｜工程入口与Runtime/Dev模块边界 | `workspace:README.md` | 现行：独立 Axiom 工作目录与 PixelMain 同步、模块输入分层、include 门禁与构建验证入口 | |
 | 工程｜Pixel 性能采样模块说明 | `workspace:Pixel/Source/Dev/Debug/Performance/README.md` | 现行：PerfTest配置、CPU统计、三线程trace名称与帧标记、日志时钟和插桩入口 | |
 | 工程｜Axiom通用CPU诊断 | `workspace:Axiom/Source/Core/Diagnostics/README.md` | 现行：PerfTest门控、RAII纳秒事件trace、聚合采样和静态动态链接合同 | |
 | 工程｜Axiom统一日志 | `workspace:Axiom/Source/Log/README.md` | 现行：默认毫秒时间戳、日志级别和格式化接口、共享实例及静态动态链接验证 | |

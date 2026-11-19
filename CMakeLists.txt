@@ -22,10 +22,10 @@ endif()
 
 set(AXIOM_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Axiom")
 if(NOT EXISTS "${AXIOM_ENGINE_DIR}/Source/ApplicationEntry.h")
-    message(FATAL_ERROR "Axiom/ is missing the engine entry point; run git submodule update --init --recursive; see README.md")
+    message(FATAL_ERROR "Missing Axiom/Source/ApplicationEntry.h. Run ./sync-axiom.sh from the project root to prepare the engine.")
 endif()
 if(NOT EXISTS "${AXIOM_ENGINE_DIR}/Source/Input/MousePointerState.h")
-    message(FATAL_ERROR "Axiom/ lacks mouse event snapshots (Input/MousePointerState.h); the current engine submodule needs Pixel API adaptation; see README.md")
+    message(FATAL_ERROR "Pixel requires Axiom/Source/Input/MousePointerState.h. Use a compatible engine checkout. See README.md.")
 endif()
 
 include(Pixel/Source/Runtime/Render/Shader/Sources.cmake)

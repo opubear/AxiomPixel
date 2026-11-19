@@ -30,8 +30,6 @@ Escape不直接请求退出：背包展开时优先收起背包，否则打开�
 
 当前默认Temporary会话在PixelApplication::OnCloseRequested直接接受退出，不保存进度。显式Persistent会话才调用SaveWorld，保存成功才接受正常退出；Deferred、存储失败或会话不可用均拒绝本次请求，显示结果并保留服务。M5接入后，GameEnd关闭WorldWill及模型工作并清理输入，不再保存。保存的Thinking/Ready记录在下次加载时变为Interrupted，不恢复旧推理或重放提案；保存与旧档转换见[保存边界](SessionSaveBoundary.md)。
 
-父仓库 gitlink 与 AxiomVersion.json 锁定同一引擎提交；相邻 Axiom 参考仓库未改动。
-
 ## 验证入口
 
 `Axiom.UnitTest.ApplicationClose` 是无窗口/GPU 初始化的模块联结测试，覆盖合并请求、拒绝后输入/绘制、无新请求不重试、钩子内再请求、默认接受、最终释放和内部错误传播。该目标需要启用 runtime 才可构建。

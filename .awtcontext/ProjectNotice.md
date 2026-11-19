@@ -2,8 +2,8 @@
 
 - C++20、CMake 3.23+、Slang/Vulkan；CPU/mock 测试无需窗口或 GPU。
 - 当前工具入口为 `../AIWorkTask/awt`，状态只通过 AWT CLI 更新。
-- `../Axiom` 只读；本地 `Axiom/` 是来自远端 `PixelMain` 的 Git 子模块，准确版本见 `AxiomVersion.json`；当前已包含鼠标事件快照，Pixel 呈现变化回调已适配带事件参数的接口，AET 逻辑留在引擎。
-- 两个 Git 仓库分别检查状态和差异；父仓库通过 `.gitmodules` 和 gitlink 跟踪 Axiom 的来源与提交，不直接跟踪其源码文件。
+- `../Axiom` 只读。本地 `Axiom/` 是独立 Git 仓库，通过 `./sync-axiom.sh` 同步 `PixelMain`。Pixel 依赖鼠标事件快照和带事件参数的呈现变化回调，AET 逻辑留在引擎。
+- 父仓库忽略 `/Axiom/`。分别检查两个仓库的状态和差异，用 `git -C Axiom rev-parse HEAD` 查询实际构建所用的引擎提交。
 - World 不出现纹理索引或 RHI 类型；Gameplay 类型通过 Render 呈现快照显式映射。
 - Source 的当前归属为 Runtime/Gameplay、Simulation、Render、System 及 Dev/Debug；以工程 README 的模块表和依赖合同为准。输入处理归 System/IO/Input，PlayerInput 保留 Gameplay/Actors。System 通用服务不含游戏领域类型，IO/Input 单独适配 Gameplay；Gameplay 核心、Simulation 及其余 System 服务不反向依赖 Input，Gameplay 核心和 Input/Camera 不依赖渲染实现。
 - 保留帧首发布、按区域版本复制、Skip 不推进游戏、Draw 不读取实时游戏状态的契约。

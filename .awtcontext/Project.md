@@ -32,7 +32,7 @@
 
 游戏源码只放 `Pixel/Source/Runtime/{Gameplay,Simulation,Render,System}` 与 `Pixel/Source/Dev/Debug`。Gameplay主动查询/影响Simulation；Simulation不依赖Gameplay/Render。通用System服务不含游戏领域类型，`System/IO/Input`单独作为Gameplay输入适配；Application是组合根。
 
-引擎位于本地 `Axiom/` 子模块、分支 `PixelMain`，由父仓库gitlink与AxiomVersion.json锁定。相邻 `../Axiom` 只读。引擎修改前读取其AGENTS；游戏专用渲染与测试留在Pixel。
+引擎位于本地独立仓库 `Axiom/`，默认跟随 `PixelMain`。通过工程根的 `./sync-axiom.sh` 同步，构建使用当前检出的源码。相邻 `../Axiom` 只读。引擎修改前读取其 AGENTS，游戏专用渲染与测试留在 Pixel。
 
 运行时采用主线程呈现、游戏worker与独立模拟线程；世界修改通过队列在完整提交边界生效，Draw只消费自持有快照。合同见 [模拟线程](../Docs/Architecture/SimulationThread.md)、[游戏动作](../Docs/Architecture/GameActions.md) 和 README。
 
