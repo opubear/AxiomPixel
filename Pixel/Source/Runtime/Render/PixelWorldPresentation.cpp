@@ -62,7 +62,9 @@ void BuildWorldGridFrame(pixel::WorldMapView world, const CellAppearanceTable &a
                     if (cell) {
                         const auto type = static_cast<uint32_t>(cell->Type);
                         value = 0;
-                        if (type) {
+                        if (pixel::IsTorch(cell->Type)) {
+                            value = cell->Type == pixel::CellTypeId::LitTorch ? Grid2D::LitTorchCell : Grid2D::UnlitTorchCell;
+                        } else if (type) {
                             const auto appearance = appearances.find(type);
                             if (appearance == appearances.end())
                                 throw std::invalid_argument("gameplay cell type has no appearance mapping");

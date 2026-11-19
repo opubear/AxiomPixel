@@ -13,6 +13,14 @@ class Painter : public CanvasPainter {
     explicit Painter(std::vector<std::byte> &pixels) : CanvasPainter(pixels, InventoryLayout::Width, InventoryLayout::Height) {}
 
     void Icon(int x, int y, items::ItemId item) {
+        if (item == items::ItemId::Torch) {
+            Fill(x + 11, y + 8, 5, 17, {118, 67, 37, 255});
+            Fill(x + 12, y + 10, 2, 13, {193, 132, 68, 255});
+            Fill(x + 8, y + 4, 11, 8, {238, 103, 32, 255});
+            Fill(x + 12, y + 1, 4, 10, {255, 186, 67, 255});
+            Fill(x + 11, y + 6, 5, 4, {255, 236, 161, 255});
+            return;
+        }
         if (item == items::ItemId::WoodenStick) {
             for (int i = 0; i < 22; ++i) {
                 Fill(x + 3 + i / 2, y + 24 - i, 5, 2, {91, 53, 26, 255});
@@ -101,7 +109,7 @@ void PaintInventory(const InventoryView &view, std::vector<std::byte> &pixels) {
     for (size_t i = 0; i < view.BagSlots.size(); ++i)
         paint.SlotBox(InventoryLayout::BagSlot(i), view.BagSlots[i],
             selected.Reference() && view.BagSlots[i].Reference() == selected.Reference());
-    paint.Text(12, 440, "CLICK ITEM TO BIND / 1-7 SELECT", Muted);
-    paint.Text(12, 453, "TAB OR ESC CLOSE", Gold);
+    paint.Text(12, InventoryLayout::Height - 26, "CLICK ITEM TO BIND / 1-7 SELECT", Muted);
+    paint.Text(12, InventoryLayout::Height - 13, "TAB OR ESC CLOSE", Gold);
 }
 } // namespace pixel::ui

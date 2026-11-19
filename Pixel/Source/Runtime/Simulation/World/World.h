@@ -27,6 +27,7 @@ class World {
     WorldGenerationSettings GetGenerationSettings() const { return Streamer ? Streamer->Settings().Generation : WorldGenerationSettings{}; }
     BiomeSample SampleBiome(CellCoord point) const { return SampleWorldBiome(GetGenerationSettings(), point); }
     void SetCell(int64_t x, int64_t y, CellState cell) { GetMutableMap().Set({x, y}, cell); }
+    void SetMaterial(CellCoord cell, CellTypeId material) { GetMutableMap().SetMaterial(cell, material); }
     void Fill(CellState cell);
     void FillRegion(WorldRect region, CellState cell) { GetMutableMap().Fill(region, cell); }
     void SetForceDirection(int64_t x, int64_t y, ForceDirection direction);

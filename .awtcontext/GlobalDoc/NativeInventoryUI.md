@@ -2,7 +2,7 @@
 
 现状核对：2026-11-10。现行玩法摘要见[构式、资源与背包系统](SystemsFormulaItems.md)。
 
-本次范围是游戏内 UI 基座与库存界面：左上角常驻七个快捷格，Tab在其下方展开五行七列库存，布局从左上角按视口缩放。原有背包装备设计仍是未来领域规则提案，通用装备、拖拽和格子持久化仍为提案；木棍独立实例、掉落拾取和统一手持使用见[手持物品合同](HandheldItems.md)。
+左上角常驻七个快捷格，Tab在其下方展开六行七列库存，布局从左上角按视口缩放。木棍独立实例、掉落拾取和统一手持使用见[手持物品合同](HandheldItems.md)。
 
 ## 交互与领域边界
 
@@ -18,7 +18,7 @@
 
 ## 模块与绘制
 
-`Gameplay/UI/InventoryUI` 管理状态、稳定槽位映射与布局命中；`InventoryPainter`复用`CanvasPainter`原生矩形与5×7位图字形，结合资源图标产生自持有RGBA像素画布，构建为PixelUI。画布固定396×466逻辑像素，关闭时背包区域透明；视口缩放与命中使用同一布局合同。
+`Gameplay/UI/InventoryUI` 管理状态、稳定槽位映射与布局命中。`InventoryPainter`复用`CanvasPainter`矩形与5×7位图字形，结合资源图标产生自持有RGBA像素画布。画布固定396×520逻辑像素，关闭时背包区域透明。视口缩放与命中使用同一布局合同。
 
 Application持有UI并将其注入System/IO/Input。Input先处理UI命中，再调用原有游戏动作。UI不依赖Input或Render；Simulation和Items无需知道界面存在。
 
@@ -36,4 +36,4 @@ cmake --build build --target Pixel Axiom PixelRuntimeSmoke -j4
 (cd Pixel && PIXEL_UI_CAPTURE_DIR=/private/tmp/pixel-ui ../build/tests/PixelRuntimeSmoke --inventory-ui-only)
 ```
 
-CPU检查真实数量投影、绑定/耗尽/重新取得、世界替换、空发布、35格和7快捷格、缩放命中、Tab重复事件、Escape、点击不穿透，以及后处理之后的绘制顺序、三帧槽缓存、录制失败重试和resize。GPU专项使用生产组合根，并将实际UI shader叠加到可读场景后处理目标，逐像素校验颜色、透明区和调色隔离；可导出开合PPM画面。具体运行结果见本任务AWT记录。
+CPU检查真实数量投影、绑定/耗尽/重新取得、世界替换、空发布、42格和7快捷格、缩放命中、Tab重复事件、Escape、点击不穿透，以及后处理之后的绘制顺序、三帧槽缓存、录制失败重试和resize。GPU专项使用生产组合根，并将实际UI shader叠加到可读场景后处理目标，逐像素校验颜色、透明区和调色隔离。具体运行结果见AWT任务记录。

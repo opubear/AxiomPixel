@@ -17,6 +17,7 @@ std::span<const ItemDefinition> Definitions() {
         ItemDefinition{ItemId::Ice, "ice", 1, uint32_t(CellTypeId::Ice)},
         ItemDefinition{ItemId::Wood, "wood", 1, uint32_t(CellTypeId::Wood)},
         ItemDefinition{ItemId::Leaves, "leaves", 1, uint32_t(CellTypeId::Leaves)},
+        ItemDefinition{ItemId::Torch, "torch", 1, uint32_t(CellTypeId::LitTorch)},
         ItemDefinition{ItemId::WoodenStick, "wooden_stick"}};
     return values;
 }

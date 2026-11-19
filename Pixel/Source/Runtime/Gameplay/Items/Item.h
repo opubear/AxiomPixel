@@ -9,7 +9,7 @@ enum class ItemId : uint32_t {
     Soil = 1001, Stone = 1010, Coal = 1020, CopperOre = 1030,
     IronOre = 1040, TungstenOre = 1050, GoldOre = 1060,
     Sand = 1070, Clay = 1080, Sandstone = 1090, Snow = 1100,
-    Ice = 1110, Wood = 1120, Leaves = 1130, WoodenStick = 2001
+    Ice = 1110, Wood = 1120, Leaves = 1130, Torch = 1140, WoodenStick = 2001
 };
 struct ItemDefinition {
     ItemId Id;

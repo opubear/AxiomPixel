@@ -25,7 +25,7 @@
 | 系统·构式物品｜构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 现行：木棍独立程序版本与F4编辑、工作台兼容、临时游戏与草稿保存边界 | |
 | 系统·构式物品｜物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 现行：14类资源与独立木棍、4096总量、共享方块映射、预留转移和保存 | |
 | 系统·构式物品｜构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | 现行：formula/2函数、木棍承载与方向转换；场源上限舍入及process/1兼容 | |
-| 系统·构式物品｜背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：50格和通用装备；现有木棍掉落拾取、7＋35展示与统一使用 | |
+| 系统·构式物品｜背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：50格与通用装备；现有木棍拾取、7＋42展示与统一使用 | |
 | 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：7快捷格与35展示格、日历、共享原生画布；ESC收包后开合内建菜单 | |
 | 系统·家园｜设备、家园与会话进度 | `context:GlobalDoc/SystemsHome.md` | 现行：木棍复制晶体、设备育圃、区域冻结与临时持久会话边界 | |
 | 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：保存退出协商、world.meta v7与Gameplay v6兼容，旧风高度仅解码不裁剪 | |
@@ -122,5 +122,6 @@
 | 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |
 | 工程｜Axiom本地化字符串与转换表 | `workspace:Axiom/Source/Localization/README.md` | 现行：LocalizedString、语言地区表与回退；Pixel文案和语言选择尚未接入 | |
 | 证据｜字体本地化与Pixel菜单联合审查（2026-11-11） | `context:GlobalDoc/CodeReview-FontsLocalizationMenu-2026-11-11.md` | 证据：Astra ultra复核关闭两项问题，干净静态44项共享45项、运行时48项及GPU通过 | |
+| 系统·呈现｜火把与局部光照 | `context:GlobalDoc/LocalLighting.md` | 现行：火把放置、点灭、回收及世界状态 | |
 | 工程｜Axiom静态名字与线程域名字 | `workspace:Axiom/Source/Core/Hash/README.md` | 现行：32位名字、线程域与分块存储、退出期反查及宿主插件共享名字库 | |
 | 工程｜Axiom事件订阅 | `workspace:Axiom/Source/Core/Events/README.md` | 现行：HashName 订阅、跨动态库签名、广播参数转换和呈现变化通知 | |

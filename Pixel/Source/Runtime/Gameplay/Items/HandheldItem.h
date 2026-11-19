@@ -9,7 +9,7 @@ namespace pixel::items {
 // The session supplies transactional world operations; items choose their use
 // behavior without knowing about input, UI, rendering or the simulation worker.
 struct ItemUseContext {
-    std::function<api::ActionReceipt(uint32_t material)> PlaceBlockInFront;
+    std::function<api::ActionReceipt(uint32_t material)> PlaceMaterial;
     std::function<api::ActionReceipt(const ItemInstance &)> ActivateFormula;
 };
 
@@ -24,7 +24,7 @@ class BlockItem final : public HandheldItem {
   public:
     explicit BlockItem(uint32_t material) : Material(material) {}
     api::ActionReceipt Use(const ItemUseContext &context) const override {
-        return context.PlaceBlockInFront(Material);
+        return context.PlaceMaterial(Material);
     }
   private:
     uint32_t Material;

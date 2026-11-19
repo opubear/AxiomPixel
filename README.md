@@ -10,7 +10,7 @@
 | --- | --- |
 | [世界、环境与生态](.awtcontext/GlobalDoc/SystemsWorld.md) | 森林/沙漠/雪山、昼夜四季、环境水体与深层岩浆、元胞材料、风/力场、地区生物生成与休眠 |
 | [角色与战斗](.awtcontext/GlobalDoc/SystemsActors.md) | Actor组件、玩家移动、固定木头人、八种怪物与构式伤害；居民已有简易几何呈现 |
-| [构式、物品与背包](.awtcontext/GlobalDoc/SystemsFormulaItems.md) | formula/2、木棍装载施放、14类方块资源、掉落拾取、7快捷格与35展示格 |
+| [构式、物品与背包](.awtcontext/GlobalDoc/SystemsFormulaItems.md) | formula/2、木棍施放和拾取、方块与火把、7快捷格与42展示格 |
 | [设备、家园与会话](.awtcontext/GlobalDoc/SystemsHome.md) | 推力设备、煤燃料、力场育圃、活动区冻结与底层一致检查点 |
 | [知识、世界意志与自主权](.awtcontext/GlobalDoc/SystemsWorldWill.md) | 授权观测、知识历史、离线PseudoLLM祈祷、受限干预与保护撤销 |
 | [画面、交互与内容资源](.awtcontext/GlobalDoc/SystemsPresentation.md) | 群落背景/装饰、人物怪物动画、原生库存UI、独立显示缩放与资源来源 |
@@ -150,12 +150,12 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | A / D，Space | 标准模式移动、跳跃/水中上浮；相机平滑跟随 |
 | F3 | 切换自由调试相机，清理持续按键状态 |
 | WASD，+ / -，PageDown | 自由模式平移、缩放、切到下一区域 |
-| 左键（含Shift＋左键） | 使用当前高亮的手持物：木棍朝鼠标施放自己的构式，方块在面前放置并扣除一份；空手不施法 |
-| Tab | 展开或收起5行7列背包 |
+| 左键（含Shift＋左键） | 木棍朝鼠标施放构式，方块在面前放置，火把插到瞄准的实心地面上 |
+| Tab | 展开或收起6行7列背包 |
 | Escape | 编辑调试文本时先取消编辑；否则优先收起背包，再打开游戏菜单；再次按下关闭菜单，点击菜单中的 `Quit game` 才退出 |
 | 1–7 / 快捷格左键 | 选择左上角常驻的7个快捷格，退出元素笔刷/设备布置；背包中点击物品绑定到当前快捷格 |
 | Shift+2 / Shift+3 / Shift+4，Shift+1 | 选择水 / 蒸汽 / 火调试笔刷，左键投放一团；Shift+1恢复普通工具；F2也可选择 |
-| 右键 / Shift＋右键 | 设备内启停 / 回收；其他位置均开采固体 |
+| 右键 / Shift＋右键 | 火把回收 / 点灭切换，设备启停 / 回收，其他位置开采材料 |
 | B | 切换设备布置工具；开启时左键放置推力发生器 |
 | F1 | 材料 / 合成力场方向视图 |
 | F2 | 显示或隐藏Pixel Debug；`Drop wooden stick`在右侧掉落默认构式木棍，走近自动拾取 |

@@ -55,7 +55,7 @@ struct InventoryState {
 class Inventory {
   public:
     static constexpr size_t MaximumContainers = 256, MaximumReservations = 64;
-    // Fourteen resource entries plus these tools fit the current 35-cell bag.
+    // Preserve the tool capacity when adding stackable item definitions.
     static constexpr size_t MaximumInstancesPerContainer = 21;
     static constexpr uint64_t InstanceResourceBase = uint64_t{1} << 63;
     Inventory();

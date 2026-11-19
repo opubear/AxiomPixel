@@ -51,6 +51,21 @@ float4 backgroundColor(float2 position) {
     return float4(color, 1);
 }
 
+float4 torchColor(float2 pixel, float2 withinCell, bool lit) {
+    // A fixed 8×8 sprite in cell space, independent of terrain tiling.
+    int2 q = int2(withinCell * 8.0);
+    if (lit) {
+        if ((q.y == 1 && q.x == 4) || (q.y == 2 && q.x >= 2 && q.x <= 5)
+            || (q.y == 3 && q.x >= 2 && q.x <= 5))
+            return q.x == 4 && q.y >= 2 ? float4(1, .64, .18, 1) : float4(1, .28, .02, 1);
+    } else if (q.y == 3 && q.x >= 3 && q.x <= 4) {
+        return float4(.11, .09, .07, 1);
+    }
+    if (q.y >= 4 && q.x == 3) return float4(.17, .072, .026, 1);
+    if (q.y >= 4 && q.x == 4) return float4(.39, .19, .064, 1);
+    return backgroundColor(pixel);
+}
+
 [shader("fragment")]
 float4 main(float4 position : SV_Position) : SV_Target
 {
@@ -72,6 +87,8 @@ float4 main(float4 position : SV_Position) : SV_Target
     // Decode before material/empty-cell handling so the field fills all cells.
     if (View.DisplayMode == 1)
         return float4(float3(id & 255, (id >> 8) & 255, (id >> 16) & 255) / 255.0, 1.0);
+    if (id == 0x0fffffffu || id == 0x0ffffffeu)
+        return torchColor(position.xy, frac(q / View.CellSize), id == 0x0fffffffu);
     bool surface = (id & 0x80000000u) != 0;
     uint surfaceStrip = (id >> 28) & 7u;
     id &= 0x0fffffffu;

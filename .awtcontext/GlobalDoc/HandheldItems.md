@@ -1,6 +1,6 @@
 # 手持物品、木棍构式与世界拾取合同
 
-状态：现行。核对日期：2026-11-11。入口为[构式、资源与背包系统](SystemsFormulaItems.md)；库存事务见[Items](Items.md)，构式语言和运行边界见[FormulaComposition](../../Docs/Architecture/FormulaComposition.md)。
+状态：现行。核对日期：2026-11-18。入口为[构式、资源与背包系统](SystemsFormulaItems.md)；库存事务见[Items](Items.md)，构式语言和运行边界见[FormulaComposition](../../Docs/Architecture/FormulaComposition.md)。
 
 ## 玩家操作
 
@@ -16,7 +16,7 @@ F4的 `Equip preset`、`Apply process` 修改当前手持木棍；没有持有�
 
 `Gameplay/Items/HandheldItem.h` 定义 `HandheldItem::Use(ItemUseContext)`。`ItemUseContext`由GameSession提供放置与激活的事务入口。`WoodenStick`实现构式触发；所有可放方块共同使用 `BlockItem`，不改World的材料类，也不为每种方块实现接口。
 
-方块库存只存ItemId和数量；`ItemDefinition::BlockMaterial`映射到一个规范放置材料。土料放Dirt，石头放Stone，煤放CoalOre，其余矿物、沙、黏土、砂岩、雪、冰、木材和树叶放对应材料。开采归并后的草皮／固定土／苔石不会保留原外观变体。
+方块库存只存ItemId和数量。`ItemDefinition::BlockMaterial`映射到规范放置材料。土料放Dirt，石头放Stone，煤放CoalOre，其余矿物、沙、黏土、砂岩、雪、冰、木材和树叶放对应材料。火把复用材料放置事务，目标由鼠标与地面支撑确定。开采归并后的草皮／固定土／苔石不保留原外观变体。 [火把放置和回收](LocalLighting.md)
 
 `ItemRef = {ItemId, Instance}`；Instance=0引用资源栈，非零引用一根独立木棍。木棍ID为wooden_stick=2001，实例身份由Inventory单调分配，Clear不复用。每根木棍拥有不可变ProgramArtifact及独立FormulaVersion。激活的ProgramRef为 `{(1<<63)|Instance, FormulaVersion}`；运行实例保留精确产物，编辑无需改变其他实例。
 
@@ -28,7 +28,7 @@ F4的 `Equip preset`、`Apply process` 修改当前手持木棍；没有持有�
 
 拾取仅在成功固定步中、角色运动后执行：物品距离身体矩形不超过2格（100厘米），且身体中心到物品之间无地形遮挡，才尝试原子TransferInstance。满包保持物品在地面，腾出容量后自动重试。暂停和预算等待不推进拾取；显式单步沿用完整固定步规则。
 
-资源仍按种类汇总；玩家总容量4096，每根木棍占1。每容器最多21个独立工具，配合14个资源展示位对应35格UI。地面容器最多21根木棍，超限拒绝F2生成。这个限制不代表50格装备提案已实现。
+资源按种类汇总，玩家总容量4096，每根木棍占1。每容器最多21个独立工具，背包的42个展示格容纳资源、火把和这些工具。地面容器最多21根木棍，超限拒绝F2生成。
 
 完整提交发布木棍实例的只读库存身份和地面位置。Gameplay/UI只读取发布值；Render/ItemFrame生成独立ItemDraws，Draw不读取实时Inventory。F1隐藏物品外观，拾取后的新帧移除地面形状，旧帧值不被修改。
 

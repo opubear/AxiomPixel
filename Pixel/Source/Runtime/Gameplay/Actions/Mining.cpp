@@ -19,6 +19,7 @@ std::optional<items::ItemAmount> MiningYield(CellTypeId material) {
     case CellTypeId::Ice: return {{ItemId::Ice, 1}};
     case CellTypeId::Wood: return {{ItemId::Wood, 1}};
     case CellTypeId::Leaves: return {{ItemId::Leaves, 1}};
+    case CellTypeId::LitTorch: case CellTypeId::UnlitTorch: return {{ItemId::Torch, 1}};
     }
     throw std::logic_error("material has no mining definition");
 }

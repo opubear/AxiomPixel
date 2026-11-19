@@ -28,6 +28,8 @@ enum class CellTypeId : uint32_t {
     Ice = 61,
     Wood = 70,
     Leaves = 71,
+    LitTorch = 72,
+    UnlitTorch = 73,
 };
 
 // Compatibility names for existing world operations; empty space is air.
@@ -80,6 +82,8 @@ template <> struct CellDefinition<CellTypeId::Snow> { inline static constexpr Ce
 template <> struct CellDefinition<CellTypeId::Ice> { inline static constexpr CellInfo Info{1.f}; };
 template <> struct CellDefinition<CellTypeId::Wood> { inline static constexpr CellInfo Info{1.f}; };
 template <> struct CellDefinition<CellTypeId::Leaves> { inline static constexpr CellInfo Info{0.f, false, false, true}; };
+template <> struct CellDefinition<CellTypeId::LitTorch> { inline static constexpr CellInfo Info{.25f, false, true, true}; };
+template <> struct CellDefinition<CellTypeId::UnlitTorch> { inline static constexpr CellInfo Info{.25f, false, true, true}; };
 
 constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     switch (type) {
@@ -107,6 +111,8 @@ constexpr const CellInfo &GetCellInfo(CellTypeId type) {
     case CellTypeId::Ice: return CellDefinition<CellTypeId::Ice>::Info;
     case CellTypeId::Wood: return CellDefinition<CellTypeId::Wood>::Info;
     case CellTypeId::Leaves: return CellDefinition<CellTypeId::Leaves>::Info;
+    case CellTypeId::LitTorch: return CellDefinition<CellTypeId::LitTorch>::Info;
+    case CellTypeId::UnlitTorch: return CellDefinition<CellTypeId::UnlitTorch>::Info;
     }
     throw std::invalid_argument("cell type has no static information");
 }
@@ -126,6 +132,7 @@ constexpr bool IsKnownCellType(CellTypeId type) {
     case CellTypeId::Ice:
     case CellTypeId::Wood:
     case CellTypeId::Leaves:
+    case CellTypeId::LitTorch: case CellTypeId::UnlitTorch:
         return true;
     }
     return false;
@@ -136,4 +143,5 @@ constexpr bool BlocksCharacter(CellTypeId type) { return !IsKnownCellType(type) 
 constexpr bool BlocksWind(CellTypeId type) { return !IsKnownCellType(type) || GetCellInfo(type).BlocksWind; }
 constexpr bool IsMineable(CellTypeId type) { return IsKnownCellType(type) && GetCellInfo(type).Mineable; }
 constexpr bool IsLiquid(CellTypeId type) { return type == CellTypeId::Water || type == CellTypeId::Lava; }
+constexpr bool IsTorch(CellTypeId type) { return type == CellTypeId::LitTorch || type == CellTypeId::UnlitTorch; }
 } // namespace pixel

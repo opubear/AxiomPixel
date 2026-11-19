@@ -8,13 +8,13 @@ M4.2 建立 `PixelItems`，当前为保存不可变构式产物依赖独立Syste
 
 ## 定义与身份
 
-`Items/Item.h` 定义十四种资源和木棍的稳定物品 ID：soil=1001、stone=1010、coal=1020、copper_ore=1030、iron_ore=1040、tungsten_ore=1050、gold_ore=1060、sand=1070、clay=1080、sandstone=1090、snow=1100、ice=1110、wood=1120、leaves=1130、wooden_stick=2001。定义版本均为 1。ID 不使用材料编号、纹理层或容器下标。首批定义以原生常量装配；`Definition` 对未知内容引用抛出逻辑错误，启动校验重复 ID/名字、空名字/版本和设备成本引用。
+`Items/Item.h` 定义稳定物品 ID，包括 soil=1001、stone=1010、coal=1020、copper_ore=1030、iron_ore=1040、tungsten_ore=1050、gold_ore=1060、sand=1070、clay=1080、sandstone=1090、snow=1100、ice=1110、wood=1120、leaves=1130、torch=1140、wooden_stick=2001。定义版本均为 1。ID 独立于材料编号、纹理层与容器下标。`Definition` 对未知引用抛出逻辑错误，启动校验重复 ID/名字、空名字/版本和设备成本引用。
 
 容器 ID 在一个 Inventory 内单调分配，属于当前会话；与物品语义 ID 分开。`ContainerRef` 是 `{Id, Version}`，不是内存指针。调用方必须保留所属 Session/epoch，不能跨库存或世界使用本地 ID。`Clear` 不倒退分配器；重置世界创建新的玩家背包 ID。ReservationId 另带 Inventory 所有者身份，跨集合、已释放、已消费或 Clear 后的 token 均不能再次消费。
 
 ## 数量、容量与预留
 
-容量表示所有物品数量之和，不是格数或重量。玩家背包初始为空，容量 4096；库最多 256 个容器、64 个同时存在的预留，每个栈最多一种已定义物品。数量为 uint32，求总和使用 uint64，预检容量后才转换。
+容量表示所有物品数量之和。玩家背包容量 4096。库最多 256 个容器、64 个同时存在的预留，每个栈最多一种已定义物品。数量为 uint32，求总和使用 uint64，预检容量后才转换。 [火把世界状态](LocalLighting.md)
 
 `Inspect` 返回拥有值的快照，包含版本、容量、总数量和各物品 Quantity/Reserved；`Available = Quantity - Reserved`。数量包括已经预留的部分，预留不会腾出容量。快照不借用内部 map。
 

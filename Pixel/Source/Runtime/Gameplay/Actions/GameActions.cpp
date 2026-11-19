@@ -54,7 +54,8 @@ api::Reason Validate(const api::Action &action) {
         } else if constexpr (std::is_same_v<T, api::SelectWindStrategy>) {
             if (value.Kind < api::WindKind::Coarse || value.Kind > api::WindKind::Empty)
                 return api::Reason::Unsupported;
-        } else if constexpr (std::is_same_v<T, api::PlaceDevice> || std::is_same_v<T, api::ObserveForce>) {
+        } else if constexpr (std::is_same_v<T, api::PlaceDevice> || std::is_same_v<T, api::ObserveForce>
+                             || std::is_same_v<T, api::ToggleTorch>) {
             if (!ValidCell(value.Target))
                 return api::Reason::InvalidArgument;
         } else if constexpr (std::is_same_v<T, api::RemoveDevice> || std::is_same_v<T, api::SupplyDevice> || std::is_same_v<T, api::SetDeviceEnabled> || std::is_same_v<T, api::SetDeviceProtection>) {
@@ -239,7 +240,8 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
     api::ActionReceipt receipt;
     std::visit([&](const auto &value) {
         using T = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<T, api::MineRegion> || std::is_same_v<T, api::PlaceMaterial>) {
+        if constexpr (std::is_same_v<T, api::MineRegion> || std::is_same_v<T, api::PlaceMaterial>
+                      || std::is_same_v<T, api::ToggleTorch>) {
             api::MaterialResult result{value.Target};
             const auto before = GameWorld.TryGetCell(value.Target.X, value.Target.Y);
             if (!before) {
@@ -268,7 +270,31 @@ api::ActionReceipt GameSession::Dispatch(const api::Action &action, api::Request
                             receipt.Rejection = api::Reason::WaitingForBudget;
                             break;
                         }
+                    } else if constexpr (std::is_same_v<T, api::ToggleTorch>) {
+                        const CellCoord cell{value.Target.X, value.Target.Y};
+                        if (!IsTorch(before->Type)) {
+                            receipt.Rejection = api::Reason::Blocked;
+                        } else if (!GameWorld.TryPrepareMaterialWrite({cell.X, cell.Y, 1, 1})) {
+                            receipt.Rejection = api::Reason::WaitingForBudget;
+                        } else {
+                            GameWorld.SetMaterial(cell, before->Type == CellTypeId::LitTorch
+                                ? CellTypeId::UnlitTorch : CellTypeId::LitTorch);
+                        }
                     } else {
+                        if (CellTypeId(value.MaterialId) == CellTypeId::LitTorch) {
+                            const auto support = GameWorld.TryGetCell(value.Target.X, value.Target.Y + 1);
+                            if (!support) {
+                                receipt.Rejection = api::Reason::NotReady;
+                                result.NotReady = 1;
+                            } else if (!BlocksCharacter(support->Type)) {
+                                receipt.Rejection = api::Reason::Blocked;
+                                result.Blocked = 1;
+                            }
+                        }
+                        if (receipt.Rejection != api::Reason::None) {
+                            receipt.Result = result;
+                            return;
+                        }
                         if (before->Type != CellTypeId::Air || Characters.Occupies({value.Target.X, value.Target.Y})
                             || Machines.FindAt(value.Target.X, value.Target.Y)) {
                             receipt.Rejection = api::Reason::Blocked;

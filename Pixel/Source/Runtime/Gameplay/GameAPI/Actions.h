@@ -12,6 +12,7 @@ namespace pixel::api {
 enum class GeneratorKind { Flat, Natural };
 struct MineRegion { Cell Target; std::optional<uint32_t> ExpectedMaterial; };
 struct PlaceMaterial { Cell Target; uint32_t MaterialId = 10; };
+struct ToggleTorch { Cell Target; };
 // Native debug brush; fills only resident air inside the active window.
 struct SpawnElement { Cell Target; uint32_t MaterialId = 50; uint32_t Radius = 4; };
 struct ActivateProgram { ProgramRef Program; Position Target; };
@@ -40,7 +41,7 @@ struct InterveneAtDevice {
 };
 using Action = std::variant<MineRegion, PlaceMaterial, SpawnElement, ActivateProgram, SelectWindStrategy,
                             PlaceDevice, RemoveDevice, SupplyDevice, SetDeviceEnabled, ObserveForce, SetDeviceProtection,
-                            InstallIntervention, InterveneAtDevice, UseHeldItem>;
+                            InstallIntervention, InterveneAtDevice, UseHeldItem, ToggleTorch>;
 struct ActionRequest {
     uint64_t WorldEpoch = 0, Sequence = 0;
     Action Payload;

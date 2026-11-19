@@ -69,7 +69,7 @@ void SharedBlockBehavior() {
     auto &inventory = testing::SessionAccess::Inventory(session);
     auto &world = testing::SessionAccess::World(session);
     for (const auto &definition : Definitions()) {
-        if (!definition.BlockMaterial) continue;
+        if (!definition.BlockMaterial || definition.Id == ItemId::Torch) continue;
         const std::array stock{ItemAmount{definition.Id, 2}};
         Check(inventory.Add(inventory.Reference(session.PlayerInventory()), stock) == Result::Applied, "block stock failed");
         const ItemRef item{definition.Id};

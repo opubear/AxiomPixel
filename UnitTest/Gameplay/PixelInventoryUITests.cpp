@@ -30,7 +30,7 @@ void InventoryAndBindings() {
     ui::InventoryUI ui;
     auto snapshot = Snapshot();
     ui.Publish(&snapshot, {12});
-    Require(ui.Read().QuickSlots.size() == 7 && ui.Read().BagSlots.size() == 35 && !ui.IsExpanded(), "wrong initial layout");
+    Require(ui.Read().QuickSlots.size() == 7 && ui.Read().BagSlots.size() == 42 && !ui.IsExpanded(), "wrong initial layout");
     Require(ui.Read().QuickSlots[0].Quantity == 1000 && ui.Read().QuickSlots[0].Reserved == 20 && !ui.Read().BagSlots[7].Item,
         "UI did not project owned inventory values");
     ui.SelectQuickSlot(1);

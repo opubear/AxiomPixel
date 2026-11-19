@@ -180,7 +180,8 @@ void ValidateWorldGridFrame(const WorldGridFrameView &frame, uint32_t layers, ui
     case GridDisplayMode::Materials:
         if (std::any_of(frame.Cells.begin(), frame.Cells.end(), [layers](uint32_t id) {
                 const auto layer = id & Grid2D::MaterialLayerMask;
-                return id != Grid2D::MissingCell && (layer >= layers || ((id & Grid2D::SurfaceCellFlag) && !layer) ||
+                return id != Grid2D::MissingCell && id != Grid2D::LitTorchCell && id != Grid2D::UnlitTorchCell
+                    && (layer >= layers || ((id & Grid2D::SurfaceCellFlag) && !layer) ||
                        ((id & Grid2D::SurfaceStripMask) && !(id & Grid2D::SurfaceCellFlag)));
             }))
             throw std::invalid_argument("grid TextureId exceeds the texture catalog");

@@ -15,8 +15,8 @@ namespace pixel::ui {
 // Logical pixels are shared by painting and hit testing; input supplies its own
 // event's framebuffer extent so queued clicks retain their original DPI scale.
 struct InventoryLayout {
-    static constexpr int Width = 396, Height = 466, HotbarHeight = 108;
-    static constexpr size_t Columns = 7, Rows = 5, SlotCount = Columns * Rows;
+    static constexpr int Width = 396, Height = 520, HotbarHeight = 108;
+    static constexpr size_t Columns = 7, Rows = 6, SlotCount = Columns * Rows;
     static Rect QuickSlot(size_t index);
     static Rect BagSlot(size_t index);
     static Rect Placement(std::array<int, 2> framebuffer, float uiScale = 1);

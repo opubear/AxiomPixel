@@ -18,6 +18,12 @@ api::ActionReceipt GameSession::UseHeldItem(const api::UseHeldItem &action, api:
     const auto target = WorldPosition::FromCell({action.Target.AnchorCell.X, action.Target.AnchorCell.Y}, action.Target.Offset);
     const items::ItemUseContext context{
         [&](uint32_t material) {
+            if (CellTypeId(material) == CellTypeId::LitTorch) {
+                auto cell = target.Cell();
+                const auto aimed = GameWorld.TryGetCell(cell.X, cell.Y);
+                if (aimed && BlocksCharacter(aimed->Type)) --cell.Y;
+                return Dispatch(api::PlaceMaterial{{cell.X, cell.Y}, material}, request);
+            }
             const auto &body = *GetPlayer();
             const auto origin = body.GetWorldPosition();
             const auto reference = origin.Cell();
