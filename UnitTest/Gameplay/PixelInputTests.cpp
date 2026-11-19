@@ -1,4 +1,5 @@
 #include "../Support/TestAccess.h"
+#include "../Support/PlayerProfileFixture.h"
 #include "Runtime/Gameplay/Camera/GameCamera.h"
 #include "Runtime/Gameplay/GameSession/GameSession.h"
 #include "Runtime/System/IO/Input/GameInput.h"
@@ -25,7 +26,8 @@ struct Fixture {
     pixel::GameInput Input{Session, Camera, Presentation, UI, Menu, {
         [this] { ++QuitRequests; },
         [this] { ++PanelToggles; }, [this] { ++EditorToggles; }, [this] { return Framebuffer; }}};
-    Fixture() {
+    explicit Fixture(pixel::items::PlayerProfile profile = {})
+        : Session(pixel::SessionMode::Finite, {}, {}, std::move(profile)), UI(Session.GetPlayerProfile()) {
         pixel::testing::SessionAccess::World(Session).DisableWind();
         Input.ResetView();
     }
@@ -216,6 +218,61 @@ void MouseEditing() {
     invalid.Position = {-1, -1};
     f.Input.OnMouseButtonEvent(MouseButton::MOUSE_BUTTON_LEFT, ButtonAction::ACTION_PRESS, 0, invalid);
     Require(world.GetCell(100, 100).Type == pixel::CellTypes::Empty, "invalid/outside click must not edit world");
+}
+
+void TorchInputWithQueuedClicks() {
+    Fixture f(pixel::testing::ReadPlayerProfile("debug"));
+    const auto &inventory = f.Session.GetInventory();
+    const pixel::items::ItemRef torch{pixel::items::ItemId::Torch};
+    const auto bag = f.Session.PlayerInventory();
+    f.PublishUI();
+    const auto initial = inventory.Inspect(bag);
+    Require(initial.Quantity == 1001 && initial.Instances.size() == 1
+            && initial.Instances.front().Ref.Item == pixel::items::ItemId::WoodenStick
+            && initial.Instances.front().Formula.has_value()
+            && initial.Instances.front().Formula->Identity() == pixel::DefaultPlayerProcess().Identity(),
+            "debug character did not receive an independent working stick");
+    const auto stick = initial.Instances.front().Ref;
+    const auto &view = f.UI.Read();
+    Require(view.BagSlots[0].Reference() == stick && view.BagSlots[0].Quantity == 1
+            && view.BagSlots[1].Reference() == torch && view.BagSlots[1].Quantity == 1000
+            && view.QuickSlots[0] == view.BagSlots[0] && view.QuickSlots[1] == view.BagSlots[1]
+            && f.UI.HeldItem() == stick, "debug bag slots or first two quick bindings disagree with the stock");
+    f.Session.EnableSimulationThread();
+    f.KeyEvent(Key::KEY_2);
+    Require(f.UI.HeldItem() == torch, "key 2 did not equip the debug torches");
+
+    // An event sampled against the old viewport can arrive after a resize.
+    f.Camera.GetCamera().SetWorldPosition(pixel::WorldPosition::FromCells(519.5, 512.5));
+    f.Camera.SetFramebufferSize({1600, 1200});
+    const MousePointerState ground{{400, 300}, {800, 600}, {800, 600}};
+    const MousePointerState above{{400, 300 - double(f.Camera.GetView().CellSizePixels[1])}, {800, 600}, {800, 600}};
+    const auto click = [&](MouseButton button, int mods, const MousePointerState &pointer) {
+        f.Input.OnMouseButtonEvent(button, ButtonAction::ACTION_PRESS, mods, pointer);
+        const auto *queued = f.Session.LastAction(pixel::NativeCaller::Input);
+        Require(queued && queued->Queued(), "torch input did not queue a game action");
+        pixel::testing::SessionAccess::FinishQueuedChanges(f.Session);
+        Require(f.Session.LastAction(pixel::NativeCaller::Input)->Applied(), "queued torch action failed");
+    };
+    click(MouseButton::MOUSE_BUTTON_LEFT, 0, ground);
+    f.PublishUI();
+    Require(f.Session.GetWorld().GetCell(519, 511).Type == pixel::CellTypeId::LitTorch
+            && view.BagSlots[1].Quantity == 999 && view.QuickSlots[1] == view.BagSlots[1],
+            "placement did not use the event's viewport and ground cell");
+    click(MouseButton::MOUSE_BUTTON_RIGHT, int(Mod::MOD_SHIFT), above);
+    Require(f.Session.GetWorld().GetCell(519, 511).Type == pixel::CellTypeId::UnlitTorch, "shift-right did not extinguish the torch");
+    click(MouseButton::MOUSE_BUTTON_RIGHT, 0, above);
+    f.PublishUI();
+    Require(f.Session.GetWorld().GetCell(519, 511).Type == pixel::CellTypeId::Air
+            && view.BagSlots[1].Quantity == 1000 && view.QuickSlots[1] == view.BagSlots[1],
+            "right click did not return the torch to inventory");
+    f.KeyEvent(Key::KEY_1);
+    Require(f.UI.HeldItem() == stick, "key 1 did not restore the same wooden stick");
+    Require(f.Session.Control(pixel::NativeCaller::Driver, pixel::api::ResetWorld{}).Succeeded(), "debug world reset failed");
+    f.PublishUI();
+    Require(view.Quantity == 1001 && view.BagSlots[1].Quantity == 1000 && view.BagSlots[0].Instance
+            && view.BagSlots[0].Instance != stick.Instance && f.UI.HeldItem() == view.BagSlots[0].Reference(),
+            "reset duplicated stock or bound the old world's stick");
 }
 
 void FormulaInputAndContinuousAim() {
@@ -427,6 +484,7 @@ int main() {
         CommandsAndReset();
         PendingResetKeepsView();
         MouseEditing();
+        TorchInputWithQueuedClicks();
         FormulaInputAndContinuousAim();
         FormulaInputWithSimulationThread();
         DeviceInput();

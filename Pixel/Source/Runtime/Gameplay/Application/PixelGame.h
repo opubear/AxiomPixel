@@ -80,7 +80,7 @@ class PixelGame final : public IGameInterface {
     pixel::ArtAssetStore ArtAssets;
     pixel::PixelDebugUI DebugUI;
     pixel::performance::GameProfiler Performance;
-    pixel::ui::InventoryUI UI;
+    pixel::ui::InventoryUI UI{Session.GetPlayerProfile()};
     pixel::ui::GameMenuUI Menu;
     pixel::GameInput Input;
 };

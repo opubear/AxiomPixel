@@ -11,13 +11,24 @@
 #include "Log/Log.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+
+namespace {
+pixel::items::PlayerProfile LoadPlayerProfile(pixel::SessionMode mode) {
+    if (mode == pixel::SessionMode::Finite) return {};
+    const auto bytes = AssetLoader::LoadContentFile("PlayerProfiles.json");
+    const auto *selected = std::getenv("PIXEL_PLAYER_PROFILE");
+    return pixel::items::PlayerProfile::Parse({bytes.data(), bytes.size()}, selected ? selected : "");
+}
+} // namespace
 
 PixelGame::PixelGame(bool persistent, std::unique_ptr<pixel::llm::LLM> model)
     : PixelGame(persistent ? pixel::SessionMode::Persistent : pixel::SessionMode::Finite, std::move(model)) {}
 
 PixelGame::PixelGame(pixel::SessionMode mode, std::unique_ptr<pixel::llm::LLM> model)
     : Session(mode, mode == pixel::SessionMode::Finite ? pixel::WorldGenerationSettings{} : pixel::GameSession::DefaultGeneration(),
-          mode == pixel::SessionMode::Finite ? nullptr : pixel::MonsterCatalog::Parse(AssetLoader::LoadContentFile("Monsters.json"))),
+          mode == pixel::SessionMode::Finite ? nullptr : pixel::MonsterCatalog::Parse(AssetLoader::LoadContentFile("Monsters.json")),
+          LoadPlayerProfile(mode)),
       Model(model ? std::move(model) : std::make_unique<pixel::llm::PseudoLLM>()),
       ArtAssets(AssetLoader::LoadContentFile), Input(Session, Camera, Presentation, UI, Menu, {
           [] { GAxiom->RequestClose(); },

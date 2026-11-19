@@ -17,23 +17,23 @@
 | 系统·角色｜角色、怪物与战斗 | `context:GlobalDoc/SystemsActors.md` | 现行：玩家与Actor、八类怪物、命中死亡复活、地区休眠及成长缺口 | |
 | 系统·角色｜Actors身份与地形边界 | `context:GlobalDoc/Actors.md` | 现行：Actor组件与生命周期；生产玩家构式归手持木棍，Gameplay v6保存 | |
 | 系统·角色｜怪物内容与运行时 | `workspace:Docs/Monsters.md` | 现行：怪物资源配置、行为战斗、地区候选与休眠存档及验证 | |
-| 系统·构式物品｜构式、资源与背包 | `context:GlobalDoc/SystemsFormulaItems.md` | 现行：木棍构式与合法上限力场、掉落拾取、统一左键使用及资源背包 | |
+| 系统·构式物品｜构式、资源与背包 | `context:GlobalDoc/SystemsFormulaItems.md` | 现行：角色起始物品、读档与拾取、木棍构式、火把使用、方块资源及库存 | |
 | 系统·构式物品｜构式系统（Formula System） | `workspace:Docs/GameDesign/FormulaSystem.md` | 现行：函数组合与世界绑定设计；formula/2已实现范围和后续能力边界 | 当前设计入口；formula/2已实现，process/1兼容 |
 | 系统·构式物品｜独立构式语言使用说明 | `workspace:Pixel/Source/Runtime/System/Formula/README.md` | 现行：System下独立DSL语法、CLI示例和构建测试入口；游戏通过Gameplay适配层接入 | 独立CLI与游戏适配并存 |
 | 系统·构式物品｜构式过程语言v1与有界运行时 | `context:GlobalDoc/FormulaProcessRuntime.md` | 兼容：process/1编译与有界执行基础；当前formula/2差异见FormulaComposition | |
 | 系统·构式物品｜FormulaBridge与程序承载者 | `context:GlobalDoc/FormulaBridge.md` | 现行：宿主基础与process/1兼容；formula/2绑定、伤害和保存见组合合同 | |
 | 系统·构式物品｜构式程序状态与编辑合同 | `context:GlobalDoc/FormulaStateAndEditing.md` | 现行：木棍独立程序版本与F4编辑、工作台兼容、临时游戏与草稿保存边界 | |
-| 系统·构式物品｜物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 现行：14类资源与独立木棍、4096总量、共享方块映射、预留转移和保存 | |
+| 系统·构式物品｜物品库存与开采资源合同 | `context:GlobalDoc/Items.md` | 现行：角色初始背包、会话默认值、快捷键继承与覆盖、物品身份、容量预留和恢复 | |
 | 系统·构式物品｜构式函数组合与世界绑定实现 | `workspace:Docs/Architecture/FormulaComposition.md` | 现行：formula/2函数、木棍承载与方向转换；场源上限舍入及process/1兼容 | |
 | 系统·构式物品｜背包装备与自动拾取系统设计 | `workspace:Docs/GameDesign/InventoryAndEquipmentDesign.md` | 设计提案：50格与通用装备；现有木棍拾取、7＋42展示与统一使用 | |
-| 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：7快捷格与35展示格、日历、共享原生画布；ESC收包后开合内建菜单 | |
+| 系统·构式物品｜原生背包与快捷栏UI | `context:GlobalDoc/NativeInventoryUI.md` | 现行：角色布局、读档木棍与拾取的快捷绑定、7快捷格与42展示格、日历和ESC菜单 | |
 | 系统·家园｜设备、家园与会话进度 | `context:GlobalDoc/SystemsHome.md` | 现行：木棍复制晶体、设备育圃、区域冻结与临时持久会话边界 | |
 | 系统·家园｜会话保存边界与旧档迁移 | `workspace:Docs/Architecture/SessionSaveBoundary.md` | 现行：保存退出协商、world.meta v7与Gameplay v6兼容，旧风高度仅解码不裁剪 | |
 | 系统·家园｜设备放置端口与最小工作状态 | `context:GlobalDoc/Devices.md` | 现行：推力设备、冻结和存档；M4.7同帧状态解释与授权观测 | |
 | 系统·家园｜区域活动与设备程序冻结恢复 | `context:GlobalDoc/RegionActivity.md` | 现行：M4.5本地活动时间与身份续接；M4.6磁盘恢复另见Checkpoints | |
 | 系统·家园｜游戏检查点与恢复 | `context:GlobalDoc/Checkpoints.md` | 现行：Gameplay v6物品与掉落、world.meta v7日历、跨域提交存档及恢复校验 | |
 | 系统·家园｜设备库存与持续程序观测 | `context:GlobalDoc/GameplayObservation.md` | 现行：M4.7统一提交投影、库存授权与分页、设备状态与场源UI及验证 | |
-| 系统·家园｜可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | 现行：晶体程序装入当前木棍；两花床与真实资源设备，默认临时会话 | |
+| 系统·家园｜可保存的力场育圃贯穿场景 | `context:GlobalDoc/ForceGarden.md` | 现行：使用角色木棍装载晶体程序、两花床与真实资源设备、临时会话 | |
 | 系统·世界意志｜知识、世界意志与自主权 | `context:GlobalDoc/SystemsWorldWill.md` | 现行：授权观察、离线祈祷、排队执行、来源档案与保护撤销；网络未接入 | |
 | 系统·世界意志｜有界领域观测与提交事实 | `context:GlobalDoc/ObservationProjection.md` | 现行：M2投影与事实；M4.7加入同提交设备库存程序和场源值 | |
 | 系统·世界意志｜LLMView只读查询与离线贯穿样例 | `context:GlobalDoc/LLMView.md` | 现行：授权冻结分页与JSON；M4.7库存设备、M5.1知识历史和来源摘要 | |
@@ -117,7 +117,7 @@
 | 历史｜游戏愿景模块化架构总验收 | `context:GlobalDoc/GameplayArchitectureAcceptance.md` | 历史：六阶段29项任务的组合合同、CPU与GPU/AET验证、独立审查及范围限制 | |
 | 历史｜Performance引擎迁移验收 | `workspace:Docs/DiagnosticsMigration.md` | 历史：通用诊断边界、PerfTest与纳秒trace、静态动态库及原生窗口验收结果 | |
 | 历史｜Natural v1固定生成参数 | `workspace:Pixel/Source/Runtime/Simulation/World/Generation/Version1.md` | 兼容：保留旧生成版本复现；新游戏默认Natural v3 | |
-| 系统·构式物品｜手持物品与木棍构式触发器 | `context:GlobalDoc/HandheldItems.md` | 现行：统一手持使用、身体外侧完整格放置、木棍构式与掉落拾取及v6存档 | |
+| 系统·构式物品｜手持物品与木棍构式触发器 | `context:GlobalDoc/HandheldItems.md` | 现行：起始和拾取木棍的独立构式、方块与火把使用及v6存档 | |
 | 系统·世界｜昼夜与季节实现合同 | `context:GlobalDoc/WorldCalendar.md` | 现行：20分钟昼夜、7天四季、完整提交、光照HUD、季末晨昏跳转及world.meta v7 | |
 | 工程｜Axiom字体与文字塑形 | `workspace:Axiom/Source/Render/Text/README.md` | 现行：源码子模块字体依赖、UTF-8文本段塑形与RHI绘制；Pixel画布尚未迁移 | |
 | 工程｜Axiom本地化字符串与转换表 | `workspace:Axiom/Source/Localization/README.md` | 现行：LocalizedString、语言地区表与回退；Pixel文案和语言选择尚未接入 | |

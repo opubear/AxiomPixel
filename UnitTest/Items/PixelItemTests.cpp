@@ -1,4 +1,5 @@
 #include "Runtime/Gameplay/Items/Inventory.h"
+#include "Runtime/Gameplay/Items/PlayerProfile.h"
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -87,10 +88,40 @@ void LimitsAndContent() {
     for (size_t i = 1; i < Inventory::MaximumContainers; ++i) Check(inventory.Create(1).Value != 0, "container limit too small");
     Check(inventory.Create(1).Value == 0, "container bound ignored");
 }
+
+void PlayerProfileConfiguration() {
+    const auto document = [](std::string_view entries) {
+        return std::string(R"({"DefaultProfile":"play","Profiles":{"play":{"StartingInventory":[)")
+            + std::string(entries) + R"(]},"empty":{"StartingInventory":[]}}})";
+    };
+    const auto configured = document(R"({"BagSlot":42,"Item":"stone","Quantity":29},
+        {"BagSlot":3,"QuickSlot":6,"Item":"wooden_stick","Quantity":1})");
+    const auto profile = PlayerProfile::Parse(configured);
+    const auto entries = profile.StartingInventory();
+    Check(entries.size() == 2 && entries[0].BagSlot == 2 && entries[0].QuickSlot == 5
+          && entries[1].BagSlot == 41 && !entries[1].QuickSlot && entries[1].Amount == ItemAmount{ItemId::Stone, 29},
+          "configured order, quantities or one-based slots did not reach the player profile");
+    Check(PlayerProfile::Parse(configured, "empty").StartingInventory().empty(), "empty profile inherited starting items");
+    ContentError([&] { PlayerProfile::Parse(configured, "unknown"); });
+    for (const auto invalid : {
+            R"({"BagSlot":1,"Item":"unknown","Quantity":1})",
+            R"({"BagSlot":0,"Item":"torch","Quantity":1})",
+            R"({"BagSlot":43,"Item":"torch","Quantity":1})",
+            R"({"BagSlot":1,"QuickSlot":8,"Item":"torch","Quantity":1})",
+            R"({"BagSlot":1,"Item":"wooden_stick","Quantity":2})",
+            R"({"BagSlot":1,"Item":"torch","Quantity":0})",
+            R"({"BagSlot":1,"Item":"torch","Quantity":1.5})",
+            R"({"BagSlot":1,"Item":"torch","Quantity":4096},{"BagSlot":2,"Item":"stone","Quantity":1})",
+            R"({"BagSlot":1,"Item":"torch","Quantity":1},{"BagSlot":2,"Item":"torch","Quantity":1})",
+            R"({"BagSlot":1,"Item":"torch","Quantity":1},{"BagSlot":1,"Item":"stone","Quantity":1})",
+            R"({"BagSlot":1,"QuickSlot":1,"Item":"torch","Quantity":1},{"BagSlot":2,"QuickSlot":1,"Item":"stone","Quantity":1})"})
+        ContentError([&] { PlayerProfile::Parse(document(invalid)); });
+}
 } // namespace
 int main() {
     try {
         TransferAndVersions(); Reservations(); LimitsAndContent();
+        PlayerProfileConfiguration();
         std::cout << "Pixel items passed\n";
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

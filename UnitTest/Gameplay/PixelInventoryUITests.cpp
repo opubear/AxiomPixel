@@ -73,6 +73,27 @@ void LayoutAndCanvas() {
     Require(ui.CloseInventory() && !ui.CloseInventory(), "close must report whether Escape was consumed");
     Require(!ui.PointerPress(30, 200, {1280, 720}, true), "hidden bag intercepted world click");
 }
+void ProfileQuickSlotOverrides() {
+    auto snapshot = Snapshot();
+    auto &bag = snapshot.Inventories.front();
+    bag.Quantity = 3;
+    bag.Stacks = {{uint32_t(items::ItemId::Stone), 1, 3, 0}};
+    const auto manifest = R"({"DefaultProfile":"inherit","Profiles":{
+        "inherit":{"StartingInventory":[{"BagSlot":42,"Item":"stone","Quantity":3}]},
+        "override":{"StartingInventory":[{"BagSlot":42,"QuickSlot":6,"Item":"stone","Quantity":3}]}
+    }})";
+    for (const auto name : {"inherit", "override"}) {
+        ui::InventoryUI ui(items::PlayerProfile::Parse(manifest, name));
+        ui.Publish(&snapshot, {12});
+        const auto &view = ui.Read();
+        Require(view.BagSlots[41].Item == items::ItemId::Stone && view.QuickSlots[1] == view.BagSlots[41]
+            && view.Quantity == 3, "moving a resource in the bag changed its inherited quick binding or quantity");
+        if (std::string_view(name) == "override")
+            Require(view.QuickSlots[5] == view.BagSlots[41], "a configured quick binding displaced the inherited binding");
+        else
+            Require(!view.QuickSlots[5].Item, "omitting QuickSlot assigned an extra binding");
+    }
+}
 void MenuLayoutAndCanvas() {
     ui::GameMenuUI menu;
     Require(!menu.IsOpen() && !menu.Paint().Visible, "native menu must start hidden");
@@ -104,6 +125,7 @@ void MenuLayoutAndCanvas() {
 int main() {
     try {
         InventoryAndBindings();
+        ProfileQuickSlotOverrides();
         LayoutAndCanvas();
         MenuLayoutAndCanvas();
         std::cout << "Inventory UI state, bindings, canvas and scaled hit testing passed\n";

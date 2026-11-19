@@ -2149,7 +2149,49 @@ void CalendarGameplayGpu() {
     std::cout << "Calendar GPU passed: dawn/noon/dusk/night, four seasons, production frames, HUD and postprocessing isolation\n";
 }
 
+void PlayerProfileStartup() {
+    const ScopedEnvironmentVariable generator("PIXEL_WORLD_GENERATOR", "flat");
+    const ScopedEnvironmentVariable window("PIXEL_SIMULATION_WINDOW", "256");
+    const auto launch = [](const char *name) {
+        const ScopedEnvironmentVariable selected("PIXEL_PLAYER_PROFILE", name);
+        auto game = std::make_unique<PixelGame>();
+        auto *player = game.get();
+        PixelSmokeApplication app(std::move(game));
+        app.Initialize();
+        app.Begin();
+        Draw(app);
+        const auto view = player->GetUI().Read();
+        app.Shutdown();
+        return view;
+    };
+    using pixel::items::ItemId;
+    const auto bytes = AssetLoader::LoadContentFile("PlayerProfiles.json");
+    const auto defaultProfile = pixel::items::PlayerProfile::Parse({bytes.data(), bytes.size()});
+    const auto fromManifest = launch(nullptr);
+    uint32_t startingQuantity = 0;
+    for (const auto &entry : defaultProfile.StartingInventory()) {
+        const auto &bagSlot = fromManifest.BagSlots[entry.BagSlot];
+        Require(bagSlot.Item == entry.Amount.Item && bagSlot.Quantity == entry.Amount.Quantity
+            && (pixel::items::Definition(entry.Amount.Item).BlockMaterial || bagSlot.Instance != 0),
+            "starting without a profile override did not grant the disk default's bag contents");
+        if (entry.QuickSlot)
+            Require(fromManifest.QuickSlots[*entry.QuickSlot] == bagSlot, "disk default's configured quick slot was lost");
+        startingQuantity += entry.Amount.Quantity;
+    }
+    Require(fromManifest.Quantity == startingQuantity, "starting without a profile override granted extra inventory");
+    const auto debug = launch("debug");
+    Require(debug.Quantity == 1001 && debug.BagSlots[0].Item == ItemId::WoodenStick && debug.BagSlots[0].Instance
+        && debug.BagSlots[1].Item == ItemId::Torch && debug.BagSlots[1].Quantity == 1000
+        && debug.QuickSlots[0] == debug.BagSlots[0] && debug.QuickSlots[1] == debug.BagSlots[1],
+        "debug launch did not place the starting items in bag and quick slots 1 and 2");
+    const auto normal = launch("normal");
+    Require(normal.Quantity == 8 && normal.BagSlots[14].Item == ItemId::Torch && normal.BagSlots[14].Quantity == 8
+        && normal.QuickSlots[6] == normal.BagSlots[14] && !normal.QuickSlots[0].Item,
+        "normal launch did not preserve the original starting supply and key 7");
+}
+
 void InventoryUIGpu() {
+    PlayerProfileStartup();
     auto game = std::make_unique<PixelGame>(false);
     auto *input = game.get();
     auto &session = input->GetSession();

@@ -1,0 +1,16 @@
+{
+    "DefaultProfile": "debug",
+    "Profiles": {
+        "debug": {
+            "StartingInventory": [
+                { "BagSlot": 1, "QuickSlot": 1, "Item": "wooden_stick", "Quantity": 1 },
+                { "BagSlot": 2, "QuickSlot": 2, "Item": "torch", "Quantity": 1000 }
+            ]
+        },
+        "normal": {
+            "StartingInventory": [
+                { "BagSlot": 15, "QuickSlot": 7, "Item": "torch", "Quantity": 8 }
+            ]
+        }
+    }
+}

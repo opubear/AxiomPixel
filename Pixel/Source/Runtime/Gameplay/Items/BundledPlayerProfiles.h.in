@@ -1,0 +1,7 @@
+#pragma once
+
+#include <string_view>
+
+namespace pixel::items {
+inline constexpr std::string_view BundledPlayerProfiles = "@PIXEL_PLAYER_PROFILES_JSON@";
+}

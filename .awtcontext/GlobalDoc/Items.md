@@ -1,6 +1,6 @@
 # 物品、库存与开采资源合同
 
-现状核对：2026-11-10。本文正文描述当前规则；文末日期化结果是历史验证。玩家入口见[构式、资源与背包系统](SystemsFormulaItems.md)。
+现状核对于 2026-11-18。本文正文描述当前规则，文末日期化结果是历史验证。 [构式、资源与背包系统](SystemsFormulaItems.md)
 
 M4.3补充：真实设备现已接入原子建造/回收与煤槽转移，`Inventory::Destroy` 供拥有者销毁空容器；材料放置也检查设备占用。当前设备合同见 [Devices](Devices.md)，以下M4.2验证记录保留为该阶段历史证据。
 
@@ -11,6 +11,18 @@ M4.2 建立 `PixelItems`，当前为保存不可变构式产物依赖独立Syste
 `Items/Item.h` 定义稳定物品 ID，包括 soil=1001、stone=1010、coal=1020、copper_ore=1030、iron_ore=1040、tungsten_ore=1050、gold_ore=1060、sand=1070、clay=1080、sandstone=1090、snow=1100、ice=1110、wood=1120、leaves=1130、torch=1140、wooden_stick=2001。定义版本均为 1。ID 独立于材料编号、纹理层与容器下标。`Definition` 对未知引用抛出逻辑错误，启动校验重复 ID/名字、空名字/版本和设备成本引用。
 
 容器 ID 在一个 Inventory 内单调分配，属于当前会话；与物品语义 ID 分开。`ContainerRef` 是 `{Id, Version}`，不是内存指针。调用方必须保留所属 Session/epoch，不能跨库存或世界使用本地 ID。`Clear` 不倒退分配器；重置世界创建新的玩家背包 ID。ReservationId 另带 Inventory 所有者身份，跨集合、已释放、已消费或 Clear 后的 token 均不能再次消费。
+
+## 角色初始背包
+
+游戏启动时从 `PlayerProfiles.json` 读取 `DefaultProfile` 指向的配置。用 `PIXEL_PLAYER_PROFILE=normal ./run-debug.sh` 可单次覆盖，或修改文件的默认配置名后重启。当前默认 `debug` 在背包第 1 格放一根木棍、第 2 格放 1000 支火把，两者分别绑定快捷键 1 和 2。`normal` 在背包第 15 格放 8 支火把，绑定快捷键 7。 [角色配置文件](../../Pixel/Content/PlayerProfiles.json)
+
+每个角色的 `StartingInventory` 是物品列表，空列表表示空包。每项用 `Item` 引用已注册的物品名称，用 `Quantity` 设置正整数数量。`BagSlot` 从 1 到 42，可选的 `QuickSlot` 从 1 到 7，各自的格号在同一配置中唯一。每种堆叠物品占一格，每根木棍单列一项，数量为 1。木棍按背包格号顺序取得独立实例，各自携带默认构式。加载时校验物品名称、格号、数量、背包总容量和工具数量上限。
+
+快捷键 1–7 初始按物品定义顺序分别绑定土料、石头、煤、铜矿、铁矿、钨矿、金矿。配置中的 `QuickSlot` 只覆盖指定的键，省略时沿用原绑定。例如石头放在背包第 42 格时仍可用键 2 选择，为这项填写 `"QuickSlot": 6` 后，键 2 和键 6 都引用这一份石头。 [原生背包与快捷栏](NativeInventoryUI.md)
+
+新建世界时发放一次，按 R 会为新角色重新发放本次启动选定的物品。显式持久会话读档时恢复检查点里的库存、木棍身份和构式。即使切换角色配置，已在包内的木棍也只参与布局，读档后从地上拾起的木棍才触发自动装备。
+
+直接构造 `GameSession` 并省略角色参数时，临时和持久模式采用构建时从同一份 JSON 收录的 `normal` 配置，有限测试世界从空包开始。调用方显式传入空配置也可创建空包。游戏启动入口始终读取磁盘上的角色配置。
 
 ## 数量、容量与预留
 
@@ -49,7 +61,7 @@ Input、Debug、Driver 的 MineRegion 和玩家的 formula/2、兼容 process/1 
 
 `Gameplay/Construction/DeviceCosts.h` 给首个 WindEmitter 定义 v1 成本：4 stone + 2 copper_ore。成本属于游戏建设规则，Items 只处理物品批次。CPU 场景验证开采到这些物料、整批预留、取消返还、消费以及第二次缺料不部分扣除；该句对应 M4.2 的成本验证范围；当前可建造实体、补煤与回收已接入，见[设备合同](Devices.md)。
 
-M4.6已保存容器ID/版本/容量、物品语义ID与版本、数量和身份高水位；恢复重新分配预留Owner，旧token失效。预留只存在于同步动作内部，捕获时有未完成预留直接报告内部阶段错误。R建新世界背包为空。正常应用使用 Temporary 会话，重新启动也从空背包开始；仅显式 Persistent 会话保存并恢复库存；合同见[一致检查点](Checkpoints.md)。M4.7已增加[有授权的库存/设备观测与同帧UI](GameplayObservation.md)；仅授予Items主题不允许读取私有数量。
+M4.6已保存容器ID/版本/容量、物品语义ID与版本、数量和身份高水位。恢复重新分配预留Owner，旧token失效。预留只存在于同步动作内部，捕获时有未完成预留直接报告内部阶段错误。 [一致检查点](Checkpoints.md) [有授权的库存观测](GameplayObservation.md)
 
 ## 验证入口
 

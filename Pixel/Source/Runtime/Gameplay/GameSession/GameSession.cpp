@@ -1,6 +1,7 @@
 #include "Dev/Debug/Garden/GardenScenario.h"
 #include "GameSession.h"
 #include "Runtime/Gameplay/Actors/FormulaComponent.h"
+#include "Runtime/Gameplay/FormulaBridge/DefaultProcess.h"
 #include "Runtime/Gameplay/Items/HandheldItem.h"
 #include "Runtime/Gameplay/Construction/DeviceCosts.h"
 #include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
@@ -58,7 +59,12 @@ GameSession::GameSession(bool persistent, WorldGenerationSettings generation)
     : GameSession(persistent ? SessionMode::Persistent : SessionMode::Finite, generation) {}
 
 GameSession::GameSession(SessionMode mode, WorldGenerationSettings generation, std::shared_ptr<const MonsterCatalog> monsters)
-    : Mode(mode), Monsters(std::move(monsters)), Characters(Monsters), NextGeneration(generation) {
+    : GameSession(mode, generation, std::move(monsters),
+                  mode == SessionMode::Finite ? items::PlayerProfile{} : items::PlayerProfile::BundledNormal()) {}
+
+GameSession::GameSession(SessionMode mode, WorldGenerationSettings generation, std::shared_ptr<const MonsterCatalog> monsters,
+                         items::PlayerProfile profile)
+    : Mode(mode), Profile(std::move(profile)), Monsters(std::move(monsters)), Characters(Monsters), NextGeneration(generation) {
     Formulas.BindActors(Characters);
     ValidateGenerationSettings(generation);
     items::ValidateCost(ForceEmitterCost());
@@ -104,11 +110,24 @@ void GameSession::InitializeScene() {
     WindStrategySettings wind;
     wind.Kind = WindKind;
     GameWorld.ConfigureWindDomain(wind);
+    for (const auto &entry : Profile.StartingInventory()) {
+        const auto bag = Inventory.Reference(PlayerBag);
+        items::Result result;
+        if (entry.Amount.Item == items::ItemId::WoodenStick) {
+            items::ItemRef stick;
+            result = Inventory.CreateStick(bag, DefaultPlayerProcess(), stick);
+        } else {
+            result = Inventory.Add(bag, std::span(&entry.Amount, 1));
+        }
+        if (result != items::Result::Applied)
+            throw std::logic_error("could not grant configured starting item: " + std::string(items::Definition(entry.Amount.Item).Name));
+    }
     if (CreateGardenOnReset) debug::InitializeForceGarden(GameWorld, Formulas, Garden, *GetPlayer());
     const auto target = FormulaWorldAdapter::OffsetCells(GetPlayer()->GetWorldPosition(), {12, 0});
     if (!Characters.Spawn(ActorKind::TrainingDummy, target))
         throw std::logic_error("no capacity for the default training dummy");
     SpawnSceneActors();
+    CaptureInitialPlayerTools();
 }
 
 void GameSession::Reset() {
@@ -404,7 +423,8 @@ void GameSession::ReplacingWorld() {
     Machines.Clear();
     Garden = {};
     Inventory.Clear();
-    PlayerBag = Inventory.Create(4096);
+    InitialPlayerTools.clear();
+    PlayerBag = Inventory.Create(items::PlayerProfile::BagCapacity);
     GroundBag = Inventory.Create(items::Inventory::MaximumInstancesPerContainer);
     DroppedItems.clear();
     Formulas.BindPlayerInventory(Inventory, PlayerBag);

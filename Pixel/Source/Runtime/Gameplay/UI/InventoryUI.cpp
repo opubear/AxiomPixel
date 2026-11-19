@@ -21,7 +21,19 @@ Rect InventoryLayout::Placement(std::array<int, 2> framebuffer, float uiScale) {
     return {16 * scale, 16 * scale, Width * scale, Height * scale};
 }
 
-InventoryUI::InventoryUI() { ResetBindings(); }
+InventoryUI::InventoryUI(items::PlayerProfile profile) : Profile(std::move(profile)) {
+    for (const auto &entry : Profile.StartingInventory())
+        BagTypes[entry.BagSlot] = entry.Amount.Item;
+
+    // Other resources keep a fixed display position even while their stack is empty.
+    for (const auto &definition : items::Definitions()) {
+        if (!definition.BlockMaterial || std::ranges::find(BagTypes, definition.Id) != BagTypes.end()) continue;
+        const auto slot = std::find(BagTypes.begin(), BagTypes.end(), std::nullopt);
+        if (slot == BagTypes.end()) throw std::logic_error("player bag layout has no room for all resource types");
+        *slot = definition.Id;
+    }
+    ResetBindings();
+}
 
 void InventoryUI::SetUIScale(float scale) {
     if (!IsValidUIScale(scale))
@@ -32,6 +44,7 @@ void InventoryUI::SetUIScale(float scale) {
 void InventoryUI::ResetBindings() {
     Bindings.fill(std::nullopt);
     KnownInstances.clear();
+    NeedsStartingBindings = true;
     const auto definitions = items::Definitions();
     for (size_t i = 0; i < std::min(Bindings.size(), definitions.size()); ++i)
         Bindings[i] = items::ItemRef{definitions[i].Id};
@@ -48,6 +61,46 @@ bool InventoryUI::CloseInventory() {
 void InventoryUI::SelectQuickSlot(size_t index) {
     if (index < View.QuickSlots.size())
         View.Selected = index;
+}
+
+void InventoryUI::ProjectBag(const api::InventoryObservation &bag) {
+    // Assign the starting layout before projecting pickups, even if the first UI frame arrives late.
+    for (const auto &stack : bag.Stacks) {
+        if (stack.InstanceId && !stack.OwnedAtWorldStart) continue;
+        ProjectStack(stack);
+        if (NeedsStartingBindings && stack.InstanceId) KnownInstances.push_back(stack.InstanceId);
+    }
+    if (NeedsStartingBindings) ApplyStartingBindings();
+    for (const auto &stack : bag.Stacks)
+        if (stack.InstanceId && !stack.OwnedAtWorldStart) ProjectStack(stack);
+}
+
+void InventoryUI::ProjectStack(const api::ItemStackObservation &stack) {
+    if (!stack.Quantity) return;
+    const auto item = items::ItemId(stack.ItemId);
+    size_t slot = BagTypes.size();
+    for (size_t i = 0; i < BagTypes.size(); ++i) {
+        if (View.BagSlots[i].Item) continue;
+        if (BagTypes[i] == item) {
+            slot = i;
+            break;
+        }
+        // Unassigned positions hold additional independent tool instances.
+        if (stack.InstanceId && !BagTypes[i] && slot == BagTypes.size()) slot = i;
+    }
+    if (slot == BagTypes.size()) throw std::logic_error("inventory entry has no visible bag slot");
+    View.BagSlots[slot] = {item, stack.Quantity, stack.Reserved, stack.InstanceId};
+}
+
+void InventoryUI::ApplyStartingBindings() {
+    for (const auto &entry : Profile.StartingInventory()) {
+        const auto &slot = View.BagSlots[entry.BagSlot];
+        if (!entry.QuickSlot) continue;
+        // Bind a stack even when depleted. A tool always needs its actual owned identity.
+        Bindings[*entry.QuickSlot] = items::Definition(entry.Amount.Item).BlockMaterial
+            ? std::optional(items::ItemRef{entry.Amount.Item}) : slot.Reference();
+    }
+    NeedsStartingBindings = false;
 }
 
 void InventoryUI::RefreshQuickSlots() {
@@ -93,7 +146,8 @@ void InventoryUI::Publish(const api::GameplayObservation *gameplay, items::Conta
             + " / " + twoDigits(calendar->Hour) + ":" + twoDigits(calendar->Minute);
     }
     // A missing publication never reads mutable live inventory as a substitute.
-    if (gameplay && (gameplay->Stamp.WorldEpoch != WorldEpoch || gameplay->Stamp.WorldId != WorldId || Container != playerBag)) {
+    const bool newWorld = gameplay && (gameplay->Stamp.WorldEpoch != WorldEpoch || gameplay->Stamp.WorldId != WorldId || Container != playerBag);
+    if (newWorld) {
         WorldEpoch = gameplay->Stamp.WorldEpoch;
         WorldId = gameplay->Stamp.WorldId;
         Container = playerBag;
@@ -108,20 +162,7 @@ void InventoryUI::Publish(const api::GameplayObservation *gameplay, items::Conta
         if (bag != gameplay->Inventories.end()) {
             View.Capacity = bag->Capacity;
             View.Quantity = bag->Quantity;
-            // The current domain stores resource totals, not owned slot stacks.
-            // Stable definition positions avoid moving items when a count hits 0.
-            const auto definitions = items::Definitions();
-            for (size_t i = 0; i < std::min(definitions.size(), View.BagSlots.size()); ++i)
-                for (const auto &stack : bag->Stacks)
-                    if (!stack.InstanceId && stack.ItemId == uint32_t(definitions[i].Id) && stack.Quantity)
-                        View.BagSlots[i] = {definitions[i].Id, stack.Quantity, stack.Reserved};
-            size_t slot = std::count_if(definitions.begin(), definitions.end(),
-                [](const auto &definition) { return definition.BlockMaterial != 0; });
-            for (const auto &stack : bag->Stacks) {
-                if (!stack.InstanceId) continue;
-                if (slot == View.BagSlots.size()) throw std::logic_error("inventory tools exceed visible bag capacity");
-                View.BagSlots[slot++] = {items::ItemId(stack.ItemId), stack.Quantity, stack.Reserved, stack.InstanceId};
-            }
+            ProjectBag(*bag);
             RefreshQuickSlots();
             for (const auto &entry : View.BagSlots) {
                 if (!entry.Instance || std::find(KnownInstances.begin(), KnownInstances.end(), entry.Instance) != KnownInstances.end()) continue;

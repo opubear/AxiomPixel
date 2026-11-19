@@ -1,6 +1,8 @@
 #include "../Support/TestAccess.h"
 #include "../Support/CheckpointFiles.h"
+#include "../Support/PlayerProfileFixture.h"
 #include "Runtime/Gameplay/Persistence/GameplaySaveData.h"
+#include "Runtime/Gameplay/UI/InventoryUI.h"
 #include "Runtime/Simulation/World/WorldStorageError.h"
 #include <chrono>
 #include <cstdlib>
@@ -258,6 +260,110 @@ void InvalidDomainLinksFailExplicitly() {
     Check(repaired.GetDevices().Count() == 1, "valid checkpoint could not load after explicit repair");
 }
 
+void SessionStartingInventory() {
+    SaveRoot files;
+    const auto checkNormal = [](const GameSession &session) {
+        const auto bag = session.GetInventory().Inspect(session.PlayerInventory());
+        Check(bag.Stacks == std::vector{Stack{ItemId::Torch, 8}} && bag.Instances.empty(),
+              "a session without an explicit profile did not receive the normal starting inventory");
+    };
+    {
+        GameSession session(SessionMode::Temporary);
+        checkNormal(session);
+        Stock(session, ItemId::Stone, 1);
+        Check(session.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded(), "temporary reset failed");
+        checkNormal(session);
+    }
+    {
+        GameSession session(true);
+        checkNormal(session);
+    }
+    {
+        GameSession session(false);
+        Check(session.GetInventory().Inspect(session.PlayerInventory()).Quantity == 0, "finite fixture received a starter bag");
+    }
+    {
+        GameSession session(SessionMode::Temporary, {}, {}, {});
+        Check(session.GetInventory().Inspect(session.PlayerInventory()).Quantity == 0, "explicit empty profile received stock");
+    }
+}
+
+void RestoredToolsKeepConfiguredBindings() {
+    SaveRoot files;
+    ItemRef firstOwned, ground;
+    {
+        GameSession session(SessionMode::Persistent, {}, {}, testing::ReadPlayerProfile("normal"));
+        for (int x = 495; x < 503; ++x)
+            Check(session.Execute(NativeCaller::Input, api::UseHeldItem{ItemRef{ItemId::Torch}, {{x, 511}, {0, 0}}}).Applied(),
+                  "could not place the normal starting torches");
+        // Leave the oldest instance farther ahead. It will still be on the ground at save time.
+        for (int i = 0; i < 16; ++i) session.Tick(1.f / 60, {1, false});
+        Check(session.DropWoodenStick(NativeCaller::Debug).Succeeded(), "could not leave a tool on the ground");
+        ground = session.GetDroppedItems().front().Item;
+        for (int i = 0; i < 16; ++i) session.Tick(1.f / 60, {-1, false});
+        Check(session.DropWoodenStick(NativeCaller::Debug).Succeeded(), "could not drop first tool");
+        firstOwned = session.GetDroppedItems().back().Item;
+        Check(session.DropWoodenStick(NativeCaller::Debug).Succeeded(), "could not drop second tool");
+        for (int i = 0; i < 16; ++i) session.Tick(1.f / 60, {1, false});
+        Check(session.GetInventory().Inspect(session.PlayerInventory()).Instances.size() == 2, "two tools must be in the saved bag");
+        Check(session.GetDroppedItems().size() == 1 && session.GetDroppedItems().front().Item == ground,
+              "the oldest tool must stay on the ground until after load");
+        Save(session);
+    }
+    {
+        GameSession loaded(SessionMode::Persistent, {}, {}, testing::ReadPlayerProfile("debug"));
+        ui::InventoryUI ui(loaded.GetPlayerProfile());
+        auto committed = loaded.CreateReadView();
+        const auto publish = [&] {
+            loaded.RefreshReadView(*committed, {480, 480, 64, 64});
+            ui.Publish(&committed->Gameplay(), loaded.PlayerInventory());
+        };
+        publish();
+        Check(ui.Read().Selected == 0 && ui.HeldItem() == firstOwned && !ui.Read().QuickSlots[1].Item,
+              "tools restored from a checkpoint stole the selected slot or torch binding");
+        Check(loaded.Execute(NativeCaller::Input, api::MineRegion{{495, 511}}).Applied(), "could not recover a saved torch");
+        publish();
+        const auto &torch = ui.Read().BagSlots[1];
+        Check(torch.Item == ItemId::Torch && torch.Quantity == 1 && ui.Read().QuickSlots[1] == torch,
+              "the configured torch key did not recover with its inventory stack");
+    }
+    {
+        GameSession loaded(SessionMode::Persistent, {}, {}, testing::ReadPlayerProfile("debug"));
+        for (int i = 0; i < 16; ++i) loaded.Tick(1.f / 60, {1, false});
+        Check(loaded.GetInventory().ContainsItem(loaded.PlayerInventory(), ground), "checkpoint ground tool was not picked up");
+        ui::InventoryUI ui(loaded.GetPlayerProfile());
+        auto committed = loaded.CreateReadView();
+        loaded.RefreshReadView(*committed, {480, 480, 64, 64});
+        ui.Publish(&committed->Gameplay(), loaded.PlayerInventory());
+        Check(ui.HeldItem() == ground && ui.Read().QuickSlots[0].Reference() == firstOwned,
+              "a ground tool acquired before the first publication did not auto-equip alongside the restored tool");
+    }
+}
+
+void PlacedTorchesSurviveCheckpoint() {
+    SaveRoot files;
+    constexpr api::Cell lit{504, 511}, unlit{505, 511};
+    items::ContainerSnapshot expected;
+    {
+        GameSession session(SessionMode::Persistent, {}, {}, testing::ReadPlayerProfile("debug"));
+        for (const auto position : {lit, unlit})
+            Check(session.Execute(NativeCaller::Input, api::UseHeldItem{ItemRef{ItemId::Torch}, {position, {0, 0}}}).Applied(),
+                "could not place starting torch");
+        Check(session.Execute(NativeCaller::Input, api::ToggleTorch{unlit}).Applied(), "could not extinguish second torch");
+        expected = session.GetInventory().Inspect(session.PlayerInventory());
+        Save(session);
+    }
+    GameSession loaded(SessionMode::Persistent, {}, {}, testing::ReadPlayerProfile("normal"));
+    Check(loaded.GetWorld().GetCell(lit.X, lit.Y).Type == CellTypeId::LitTorch
+        && loaded.GetWorld().GetCell(unlit.X, unlit.Y).Type == CellTypeId::UnlitTorch
+        && loaded.GetInventory().Inspect(loaded.PlayerInventory()) == expected,
+        "switching profile on load changed the saved bag or lost the placed torches");
+    Check(loaded.Control(NativeCaller::Driver, api::ResetWorld{}).Succeeded(), "could not start a normal character");
+    const auto fresh = loaded.GetInventory().Inspect(loaded.PlayerInventory());
+    Check(fresh.Quantity == 8 && fresh.Instances.empty() && fresh.Stacks == std::vector{Stack{ItemId::Torch, 8}},
+        "a new normal character inherited debug supplies or duplicated the normal starting stock");
+}
+
 void MigratedWorldNeverFallsBackSilently() {
     SaveRoot files;
     std::filesystem::path directory;
@@ -281,6 +387,9 @@ void MigratedWorldNeverFallsBackSilently() {
 }
 int main() {
     try {
+        SessionStartingInventory();
+        RestoredToolsKeepConfiguredBindings();
+        PlacedTorchesSurviveCheckpoint();
         ActiveDomainsResumeOnce();
         FrozenAndUnloadedChangesAreAtomic();
         InvalidDomainLinksFailExplicitly();

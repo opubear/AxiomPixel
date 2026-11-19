@@ -12,6 +12,7 @@ namespace pixel::api {
 struct ItemStackObservation {
     uint32_t ItemId = 0, DefinitionVersion = 0, Quantity = 0, Reserved = 0;
     uint64_t InstanceId = 0;
+    bool OwnedAtWorldStart = false; // This instance was already in the player's bag at spawn or load.
 };
 struct InventoryObservation {
     uint64_t ContainerId = 0, Version = 0, OwnerActor = 0, DeviceId = 0;

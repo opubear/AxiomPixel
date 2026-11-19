@@ -162,6 +162,10 @@ M2.2 已加入[可协商的关闭请求](Docs/Architecture/CloseRequests.md)：�
 | F4 | 显示或隐藏Formula Editor，预设／源码应用到当前手持木棍 |
 | R | 创建新世界，重置视角；默认临时会话丢弃当前进度，保留显示/控制模式 |
 
+默认使用调试角色。新世界的背包第 1 格是一根可施放构式的木棍，第 2 格是 1000 支火把，快捷键分别为 `1` 和 `2`。选中火把后，左键点地面放置，右键取回。[火把与局部光照](.awtcontext/GlobalDoc/LocalLighting.md)
+
+用 `PIXEL_PLAYER_PROFILE=normal ./run-debug.sh` 启动普通角色，开局有 8 支火把，按 `7` 选中。可修改 `PlayerProfiles.json` 的 `DefaultProfile`、数量和格号，重启后生效。按 `R` 新建世界会沿用本次启动的角色配置。 [角色配置文件](Pixel/Content/PlayerProfiles.json) [初始背包规则](.awtcontext/GlobalDoc/Items.md#角色初始背包)
+
 Input、Debug和CPU driver的开采、放置与激活共用Session动作入口，返回明确结果；调用者token与epoch在世界替换时失效，每调用者保留最近64条回执用于同步去重。手持行为、物品实例及保存迁移见[手持物品合同](.awtcontext/GlobalDoc/HandheldItems.md)。F2的 `Game actions` 可输入格坐标执行显式调试操作并查看Input/Debug回执。风设置、会话控制及Formula工具栏也经Session端口；Session对外只提供World/Runtime的const引用；内部运行错误直接传播，存档I/O与领域拒绝保留明确结果。公开契约、权限与排队语义见[动作实现说明](Docs/Architecture/GameActions.md)。
 
 启动和R后默认运行；暂停由GameSession统一管理，Simulation不再维护独立暂停开关。F2主面板顶部的 `Pause game` 冻结角色、材料、风场、构式、设备、育圃和世界意志结果交付，世界修改动作返回 `GamePaused`；`Step game 1/60 second` 可显式推进一个完整固定步。暂停不积累游戏时间或缓存跳跃，F3 DebugCamera及显示控制仍可使用；保存、重置和I/O管理仍可操作。引擎顺序保持帧首快照发布 → 输入与游戏推进 → Draw消费发布数据；Skip不推进，Draw不读取实时World。
@@ -345,7 +349,7 @@ Linux自动鼠标检查需要X11/XWayland的DISPLAY；GLFW Wayland不能设置�
 
 F2控制Pixel Debug，F4独立控制 `Formula Editor`。持有木棍时可编辑和应用其程序；未持有木棍时禁用应用。可直接修改 `Process text` 或载入三脉冲草稿，依次点击 `Compile process`、`Apply process`。编辑源码会撤销编译结果，错误显示行列；Apply仅影响后续实例，运行中的实例保留原版本。`Load applied process`恢复当前木棍源码，`Clear running`清理运行实例及归属效果。
 
-F2菜单点击 **Formula presets**，或直接按F4，在顶部选择五套函数演示：`Mining volley`（三连开采弹）、`Delayed excavation`（命中后两阶段延时扩挖）、`Alternating force`（交替推力场）、`Beacon pulses`（定点信标脉冲）、`Wake launcher`（事件唤醒发射器）。`Load preset source`将源码放入编辑区，`Equip preset`将程序装载到当前手持木棍，不自动运行；在世界内左键才施放。编辑器的`Compile process`、`Apply process`同样只编译/装载，已运行实例保留旧程序。`Stop player formulas`取消主角当前运行的构式及归属效果，保留装载并允许再次左键施放；`Clear running`清理全部构式。唤醒预设左键启动等待后按`Wake player formulas`触发；力场用F1观察。开采实际改变地形；暂停或世界未就绪时装载按钮禁用。新游戏通过F2掉落默认构式木棍；显式持久会话用PixelGameplay 6保存每根木棍，旧人物程序迁移成木棍。物品接口、掉落拾取和存档合同见[手持物品](.awtcontext/GlobalDoc/HandheldItems.md)。演示配置与实现入口见[构式合同的预设说明](Docs/Architecture/FormulaComposition.md#debug函数预设)。
+F2菜单点击 **Formula presets**，或直接按F4，在顶部选择五套函数演示：`Mining volley`（三连开采弹）、`Delayed excavation`（命中后两阶段延时扩挖）、`Alternating force`（交替推力场）、`Beacon pulses`（定点信标脉冲）、`Wake launcher`（事件唤醒发射器）。`Load preset source`将源码放入编辑区，`Equip preset`将程序装载到当前手持木棍，不自动运行；在世界内左键才施放。编辑器的`Compile process`、`Apply process`同样只编译/装载，已运行实例保留旧程序。`Stop player formulas`取消主角当前运行的构式及归属效果，保留装载并允许再次左键施放；`Clear running`清理全部构式。唤醒预设左键启动等待后按`Wake player formulas`触发；力场用F1观察。开采实际改变地形；暂停或世界未就绪时装载按钮禁用。需要额外的默认构式木棍时，可在 F2 掉落并拾取。显式持久会话用PixelGameplay 6保存每根木棍，旧人物程序迁移成木棍。物品接口、掉落拾取和存档合同见[手持物品](.awtcontext/GlobalDoc/HandheldItems.md)。演示配置与实现入口见[构式合同的预设说明](Docs/Architecture/FormulaComposition.md#debug函数预设)。
 
 `Process: three carriers`可从玩家附近启动NaturalSource和FixedFixture调试承载者，使用同一程序和宿主规则；额度分别为6、4，玩家为64。真实Device另有物品和燃料规则。`Start actor attachment` 将同一构式附着玩家，后续请求跟随移动，来源与附着身份独立。Actor销毁或离开授权范围取消，离开活动区冻结。实例观察显示绑定、位置与方向，最近回执显示源码位置和拒绝码。这些承载者共享 `ProcessHost`，World不依赖构式或渲染。
 

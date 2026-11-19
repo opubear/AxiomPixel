@@ -1,3 +1,10 @@
-add_library(PixelItems STATIC Item.cpp Inventory.cpp)
+add_library(PixelItems STATIC Item.cpp Inventory.cpp PlayerProfile.cpp)
+set(profile_manifest "${PROJECT_SOURCE_DIR}/Pixel/Content/PlayerProfiles.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${profile_manifest}")
+file(READ "${profile_manifest}" profile_bytes HEX)
+# Keep profile names and other JSON strings independent of C++ literal delimiters.
+string(REGEX REPLACE "(..)" "\\\\x\\1" PIXEL_PLAYER_PROFILES_JSON "${profile_bytes}")
+configure_file(BundledPlayerProfiles.h.in BundledPlayerProfiles.h @ONLY)
 target_include_directories(PixelItems PUBLIC "${PIXEL_SOURCE_DIR}")
+target_include_directories(PixelItems PRIVATE "${AXIOM_ENGINE_DIR}/ThirdParty/nlohmannJson/single_include" "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(PixelItems PUBLIC PixelFormulaProcess)

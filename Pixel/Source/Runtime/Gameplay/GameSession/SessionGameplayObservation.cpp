@@ -17,20 +17,29 @@ std::string_view WaitingFor(const ProcessInspection &process) {
 }
 
 api::InventoryObservation ObserveContainer(const items::Inventory &inventory, items::ContainerId id,
-                                           uint64_t actor, uint64_t device, api::Position location) {
+                                           uint64_t actor, uint64_t device, api::Position location,
+                                           std::span<const uint64_t> initialPlayerTools = {}) {
     const auto source = inventory.Inspect(id);
     api::InventoryObservation result{source.Ref.Id.Value, source.Ref.Version, actor, device, location,
                                      source.Capacity, source.Quantity, {}};
-    result.Stacks.reserve(source.Stacks.size());
+    result.Stacks.reserve(source.Stacks.size() + source.Instances.size());
     for (const auto &stack : source.Stacks) {
         const auto &definition = items::Definition(stack.Item);
         result.Stacks.push_back({uint32_t(stack.Item), definition.Version, stack.Quantity, stack.Reserved});
     }
-    for (const auto &item : source.Instances)
-        result.Stacks.push_back({uint32_t(item.Ref.Item), items::Definition(item.Ref.Item).Version, 1, 0, item.Ref.Instance});
+    for (const auto &item : source.Instances) {
+        const bool initiallyOwned = std::ranges::find(initialPlayerTools, item.Ref.Instance) != initialPlayerTools.end();
+        result.Stacks.push_back({uint32_t(item.Ref.Item), items::Definition(item.Ref.Item).Version, 1, 0, item.Ref.Instance, initiallyOwned});
+    }
     return result;
 }
 } // namespace
+
+void GameSession::CaptureInitialPlayerTools() {
+    InitialPlayerTools.clear();
+    for (const auto &tool : Inventory.Inspect(PlayerBag).Instances)
+        InitialPlayerTools.push_back(tool.Ref.Instance);
+}
 
 void GameSession::PublishGameplayObservation() {
     api::GameplayObservation result;
@@ -48,7 +57,7 @@ void GameSession::PublishGameplayObservation() {
                                                      debug::SampleGarden(GameWorld, Garden, GardenHomeX, Garden.HomeGrowth)};
     if (const auto player = Characters.PlayerSnapshot())
         result.Inventories.push_back(ObserveContainer(Inventory, PlayerBag, player->Id.Value, 0,
-            ActionPosition(player->GetWorldPosition())));
+            ActionPosition(player->GetWorldPosition()), InitialPlayerTools));
     for (const auto &device : Machines.Snapshot()) {
         result.Devices.push_back({device.Ref, ForceEmitterType, device.Owner, {device.X, device.Y}, device.Enabled,
                                  device.State, device.Instance, device.Cycles, device.Fuel});

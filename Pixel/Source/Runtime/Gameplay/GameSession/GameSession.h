@@ -17,6 +17,7 @@
 #include "Runtime/Gameplay/Actors/PlayerPresentation.h"
 #include "SimulationWorker.h"
 #include "Runtime/Gameplay/Items/DroppedItem.h"
+#include "Runtime/Gameplay/Items/PlayerProfile.h"
 #include <optional>
 #include <string>
 
@@ -41,6 +42,8 @@ class GameSession : public api::WorldWillHost {
     // Existing fixtures select finite or persistent storage explicitly.
     explicit GameSession(bool persistent = false, WorldGenerationSettings generation = {});
     explicit GameSession(SessionMode mode, WorldGenerationSettings generation = {}, std::shared_ptr<const MonsterCatalog> monsters = {});
+    GameSession(SessionMode mode, WorldGenerationSettings generation, std::shared_ptr<const MonsterCatalog> monsters,
+                items::PlayerProfile profile);
     ~GameSession();
     // Runtime enables the persistent simulation worker; deterministic domain
     // fixtures may continue to call Tick synchronously without a worker.
@@ -85,6 +88,7 @@ class GameSession : public api::WorldWillHost {
     const MonsterCatalog *GetMonsterCatalog() const { return Monsters.get(); }
     const Devices &GetDevices() const { return Machines; }
     const items::Inventory &GetInventory() const { return Inventory; }
+    const items::PlayerProfile &GetPlayerProfile() const { return Profile; }
     items::ContainerId PlayerInventory() const { return PlayerBag; }
     const Body *GetPlayer() const { return Characters.Player(); }
     bool IsReady() const { return Ready; }
@@ -174,6 +178,7 @@ class GameSession : public api::WorldWillHost {
     bool CreateGardenOnReset = false;
     std::vector<api::DeviceChanged> StopDevices();
     SessionMode Mode;
+    items::PlayerProfile Profile;
     // Declared before World so its I/O worker stops before scratch files go away.
     std::optional<io::TemporaryDirectory> TemporaryWorld;
     World GameWorld{WorldWidth, WorldHeight};
@@ -184,6 +189,7 @@ class GameSession : public api::WorldWillHost {
     items::Inventory Inventory;
     items::ContainerId PlayerBag;
     items::ContainerId GroundBag;
+    std::vector<uint64_t> InitialPlayerTools;
     std::vector<items::DroppedItem> DroppedItems;
     FormulaBridge Formulas;
     std::array<double, 2> LastAim{1, 0};
@@ -194,6 +200,7 @@ class GameSession : public api::WorldWillHost {
     WorldCalendar Calendar;
     ObservationProjector Observations;
     api::GameplayObservation GameplayValues;
+    void CaptureInitialPlayerTools();
     void PublishGameplayObservation();
     DomainFactBuffer Facts;
     knowledge::Journal Knowledge;

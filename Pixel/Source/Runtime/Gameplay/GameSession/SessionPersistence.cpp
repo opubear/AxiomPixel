@@ -100,6 +100,7 @@ void GameSession::RestoreGameplayData(const GameplaySaveData &data, const std::s
         }
     }
     RestoreSocialData(data, worldId);
+    CaptureInitialPlayerTools();
 }
 
 void GameSession::RestoreSocialData(const GameplaySaveData &data, const std::string &worldId) {
